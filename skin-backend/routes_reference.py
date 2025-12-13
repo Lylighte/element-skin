@@ -89,11 +89,14 @@ async def log_all_requests(request: Request, call_next):
     return response
 
 
-# 允许跨域开发请求（开发环境使用），生产请按需限制
+# CORS 跨域配置（从 config.yaml 读取）
+cors_origins = config.get("cors.allow_origins", ["*"])
+cors_credentials = config.get("cors.allow_credentials", True)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -175,6 +175,25 @@ location /skin/api/ {
 
 ### 4. 首次配置
 
+**安全配置（生产环境必须修改）**：
+
+1. **修改 JWT 密钥**：
+   ```bash
+   # 生成随机密钥
+   openssl rand -base64 32
+   # 写入 config.yaml 的 jwt.secret
+   ```
+
+2. **配置 CORS 允许的域名**：
+   编辑 `config.yaml`，将 `cors.allow_origins` 改为你的前端域名：
+   ```yaml
+   cors:
+     allow_origins: ["https://yourdomain.com"]  # 不要用 ["*"]！
+     allow_credentials: true
+   ```
+
+**初始化设置**：
+
 1. 访问站点并注册账号（第一个用户自动成为管理员）
 2. 登录后进入「管理面板」→「设置」
 3. 配置站点 URL（必须与实际访问地址一致）

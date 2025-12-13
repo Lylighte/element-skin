@@ -19,3 +19,9 @@ server:
   host: "0.0.0.0"
   port: 8000
   root_path: ""  # 子目录部署时配置，如 "/skin/api"
+
+# CORS 跨域配置
+cors:
+  # 开发环境允许所有来源
+  allow_origins: ["*"]
+  allow_credentials: true
