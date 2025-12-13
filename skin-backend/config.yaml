@@ -6,6 +6,11 @@
 jwt:
   secret: "dev-secret-please-change-in-production"  # 生产环境务必修改！
 
+# RSA 密钥配置
+keys:
+  private_key: "private.pem"  # 开发环境使用本地路径
+  public_key: "public.pem"
+
 # 数据库配置
 database:
   path: "yggdrasil.db"

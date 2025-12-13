@@ -18,8 +18,10 @@ from config_loader import config
 from rate_limiter import rate_limiter, check_rate_limit
 
 # 初始化
-db = Database()
-crypto = CryptoUtils("private.pem")
+db_path = config.get("database.path", "yggdrasil.db")
+db = Database(db_path)
+private_key_path = config.get("keys.private_key", "private.pem")
+crypto = CryptoUtils(private_key_path)
 backend = YggdrasilBackend(db, crypto)
 
 # JWT 配置（secret 从配置文件，expire_days 从数据库）
@@ -812,7 +814,8 @@ async def api_delete_profile(
 # 扩展 API: 元数据
 @app.get("/")
 async def get_meta(request: Request):
-    with open("public.pem", "r") as f:
+    public_key_path = config.get("keys.public_key", "public.pem")
+    with open(public_key_path, "r") as f:
         pub_key = f.read()
 
     # 动态返回 skinDomains，优先使用配置的 site_url

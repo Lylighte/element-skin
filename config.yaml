@@ -3,6 +3,11 @@
 jwt:
   secret: "CHANGE-ME-TO-RANDOM-SECRET"  # ⚠️ 生产环境必须修改
 
+# RSA 密钥配置
+keys:
+  private_key: "/data/private.pem"
+  public_key: "/data/public.pem"
+
 database:
   path: "/data/yggdrasil.db"
 

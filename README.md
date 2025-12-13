@@ -16,17 +16,21 @@
 
 ### RSA 密钥生成
 
-> **重要提示**: 首次部署前，必须生成 RSA 密钥对用于 Yggdrasil API 签名
+> **重要提示**: RSA 密钥会在容器首次启动时自动生成到 `data` 目录，实现数据持久化
 
-在 `skin-backend` 目录下运行：
+如果需要提前生成：
 ```bash
+# 在项目根目录，确保 data 目录存在
+mkdir -p data
+
+# 生成密钥到 data 目录
 cd skin-backend
 python gen_key.py
+mv private.pem public.pem ../data/
+cd ..
 ```
 
-这会在 `skin-backend` 目录生成 `private.pem` 和 `public.pem` 文件。
-
-> Docker 部署时会自动在容器内生成密钥，但建议在宿主机提前生成，以便持久化保存。
+> 容器启动时会检查 `/data/` 目录，如果密钥不存在才会生成，避免覆盖现有密钥。
 
 ### 开发环境
 
@@ -274,9 +278,9 @@ VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d --build
 - 检查 Node.js 版本是否为 20+
 
 ### 后端密钥文件缺失
-- Docker 部署会在容器内自动生成 `private.pem` 和 `public.pem`
-- 建议在宿主机 `skin-backend` 目录提前生成：`cd skin-backend && python gen_key.py`
-- 生成后密钥会在容器启动时被使用
+- 容器首次启动时会自动生成到 `data` 目录
+- 检查容器日志：`docker compose logs backend`
+- 如果密钥丢失，删除 `data/private.pem` 和 `data/public.pem`，然后重启容器
 
 ### API 请求 404
 - 检查主机 Nginx 配置中的后端代理路径

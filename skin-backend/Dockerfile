@@ -7,9 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /data/textures && \
-    cd /app && python gen_key.py
+# 赋予启动脚本执行权限
+RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 
+ENTRYPOINT ["./entrypoint.sh"]
 CMD ["uvicorn", "routes_reference:app", "--host", "0.0.0.0", "--port", "8000"]
