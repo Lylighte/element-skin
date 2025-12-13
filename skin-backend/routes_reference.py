@@ -103,8 +103,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 挂载静态材质目录
-textures_path = os.path.join(os.path.dirname(__file__), "textures")
+# 挂载静态材质目录（从配置读取路径）
+textures_path = config.get("textures.directory", "textures")
 os.makedirs(textures_path, exist_ok=True)
 # 挂载为 /static/textures，避免与 /textures/upload 路由冲突（StaticFiles 会拦截相同前缀的请求）
 app.mount("/static/textures", StaticFiles(directory=textures_path), name="textures")
@@ -495,7 +495,7 @@ async def upload_texture_to_library(
 
         texture_hash = crypto.compute_texture_hash_from_image(img)
 
-        textures_dir = os.path.join(os.path.dirname(__file__), "textures")
+        textures_dir = config.get("textures.directory", "textures")
         os.makedirs(textures_dir, exist_ok=True)
         file_path = os.path.join(textures_dir, f"{texture_hash}.png")
         with open(file_path, "wb") as wf:

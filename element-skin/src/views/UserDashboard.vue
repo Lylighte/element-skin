@@ -299,7 +299,7 @@ async function fetchMe() {
       localStorage.removeItem('jwt')
       localStorage.removeItem('accessToken')
       setTimeout(() => {
-        window.location.href = '/login'
+        router.push('/login')
       }, 1000)
     } else {
       ElMessage.error('获取用户信息失败')
@@ -442,7 +442,7 @@ async function deleteAccount() {
     localStorage.removeItem('jwt')
     localStorage.removeItem('accessToken')
     setTimeout(() => {
-      window.location.href = '/'
+      router.push('/')
     }, 1000)
   } catch (e) {
     if (e !== 'cancel') {

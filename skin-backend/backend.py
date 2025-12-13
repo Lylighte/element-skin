@@ -547,8 +547,10 @@ class YggdrasilBackend:
                 # 修复：应传入 Image 对象而非 PNG 字节
                 texture_hash = self.crypto.compute_texture_hash_from_image(img)
 
-                # 4. 保存文件 (保存到本地 textures/ 目录)，文件名使用 {hash}.png
-                textures_dir = os.path.join(os.path.dirname(__file__), "textures")
+                # 4. 保存文件（从配置读取目录），文件名使用 {hash}.png
+                from config_loader import config
+
+                textures_dir = config.get("textures.directory", "textures")
                 os.makedirs(textures_dir, exist_ok=True)
                 file_name = f"{texture_hash}.png"
                 file_path = os.path.join(textures_dir, file_name)
