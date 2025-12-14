@@ -113,9 +113,39 @@
                 <div class="role-model">模型: {{ profile.model || 'default' }}</div>
               </div>
               <div class="role-actions">
-                <el-button class="action-btn action-btn-danger" @click="deleteRole(profile.id)">
-                  <el-icon><Delete /></el-icon>
-                  <span>删除</span>
+                <el-button
+                  class="action-btn action-btn-danger"
+                  @click="deleteRole(profile.id)"
+                  size="default"
+                >
+                  <span class="btn-content">
+                    <el-icon class="btn-icon"><Delete /></el-icon>
+                    <span class="btn-label">删除</span>
+                  </span>
+                </el-button>
+
+                <el-button
+                  v-if="profile.skin_hash"
+                  class="action-btn action-btn-warning"
+                  @click="clearRoleSkin(profile.id)"
+                  size="default"
+                >
+                  <span class="btn-content">
+                    <el-icon class="btn-icon"><Close /></el-icon>
+                    <span class="btn-label">皮肤</span>
+                  </span>
+                </el-button>
+
+                <el-button
+                  v-if="profile.cape_hash"
+                  class="action-btn action-btn-warning"
+                  @click="clearRoleCape(profile.id)"
+                  size="default"
+                >
+                  <span class="btn-content">
+                    <el-icon class="btn-icon"><Close /></el-icon>
+                    <span class="btn-label">披风</span>
+                  </span>
                 </el-button>
               </div>
             </div>
@@ -263,7 +293,7 @@ import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Box, User, Setting, Upload, UploadFilled, Check, Delete, Plus, Tools
+  Box, User, Setting, Upload, UploadFilled, Check, Delete, Plus, Tools, Close
 } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CapeViewer from '@/components/CapeViewer.vue'
@@ -470,6 +500,40 @@ async function deleteRole(pid) {
   }
 }
 
+async function clearRoleSkin(pid) {
+  try {
+    await ElMessageBox.confirm(
+      '确定要清除该角色的皮肤吗？',
+      '确认清除',
+      { type: 'warning', confirmButtonText: '确定清除', cancelButtonText: '取消' }
+    )
+    await axios.delete(`/me/profiles/${pid}/skin`, { headers: authHeaders() })
+    ElMessage.success('皮肤已清除')
+    fetchMe()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('清除失败: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+}
+
+async function clearRoleCape(pid) {
+  try {
+    await ElMessageBox.confirm(
+      '确定要清除该角色的披风吗？',
+      '确认清除',
+      { type: 'warning', confirmButtonText: '确定清除', cancelButtonText: '取消' }
+    )
+    await axios.delete(`/me/profiles/${pid}/cape`, { headers: authHeaders() })
+    ElMessage.success('披风已清除')
+    fetchMe()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('清除失败: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+}
+
 async function updateProfile() {
   try {
     const payload = { ...form.value }
@@ -620,8 +684,19 @@ async function deleteAccount() {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
+
+/* 为每个纹理卡片添加错开延迟 */
+.texture-card:nth-child(1) { animation-delay: 0.05s; }
+.texture-card:nth-child(2) { animation-delay: 0.1s; }
+.texture-card:nth-child(3) { animation-delay: 0.15s; }
+.texture-card:nth-child(4) { animation-delay: 0.2s; }
+.texture-card:nth-child(5) { animation-delay: 0.25s; }
+.texture-card:nth-child(6) { animation-delay: 0.3s; }
+.texture-card:nth-child(7) { animation-delay: 0.35s; }
+.texture-card:nth-child(8) { animation-delay: 0.4s; }
 
 .texture-card:hover {
   transform: translateY(-4px);
@@ -765,7 +840,65 @@ async function deleteAccount() {
   transform: translateY(0);
 }
 
-/* 角色管理样式 - 统一为衣柜样式 */
+.action-btn-danger {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.action-btn-danger .btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.action-btn-danger .btn-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+}
+
+.action-btn-danger .btn-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.6) rotate(-90deg);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn-danger:hover .btn-label {
+  opacity: 0;
+  transform: translateY(8px) scale(0.8);
+}
+
+.action-btn-danger:hover .btn-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1) rotate(0deg);
+}
+
+.action-btn-danger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(245, 108, 108, 0.25);
+}
+
+.action-btn-danger:active {
+  transform: translateY(0);
+}
+
+/* 角色卡片加载动画 */
 .create-role-card {
   margin-bottom: 24px;
 }
@@ -781,8 +914,17 @@ async function deleteAccount() {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
+
+/* 为每个卡片添加错开延迟 */
+.role-card:nth-child(1) { animation-delay: 0.05s; }
+.role-card:nth-child(2) { animation-delay: 0.1s; }
+.role-card:nth-child(3) { animation-delay: 0.15s; }
+.role-card:nth-child(4) { animation-delay: 0.2s; }
+.role-card:nth-child(5) { animation-delay: 0.25s; }
+.role-card:nth-child(6) { animation-delay: 0.3s; }
 
 .role-card:hover {
   transform: translateY(-4px);
@@ -818,14 +960,85 @@ async function deleteAccount() {
 
 .role-actions {
   display: flex;
+  flex-direction: row;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid #ebeef5;
   background: #fafafa;
+  align-items: center;
 }
 
 .role-actions .el-button {
+  /* 三个按钮平均分配空间 */
   flex: 1;
+  min-width: 0;
+}
+
+.action-btn-warning {
+  color: #e6a23c;
+  border-color: #e6a23c;
+  background: rgba(230,162,60,0.06);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.action-btn-warning .btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* 文本默认显示，完全居中 */
+.action-btn-warning .btn-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+}
+
+/* 图标默认隐藏，绝对定位在中心 */
+.action-btn-warning .btn-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.6) rotate(-90deg);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* hover 时文本淡出下滑，图标旋转放大淡入 */
+.action-btn-warning:hover .btn-label {
+  opacity: 0;
+  transform: translateY(8px) scale(0.8);
+}
+
+.action-btn-warning:hover .btn-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1) rotate(0deg);
+}
+
+.action-btn-warning:hover {
+  color: #fff;
+  background: linear-gradient(135deg, #ffa726 0%, #fb8c00 100%);
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(251,140,0,0.18);
+}
+
+.action-btn-warning:active {
+  transform: translateY(0);
 }
 
 /* 个人资料样式 */
@@ -904,4 +1117,36 @@ async function deleteAccount() {
   display: inline-block;
   vertical-align: middle;
 }
+/* 动画关键帧 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 页面切换动画 */
+.wardrobe-section,
+.roles-section,
+.profile-section {
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.section-header {
+  animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 </style>

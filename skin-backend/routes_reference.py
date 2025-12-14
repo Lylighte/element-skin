@@ -56,39 +56,72 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan, root_path=config.get("server.root_path", ""))
 
 
-# 全局请求/响应日志中间件：打印每个收到的请求摘要与响应状态，便于诊断为什么游戏没有请求到 PNG
+# 全局请求/响应日志中间件：根据debug配置决定是否打印所有请求和响应详情（包括静态文件）
 @app.middleware("http")
 async def log_all_requests(request: Request, call_next):
-    try:
-        body = await request.body()
-    except Exception:
-        body = b""
+    debug_enabled = config.get("server.debug", False)
 
-    # 打印基础请求信息（限制 body 输出长度）
-    print("--- HTTP REQUEST ---")
-    print(f"{request.method} {request.url}")
-    # 打印部分头部信息（避免泄露大块敏感数据）
-    hdrs = {k: v for k, v in request.headers.items()}
-    print("Headers:", {k: hdrs[k] for k in list(hdrs)[:20]})
-    if body:
+    if debug_enabled:
+        import time
+
+        start_time = time.time()
+
         try:
-            preview = body.decode("utf-8", errors="replace")
+            body = await request.body()
         except Exception:
-            preview = str(body[:200])
-        print("Body preview:", preview[:1000])
+            body = b""
+
+        # 打印基础请求信息
+        print("\n" + "=" * 80)
+        print(f"【请求】 {request.method} {request.url.path}")
+        print(f"完整URL: {request.url}")
+        print(
+            f"客户端: {request.client.host if request.client else 'Unknown'}:{request.client.port if request.client else 'Unknown'}"
+        )
+
+        # 打印所有头部信息
+        print(f"请求头:")
+        for key, value in request.headers.items():
+            # 隐藏敏感信息
+            if key.lower() in ("authorization", "cookie"):
+                value = value[:20] + "..." if len(value) > 20 else value
+            print(f"  {key}: {value}")
+
+        # 打印请求体（如果有）
+        if body:
+            try:
+                preview = body.decode("utf-8", errors="replace")
+                if len(preview) > 1000:
+                    print(f"请求体预览 (前1000字符): {preview[:1000]}...")
+                else:
+                    print(f"请求体: {preview}")
+            except Exception:
+                print(f"请求体 (二进制，共{len(body)}字节)")
+        else:
+            print("请求体: <空>")
+
+        # Recreate request stream for downstream
+        async def receive():
+            return {"type": "http.request", "body": body}
+
+        # 处理请求
+        response = await call_next(Request(request.scope, receive))
+
+        # 计算处理时间
+        process_time = (time.time() - start_time) * 1000
+
+        # 打印响应信息
+        print(f"\n【响应】 状态码: {response.status_code}")
+        print(f"处理时间: {process_time:.2f}ms")
+        print(f"响应头:")
+        for key, value in response.headers.items():
+            print(f"  {key}: {value}")
+        print("=" * 80 + "\n")
+
+        return response
     else:
-        print("Body preview: <empty>")
-
-    # Recreate request stream for downstream
-    async def receive():
-        return {"type": "http.request", "body": body}
-
-    response = await call_next(Request(request.scope, receive))
-
-    print(
-        f"--- HTTP RESPONSE --- {response.status_code} for {request.method} {request.url}\n"
-    )
-    return response
+        # debug模式关闭时，直接处理请求，不输出日志
+        return await call_next(request)
 
 
 # CORS 跨域配置（从 config.yaml 读取）
@@ -469,6 +502,38 @@ async def delete_profile(pid: str, payload: dict = Depends(get_current_user)):
         if row[0] != user_id:
             raise HTTPException(status_code=403, detail="not allowed")
         await conn.execute("DELETE FROM profiles WHERE id=?", (pid,))
+        await conn.commit()
+    return {"ok": True}
+
+
+@app.delete("/me/profiles/{pid}/skin")
+async def clear_profile_skin(pid: str, payload: dict = Depends(get_current_user)):
+    """清除角色的皮肤"""
+    user_id = payload.get("sub")
+    async with db.get_conn() as conn:
+        cur = await conn.execute("SELECT user_id FROM profiles WHERE id=?", (pid,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="profile not found")
+        if row[0] != user_id:
+            raise HTTPException(status_code=403, detail="not allowed")
+        await conn.execute("UPDATE profiles SET skin_hash=NULL WHERE id=?", (pid,))
+        await conn.commit()
+    return {"ok": True}
+
+
+@app.delete("/me/profiles/{pid}/cape")
+async def clear_profile_cape(pid: str, payload: dict = Depends(get_current_user)):
+    """清除角色的披风"""
+    user_id = payload.get("sub")
+    async with db.get_conn() as conn:
+        cur = await conn.execute("SELECT user_id FROM profiles WHERE id=?", (pid,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="profile not found")
+        if row[0] != user_id:
+            raise HTTPException(status_code=403, detail="not allowed")
+        await conn.execute("UPDATE profiles SET cape_hash=NULL WHERE id=?", (pid,))
         await conn.commit()
     return {"ok": True}
 

@@ -83,17 +83,22 @@ class CryptoUtils:
     @staticmethod
     def get_offline_uuid(name: str) -> str:
         """
-        兼容离线模式的 UUID 生成算法
-        UUID.nameUUIDFromBytes("OfflinePlayer:" + name)
+        兼容 Java UUID.nameUUIDFromBytes 的实现
+        与标准 Minecraft 离线模式及 authlib-injector 服务端兼容
         """
         data = f"OfflinePlayer:{name}".encode("utf-8")
-        hash_bytes = hashlib.md5(data).digest()
-        # Set the version to 3 (MD5 based) - Java's nameUUIDFromBytes does strictly this
-        # Java logic: verify version 3, variant 2.
-        # But actually Python's uuid.uuid3 does exactly this.
-        return str(uuid.uuid3(uuid.NAMESPACE_OID, f"OfflinePlayer:{name}")).replace(
-            "-", ""
-        )
+
+        # 1. 计算纯 MD5（不使用命名空间，与 Java 实现一致）
+        md = hashlib.md5(data).digest()
+        md = bytearray(md)
+
+        # 2. 按照 RFC 4122 设置版本号 (Version 3) 和变体 (Variant 1/IETF)
+        # Java 的 nameUUIDFromBytes 内部就是这样做的
+        md[6] = (md[6] & 0x0F) | 0x30  # Version 3
+        md[8] = (md[8] & 0x3F) | 0x80  # Variant 1
+
+        # 3. 转为 UUID 对象并获取字符串
+        return str(uuid.UUID(bytes=bytes(md))).replace("-", "")
 
     @staticmethod
     def compute_texture_hash(image_bytes: bytes) -> str:

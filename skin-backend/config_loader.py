@@ -39,7 +39,7 @@ class Config:
             },
             "database": {"path": "yggdrasil.db"},
             "textures": {"directory": "textures", "max_size_kb": 1024},
-            "server": {"host": "0.0.0.0", "port": 8000},
+            "server": {"host": "0.0.0.0", "port": 8000, "debug": False},
         }
 
     def get(self, key: str, default: Any = None) -> Any:
