@@ -32,6 +32,10 @@ export default defineConfig({
         rewrite: (path) => path,
       },
       // Register, admin, me, textures etc
+      '^/site-login': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
       '^/register': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,

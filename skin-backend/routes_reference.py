@@ -356,7 +356,7 @@ async def me(payload: dict = Depends(get_current_user)):
     user_id = payload.get("sub")
     async with db.get_conn() as conn:
         cur = await conn.execute(
-            "SELECT id, email, preferred_language, display_name, is_admin FROM users WHERE id=?",
+            "SELECT id, email, preferred_language, display_name, is_admin, banned_until FROM users WHERE id=?",
             (user_id,),
         )
         row = await cur.fetchone()
@@ -385,6 +385,7 @@ async def me(payload: dict = Depends(get_current_user)):
             "lang": row[2],
             "display_name": row[3],
             "is_admin": bool(row[4]),
+            "banned_until": row[5],
             "profiles": profiles_list,
         }
 
@@ -739,6 +740,71 @@ async def apply_texture_to_profile(
 
 
 # 注册接口（支持邀请码，若 settings 中设置 invite_required=1 则必须提供有效邀请码）
+@app.post("/site-login")
+async def site_login(req: dict, request: Request):
+    """
+    站点登录接口：用于前端用户登录皮肤站
+    与 Minecraft 游戏登录分离，不检查封禁状态
+    封禁只影响游戏登录，不影响站点访问
+    """
+    await check_rate_limit(request, is_auth_endpoint=True)
+
+    email = req.get("email")
+    password = req.get("password")
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="email and password required")
+
+    async with db.get_conn() as conn:
+        # 验证用户凭证
+        cur = await conn.execute(
+            "SELECT id, email, password, is_admin FROM users WHERE email=?",
+            (email,),
+        )
+        user_row = await cur.fetchone()
+
+        if not user_row:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        user_id, email, password_hash, is_admin = user_row
+
+        # 验证密码
+        import bcrypt
+
+        if password_hash.startswith("$2"):
+            # bcrypt 密码
+            if not bcrypt.checkpw(
+                password.encode("utf-8"), password_hash.encode("utf-8")
+            ):
+                raise HTTPException(status_code=401, detail="Invalid credentials")
+        else:
+            # 旧的明文密码
+            if password_hash != password:
+                raise HTTPException(status_code=401, detail="Invalid credentials")
+            # 升级为 bcrypt
+            new_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
+                "utf-8"
+            )
+            await conn.execute(
+                "UPDATE users SET password=? WHERE id=?",
+                (new_hash, user_id),
+            )
+            await conn.commit()
+
+        # 生成 JWT token
+        expire_days = await get_jwt_expire_days()
+        exp = datetime.now(timezone.utc) + timedelta(days=expire_days)
+        token = jwt.encode(
+            {"sub": user_id, "email": email, "is_admin": bool(is_admin), "exp": exp},
+            JWT_SECRET,
+            algorithm=JWT_ALGO,
+        )
+
+        # 重置速率限制
+        rate_limiter.reset(request.client.host, request.url.path)
+
+        return {"token": token, "user_id": user_id}
+
+
 @app.post("/register")
 async def register(req: dict, request: Request):
     # 速率限制检查
@@ -1088,7 +1154,7 @@ async def get_admin_users(payload: dict = Depends(admin_required)):
     """获取所有用户列表"""
     async with db.get_conn() as conn:
         cur = await conn.execute(
-            "SELECT id, email, display_name, is_admin FROM users ORDER BY email"
+            "SELECT id, email, display_name, is_admin, banned_until FROM users ORDER BY email"
         )
         users = []
         for row in await cur.fetchall():
@@ -1103,6 +1169,7 @@ async def get_admin_users(payload: dict = Depends(admin_required)):
                     "email": row[1],
                     "display_name": row[2] or "",
                     "is_admin": bool(row[3]),
+                    "banned_until": row[4],
                     "profile_count": profile_count,
                 }
             )
@@ -1147,6 +1214,43 @@ async def delete_user_admin(user_id: str, payload: dict = Depends(admin_required
         await conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
         await conn.execute("DELETE FROM user_textures WHERE user_id=?", (user_id,))
         await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+        await conn.commit()
+    return {"ok": True}
+
+
+@app.post("/admin/users/{user_id}/ban")
+async def ban_user(
+    user_id: str, payload: dict = Depends(admin_required), body: dict = Body(None)
+):
+    """封禁用户"""
+    if not body or "banned_until" not in body:
+        raise HTTPException(status_code=400, detail="banned_until is required")
+
+    banned_until = body["banned_until"]
+
+    async with db.get_conn() as conn:
+        # 检查用户是否存在且不是管理员
+        cur = await conn.execute("SELECT is_admin FROM users WHERE id=?", (user_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="user not found")
+        if row[0]:
+            raise HTTPException(status_code=403, detail="cannot ban admin user")
+
+        # 设置封禁时间
+        await conn.execute(
+            "UPDATE users SET banned_until=? WHERE id=?", (banned_until, user_id)
+        )
+        await conn.commit()
+
+    return {"ok": True, "banned_until": banned_until}
+
+
+@app.post("/admin/users/{user_id}/unban")
+async def unban_user(user_id: str, payload: dict = Depends(admin_required)):
+    """解封用户"""
+    async with db.get_conn() as conn:
+        await conn.execute("UPDATE users SET banned_until=NULL WHERE id=?", (user_id,))
         await conn.commit()
     return {"ok": True}
 

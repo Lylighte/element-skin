@@ -81,16 +81,12 @@ async function login() {
     await formRef.value.validate()
     loading.value = true
 
-    // 使用 authserver 登录接口
-    const res = await axios.post('/authserver/authenticate', {
-      username: form.email,
+    // 使用站点登录接口（不受封禁影响）
+    const res = await axios.post('/site-login', {
+      email: form.email,
       password: form.password,
-      requestUser: true,
     })
 
-    if (res.data.accessToken) {
-      localStorage.setItem('accessToken', res.data.accessToken)
-    }
     if (res.data.token) {
       localStorage.setItem('jwt', res.data.token)
     }
@@ -102,8 +98,8 @@ async function login() {
       router.push('/dashboard')
     }, 300)
   } catch (e) {
-    if (e.response?.data?.errorMessage) {
-      ElMessage.error('登录失败: ' + e.response.data.errorMessage)
+    if (e.response?.data?.detail) {
+      ElMessage.error('登录失败: ' + e.response.data.detail)
     } else if (e.message && !e.message.includes('validate')) {
       ElMessage.error('登录失败: ' + e.message)
     }

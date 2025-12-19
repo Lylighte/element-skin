@@ -86,6 +86,13 @@ class Database:
                 )
                 await db.commit()
 
+            # 添加 banned_until 列（封禁截止时间，单位毫秒，NULL表示未封禁）
+            if "banned_until" not in col_names:
+                await db.execute(
+                    "ALTER TABLE users ADD COLUMN banned_until INTEGER DEFAULT NULL"
+                )
+                await db.commit()
+
             # 迁移：为 invites 表添加使用次数字段
             cur = await db.execute("PRAGMA table_info(invites)")
             invite_cols = await cur.fetchall()

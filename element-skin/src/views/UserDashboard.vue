@@ -5,6 +5,11 @@
         <div class="user-info">
           <el-avatar :size="60" class="user-avatar">{{ emailInitial }}</el-avatar>
           <div class="user-name">{{ user?.display_name || user?.email || '用户' }}</div>
+          <div class="user-status">
+            <el-tag v-if="user?.is_admin" type="danger" size="small">管理员</el-tag>
+            <el-tag v-else-if="getUserBanStatus()" type="warning" size="small">封禁</el-tag>
+            <el-tag v-else type="info" size="small">用户</el-tag>
+          </div>
         </div>
         <el-menu :default-active="activeRoute" mode="vertical" router class="sidebar-menu">
           <el-menu-item index="/dashboard/wardrobe">
@@ -177,6 +182,29 @@
 
             <el-divider />
 
+            <!-- 封禁状态显示 -->
+            <el-alert
+              v-if="getUserBanStatus()"
+              type="warning"
+              :closable="false"
+              style="margin-bottom: 20px;"
+            >
+              <template #title>
+                <div style="font-weight: 600; font-size: 16px;">账号已被封禁</div>
+              </template>
+              <div style="margin-top: 8px; font-size: 14px;">
+                <p style="margin: 4px 0;">您的账号已被管理员封禁，暂时无法通过 Minecraft 客户端登录游戏。</p>
+                <p style="margin: 4px 0;">但您仍可以正常访问皮肤站进行皮肤管理等操作。</p>
+                <p style="margin: 8px 0 0 0; font-size: 15px; color: #e6a23c;">
+                  <el-icon><Clock /></el-icon>
+                  <strong>封禁剩余时间：{{ formatBanRemaining() }}</strong>
+                </p>
+                <p style="margin: 4px 0 0 0; color: #909399; font-size: 13px;">
+                  解封时间：{{ formatBanUntilTime() }}
+                </p>
+              </div>
+            </el-alert>
+
             <el-form label-width="120px" :model="form" label-position="left">
               <el-form-item label="邮箱">
                 <el-input v-model="form.email" placeholder="请输入邮箱" />
@@ -347,7 +375,7 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Box, User, Setting, Upload, UploadFilled, Check, Delete, Plus, Tools, Close
+  Box, User, Setting, Upload, UploadFilled, Check, Delete, Plus, Tools, Close, Clock
 } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CapeViewer from '@/components/CapeViewer.vue'
@@ -374,6 +402,38 @@ const emailInitial = computed(() => {
   const email = user.value?.email || user.value?.display_name || 'U'
   return email.charAt(0).toUpperCase()
 })
+
+// 检查用户是否被封禁
+function getUserBanStatus() {
+  if (!user.value?.banned_until) return false
+  return Date.now() < user.value.banned_until
+}
+
+// 格式化封禁剩余时间
+function formatBanRemaining() {
+  if (!user.value?.banned_until) return ''
+  const remaining = user.value.banned_until - Date.now()
+  if (remaining <= 0) return '已到期'
+
+  const days = Math.floor(remaining / (1000 * 60 * 60 * 24))
+  const hours = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60))
+
+  if (days > 0) {
+    return `${days}天 ${hours}小时 ${minutes}分钟`
+  } else if (hours > 0) {
+    return `${hours}小时 ${minutes}分钟`
+  } else {
+    return `${minutes}分钟`
+  }
+}
+
+// 格式化解封时间
+function formatBanUntilTime() {
+  if (!user.value?.banned_until) return ''
+  const until = new Date(user.value.banned_until)
+  return until.toLocaleString('zh-CN')
+}
 
 // 根据路由计算当前激活的标签
 const activeRoute = computed(() => route.path)
@@ -742,6 +802,12 @@ async function confirmDeleteAccount() {
   font-weight: 500;
   color: #303133;
   margin-top: 12px;
+}
+
+.user-status {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
 }
 
 .sidebar-menu {

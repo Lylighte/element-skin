@@ -457,6 +457,22 @@ class YggdrasilBackend:
             row = await cursor.fetchone()
             if not row:
                 return None
+
+            # 检查该角色对应的用户是否被封禁
+            profile_id, user_id = row[0], row[1]
+            ban_cursor = await conn.execute(
+                "SELECT banned_until FROM users WHERE id = ?", (user_id,)
+            )
+            ban_row = await ban_cursor.fetchone()
+            if ban_row and ban_row[0]:
+                banned_until = ban_row[0]
+                current_time = int(time.time() * 1000)
+                if current_time < banned_until:
+                    # 用户被封禁，拒绝返回角色信息
+                    raise ForbiddenOperationException(
+                        "Account is banned. Please contact administrator."
+                    )
+
             return await self._get_profile_json(
                 row, sign=not unsigned, base_url=base_url
             )
