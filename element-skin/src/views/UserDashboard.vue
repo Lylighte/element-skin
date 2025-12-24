@@ -104,10 +104,16 @@
         <div v-if="active === 'roles' && user" class="roles-section">
           <div class="section-header">
             <h2>角色管理</h2>
-            <el-button type="primary" size="large" @click="showCreateRoleDialog = true">
-              <el-icon><Plus /></el-icon>
-              <span style="margin-left:8px">新建角色</span>
-            </el-button>
+            <div class="header-actions">
+              <el-button type="success" size="large" @click="startMicrosoftAuth">
+                <el-icon><Connection /></el-icon>
+                <span style="margin-left:8px">绑定正版角色</span>
+              </el-button>
+              <el-button type="primary" size="large" @click="showCreateRoleDialog = true">
+                <el-icon><Plus /></el-icon>
+                <span style="margin-left:8px">新建角色</span>
+              </el-button>
+            </div>
           </div>
 
           <div class="roles-grid">
@@ -366,6 +372,75 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 微软正版登录对话框 -->
+    <el-dialog
+      v-model="showMicrosoftLoginDialog"
+      title="绑定正版角色"
+      width="600px"
+      :close-on-click-modal="false"
+      :destroy-on-close="true"
+    >
+      <div class="microsoft-login-content">
+        <!-- 选择角色 -->
+        <div v-if="microsoftStep === 'select-profile'" class="step-container">
+          <el-result icon="success" title="登录成功！">
+            <template #sub-title>
+              <div class="profile-selection">
+                <p style="margin-bottom: 16px;">检测到正版角色：</p>
+                <el-card class="profile-card">
+                  <div class="profile-info-display">
+                    <el-avatar :size="80" class="profile-avatar">
+                      {{ microsoftProfile.name.charAt(0).toUpperCase() }}
+                    </el-avatar>
+                    <div class="profile-details">
+                      <h3>{{ microsoftProfile.name }}</h3>
+                      <p>UUID: {{ formatUUID(microsoftProfile.id) }}</p>
+                      <el-tag v-if="microsoftProfile.has_game" type="success" size="large">
+                        <el-icon><Select /></el-icon>
+                        拥有游戏
+                      </el-tag>
+                      <el-tag v-else type="info" size="large">
+                        <el-icon><Warning /></el-icon>
+                        Demo 版本
+                      </el-tag>
+                    </div>
+                  </div>
+                  <el-divider />
+                  <div class="skin-preview">
+                    <div v-if="microsoftProfile.skins && microsoftProfile.skins.length > 0">
+                      <p><strong>皮肤：</strong>{{ microsoftProfile.skins[0].variant }}</p>
+                    </div>
+                    <div v-if="microsoftProfile.capes && microsoftProfile.capes.length > 0">
+                      <p><strong>披风：</strong>已拥有</p>
+                    </div>
+                  </div>
+                </el-card>
+              </div>
+            </template>
+            <template #extra>
+              <el-button type="primary" @click="importMicrosoftProfile" size="large" :loading="importing">
+                <el-icon v-if="!importing"><Download /></el-icon>
+                导入角色
+              </el-button>
+            </template>
+          </el-result>
+        </div>
+
+        <!-- 步骤3: 导入中 -->
+        <div v-else-if="microsoftStep === 'importing'" class="step-container">
+          <el-result icon="info" title="正在导入角色...">
+            <template #sub-title>
+              <p>正在下载皮肤和披风，请稍候...</p>
+            </template>
+          </el-result>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="cancelMicrosoftLogin">取消</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -375,7 +450,8 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Box, User, Setting, Upload, UploadFilled, Check, Delete, Plus, Tools, Close, Clock
+  Box, User, Setting, Upload, UploadFilled, Check, Delete, Plus, Tools, Close, Clock,
+  Connection, Link, Loading, Select, Warning, Download
 } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CapeViewer from '@/components/CapeViewer.vue'
@@ -397,6 +473,12 @@ const showApplyDialog = ref(false)
 const applyForm = ref({ profile_id: '', texture_type: '', hash: '' })
 const showDeleteDialog = ref(false)
 const deleteConfirmText = ref('')
+
+// 微软正版登录相关
+const showMicrosoftLoginDialog = ref(false)
+const microsoftStep = ref('select-profile') // 'select-profile', 'importing'
+const microsoftProfile = ref(null) // {id, name, skins, capes, has_game}
+const importing = ref(false)
 
 const emailInitial = computed(() => {
   const email = user.value?.email || user.value?.display_name || 'U'
@@ -516,6 +598,38 @@ onMounted(async () => {
   }
 
   await fetchMe()
+
+  // 检查是否是Microsoft OAuth回调
+  const urlParams = new URLSearchParams(window.location.search)
+  const msToken = urlParams.get('ms_token')
+  const error = urlParams.get('error')
+
+  if (error) {
+    ElMessage.error('微软登录失败: ' + error)
+    // 清除URL参数
+    router.replace({ query: {} })
+  } else if (msToken) {
+    // 获取profile数据并显示导入对话框
+    try {
+      const response = await axios.post('/microsoft/get-profile',
+        { ms_token: msToken },
+        { headers: authHeaders() }
+      )
+
+      microsoftProfile.value = response.data.profile
+      microsoftProfile.value.has_game = response.data.has_game
+      microsoftStep.value = 'select-profile'
+      showMicrosoftLoginDialog.value = true
+
+      ElMessage.success('授权成功！')
+    } catch (e) {
+      ElMessage.error('获取角色信息失败: ' + (e.response?.data?.detail || e.message))
+    }
+
+    // 清除URL参数
+    router.replace({ query: {} })
+  }
+
   if (route.path.includes('/wardrobe') || route.path === '/dashboard' || route.path === '/dashboard/') {
     fetchTextures()
   }
@@ -699,6 +813,80 @@ async function clearRoleCape(pid) {
       ElMessage.error('清除失败: ' + (e.response?.data?.detail || e.message))
     }
   }
+}
+
+// 微软正版登录相关函数
+function formatUUID(uuid) {
+  // 将32位UUID格式化为标准格式：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  if (uuid.length === 32) {
+    return `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`
+  }
+  return uuid
+}
+
+async function startMicrosoftAuth() {
+  try {
+    // 获取授权URL
+    const response = await axios.get('/microsoft/auth-url', { headers: authHeaders() })
+    const authUrl = response.data.auth_url
+
+    // 将state保存到sessionStorage，用于回调后恢复
+    sessionStorage.setItem('ms_auth_state', response.data.state)
+
+    // 重定向到微软登录页面
+    window.location.href = authUrl
+  } catch (error) {
+    ElMessage.error('启动微软登录失败: ' + (error.response?.data?.detail || error.message))
+  }
+}
+
+async function importMicrosoftProfile() {
+  if (!microsoftProfile.value) return
+
+  try {
+    importing.value = true
+    microsoftStep.value = 'importing'
+
+    // 提取皮肤和披风数据
+    const skinData = microsoftProfile.value.skins?.[0]
+    const capeData = microsoftProfile.value.capes?.[0]
+
+    const importData = {
+      profile_id: microsoftProfile.value.id,
+      profile_name: microsoftProfile.value.name,
+      skin_url: skinData?.url || null,
+      skin_variant: skinData?.variant || 'classic',
+      cape_url: capeData?.url || null
+    }
+
+    await axios.post('/microsoft/import-profile', importData, { headers: authHeaders() })
+
+    ElMessage.success('正版角色导入成功！')
+
+    // 刷新用户数据
+    await fetchMe()
+
+    // 关闭对话框
+    showMicrosoftLoginDialog.value = false
+
+    // 重置状态
+    microsoftStep.value = 'select-profile'
+    microsoftProfile.value = null
+    importing.value = false
+    importing.value = false
+  } catch (error) {
+    ElMessage.error('导入失败: ' + (error.response?.data?.detail || error.message))
+    importing.value = false
+    microsoftStep.value = 'select-profile'
+  }
+}
+
+function cancelMicrosoftLogin() {
+  // 重置状态
+  showMicrosoftLoginDialog.value = false
+  microsoftStep.value = 'select-profile'
+  microsoftProfile.value = null
+  importing.value = false
 }
 
 async function updateProfile() {
@@ -1439,6 +1627,108 @@ async function confirmDeleteAccount() {
 
 .section-header {
   animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 微软正版登录对话框样式 */
+.microsoft-login-content {
+  padding: 20px;
+}
+
+.step-container {
+  min-height: 300px;
+}
+
+.device-code-info {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.user-code-display {
+  font-size: 32px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 4px;
+  color: #409EFF;
+  background: #f0f9ff;
+  padding: 20px;
+  border-radius: 8px;
+  margin: 20px 0;
+  user-select: all;
+}
+
+.countdown-timer {
+  font-size: 16px;
+  color: #909399;
+  margin-top: 16px;
+}
+
+.polling-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+  color: #606266;
+  font-size: 14px;
+}
+
+.polling-status .el-icon {
+  font-size: 20px;
+}
+
+.profile-selection {
+  width: 100%;
+}
+
+.profile-card {
+  margin: 0 auto;
+  max-width: 500px;
+}
+
+.profile-info-display {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 0;
+}
+
+.profile-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: bold;
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.profile-details {
+  flex: 1;
+}
+
+.profile-details h3 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  color: #303133;
+}
+
+.profile-details p {
+  margin: 8px 0;
+  color: #606266;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.profile-details .el-tag {
+  margin-top: 12px;
+}
+
+.skin-preview {
+  padding: 12px 0 0 0;
+}
+
+.skin-preview p {
+  margin: 8px 0;
+  color: #606266;
+  font-size: 14px;
 }
 
 </style>

@@ -80,6 +80,38 @@
                 </el-input>
                 <el-text size="small" type="info" style="margin-top:4px">用户登录后 Token 的有效期</el-text>
               </el-form-item>
+              <el-divider content-position="left">微软正版登录设置</el-divider>
+              <el-form-item label="Client ID">
+                <el-input v-model="siteSettings.microsoft_client_id" placeholder="Azure 应用的 Client ID">
+                  <template #prepend>
+                    <el-icon><Key /></el-icon>
+                  </template>
+                </el-input>
+                <el-text size="small" type="info" style="margin-top:4px">
+                  在 <el-link href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" type="primary">Azure Portal</el-link> 创建应用获取
+                </el-text>
+              </el-form-item>
+              <el-form-item label="Client Secret">
+                <el-input
+                  v-model="siteSettings.microsoft_client_secret"
+                  placeholder="Azure 应用的 Client Secret（必填）"
+                  type="password"
+                  show-password
+                >
+                  <template #prepend>
+                    <el-icon><Lock /></el-icon>
+                  </template>
+                </el-input>
+                <el-text size="small" type="info" style="margin-top:4px">授权码模式需要 Client Secret</el-text>
+              </el-form-item>
+              <el-form-item label="Redirect URI">
+                <el-input v-model="siteSettings.microsoft_redirect_uri" placeholder="OAuth 回调地址（如：http://localhost:8000/microsoft/callback）">
+                  <template #prepend>
+                    <el-icon><Link /></el-icon>
+                  </template>
+                </el-input>
+                <el-text size="small" type="info" style="margin-top:4px">必须与 Azure 应用配置中的重定向 URI 完全一致</el-text>
+              </el-form-item>
               <el-form-item>
                 <el-button type="primary" @click="saveSettings" size="large">
                   <el-icon><Check /></el-icon>
@@ -500,7 +532,7 @@ import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Tools, Setting, User, Ticket, Back, Check, Refresh, Plus, Warning, CircleCheck, Key, Delete, InfoFilled, Clock
+  Tools, Setting, User, Ticket, Back, Check, Refresh, Plus, Warning, CircleCheck, Key, Delete, InfoFilled, Clock, Lock, Link
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -542,7 +574,10 @@ const siteSettings = ref({
   rate_limit_enabled: true,
   rate_limit_auth_attempts: 5,
   rate_limit_auth_window: 15,
-  jwt_expire_days: 7
+  jwt_expire_days: 7,
+  microsoft_client_id: '',
+  microsoft_client_secret: '',
+  microsoft_redirect_uri: ''
 })
 
 const activeRoute = computed(() => route.path)

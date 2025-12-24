@@ -93,6 +93,18 @@ class Database:
                 )
                 await db.commit()
 
+            # 迁移：检查 settings 表中是否有微软OAuth配置
+            await db.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('microsoft_client_id', '')"
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('microsoft_client_secret', '')"
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('microsoft_redirect_uri', 'http://localhost:8000/microsoft/callback')"
+            )
+            await db.commit()
+
             # 迁移：为 invites 表添加使用次数字段
             cur = await db.execute("PRAGMA table_info(invites)")
             invite_cols = await cur.fetchall()

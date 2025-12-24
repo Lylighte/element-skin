@@ -1114,6 +1114,11 @@ async def get_admin_settings(payload: dict = Depends(admin_required)):
         "rate_limit_auth_attempts": int(settings.get("rate_limit_auth_attempts", "5")),
         "rate_limit_auth_window": int(settings.get("rate_limit_auth_window", "15")),
         "jwt_expire_days": int(settings.get("jwt_expire_days", "7")),
+        "microsoft_client_id": settings.get("microsoft_client_id", ""),
+        "microsoft_client_secret": settings.get("microsoft_client_secret", ""),
+        "microsoft_redirect_uri": settings.get(
+            "microsoft_redirect_uri", "http://localhost:8000/microsoft/callback"
+        ),
     }
 
 
@@ -1133,6 +1138,9 @@ async def save_admin_settings(
             "rate_limit_auth_attempts",
             "rate_limit_auth_window",
             "jwt_expire_days",
+            "microsoft_client_id",
+            "microsoft_client_secret",
+            "microsoft_redirect_uri",
         ]:
             if key in body:
                 val = body[key]
@@ -1335,6 +1343,306 @@ async def delete_admin_invite(code: str, payload: dict = Depends(admin_required)
         await conn.execute("DELETE FROM invites WHERE code=?", (code,))
         await conn.commit()
     return {"ok": True}
+
+
+# ==================== 微软正版登录相关接口 ====================
+
+from microsoft_auth import MicrosoftAuthService, download_texture
+import hashlib
+import secrets
+
+# 用于存储OAuth state（生产环境应使用Redis）
+oauth_states = {}
+
+
+@app.get("/microsoft/auth-url")
+async def microsoft_get_auth_url(payload: dict = Depends(get_current_user)):
+    """
+    获取微软OAuth授权URL
+    """
+    async with db.get_conn() as conn:
+        # 获取微软OAuth配置
+        cur = await conn.execute(
+            "SELECT value FROM settings WHERE key='microsoft_client_id'"
+        )
+        row = await cur.fetchone()
+        client_id = row[0] if row else None
+
+        cur = await conn.execute(
+            "SELECT value FROM settings WHERE key='microsoft_client_secret'"
+        )
+        row = await cur.fetchone()
+        client_secret = row[0] if row else None
+
+        if not client_id or client_id == "":
+            raise HTTPException(
+                status_code=500,
+                detail="Microsoft OAuth not configured. Please contact administrator.",
+            )
+
+        if not client_secret or client_secret == "":
+            raise HTTPException(
+                status_code=500,
+                detail="Microsoft OAuth client_secret not configured. Please contact administrator.",
+            )
+
+        try:
+            # 生成state用于防CSRF
+            state = secrets.token_urlsafe(32)
+            user_id = payload.get("sub")
+
+            # 存储state与用户ID的映射（10分钟过期）
+            oauth_states[state] = {"user_id": user_id, "expires_at": time.time() + 600}
+
+            # 获取redirect_uri配置
+            cur = await conn.execute(
+                "SELECT value FROM settings WHERE key='microsoft_redirect_uri'"
+            )
+            row = await cur.fetchone()
+            redirect_uri = row[0] if row else "http://localhost:8000/microsoft/callback"
+
+            service = MicrosoftAuthService(client_id, client_secret, redirect_uri)
+            auth_url = service.get_authorization_url(state)
+
+            return {"auth_url": auth_url, "state": state}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/microsoft/callback")
+async def microsoft_callback(code: str = None, state: str = None, error: str = None):
+    """
+    微软OAuth回调端点
+    """
+    if error:
+        raise HTTPException(status_code=400, detail=f"Authorization failed: {error}")
+
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state parameter")
+
+    # 验证state
+    if state not in oauth_states:
+        raise HTTPException(status_code=400, detail="Invalid state parameter")
+
+    session_data = oauth_states[state]
+
+    # 检查是否过期
+    if time.time() > session_data["expires_at"]:
+        del oauth_states[state]
+        raise HTTPException(status_code=400, detail="State expired")
+
+    user_id = session_data["user_id"]
+    del oauth_states[state]  # 使用后立即删除
+
+    async with db.get_conn() as conn:
+        # 获取OAuth配置
+        cur = await conn.execute(
+            "SELECT value FROM settings WHERE key='microsoft_client_id'"
+        )
+        row = await cur.fetchone()
+        client_id = row[0] if row else None
+
+        cur = await conn.execute(
+            "SELECT value FROM settings WHERE key='microsoft_client_secret'"
+        )
+        row = await cur.fetchone()
+        client_secret = row[0] if row else None
+
+        cur = await conn.execute(
+            "SELECT value FROM settings WHERE key='microsoft_redirect_uri'"
+        )
+        row = await cur.fetchone()
+        redirect_uri = row[0] if row else "http://localhost:8000/microsoft/callback"
+
+        try:
+            service = MicrosoftAuthService(client_id, client_secret, redirect_uri)
+
+            # 交换授权码获取令牌
+            token_data = await service.exchange_code_for_token(code)
+            ms_access_token = token_data["access_token"]
+
+            # 执行完整认证链
+            profile = await service.complete_auth_flow(ms_access_token)
+
+            # 将profile数据临时存储，供前端获取
+            # 使用一个短期token
+            temp_token = secrets.token_urlsafe(32)
+            oauth_states[temp_token] = {
+                "user_id": user_id,
+                "profile": profile,
+                "expires_at": time.time() + 300,  # 5分钟
+            }
+
+            # 重定向回前端，带上临时token
+            frontend_url = config.get("frontend.url", "http://localhost:5173")
+            return Response(
+                status_code=302,
+                headers={
+                    "Location": f"{frontend_url}/dashboard/roles?ms_token={temp_token}"
+                },
+            )
+
+        except Exception as e:
+            # 重定向回前端并显示错误
+            import urllib.parse
+
+            frontend_url = config.get("frontend.url", "http://localhost:5173")
+            error_msg = str(e).replace("\n", " ")  # 移除换行符
+            error_msg_encoded = urllib.parse.quote(error_msg)
+            return Response(
+                status_code=302,
+                headers={
+                    "Location": f"{frontend_url}/dashboard/roles?error={error_msg_encoded}"
+                },
+            )
+
+
+@app.post("/microsoft/get-profile")
+async def microsoft_get_profile(
+    ms_token: str = Body(..., embed=True), payload: dict = Depends(get_current_user)
+):
+    """
+    使用临时token获取profile数据
+    """
+    user_id = payload.get("sub")
+
+    if ms_token not in oauth_states:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    session_data = oauth_states[ms_token]
+
+    # 检查是否过期
+    if time.time() > session_data["expires_at"]:
+        del oauth_states[ms_token]
+        raise HTTPException(status_code=400, detail="Token expired")
+
+    # 验证用户ID
+    if session_data["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    profile = session_data["profile"]
+    del oauth_states[ms_token]  # 使用后删除
+
+    return {
+        "profile": {
+            "id": profile["profile"]["id"],
+            "name": profile["profile"]["name"],
+            "skins": profile["profile"].get("skins", []),
+            "capes": profile["profile"].get("capes", []),
+        },
+        "has_game": profile.get("has_game", False),
+    }
+
+
+@app.post("/microsoft/import-profile")
+async def microsoft_import_profile(
+    data: dict, payload: dict = Depends(get_current_user)
+):
+    """
+    导入正版角色
+    data: {
+        "profile_id": "uuid",
+        "profile_name": "name",
+        "skin_url": "...",
+        "skin_variant": "classic/slim",
+        "cape_url": "..." (可选)
+    }
+    """
+    user_id = payload.get("sub")
+    profile_id = data.get("profile_id")
+    profile_name = data.get("profile_name")
+    skin_url = data.get("skin_url")
+    skin_variant = data.get("skin_variant", "classic")
+    cape_url = data.get("cape_url")
+
+    if not profile_id or not profile_name:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+
+    async with db.get_conn() as conn:
+        # 检查角色名是否已存在
+        cur = await conn.execute(
+            "SELECT id FROM profiles WHERE name=?", (profile_name,)
+        )
+        existing = await cur.fetchone()
+        if existing:
+            raise HTTPException(
+                status_code=400, detail=f"Profile name '{profile_name}' already exists"
+            )
+
+        # 下载并保存皮肤
+        skin_hash = None
+        if skin_url:
+            try:
+                skin_data = await download_texture(skin_url)
+                skin_hash = hashlib.sha256(skin_data).hexdigest()
+
+                # 保存皮肤文件
+                texture_dir = "static/textures"
+                os.makedirs(texture_dir, exist_ok=True)
+                with open(f"{texture_dir}/{skin_hash}.png", "wb") as f:
+                    f.write(skin_data)
+
+                # 添加到用户纹理库
+                created_at = int(time.time() * 1000)
+                await conn.execute(
+                    "INSERT OR IGNORE INTO user_textures (user_id, hash, texture_type, note, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        user_id,
+                        skin_hash,
+                        "skin",
+                        f"From Microsoft account - {profile_name}",
+                        created_at,
+                    ),
+                )
+            except Exception as e:
+                print(f"Failed to download skin: {e}")
+
+        # 下载并保存披风
+        cape_hash = None
+        if cape_url:
+            try:
+                cape_data = await download_texture(cape_url)
+                cape_hash = hashlib.sha256(cape_data).hexdigest()
+
+                # 保存披风文件
+                texture_dir = "static/textures"
+                with open(f"{texture_dir}/{cape_hash}.png", "wb") as f:
+                    f.write(cape_data)
+
+                # 添加到用户纹理库
+                created_at = int(time.time() * 1000)
+                await conn.execute(
+                    "INSERT OR IGNORE INTO user_textures (user_id, hash, texture_type, note, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        user_id,
+                        cape_hash,
+                        "cape",
+                        f"From Microsoft account - {profile_name}",
+                        created_at,
+                    ),
+                )
+            except Exception as e:
+                print(f"Failed to download cape: {e}")
+
+        # 创建角色（使用正版UUID）
+        texture_model = "slim" if skin_variant == "slim" else "default"
+        await conn.execute(
+            "INSERT INTO profiles (id, user_id, name, texture_model, skin_hash, cape_hash) VALUES (?, ?, ?, ?, ?, ?)",
+            (profile_id, user_id, profile_name, texture_model, skin_hash, cape_hash),
+        )
+
+        await conn.commit()
+
+        return {
+            "ok": True,
+            "profile": {
+                "id": profile_id,
+                "name": profile_name,
+                "model": texture_model,
+                "skin_hash": skin_hash,
+                "cape_hash": cape_hash,
+            },
+        }
 
 
 if __name__ == "__main__":

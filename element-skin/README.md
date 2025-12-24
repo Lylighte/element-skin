@@ -1,6 +1,41 @@
 # element-skin
 
-This template should help get you started developing with Vue 3 in Vite.
+一个基于Vue 3 + Element Plus的Minecraft皮肤站前端项目，支持Yggdrasil协议和微软正版登录。
+
+## 主要特性
+
+### 用户功能
+- ✅ **用户注册/登录** - 支持邮箱密码注册和邀请码系统
+- ✅ **角色管理** - 创建、删除和管理多个游戏角色
+- ✅ **材质库** - 上传、管理皮肤和披风
+- ✅ **3D预览** - 实时预览皮肤和披风效果
+- ✅ **微软正版登录** - 通过微软账户导入正版角色、皮肤和披风
+- ✅ **个人资料** - 修改密码、显示名称
+
+### 管理员功能
+- ✅ **站点设置** - 配置站点名称、注册开关、邀请码设置
+- ✅ **用户管理** - 查看、封禁、解封用户
+- ✅ **邀请码管理** - 创建单次或多次使用的邀请码
+- ✅ **微软OAuth配置** - 配置Azure应用的Client ID
+- ✅ **用户详情** - 查看用户的角色、材质、封禁状态
+
+### 技术特性
+- 🎨 **Element Plus** - 优雅的UI组件库
+- 🚀 **Vue 3** - 使用Composition API
+- 📱 **响应式设计** - 适配各种屏幕尺寸
+- 🎭 **流畅动画** - 使用CSS3过渡和动画
+- 🔐 **JWT认证** - 安全的用户认证系统
+- 📦 **Yggdrasil协议** - 兼容Minecraft客户端验证
+
+## 技术栈
+
+- **Vue 3** - 渐进式JavaScript框架
+- **TypeScript** - 类型安全
+- **Element Plus** - Vue 3 UI组件库
+- **Vite** - 下一代前端构建工具
+- **Vue Router** - 官方路由管理
+- **Axios** - HTTP客户端
+- **Pinia** - 状态管理（可选）
 
 ## Recommended IDE Setup
 
