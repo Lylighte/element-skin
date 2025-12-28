@@ -1,0 +1,333 @@
+from typing import Optional, Dict, List, Any
+import re
+import time
+import secrets
+from fastapi import HTTPException
+
+from utils.password_utils import hash_password, verify_password, needs_rehash
+from utils.jwt_utils import create_jwt_token
+from utils.uuid_utils import generate_random_uuid
+from utils.typing import User, InviteCode, PlayerProfile
+
+class SiteBackend:
+    def __init__(self, db: "Database"): # Use forward reference for type hint
+        self.db = db
+
+    # ========== Auth & User ==========
+
+    async def login(self, email, password) -> Dict[str, Any]:
+        user_row = await self.db.user.get_by_email(email)
+        if not user_row:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        user_id, email, password_hash, is_admin = (
+            user_row.id,
+            user_row.email,
+            user_row.password,
+            user_row.is_admin,
+        )
+
+        if not verify_password(password, password_hash):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        if needs_rehash(password_hash):
+            new_hash = hash_password(password)
+            await self.db.user.update_password(user_id, new_hash)
+
+        expire_days_str = await self.db.setting.get("jwt_expire_days", "7")
+        expire_days = int(expire_days_str)
+        token = create_jwt_token(user_id, bool(is_admin), expire_days)
+
+        return {"token": token, "user_id": user_id}
+
+    async def register(self, email, password, invite_code=None) -> str:
+        if len(password) < 6:
+            raise HTTPException(
+                status_code=400, detail="password must be at least 6 characters"
+            )
+
+        allow_register = await self.db.setting.get("allow_register", "true")
+        if allow_register != "true":
+            raise HTTPException(status_code=403, detail="registration is disabled")
+
+        require_invite = await self.db.setting.get("require_invite", "false")
+        if require_invite == "true":
+            if not invite_code:
+                raise HTTPException(status_code=400, detail="invite code required")
+
+            invite_row = await self.db.user.get_invite(invite_code)
+            if not invite_row:
+                raise HTTPException(status_code=400, detail="invalid invite code")
+
+            if (
+                invite_row.total_uses is not None
+                and invite_row.used_count >= invite_row.total_uses
+            ):
+                raise HTTPException(
+                    status_code=400, detail="invite code has no remaining uses"
+                )
+
+        user_count = await self.db.user.count()
+        is_first_user = user_count == 0
+        password_hash = hash_password(password)
+        user_id = generate_random_uuid()
+        try:
+            await self.db.user.create(
+                User(user_id, email, password_hash, 1 if is_first_user else 0)
+            )
+        except Exception:
+             raise HTTPException(status_code=400, detail="Email already registered")
+
+        base_name = email.split("@")[0]
+        base_name = re.sub(r"[^a-zA-Z0-9_]", "_", base_name)[:12]
+        profile_name = base_name
+        suffix = 1
+        while True:
+            existing = await self.db.user.get_profile_by_name(profile_name)
+            if not existing:
+                break
+            profile_name = f"{base_name}_{suffix}"
+            suffix += 1
+            if suffix > 100:
+                raise HTTPException(status_code=500, detail="无法生成唯一角色名")
+
+        profile_id = generate_random_uuid()
+        await self.db.user.create_profile(
+            PlayerProfile(profile_id, user_id, profile_name, "default")
+        )
+
+        if require_invite == "true" and invite_code:
+            await self.db.user.use_invite(invite_code, email)
+
+        return user_id
+
+    async def get_user_info(self, user_id: str) -> Dict[str, Any]:
+        user_row = await self.db.user.get_by_id(user_id)
+        if not user_row:
+            raise HTTPException(status_code=404, detail="user not found")
+
+        profiles = await self.db.user.get_profiles_by_user(user_id)
+        profiles_list = [
+            {
+                "id": p.id,
+                "name": p.name,
+                "model": p.texture_model,
+                "skin_hash": p.skin_hash,
+                "cape_hash": p.cape_hash,
+            }
+            for p in profiles
+        ]
+
+        return {
+            "id": user_row.id,
+            "email": user_row.email,
+            "lang": user_row.preferredLanguage,
+            "display_name": user_row.display_name,
+            "is_admin": bool(user_row.is_admin),
+            "banned_until": user_row.banned_until,
+            "profiles": profiles_list,
+        }
+
+    async def refresh_token(self, user_id: str) -> Dict[str, Any]:
+        user_row = await self.db.user.get_by_id(user_id)
+        if not user_row:
+            raise HTTPException(status_code=404, detail="user not found")
+
+        is_admin = bool(user_row.is_admin)
+        expire_days_str = await self.db.setting.get("jwt_expire_days", "7")
+        expire_days = int(expire_days_str)
+        token = create_jwt_token(user_id, is_admin, expire_days)
+
+        return {"token": token, "is_admin": is_admin}
+
+    async def update_user_info(self, user_id: str, data: Dict[str, Any]):
+        if "email" in data and data["email"]:
+            await self.db.user.update_email(user_id, data["email"])
+        if "display_name" in data and data["display_name"] is not None:
+            await self.db.user.update_display_name(user_id, data["display_name"])
+
+        if "preferred_language" in data and data["preferred_language"]:
+             async with self.db.get_conn() as conn:
+                 await conn.execute("UPDATE users SET preferred_language=? WHERE id=?", (data["preferred_language"], user_id))
+                 await conn.commit()
+
+        return True
+
+    async def delete_user(self, user_id: str, is_admin_action=False):
+        user_row = await self.db.user.get_by_id(user_id)
+        if not user_row:
+             raise HTTPException(status_code=404, detail="user not found")
+             
+        if user_row.is_admin and not is_admin_action:
+             raise HTTPException(status_code=403, detail="管理员不能删除自己的账号")
+        
+        if user_row.is_admin and is_admin_action:
+             raise HTTPException(status_code=403, detail="cannot delete admin user")
+
+        await self.db.user.delete(user_id)
+        return True
+
+    async def change_password(self, user_id: str, old_password, new_password):
+        if len(new_password) < 6:
+            raise HTTPException(status_code=400, detail="新密码长度不能少于6个字符")
+
+        user_row = await self.db.user.get_by_id(user_id)
+        if not user_row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        if not verify_password(old_password, user_row.password):
+            raise HTTPException(status_code=403, detail="旧密码错误")
+
+        new_hash = hash_password(new_password)
+        await self.db.user.update_password(user_id, new_hash)
+        return True
+
+    # ========== Profile ==========
+
+    async def create_profile(self, user_id, name, model="default"):
+        if not name:
+            raise HTTPException(status_code=400, detail="name required")
+
+        if not re.match(r"^[a-zA-Z0-9_]{1,16}$", name):
+            raise HTTPException(
+                status_code=400,
+                detail="角色名只能包含字母、数字、下划线，长度1-16字符",
+            )
+
+        existing = await self.db.user.get_profile_by_name(name)
+        if existing:
+            raise HTTPException(status_code=400, detail="角色名已被占用，请换一个名称")
+
+        profile_id = generate_random_uuid()
+        await self.db.user.create_profile(
+            PlayerProfile(profile_id, user_id, name, model)
+        )
+        return {"id": profile_id, "name": name, "model": model}
+
+    async def delete_profile(self, user_id, pid):
+        profile_row = await self.db.user.get_profile_by_id(pid)
+        if not profile_row:
+            raise HTTPException(status_code=404, detail="profile not found")
+        if profile_row.user_id != user_id:
+            raise HTTPException(status_code=403, detail="not allowed")
+
+        await self.db.user.delete_profile(pid)
+
+    async def clear_profile_texture(self, user_id, pid, texture_type):
+        is_owner = await self.db.user.verify_profile_ownership(user_id, pid)
+        if not is_owner:
+            raise ValueError("Not allowed")
+        
+        if texture_type.lower() == "skin":
+            await self.db.user.update_profile_skin(pid, None)
+        elif texture_type.lower() == "cape":
+            await self.db.user.update_profile_cape(pid, None)
+        else:
+            raise ValueError("Invalid texture_type")
+
+    # ========== Admin ==========
+
+    async def get_admin_settings(self):
+        settings = await self.db.setting.get_all()
+        return {
+            "site_name": settings.get("site_name", "皮肤站"),
+            "site_url": settings.get("site_url", ""),
+            "require_invite": settings.get("require_invite", "false") == "true",
+            "allow_register": settings.get("allow_register", "true") == "true",
+            "max_texture_size": int(settings.get("max_texture_size", "1024")),
+            "rate_limit_enabled": settings.get("rate_limit_enabled", "true") == "true",
+            "rate_limit_auth_attempts": int(
+                settings.get("rate_limit_auth_attempts", "5")
+            ),
+            "rate_limit_auth_window": int(settings.get("rate_limit_auth_window", "15")),
+            "jwt_expire_days": int(settings.get("jwt_expire_days", "7")),
+            "microsoft_client_id": settings.get("microsoft_client_id", ""),
+            "microsoft_client_secret": settings.get("microsoft_client_secret", ""),
+            "microsoft_redirect_uri": settings.get(
+                "microsoft_redirect_uri", "http://localhost:8000/microsoft/callback"
+            ),
+        }
+
+    async def save_admin_settings(self, body: dict):
+        for key in [
+            "site_name", "site_url", "require_invite", "allow_register", "max_texture_size",
+            "rate_limit_enabled", "rate_limit_auth_attempts", "rate_limit_auth_window",
+            "jwt_expire_days", "microsoft_client_id", "microsoft_client_secret",
+            "microsoft_redirect_uri",
+        ]:
+            if key in body:
+                val = body[key]
+                if isinstance(val, bool):
+                    value = "true" if val else "false"
+                else:
+                    value = str(val)
+                await self.db.setting.set(key, value)
+
+    async def get_admin_users(self):
+        users = await self.db.user.list_users(limit=1000, offset=0)
+        result = []
+        for row in users:
+            user_id = row.id
+            profile_count = await self.db.user.count_profiles_by_user(user_id)
+            result.append(
+                {
+                    "id": row.id,
+                    "email": row.email,
+                    "display_name": row.display_name or "",
+                    "is_admin": bool(row.is_admin),
+                    "banned_until": row.banned_until,
+                    "profile_count": profile_count,
+                }
+            )
+        return result
+
+    async def toggle_user_admin(self, user_id: str, actor_id: str):
+        if actor_id == user_id:
+            raise HTTPException(
+                status_code=403, detail="cannot change own admin status"
+            )
+
+        new_status = await self.db.user.toggle_admin(user_id)
+        if new_status == -1:
+            raise HTTPException(status_code=404, detail="user not found")
+
+    async def ban_user(self, user_id, banned_until, actor_id):
+        user_row = await self.db.user.get_by_id(user_id)
+        if not user_row:
+            raise HTTPException(status_code=404, detail="user not found")
+        if user_row.is_admin:
+             raise HTTPException(status_code=403, detail="cannot ban admin user")
+
+        await self.db.user.ban(user_id, banned_until)
+        return banned_until
+
+    async def create_invite(self, code, total_uses):
+        if code:
+             if len(code) < 6 or len(code) > 32:
+                  raise HTTPException(status_code=400, detail="Invalid code length")
+             if not re.match(r"^[a-zA-Z0-9_-]+$", code):
+                  raise HTTPException(status_code=400, detail="Invalid characters")
+        else:
+             code = secrets.token_urlsafe(16)
+             
+        existing = await self.db.user.get_invite(code)
+        if existing:
+             raise HTTPException(status_code=400, detail="invite code already exists")
+             
+        created_at = int(time.time() * 1000)
+        await self.db.user.create_invite(InviteCode(code, created_at, total_uses=total_uses))
+        return code
+
+    async def apply_texture_to_profile(self, user_id, profile_id, texture_hash, texture_type):
+        if not await self.db.texture.verify_ownership(user_id, texture_hash, texture_type):
+            raise ValueError("Texture not found in your library")
+
+        if not await self.db.user.verify_profile_ownership(user_id, profile_id):
+            raise ValueError("Profile not yours")
+
+        if texture_type.lower() == "skin":
+            await self.db.user.update_profile_skin(profile_id, texture_hash)
+        elif texture_type.lower() == "cape":
+            await self.db.user.update_profile_cape(profile_id, texture_hash)
+        else:
+            raise ValueError("Invalid texture_type")

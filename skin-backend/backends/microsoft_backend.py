@@ -84,12 +84,6 @@ class MicrosoftAuthService:
 
                 return await resp.json()
 
-                # 成功获取令牌
-                if resp.status == 200:
-                    return result
-
-                raise Exception(f"Unexpected response: {await resp.text()}")
-
     async def authenticate_xbl(self, ms_access_token: str) -> Tuple[str, str]:
         """
         Xbox Live 认证

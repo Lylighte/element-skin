@@ -30,6 +30,8 @@ dist/
 pip-log.txt
 pip-delete-this-directory.txt
 yggdrasil.db
+yggdrasil.db-shm
+yggdrasil.db-wal
 *.db
 
 ### Logs
@@ -58,3 +60,5 @@ coverage/
 .cache/
 node_modules/
 .history/
+
+.gemini/
