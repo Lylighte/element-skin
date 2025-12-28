@@ -14,6 +14,7 @@ from fastapi.responses import Response
 from typing import Dict
 from utils.schemas import AuthRequest, RefreshRequest, JoinRequest
 from utils.typing import PlayerProfile
+from utils.crypto import CryptoUtils
 import json
 import base64
 import time
@@ -25,7 +26,7 @@ router = APIRouter()
 
 async def get_profile_json(
     profile: PlayerProfile,
-    crypto: "CryptoUtils",
+    crypto: CryptoUtils,
     sign: bool = False,
     base_url: str = None,
 ) -> Dict:

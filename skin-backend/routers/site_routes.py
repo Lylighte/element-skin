@@ -15,7 +15,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 
 from utils.jwt_utils import decode_jwt_token
-from backends.site_backend import SiteBackend
 from database_module import Database
 
 router = APIRouter()
@@ -25,7 +24,7 @@ security = HTTPBearer()
 def setup_routes(db: Database, backend, rate_limiter, config):
     """设置路由（注入依赖）"""
 
-    site_backend = SiteBackend(db)
+    site_backend = backend
 
     async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
         token = creds.credentials

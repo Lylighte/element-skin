@@ -12,6 +12,7 @@ import os
 from config_loader import config
 from database_module import Database
 from backends.yggdrasil_backend import YggdrasilBackend, YggdrasilError
+from backends.site_backend import SiteBackend
 from utils.crypto import CryptoUtils
 from utils.rate_limiter import RateLimiter
 from routers import yggdrasil_routes, site_routes, microsoft_routes
@@ -22,7 +23,8 @@ db = Database(db_path)
 private_key_path = config.get("keys.private_key", "private.pem")
 crypto = CryptoUtils(private_key_path)
 rate_limiter = RateLimiter(db)  # New dependency-injected rate limiter
-backend = YggdrasilBackend(db, crypto)
+ygg_backend = YggdrasilBackend(db, crypto)
+site_backend = SiteBackend(db)
 
 
 @asynccontextmanager
@@ -77,10 +79,10 @@ async def ygg_exception_handler(request: Request, exc: YggdrasilError):
 
 # ========== 注册路由模块 ==========
 
-yggdrasil_router = yggdrasil_routes.setup_routes(backend, db, crypto, rate_limiter)
+yggdrasil_router = yggdrasil_routes.setup_routes(ygg_backend, db, crypto, rate_limiter)
 app.include_router(yggdrasil_router)
 
-site_router = site_routes.setup_routes(db, backend, rate_limiter, config)
+site_router = site_routes.setup_routes(db, site_backend, rate_limiter, config)
 app.include_router(site_router)
 
 microsoft_router = microsoft_routes.setup_routes(db, config)

@@ -1,4 +1,5 @@
 # Element-Skin — Minecraft Yggdrasil 皮肤站
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/water2004/element-skin)
 
 基于 Vue 3 + FastAPI 的 Minecraft 外置登录系统。
 

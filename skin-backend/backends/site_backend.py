@@ -8,9 +8,11 @@ from utils.password_utils import hash_password, verify_password, needs_rehash
 from utils.jwt_utils import create_jwt_token
 from utils.uuid_utils import generate_random_uuid
 from utils.typing import User, InviteCode, PlayerProfile
+from database_module import Database
+
 
 class SiteBackend:
-    def __init__(self, db: "Database"): # Use forward reference for type hint
+    def __init__(self, db: Database):  # Use forward reference for type hint
         self.db = db
 
     # ========== Auth & User ==========
@@ -76,7 +78,7 @@ class SiteBackend:
                 User(user_id, email, password_hash, 1 if is_first_user else 0)
             )
         except Exception:
-             raise HTTPException(status_code=400, detail="Email already registered")
+            raise HTTPException(status_code=400, detail="Email already registered")
 
         base_name = email.split("@")[0]
         base_name = re.sub(r"[^a-zA-Z0-9_]", "_", base_name)[:12]
@@ -147,22 +149,25 @@ class SiteBackend:
             await self.db.user.update_display_name(user_id, data["display_name"])
 
         if "preferred_language" in data and data["preferred_language"]:
-             async with self.db.get_conn() as conn:
-                 await conn.execute("UPDATE users SET preferred_language=? WHERE id=?", (data["preferred_language"], user_id))
-                 await conn.commit()
+            async with self.db.get_conn() as conn:
+                await conn.execute(
+                    "UPDATE users SET preferred_language=? WHERE id=?",
+                    (data["preferred_language"], user_id),
+                )
+                await conn.commit()
 
         return True
 
     async def delete_user(self, user_id: str, is_admin_action=False):
         user_row = await self.db.user.get_by_id(user_id)
         if not user_row:
-             raise HTTPException(status_code=404, detail="user not found")
-             
+            raise HTTPException(status_code=404, detail="user not found")
+
         if user_row.is_admin and not is_admin_action:
-             raise HTTPException(status_code=403, detail="管理员不能删除自己的账号")
-        
+            raise HTTPException(status_code=403, detail="管理员不能删除自己的账号")
+
         if user_row.is_admin and is_admin_action:
-             raise HTTPException(status_code=403, detail="cannot delete admin user")
+            raise HTTPException(status_code=403, detail="cannot delete admin user")
 
         await self.db.user.delete(user_id)
         return True
@@ -217,7 +222,7 @@ class SiteBackend:
         is_owner = await self.db.user.verify_profile_ownership(user_id, pid)
         if not is_owner:
             raise ValueError("Not allowed")
-        
+
         if texture_type.lower() == "skin":
             await self.db.user.update_profile_skin(pid, None)
         elif texture_type.lower() == "cape":
@@ -250,9 +255,17 @@ class SiteBackend:
 
     async def save_admin_settings(self, body: dict):
         for key in [
-            "site_name", "site_url", "require_invite", "allow_register", "max_texture_size",
-            "rate_limit_enabled", "rate_limit_auth_attempts", "rate_limit_auth_window",
-            "jwt_expire_days", "microsoft_client_id", "microsoft_client_secret",
+            "site_name",
+            "site_url",
+            "require_invite",
+            "allow_register",
+            "max_texture_size",
+            "rate_limit_enabled",
+            "rate_limit_auth_attempts",
+            "rate_limit_auth_window",
+            "jwt_expire_days",
+            "microsoft_client_id",
+            "microsoft_client_secret",
             "microsoft_redirect_uri",
         ]:
             if key in body:
@@ -296,30 +309,36 @@ class SiteBackend:
         if not user_row:
             raise HTTPException(status_code=404, detail="user not found")
         if user_row.is_admin:
-             raise HTTPException(status_code=403, detail="cannot ban admin user")
+            raise HTTPException(status_code=403, detail="cannot ban admin user")
 
         await self.db.user.ban(user_id, banned_until)
         return banned_until
 
     async def create_invite(self, code, total_uses):
         if code:
-             if len(code) < 6 or len(code) > 32:
-                  raise HTTPException(status_code=400, detail="Invalid code length")
-             if not re.match(r"^[a-zA-Z0-9_-]+$", code):
-                  raise HTTPException(status_code=400, detail="Invalid characters")
+            if len(code) < 6 or len(code) > 32:
+                raise HTTPException(status_code=400, detail="Invalid code length")
+            if not re.match(r"^[a-zA-Z0-9_-]+$", code):
+                raise HTTPException(status_code=400, detail="Invalid characters")
         else:
-             code = secrets.token_urlsafe(16)
-             
+            code = secrets.token_urlsafe(16)
+
         existing = await self.db.user.get_invite(code)
         if existing:
-             raise HTTPException(status_code=400, detail="invite code already exists")
-             
+            raise HTTPException(status_code=400, detail="invite code already exists")
+
         created_at = int(time.time() * 1000)
-        await self.db.user.create_invite(InviteCode(code, created_at, total_uses=total_uses))
+        await self.db.user.create_invite(
+            InviteCode(code, created_at, total_uses=total_uses)
+        )
         return code
 
-    async def apply_texture_to_profile(self, user_id, profile_id, texture_hash, texture_type):
-        if not await self.db.texture.verify_ownership(user_id, texture_hash, texture_type):
+    async def apply_texture_to_profile(
+        self, user_id, profile_id, texture_hash, texture_type
+    ):
+        if not await self.db.texture.verify_ownership(
+            user_id, texture_hash, texture_type
+        ):
             raise ValueError("Texture not found in your library")
 
         if not await self.db.user.verify_profile_ownership(user_id, profile_id):
