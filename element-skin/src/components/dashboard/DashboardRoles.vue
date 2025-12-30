@@ -290,7 +290,7 @@ async function importMicrosoftProfile() {
 
     ElMessage.success('正版角色导入成功！')
     emit('refresh')
-    
+
     showMicrosoftLoginDialog.value = false
     microsoftStep.value = 'select-profile'
     microsoftProfile.value = null
@@ -415,6 +415,7 @@ onMounted(async () => {
 }
 
 .action-btn-danger .btn-label {
+  margin: 0;
   grid-area: 1 / 1;
   display: flex;
   align-items: center;
@@ -466,6 +467,7 @@ onMounted(async () => {
 }
 
 .action-btn-warning .btn-label {
+  margin: 0;
   grid-area: 1 / 1;
   display: flex;
   align-items: center;
