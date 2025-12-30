@@ -157,21 +157,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Connection, Plus, Delete, Close, Check, Select, Warning, Download } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 
-const props = defineProps({
-  user: {
-    type: Object,
-    default: null
-  }
-})
+// Inject shared state from AppLayout
+const user = inject('user')
+const fetchMe = inject('fetchMe')
 
-const emit = defineEmits(['refresh'])
 const router = useRouter()
 
 const showCreateRoleDialog = ref(false)
@@ -199,7 +195,7 @@ async function createRole() {
     newRoleName.value = ''
     showCreateRoleDialog.value = false
     ElMessage.success('创建成功')
-    emit('refresh')
+    fetchMe()
   } catch (e) {
     ElMessage.error('创建失败: ' + (e.response?.data?.detail || e.message))
   }
@@ -209,7 +205,7 @@ async function deleteRole(pid) {
   try {
     await axios.delete(`/me/profiles/${pid}`, { headers: authHeaders() })
     ElMessage.success('已删除')
-    emit('refresh')
+    fetchMe()
   } catch (e) {
     ElMessage.error('删除失败')
   }
@@ -224,7 +220,7 @@ async function clearRoleSkin(pid) {
     )
     await axios.delete(`/me/profiles/${pid}/skin`, { headers: authHeaders() })
     ElMessage.success('皮肤已清除')
-    emit('refresh')
+    fetchMe()
   } catch (e) {
     if (e !== 'cancel') {
       ElMessage.error('清除失败: ' + (e.response?.data?.detail || e.message))
@@ -241,7 +237,7 @@ async function clearRoleCape(pid) {
     )
     await axios.delete(`/me/profiles/${pid}/cape`, { headers: authHeaders() })
     ElMessage.success('披风已清除')
-    emit('refresh')
+    fetchMe()
   } catch (e) {
     if (e !== 'cancel') {
       ElMessage.error('清除失败: ' + (e.response?.data?.detail || e.message))
@@ -289,7 +285,7 @@ async function importMicrosoftProfile() {
     await axios.post('/microsoft/import-profile', importData, { headers: authHeaders() })
 
     ElMessage.success('正版角色导入成功！')
-    emit('refresh')
+    fetchMe()
 
     showMicrosoftLoginDialog.value = false
     microsoftStep.value = 'select-profile'

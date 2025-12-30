@@ -146,21 +146,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject, computed } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { Upload, UploadFilled, Check, Delete } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CapeViewer from '@/components/CapeViewer.vue'
 
-const props = defineProps({
-  userProfiles: {
-    type: Array,
-    default: () => []
-  }
-})
-
-const emit = defineEmits(['refresh'])
+// Inject shared state from AppLayout
+const user = inject('user')
+const fetchMe = inject('fetchMe')
+const userProfiles = computed(() => user.value?.profiles || [])
 
 const textures = ref([])
 const textureResolutions = ref(new Map())
@@ -311,7 +307,7 @@ async function doApply() {
     }, { headers: authHeaders() })
     ElMessage.success('已应用')
     showApplyDialog.value = false
-    emit('refresh') // Refresh parent (user profiles)
+    fetchMe() // Refresh parent (user profiles)
     fetchTextures()
   } catch (e) {
     ElMessage.error('应用失败: ' + (e.response?.data?.detail || e.message))

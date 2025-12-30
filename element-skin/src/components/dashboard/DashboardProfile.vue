@@ -109,37 +109,32 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, inject } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Clock, Check, Delete } from '@element-plus/icons-vue'
 
-const props = defineProps({
-  user: {
-    type: Object,
-    default: null
-  }
-})
+// Inject shared state from AppLayout
+const user = inject('user')
+const fetchMe = inject('fetchMe')
 
-const emit = defineEmits(['refresh'])
 const router = useRouter()
-
 const form = ref({ email: '', display_name: '', old_password: '', new_password: '', confirm_password: '' })
 const showDeleteDialog = ref(false)
 const deleteConfirmText = ref('')
 
 const emailInitial = computed(() => {
-  const email = props.user?.email || props.user?.display_name || 'U'
+  const email = user.value?.email || user.value?.display_name || 'U'
   return email.charAt(0).toUpperCase()
 })
 
-watch(() => props.user, (newUser) => {
+watch(() => user.value, (newUser) => {
   if (newUser) {
     form.value.email = newUser.email
     form.value.display_name = newUser.display_name || ''
   }
-}, { immediate: true })
+}, { immediate: true, deep: true })
 
 function authHeaders() {
   const token = localStorage.getItem('jwt')
@@ -147,13 +142,13 @@ function authHeaders() {
 }
 
 function getUserBanStatus() {
-  if (!props.user?.banned_until) return false
-  return Date.now() < props.user.banned_until
+  if (!user.value?.banned_until) return false
+  return Date.now() < user.value.banned_until
 }
 
 function formatBanRemaining() {
-  if (!props.user?.banned_until) return ''
-  const remaining = props.user.banned_until - Date.now()
+  if (!user.value?.banned_until) return ''
+  const remaining = user.value.banned_until - Date.now()
   if (remaining <= 0) return '已到期'
 
   const days = Math.floor(remaining / (1000 * 60 * 60 * 24))
@@ -170,8 +165,8 @@ function formatBanRemaining() {
 }
 
 function formatBanUntilTime() {
-  if (!props.user?.banned_until) return ''
-  const until = new Date(props.user.banned_until)
+  if (!user.value?.banned_until) return ''
+  const until = new Date(user.value.banned_until)
   return until.toLocaleString('zh-CN')
 }
 
@@ -208,7 +203,7 @@ async function updateProfile() {
     }
     await axios.patch('/me', payload, { headers: authHeaders() })
     ElMessage.success('信息修改成功')
-    emit('refresh')
+    fetchMe()
   } catch (e) {
     ElMessage.error('保存失败: ' + (e.response?.data?.detail || e.message))
   }

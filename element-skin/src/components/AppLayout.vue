@@ -2,10 +2,28 @@
   <div class="app-shell">
     <el-header class="layout-header-wrap">
       <div class="layout-header">
+        <!-- Logo -->
         <div class="logo" @click="go('/')">{{ siteName }}</div>
+
+        <!-- Desktop Navigation -->
+        <div class="desktop-nav">
+          <el-menu mode="horizontal" :default-active="activeRoute" router :ellipsis="false">
+            <template v-for="item in navLinks" :key="item.path">
+              <el-menu-item :index="item.path" v-if="!item.adminOnly || isAdmin">
+                <el-icon v-if="item.icon"><component :is="item.icon" /></el-icon>
+                <span>{{ item.title }}</span>
+              </el-menu-item>
+            </template>
+          </el-menu>
+        </div>
+
         <div class="header-actions">
-          <el-button v-if="!isLogged" type="primary" @click="go('/login')">登录</el-button>
-          <el-button v-if="!isLogged" @click="go('/register')" style="margin-left:8px">注册</el-button>
+          <!-- Mobile Navigation Trigger -->
+          <div class="mobile-nav">
+            <el-button @click="drawer = true" :icon="MenuIcon" text circle />
+          </div>
+
+          <!-- Account Popover -->
           <el-popover v-if="isLogged" placement="bottom-end" :width="240" trigger="hover" popper-class="account-popover" :show-arrow="false" :offset="4">
             <template #reference>
               <div class="account-trigger">
@@ -34,9 +52,29 @@
               </div>
             </div>
           </el-popover>
+
+          <!-- Login/Register Buttons -->
+          <template v-if="!isLogged">
+            <el-button type="primary" @click="go('/login')">登录</el-button>
+            <el-button @click="go('/register')" style="margin-left:8px">注册</el-button>
+          </template>
         </div>
       </div>
     </el-header>
+
+    <!-- Mobile Drawer -->
+    <el-drawer v-model="drawer" title="Navigation" direction="ltr" size="240px" class="mobile-drawer">
+      <el-menu :default-active="activeRoute" router @select="drawer = false">
+        <template v-for="(item, index) in drawerLinks" :key="index">
+            <el-divider v-if="item.isDivider" class="nav-divider" />
+            <el-menu-item v-else :index="item.path">
+              <el-icon v-if="item.icon"><component :is="item.icon" /></el-icon>
+              <span>{{ item.title }}</span>
+            </el-menu-item>
+        </template>
+      </el-menu>
+    </el-drawer>
+
     <main class="app-main">
       <slot />
     </main>
@@ -44,123 +82,170 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, onMounted, onUnmounted, provide } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+import {
+  Menu as MenuIcon, Box, User, Setting, Tools, Back
+} from '@element-plus/icons-vue'
 
-const router = useRouter()
-const cachedSiteName = localStorage.getItem('site_name_cache') || '皮肤站'
-const siteName = ref(cachedSiteName)
-
+const route = useRoute()
+const { push } = useRouter()
+const siteName = ref(localStorage.getItem('site_name_cache') || '皮肤站')
 const jwtToken = ref(localStorage.getItem('jwt') || '')
+const user = ref(null)
+const drawer = ref(false)
 
+// Provide user and fetch function to all children
+provide('user', user)
+provide('fetchMe', fetchMe)
+
+// --- Navigation Links ---
+const dashboardLinks = [
+  { path: '/dashboard/wardrobe', title: '我的衣柜', icon: Box },
+  { path: '/dashboard/roles', title: '角色管理', icon: User },
+  { path: '/dashboard/profile', title: '个人资料', icon: Setting },
+]
+const adminNavLinks = [
+  { path: '/admin/settings', title: '站点设置', icon: Setting },
+  { path: '/admin/users', title: '用户管理', icon: User },
+  { path: '/admin/invites', title: '邀请码管理', icon: Tools },
+  { path: '/dashboard', title: '返回面板', icon: Back },
+]
+
+const navLinks = computed(() => {
+  if (route.path.startsWith('/admin')) {
+    return adminNavLinks
+  }
+  if (isLogged.value) {
+    const links = [...dashboardLinks]
+    if (isAdmin.value) {
+      links.push({ path: '/admin', title: '管理面板', icon: Tools })
+    }
+    return links
+  }
+  return []
+})
+
+const drawerLinks = computed(() => {
+  if (!isLogged.value) return []
+  const links = [...dashboardLinks]
+  if (isAdmin.value) {
+    links.push({ isDivider: true })
+    links.push(...adminNavLinks)
+  }
+  return links
+})
+
+const activeRoute = computed(() => route.path)
+
+
+// --- Authentication and User State ---
 function parseJwt(token) {
   if (!token) return null
   try {
     const payload = token.split('.')[1]
-    const json = decodeURIComponent(atob(payload.replace(/-/g, '+').replace(/_/g, '/')).split('').map(function(c) {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-    }).join(''))
+    const json = decodeURIComponent(atob(payload.replace(/-/g, '+').replace(/_/g, '/')).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''))
     return JSON.parse(json)
-  } catch (e) {
-    return null
-  }
+  } catch (e) { return null }
 }
 
 const isLogged = computed(() => !!jwtToken.value)
 const payload = computed(() => parseJwt(jwtToken.value))
-const isAdmin = computed(() => !!payload.value && !!payload.value.is_admin)
-const accountName = ref('用户')
-const avatarInitial = computed(() => (accountName.value || 'U').slice(0,1).toUpperCase())
+const isAdmin = computed(() => user.value?.is_admin || false)
+const accountName = computed(() => user.value?.display_name || user.value?.email || '用户')
+const avatarInitial = computed(() => (accountName.value || 'U').slice(0, 1).toUpperCase())
 
-let timer = null
+let authTimer = null
 
-function go(path){
-  router.push(path)
+function go(path) {
+  push(path)
+  drawer.value = false
 }
 
-function logout(){
+function logout() {
   localStorage.removeItem('jwt')
   localStorage.removeItem('accessToken')
   jwtToken.value = ''
-  router.push('/')
+  user.value = null
+  push('/')
   setTimeout(() => window.location.reload(), 100)
-}
-
-// 监听 localStorage 变化
-onMounted(async () => {
-  try {
-    const res = await axios.get('/public/settings')
-    if (res.data.site_name) {
-      siteName.value = res.data.site_name
-      localStorage.setItem('site_name_cache', res.data.site_name)
-      // 更新浏览器标题
-      document.title = res.data.site_name
-    }
-  } catch (e) {
-    console.warn('Failed to load site settings:', e)
-  }
-
-  // 如果已登录，获取用户信息以显示昵称/邮箱（优先显示 display_name）
-  if (isLogged.value) {
-    try {
-      const me = await axios.get('/me', { headers: authHeaders() })
-      // 优先使用显示名，其次邮箱，最后使用 token 中的 sub
-      const name = me.data?.display_name || me.data?.email || payload.value?.sub || '用户'
-      accountName.value = name
-    } catch (e) {
-      accountName.value = payload.value?.sub || '用户'
-    }
-  }
-
-  window.addEventListener('storage', checkAuth)
-  // 定期检查 token 更新
-  timer = setInterval(checkAuth, 500)
-})
-
-onBeforeUnmount(() => {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
-  }
-  window.removeEventListener('storage', checkAuth)
-})
-
-function checkAuth() {
-  const newToken = localStorage.getItem('jwt') || ''
-  if (newToken !== jwtToken.value) {
-    jwtToken.value = newToken
-    // 刷新账户显示名
-    if (isLogged.value) {
-      axios.get('/me', { headers: authHeaders() }).then(me => {
-        const name = me.data?.display_name || me.data?.email || payload.value?.sub || '用户'
-        accountName.value = name
-      }).catch(() => {
-        accountName.value = payload.value?.sub || '用户'
-      })
-    } else {
-      accountName.value = '用户'
-    }
-  }
 }
 
 function authHeaders() {
   const token = localStorage.getItem('jwt')
   return token ? { Authorization: 'Bearer ' + token } : {}
 }
+
+async function fetchMe() {
+  if (!isLogged.value) {
+    user.value = null
+    return
+  }
+  try {
+    const res = await axios.get('/me', { headers: authHeaders() })
+    user.value = res.data
+  } catch (e) {
+    user.value = null
+    console.error('Failed to fetch user data in AppLayout:', e)
+  }
+}
+
+function checkAuth() {
+  const newToken = localStorage.getItem('jwt') || ''
+  if (newToken !== jwtToken.value) {
+    jwtToken.value = newToken
+    fetchMe()
+  }
+}
+
+onMounted(async () => {
+  // Fetch site settings
+  try {
+    const res = await axios.get('/public/settings')
+    if (res.data.site_name) {
+      siteName.value = res.data.site_name
+      localStorage.setItem('site_name_cache', res.data.site_name)
+      document.title = res.data.site_name
+    }
+  } catch (e) {
+    console.warn('Failed to load site settings:', e)
+  }
+
+  // Fetch user data
+  await fetchMe()
+
+  // Listen for auth changes
+  window.addEventListener('storage', checkAuth)
+  authTimer = setInterval(checkAuth, 1000)
+})
+
+onUnmounted(() => {
+  if (authTimer) clearInterval(authTimer)
+  window.removeEventListener('storage', checkAuth)
+})
 </script>
 
 <style scoped>
-.layout-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap: 12px;
+.layout-header-wrap {
+  padding: 0 20px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  border-bottom: 1px solid #dcdfe6;
+  height: 64px;
 }
-.logo{
-  font-weight:700;
-  font-size:18px;
-  color:var(--color-heading);
+
+.layout-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.logo {
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--color-heading);
   cursor: pointer;
   user-select: none;
   transition: color 0.3s ease;
@@ -168,52 +253,53 @@ function authHeaders() {
 .logo:hover {
   color: #409eff;
 }
-.header-actions{display:flex;align-items:center; gap:8px}
-.app-container{max-width:960px;margin:24px auto}
 
-.layout-header-wrap{
-  padding: 12px 20px;
-  background: #f8f9fb;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-}
-.layout-header-wrap{
-  padding: 12px 20px;
-  background: #f8f9fb;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-}
-
-.app-shell {
-  min-height: 100vh;
+.header-actions {
   display: flex;
-  flex-direction: column;
-}
-
-.app-container-flex {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .app-main {
-  padding: 0;
+  padding: 20px;
   flex: 1;
   overflow: auto;
 }
 
-.account-trigger { display:flex; align-items:center; cursor:pointer; gap:8px; padding:6px 12px; border-radius:20px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) }
-.account-trigger:hover { background: #f0f2f5; transform: scale(1.02) }
-.account-name { font-size:13px; color:#606266; font-weight:500 }
+/* --- Desktop Navigation --- */
+.desktop-nav {
+  flex-grow: 1;
+  display: flex;
+  justify-content: center;
+  height: 100%;
+}
+.desktop-nav .el-menu {
+  border-bottom: none;
+  height: 100%;
+}
+.desktop-nav .el-menu-item {
+  font-size: 15px;
+  height: 100%;
+}
 
+/* --- Mobile Navigation --- */
+.mobile-nav {
+  display: none;
+}
+
+/* --- Account Popover --- */
+.account-trigger { display:flex; align-items:center; cursor:pointer; gap:8px; padding:6px 12px; border-radius:20px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) }
+.account-trigger:hover { background: #f0f2f5; }
+.account-name { font-size:14px; color:#303133; font-weight:500 }
 .account-popover { padding: 0 !important }
+
 .account-panel {
   display:flex;
   flex-direction:column;
   padding: 20px;
-  animation: fadeIn 0.2s ease-out;
   box-sizing: border-box;
   width: 100%;
 }
-
 .account-header {
   display:flex;
   align-items:center;
@@ -221,16 +307,12 @@ function authHeaders() {
   margin-bottom:16px;
   padding-bottom: 16px;
   border-bottom: 1px solid #f0f0f0;
-  width: 100%;
-  box-sizing: border-box;
 }
-
 .account-avatar {
   color:#fff;
   font-weight:600;
   font-size: 18px;
 }
-
 .account-meta { flex: 1; min-width: 0 }
 .account-meta h4 {
   margin:0;
@@ -246,15 +328,12 @@ function authHeaders() {
   font-size:12px;
   color:#909399;
 }
-
 .account-actions {
   display:flex;
   flex-direction:column;
-  box-sizing: border-box;
   gap:8px;
   width: 100%;
 }
-
 .action-btn {
   width: 100% !important;
   height: 38px;
@@ -265,34 +344,9 @@ function authHeaders() {
   font-size: 14px;
   font-weight: 500;
   transition: all 0.2s ease;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center;
   justify-content: center;
-  min-width: auto !important;
   margin: 0 !important;
-  text-align: center !important;
 }
-
-.action-btn span {
-  display: block;
-  text-align: center;
-  width: 100%;
-  flex: 1;
-}
-
-/* 强制覆盖 Element Plus 按钮内部样式 */
-:deep(.action-btn .el-button__text-wrapper) {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-}
-
-:deep(.action-btn span) {
-  text-align: center !important;
-}
-
 .action-btn:hover {
   background: #f7f8fa;
   border-color: #409eff;
@@ -300,7 +354,6 @@ function authHeaders() {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(64, 158, 255, 0.2);
 }
-
 .action-btn.danger-btn:hover {
   background: #fef0f0;
   border-color: #f56c6c;
@@ -309,49 +362,16 @@ function authHeaders() {
   box-shadow: 0 4px 12px rgba(245, 108, 108, 0.2);
 }
 
-/* Popover 样式 */
-:deep(.account-popover) {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-  border-radius: 12px;
-  padding: 0 !important;
-  border: 1px solid #e5e7eb;
-  overflow: hidden;
-}
-:deep(.el-popper__arrow) { display:none }
-
-@keyframes fadeIn {
-  from { opacity:0; transform: translateY(6px) }
-  to { opacity:1; transform: translateY(0) }
-}
-
-.el-dropdown-link {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  transition: all 0.3s ease;
-}
-
-.el-dropdown-link:hover {
-  opacity: 0.8;
-}
-
-:deep(.el-dropdown-menu__item) {
-  padding: 10px 20px;
-  font-size: 14px;
-  transition: all 0.3s ease;
-}
-
-:deep(.el-dropdown-menu__item:hover) {
-  background-color: #ecf5ff;
-  color: #409eff;
-}
-
-:deep(.el-dropdown-menu__item--divided) {
-  margin-top: 6px;
-  border-top: 1px solid #ebeef5;
-}
-
-:deep(.el-dropdown-menu__item--divided:before) {
-  display: none;
+/* --- Responsive Breakpoint --- */
+@media (max-width: 992px) {
+  .desktop-nav {
+    display: none;
+  }
+  .mobile-nav {
+    display: block;
+  }
+  .layout-header {
+    justify-content: space-between;
+  }
 }
 </style>
