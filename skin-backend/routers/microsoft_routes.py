@@ -11,13 +11,13 @@ import os
 from backends.microsoft_backend import MicrosoftAuthService, download_texture
 from utils.jwt_utils import decode_jwt_token
 from utils.uuid_utils import generate_random_uuid
-
+from database_module import Database
 
 router = APIRouter(prefix="/microsoft")
 security = HTTPBearer()
 
 
-def setup_routes(db, config):
+def setup_routes(db: Database, config):
     """设置路由（注入依赖）"""
 
     # OAuth state 存储（生产环境应使用 Redis）
@@ -34,8 +34,8 @@ def setup_routes(db, config):
     @router.get("/auth-url")
     async def microsoft_get_auth_url(payload: dict = Depends(get_current_user)):
         """获取微软 OAuth 授权 URL"""
-        client_id = await db.get_setting("microsoft_client_id")
-        client_secret = await db.get_setting("microsoft_client_secret")
+        client_id = await db.setting.get("microsoft_client_id")
+        client_secret = await db.setting.get("microsoft_client_secret")
 
         if not client_id or client_id == "":
             raise HTTPException(
@@ -61,7 +61,7 @@ def setup_routes(db, config):
             }
 
             # 获取 redirect_uri 配置
-            redirect_uri = await db.get_setting(
+            redirect_uri = await db.setting.get(
                 "microsoft_redirect_uri", "http://localhost:8000/microsoft/callback"
             )
 
@@ -102,9 +102,9 @@ def setup_routes(db, config):
         del oauth_states[state]  # 使用后立即删除
 
         # 获取 OAuth 配置
-        client_id = await db.get_setting("microsoft_client_id")
-        client_secret = await db.get_setting("microsoft_client_secret")
-        redirect_uri = await db.get_setting(
+        client_id = await db.setting.get("microsoft_client_id")
+        client_secret = await db.setting.get("microsoft_client_secret")
+        redirect_uri = await db.setting.get(
             "microsoft_redirect_uri", "http://localhost:8000/microsoft/callback"
         )
 
@@ -138,15 +138,15 @@ def setup_routes(db, config):
         except Exception as e:
             import urllib.parse
 
-        frontend_url = config.get("frontend.url", "http://localhost:5173")
-        error_msg = str(e).replace("\n", " ")
-        error_msg_encoded = urllib.parse.quote(error_msg)
-        return Response(
-            status_code=302,
-            headers={
-                "Location": f"{frontend_url}/dashboard/roles?error={error_msg_encoded}"
-            },
-        )
+            frontend_url = config.get("frontend.url", "http://localhost:5173")
+            error_msg = str(e).replace("\n", " ")
+            error_msg_encoded = urllib.parse.quote(error_msg)
+            return Response(
+                status_code=302,
+                headers={
+                    "Location": f"{frontend_url}/dashboard/roles?error={error_msg_encoded}"
+                },
+            )
 
     @router.post("/get-profile")
     async def microsoft_get_profile(
@@ -210,7 +210,12 @@ def setup_routes(db, config):
         if skin_url:
             try:
                 skin_data = await download_texture(skin_url)
-                skin_hash, _ = await db.texture.upload(user_id, skin_data, "skin", f"From Microsoft account - {profile_name}")
+                skin_hash, _ = await db.texture.upload(
+                    user_id,
+                    skin_data,
+                    "skin",
+                    f"From Microsoft account - {profile_name}",
+                )
             except Exception as e:
                 print(f"Failed to download skin: {e}")
 
@@ -218,14 +223,22 @@ def setup_routes(db, config):
         if cape_url:
             try:
                 cape_data = await download_texture(cape_url)
-                cape_hash, _ = await db.texture.upload(user_id, cape_data, "cape", f"From Microsoft account - {profile_name}")
+                cape_hash, _ = await db.texture.upload(
+                    user_id,
+                    cape_data,
+                    "cape",
+                    f"From Microsoft account - {profile_name}",
+                )
             except Exception as e:
                 print(f"Failed to download cape: {e}")
 
         from utils.typing import PlayerProfile
+
         texture_model = "slim" if skin_variant == "slim" else "default"
         await db.user.create_profile(
-            PlayerProfile(profile_id, user_id, profile_name, texture_model, skin_hash, cape_hash)
+            PlayerProfile(
+                profile_id, user_id, profile_name, texture_model, skin_hash, cape_hash
+            )
         )
 
         return {
