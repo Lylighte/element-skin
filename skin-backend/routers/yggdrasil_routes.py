@@ -20,6 +20,7 @@ import base64
 import time
 from backends.yggdrasil_backend import YggdrasilBackend
 from database_module import Database
+from config_loader import config
 
 router = APIRouter()
 
@@ -194,8 +195,22 @@ def setup_routes(backend: YggdrasilBackend, db: Database, crypto, rate_limiter):
         profile = await backend.has_joined(username, serverId)
         if profile:
             return await get_profile_json(profile, crypto, sign=True, base_url=site_url)
-        else:
-            return Response(status_code=204)
+        
+        # Fallback to Mojang
+        if await db.setting.get("fallback_mojang_hasjoined", "false") == "true":
+            session_url = config.get("mojang.session_url")
+            import aiohttp
+            try:
+                params = {"username": username, "serverId": serverId}
+                if ip: params["ip"] = ip
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{session_url}/session/minecraft/hasJoined", params=params, timeout=5) as resp:
+                        if resp.status == 200:
+                            content = await resp.read()
+                            return Response(content=content, status_code=200, media_type="application/json")
+            except Exception: pass
+
+        return Response(status_code=204)
 
     @router.get("/sessionserver/session/minecraft/profile/{uuid}")
     async def get_profile(request: Request, uuid: str, unsigned: bool = True):
@@ -206,6 +221,44 @@ def setup_routes(backend: YggdrasilBackend, db: Database, crypto, rate_limiter):
             return await get_profile_json(
                 profile, crypto, sign=not unsigned, base_url=site_url
             )
+        
+        # Fallback to Mojang
+        if await db.setting.get("fallback_mojang_profile", "false") == "true":
+            session_url = config.get("mojang.session_url")
+            import aiohttp
+            try:
+                async with aiohttp.ClientSession() as session:
+                    url = f"{session_url}/session/minecraft/profile/{uuid}?unsigned={str(unsigned).lower()}"
+                    async with session.get(url, timeout=5) as resp:
+                        if resp.status == 200:
+                            content = await resp.read()
+                            return Response(content=content, status_code=200, media_type="application/json")
+            except Exception: pass
+
+        return Response(status_code=204)
+
+    @router.get("/api/users/profiles/minecraft/{playerName}")
+    @router.get("/users/profiles/minecraft/{playerName}")
+    @router.get("/api/profiles/minecraft/{playerName}")
+    async def get_profile_by_name_mojang(playerName: str):
+        """单个玩家名转 UUID (Proxy to Mojang Account API)"""
+        # 先查本地
+        p = await db.user.get_profile_by_name(playerName)
+        if p:
+            return {"id": p.id, "name": p.name}
+            
+        # Fallback to Mojang
+        if await db.setting.get("fallback_mojang_profile", "false") == "true":
+            account_url = config.get("mojang.account_url")
+            import aiohttp
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{account_url}/users/profiles/minecraft/{playerName}", timeout=5) as resp:
+                        if resp.status == 200:
+                            content = await resp.read()
+                            return Response(content=content, status_code=200, media_type="application/json")
+            except Exception: pass
+
         return Response(status_code=204)
 
     @router.post("/api/profiles/minecraft")
@@ -215,8 +268,26 @@ def setup_routes(backend: YggdrasilBackend, db: Database, crypto, rate_limiter):
             raise HTTPException(status_code=400, detail="Request body must be an array")
 
         site_url = await db.setting.get("site_url", str(request.base_url))
-        profiles = await backend.get_profiles_by_names(req, base_url=site_url)
-        return profiles
+        # 1. 查询本地
+        local_profiles = await backend.get_profiles_by_names(req, base_url=site_url)
+        
+        # 2. 如果启用了转发，查询 Mojang 补全缺失的
+        if await db.setting.get("fallback_mojang_profile", "false") == "true":
+             found_names = {p["name"].lower() for p in local_profiles}
+             missing_names = [n for n in req if n.lower() not in found_names]
+             if missing_names:
+                 account_url = config.get("mojang.account_url")
+                 import aiohttp
+                 try:
+                     async with aiohttp.ClientSession() as session:
+                         async with session.post(f"{account_url}/profiles/minecraft", json=missing_names, timeout=5) as resp:
+                             if resp.status == 200:
+                                 mojang_profiles = await resp.json()
+                                 if isinstance(mojang_profiles, list):
+                                     local_profiles.extend(mojang_profiles)
+                 except Exception: pass
+
+        return local_profiles
 
     @router.get("/")
     async def get_api_metadata(request: Request):
@@ -239,7 +310,7 @@ def setup_routes(backend: YggdrasilBackend, db: Database, crypto, rate_limiter):
                 },
                 "feature.non_email_login": True,
             },
-            "skinDomains": [
+            "skinDomains": config.get("mojang.skin_domains", []) + [
                 (
                     site_url.replace("https://", "")
                     .replace("http://", "")
@@ -252,6 +323,36 @@ def setup_routes(backend: YggdrasilBackend, db: Database, crypto, rate_limiter):
         }
 
         return metadata
+
+    @router.get("/api/minecraft/profile/lookup/name/{playerName}")
+    @router.get("/minecraft/profile/lookup/name/{playerName}")
+    async def lookup_profile_by_name(playerName: str):
+        """[Proxy] Minecraft Services Profile Lookup"""
+        # 1. Local Lookup
+        p = await db.user.get_profile_by_name(playerName)
+        if p:
+            return {"id": p.id, "name": p.name}
+
+        # 2. Fallback
+        if await db.setting.get("fallback_mojang_profile", "false") == "true":
+            services_url = config.get("mojang.services_url")
+            import aiohttp
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    url = f"{services_url}/minecraft/profile/lookup/name/{playerName}"
+                    async with session.get(url, timeout=5) as resp:
+                        if resp.status == 200:
+                            content = await resp.read()
+                            return Response(
+                                content=content,
+                                status_code=200,
+                                media_type="application/json",
+                            )
+            except Exception:
+                pass
+
+        return Response(status_code=204)
 
     @router.put("/api/user/profile/{uuid}/{textureType}")
     async def api_put_profile(

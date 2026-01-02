@@ -39,6 +39,13 @@ class Config:
             },
             "database": {"path": "yggdrasil.db"},
             "textures": {"directory": "textures", "max_size_kb": 1024},
+            "mojang": {
+                "session_url": "https://sessionserver.mojang.com",
+                "account_url": "https://api.mojang.com",
+                "services_url": "https://api.minecraftservices.com",
+                "skin_domains": ["textures.minecraft.net"],
+                "cache_ttl": 60,
+            },
             "server": {"host": "0.0.0.0", "port": 8000, "debug": False},
         }
 

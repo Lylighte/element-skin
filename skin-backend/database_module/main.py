@@ -88,6 +88,12 @@ class Database(BaseDB):
             await conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('microsoft_redirect_uri', 'http://localhost:8000/microsoft/callback')"
             )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('fallback_mojang_profile', 'false')"
+            )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('fallback_mojang_hasjoined', 'false')"
+            )
             await conn.commit()
 
     # Proxy methods for backward compatibility or direct access if needed

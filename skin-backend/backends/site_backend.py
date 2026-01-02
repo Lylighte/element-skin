@@ -251,6 +251,14 @@ class SiteBackend:
             "microsoft_redirect_uri": settings.get(
                 "microsoft_redirect_uri", "http://localhost:8000/microsoft/callback"
             ),
+            # Mojang API Settings (URLs from static config, switches from DB)
+            "mojang_session_url": config.get("mojang.session_url"),
+            "mojang_account_url": config.get("mojang.account_url"),
+            "mojang_services_url": config.get("mojang.services_url"),
+            "mojang_skin_domains": ",".join(config.get("mojang.skin_domains", [])),
+            "mojang_cache_ttl": config.get("mojang.cache_ttl"),
+            "fallback_mojang_profile": settings.get("fallback_mojang_profile", "false") == "true",
+            "fallback_mojang_hasjoined": settings.get("fallback_mojang_hasjoined", "false") == "true",
         }
 
     async def save_admin_settings(self, body: dict):
@@ -267,6 +275,8 @@ class SiteBackend:
             "microsoft_client_id",
             "microsoft_client_secret",
             "microsoft_redirect_uri",
+            "fallback_mojang_profile",
+            "fallback_mojang_hasjoined",
         ]:
             if key in body:
                 val = body[key]

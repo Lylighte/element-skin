@@ -218,6 +218,15 @@ def setup_routes(db: Database, backend, rate_limiter, config):
             "site_name": settings.get("site_name", "皮肤站"),
             "site_url": settings.get("site_url", ""),
             "allow_register": settings.get("allow_register", "true") == "true",
+            "mojang_status_urls": {
+                "session": settings.get(
+                    "mojang_session_url", "https://sessionserver.mojang.com"
+                ),
+                "account": settings.get("mojang_account_url", "https://api.mojang.com"),
+                "services": settings.get(
+                    "mojang_services_url", "https://api.minecraftservices.com"
+                ),
+            },
         }
 
     @router.get("/admin/settings")

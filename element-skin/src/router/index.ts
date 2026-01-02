@@ -9,6 +9,7 @@ import UserDashboard from '../views/UserDashboard.vue'
 import DashboardWardrobe from '@/components/dashboard/DashboardWardrobe.vue'
 import DashboardRoles from '@/components/dashboard/DashboardRoles.vue'
 import DashboardProfile from '@/components/dashboard/DashboardProfile.vue'
+import DashboardMojangStatus from '@/components/dashboard/DashboardMojangStatus.vue'
 
 // Admin Components
 import AdminSettings from '@/components/admin/AdminSettings.vue'
@@ -74,6 +75,11 @@ const router = createRouter({
           path: 'profile',
           name: 'dashboard-profile',
           component: DashboardProfile,
+        },
+        {
+          path: 'status',
+          name: 'dashboard-status',
+          component: DashboardMojangStatus,
         },
       ],
     },
