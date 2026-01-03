@@ -86,7 +86,7 @@ import { computed, ref, onMounted, onUnmounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import {
-  Menu as MenuIcon, Box, User, Setting, Tools, Back, Link
+  Menu as MenuIcon, Box, User, Setting, Tools, Back, Odometer
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -102,10 +102,10 @@ provide('fetchMe', fetchMe)
 
 // --- Navigation Links ---
 const dashboardLinks = [
+  { path: '/dashboard/home', title: '仪表盘', icon: Odometer },
   { path: '/dashboard/wardrobe', title: '我的衣柜', icon: Box },
   { path: '/dashboard/roles', title: '角色管理', icon: User },
   { path: '/dashboard/profile', title: '个人资料', icon: Setting },
-  { path: '/dashboard/status', title: '服务状态', icon: Link },
 ]
 const adminNavLinks = [
   { path: '/admin/settings', title: '站点设置', icon: Setting },
