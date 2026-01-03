@@ -275,7 +275,7 @@ async function confirmDeleteAccount() {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.4s backwards;
+  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.6s backwards;
 }
 
 .profile-form-card :deep(.el-form-item) {
@@ -283,9 +283,22 @@ async function confirmDeleteAccount() {
   animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
 
+.profile-form-card :deep(.el-divider) {
+  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+/* 1. Email */
 .profile-form-card :deep(.el-form-item):nth-child(1) { animation-delay: 0.3s; }
+/* 2. Display Name */
 .profile-form-card :deep(.el-form-item):nth-child(2) { animation-delay: 0.35s; }
-.profile-form-card :deep(.el-form-item):nth-child(3) { animation-delay: 0.4s; }
+/* 3. Divider */
+.profile-form-card :deep(.el-divider) { animation-delay: 0.4s; }
+/* 4. Old Password */
+.profile-form-card :deep(.el-form-item):nth-child(4) { animation-delay: 0.45s; }
+/* 5. New Password */
+.profile-form-card :deep(.el-form-item):nth-child(5) { animation-delay: 0.5s; }
+/* 6. Confirm Password */
+.profile-form-card :deep(.el-form-item):nth-child(6) { animation-delay: 0.55s; }
 
 .profile-form-card :deep(.el-form-item:hover) {
   transform: translateX(4px);

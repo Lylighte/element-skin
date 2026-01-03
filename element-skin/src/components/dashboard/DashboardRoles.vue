@@ -339,6 +339,10 @@ onMounted(async () => {
   animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.common-grid {
+  justify-content: center;
+}
+
 .header-actions {
   display: flex;
   gap: 12px;

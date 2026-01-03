@@ -8,10 +8,9 @@
       </el-button>
     </div>
 
-    <el-card>
+    <el-card class="list-card">
       <el-table :data="users" style="width: 100%">
-        <el-table-column prop="email" label="邮箱" min-width="200" />
-        <el-table-column prop="display_name" label="显示名" min-width="150" />
+        <el-table-column prop="email" label="邮箱" min-width="220" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag v-if="row.is_admin" type="danger">管理员</el-tag>
@@ -19,19 +18,20 @@
             <el-tag v-else type="info">用户</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="角色数" width="100">
+        <el-table-column label="角色数" width="80" align="center">
           <template #default="{ row }">
             {{ row.profile_count || 0 }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
             <el-button
               size="small"
               type="primary"
               @click="showUserDetailDialog(row)"
+              link
             >
-              查看详情
+              管理
             </el-button>
           </template>
         </el-table-column>
@@ -665,5 +665,21 @@ onMounted(() => {
   display: block;
   margin-top: 12px;
   padding-left: 4px;
+}
+
+.list-card {
+  width: 100%;
+  max-width: 100%;
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+@media (max-width: 768px) {
+  .users-section {
+    padding: 0;
+  }
+  .list-card :deep(.el-card__body) {
+    padding: 10px;
+  }
 }
 </style>

@@ -324,6 +324,10 @@ onMounted(() => {
   animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.common-grid {
+  justify-content: center;
+}
+
 .texture-preview {
   width: 100%;
   height: 280px;

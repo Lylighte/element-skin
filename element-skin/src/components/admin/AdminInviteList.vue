@@ -14,40 +14,35 @@
       </div>
     </div>
 
-    <el-card>
+    <el-card class="list-card">
       <el-table :data="invites" style="width: 100%">
-        <el-table-column prop="code" label="邀请码" min-width="300">
+        <el-table-column prop="code" label="邀请码" min-width="180">
           <template #default="{ row }">
-            <el-text copyable>{{ row.code }}</el-text>
+            <el-text copyable class="code-text">{{ row.code }}</el-text>
           </template>
         </el-table-column>
-        <el-table-column label="使用次数" width="150">
+        <el-table-column label="使用" width="100" align="center">
           <template #default="{ row }">
-            <span :style="{ color: getRemainingColor(row) }">
-              {{ row.used_count || 0 }} / {{ row.total_uses || '∞' }}
-            </span>
-            <el-tag
-              v-if="row.total_uses && row.used_count >= row.total_uses"
-              type="danger"
-              size="small"
-              style="margin-left: 8px;"
-            >
-              已用完
-            </el-tag>
+            <div class="usage-cell">
+              <span :style="{ color: getRemainingColor(row) }">
+                {{ row.used_count || 0 }}/{{ row.total_uses || '∞' }}
+              </span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="used_by" label="最后使用者" min-width="200" />
-        <el-table-column label="创建时间" width="180">
+        <el-table-column prop="used_by" label="最后使用者" min-width="150" />
+        <el-table-column label="创建时间" min-width="160">
           <template #default="{ row }">
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="80" fixed="right" align="center">
           <template #default="{ row }">
             <el-button
               size="small"
               type="danger"
               @click="deleteInvite(row)"
+              link
             >
               删除
             </el-button>
@@ -261,5 +256,24 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.list-card {
+  width: 100%;
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.code-text {
+  font-family: monospace;
+}
+
+@media (max-width: 768px) {
+  .invites-section {
+    padding: 0;
+  }
+  .list-card :deep(.el-card__body) {
+    padding: 10px;
+  }
 }
 </style>

@@ -9,7 +9,11 @@
     </div>
 
     <el-card class="settings-card">
-      <el-form label-width="140px" :model="siteSettings">
+      <el-form 
+        :label-width="labelPosition === 'top' ? 'auto' : '140px'" 
+        :model="siteSettings" 
+        :label-position="labelPosition"
+      >
         <el-form-item label="站点名称">
           <el-input v-model="siteSettings.site_name" placeholder="皮肤站" />
         </el-form-item>
@@ -95,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { Refresh, Check, Key, Lock, Link } from '@element-plus/icons-vue'
@@ -114,6 +118,13 @@ const siteSettings = ref({
   microsoft_client_secret: '',
   microsoft_redirect_uri: ''
 })
+
+const windowWidth = ref(window.innerWidth)
+const labelPosition = computed(() => windowWidth.value < 992 ? 'top' : 'right')
+
+function handleResize() {
+  windowWidth.value = window.innerWidth
+}
 
 function authHeaders() {
   const token = localStorage.getItem('jwt')
@@ -143,6 +154,11 @@ async function saveSettings() {
 
 onMounted(() => {
   loadSettings()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
@@ -162,6 +178,12 @@ onMounted(() => {
   animation: cardSlideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s backwards;
 }
 
+/* Restrict form width on large screens to avoid super long inputs */
+.settings-card .el-form {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
 .settings-card :deep(.el-form-item) {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -177,5 +199,11 @@ onMounted(() => {
 .settings-card :deep(.el-button:hover) {
   transform: scale(1.05);
   box-shadow: 0 6px 20px rgba(64, 158, 255, 0.3);
+}
+
+@media (max-width: 768px) {
+  .settings-card {
+    padding: 15px;
+  }
 }
 </style>

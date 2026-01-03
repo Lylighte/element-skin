@@ -245,6 +245,7 @@ onMounted(() => {
 .admin-mojang {
   max-width: 800px;
   margin: 0 auto;
+  width: 100%;
 }
 .page-header {
   margin-bottom: 24px;
@@ -258,6 +259,14 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
 }
+/* Limit inner content width */
+.admin-mojang .el-card__body {
+  padding: 20px;
+}
+.admin-mojang .el-form {
+  max-width: 100%;
+}
+
 .setting-row {
   display: flex;
   align-items: center;
@@ -274,6 +283,7 @@ onMounted(() => {
   padding: 8px;
   border-radius: 4px;
   background: #f5f7fa;
+  margin-bottom: 8px; /* For mobile stacking if grid changes */
 }
 .status-name {
   font-weight: 500;
@@ -281,5 +291,22 @@ onMounted(() => {
 }
 .mb-4 {
   margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  .admin-mojang {
+    padding: 0;
+  }
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .el-col {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+    margin-bottom: 8px;
+  }
 }
 </style>
