@@ -91,6 +91,9 @@ class YggdrasilBackend:
     async def refresh(
         self, accessToken, clientToken, selectedProfile_uuid, requestUser=False
     ) -> Dict:
+        selectedProfile_uuid = (
+            selectedProfile_uuid.replace("-", "") if selectedProfile_uuid else None
+        )
         token_data = await self.db.user.get_token(accessToken)
         if not token_data:
             raise ForbiddenOperationException("Invalid token.")
@@ -201,6 +204,7 @@ class YggdrasilBackend:
         return profile
 
     async def get_profile(self, uuid: str) -> Optional[PlayerProfile]:
+        uuid = uuid.replace("-", "")
         profile = await self.db.user.get_profile_by_id(uuid)
         if not profile:
             return None
@@ -226,6 +230,7 @@ class YggdrasilBackend:
         file_bytes: bytes,
         model: str = "",
     ):
+        uuid = uuid.replace("-", "")
         token_data = await self.db.user.get_token(access_token)
         if not token_data:
             raise ForbiddenOperationException("Unauthorized")
@@ -255,6 +260,7 @@ class YggdrasilBackend:
             raise IllegalArgumentException("Failed to process texture")
 
     async def delete_texture(self, access_token: str, uuid: str, texture_type: str):
+        uuid = uuid.replace("-", "")
         token_data = await self.db.user.get_token(access_token)
         if not token_data:
             raise ForbiddenOperationException("Unauthorized")
