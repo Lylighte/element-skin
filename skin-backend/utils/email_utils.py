@@ -2,6 +2,7 @@ import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
+from email.utils import formataddr, parseaddr
 from database_module import Database
 
 class EmailSender:
@@ -55,7 +56,18 @@ class EmailSender:
             return False
 
         message = MIMEMultipart()
-        message["From"] = settings["sender"]
+        
+        # RFC-compliant From header construction
+        sender_name, sender_addr = parseaddr(settings["sender"])
+        # Fallback to smtp_user if sender address is empty
+        if not sender_addr and settings["user"]:
+            sender_addr = settings["user"]
+        
+        if sender_name:
+            message["From"] = formataddr((Header(sender_name, 'utf-8').encode(), sender_addr))
+        else:
+            message["From"] = sender_addr
+
         message["To"] = to_email
         message["Subject"] = Header(subject, 'utf-8')
         message.attach(MIMEText(body, "html", "utf-8"))
