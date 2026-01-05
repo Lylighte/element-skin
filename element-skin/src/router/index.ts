@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import AdminView from '../views/AdminView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import LoginView from '../views/LoginView.vue'
+import ResetPassword from '../views/ResetPassword.vue'
 import UserDashboard from '../views/UserDashboard.vue'
 
 // Dashboard Components
@@ -17,6 +18,7 @@ import AdminUserList from '@/components/admin/AdminUserList.vue'
 import AdminInviteList from '@/components/admin/AdminInviteList.vue'
 import AdminMojang from '@/components/admin/AdminMojang.vue'
 import AdminCarousel from '@/components/admin/AdminCarousel.vue'
+import AdminEmail from '@/components/admin/AdminEmail.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -37,6 +39,11 @@ const router = createRouter({
       component: RegisterView,
     },
     {
+      path: '/reset-password',
+      name: 'reset-password',
+      component: ResetPassword,
+    },
+    {
       path: '/admin',
       component: AdminView,
       redirect: '/admin/settings',
@@ -50,6 +57,11 @@ const router = createRouter({
           path: 'mojang',
           name: 'admin-mojang',
           component: AdminMojang,
+        },
+        {
+          path: 'email',
+          name: 'admin-email',
+          component: AdminEmail,
         },
         {
           path: 'users',

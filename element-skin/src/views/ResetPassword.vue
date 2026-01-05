@@ -1,9 +1,9 @@
 <template>
-  <div class="register-container bg-gradient-purple">
-    <div class="register-card">
-      <div class="register-header">
-        <h1>注册账号</h1>
-        <p>创建一个新账号来开始使用</p>
+  <div class="reset-container bg-gradient-purple">
+    <div class="reset-card">
+      <div class="reset-header">
+        <h1>重置密码</h1>
+        <p>输入您的邮箱并获取验证码以重置密码</p>
       </div>
 
       <el-form :model="form" :rules="rules" ref="formRef" label-position="top" size="large">
@@ -12,17 +12,15 @@
             v-model="form.email"
             placeholder="请输入邮箱地址"
             :prefix-icon="Message"
-            @keyup.enter="register"
           />
         </el-form-item>
 
-        <el-form-item v-if="emailVerifyEnabled" label="验证码" prop="code">
+        <el-form-item label="验证码" prop="code">
           <div class="verification-code-row">
             <el-input
               v-model="form.code"
               placeholder="请输入验证码"
               :prefix-icon="Ticket"
-              @keyup.enter="register"
             />
             <el-button 
               type="primary"
@@ -37,54 +35,41 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="密码" prop="password">
+        <el-form-item label="新密码" prop="password">
           <el-input
             v-model="form.password"
             type="password"
             placeholder="至少6个字符"
             :prefix-icon="Lock"
             show-password
-            @keyup.enter="register"
           />
         </el-form-item>
 
-        <el-form-item label="确认密码" prop="confirmPassword">
+        <el-form-item label="确认新密码" prop="confirmPassword">
           <el-input
             v-model="form.confirmPassword"
             type="password"
-            placeholder="请再次输入密码"
+            placeholder="请再次输入新密码"
             :prefix-icon="Lock"
             show-password
-            @keyup.enter="register"
-          />
-        </el-form-item>
-
-        <el-form-item label="邀请码 (若需要)" prop="invite">
-          <el-input
-            v-model="form.invite"
-            placeholder="如果需要邀请码，请在此输入"
-            :prefix-icon="Ticket"
-            @keyup.enter="register"
           />
         </el-form-item>
 
         <el-form-item>
           <el-button
             type="primary"
-            @click="register"
+            @click="resetPassword"
             :loading="loading"
             style="width: 100%"
           >
-            <el-icon v-if="!loading"><UserFilled /></el-icon>
-            {{ loading ? '注册中...' : '注册' }}
+            {{ loading ? '提交中...' : '重置密码' }}
           </el-button>
         </el-form-item>
       </el-form>
 
-      <div class="register-footer">
-        <span>已有账号？</span>
+      <div class="reset-footer">
         <el-button link type="primary" @click="$router.push('/login')">
-          立即登录
+          返回登录
         </el-button>
       </div>
     </div>
@@ -96,24 +81,21 @@ import { reactive, ref } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Message, Lock, Ticket, UserFilled } from '@element-plus/icons-vue'
+import { Message, Lock, Ticket } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const formRef = ref(null)
 const loading = ref(false)
-
-const form = reactive({
-  email: '',
-  password: '',
-  confirmPassword: '',
-  invite: '',
-  code: ''
-})
-
-const emailVerifyEnabled = ref(false)
 const codeLoading = ref(false)
 const countdown = ref(0)
 let timer = null
+
+const form = reactive({
+  email: '',
+  code: '',
+  password: '',
+  confirmPassword: ''
+})
 
 const rules = {
   email: [
@@ -124,7 +106,7 @@ const rules = {
     { required: true, message: '请输入验证码' }
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
+    { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: 6, message: '密码至少需要6个字符', trigger: 'blur' }
   ],
   confirmPassword: [
@@ -147,7 +129,10 @@ import { onMounted } from 'vue'
 onMounted(async () => {
   try {
     const res = await axios.get('/public/settings')
-    emailVerifyEnabled.value = res.data.email_verify_enabled
+    if (!res.data.email_verify_enabled) {
+      ElMessage.warning('密码重置功能未开启')
+      router.push('/login')
+    }
   } catch (e) {
     console.error('Failed to fetch settings', e)
   }
@@ -165,7 +150,7 @@ async function sendCode() {
     codeLoading.value = true
     await axios.post('/send-verification-code', {
       email: form.email,
-      type: 'register'
+      type: 'reset'
     })
     ElMessage.success('验证码已发送到您的邮箱')
     
@@ -187,31 +172,26 @@ async function sendCode() {
   }
 }
 
-async function register() {
+async function resetPassword() {
   try {
     await formRef.value.validate()
     loading.value = true
 
-    // 在发送前trim邀请码
-    const payload = {
+    await axios.post('/reset-password', {
       email: form.email,
       password: form.password,
-      invite: form.invite ? form.invite.trim() : '',
       code: form.code
-    }
+    })
 
-    const res = await axios.post('/register', payload)
-    ElMessage.success('注册成功！即将跳转到登录页面...')
-
-    // 延迟跳转，让用户看到成功消息
+    ElMessage.success('密码重置成功！请使用新密码登录。')
     setTimeout(() => {
       router.push('/login')
     }, 1500)
   } catch (e) {
     if (e.response?.data?.detail) {
-      ElMessage.error('注册失败: ' + e.response.data.detail)
+      ElMessage.error('重置失败: ' + e.response.data.detail)
     } else if (e.message && !e.message.includes('validate')) {
-      ElMessage.error('注册失败: ' + e.message)
+      ElMessage.error('重置失败: ' + e.message)
     }
   } finally {
     loading.value = false
@@ -220,7 +200,7 @@ async function register() {
 </script>
 
 <style scoped>
-.register-container {
+.reset-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -228,7 +208,7 @@ async function register() {
   padding: 20px;
 }
 
-.register-card {
+.reset-card {
   width: 100%;
   max-width: 440px;
   background: #fff;
@@ -249,29 +229,27 @@ async function register() {
   }
 }
 
-.register-header {
+.reset-header {
   text-align: center;
   margin-bottom: 32px;
 }
 
-.register-header h1 {
+.reset-header h1 {
   margin: 0 0 8px 0;
   font-size: 28px;
   font-weight: 600;
   color: #303133;
 }
 
-.register-header p {
+.reset-header p {
   margin: 0;
   font-size: 14px;
   color: #909399;
 }
 
-.register-footer {
+.reset-footer {
   text-align: center;
   margin-top: 24px;
-  color: #606266;
-  font-size: 14px;
 }
 
 :deep(.el-form-item__label) {

@@ -2,6 +2,7 @@ from .core import BaseDB
 from .modules.user import UserModule
 from .modules.setting import SettingModule
 from .modules.texture import TextureModule
+from .modules.verification import VerificationModule
 
 INIT_SQL = """
 CREATE TABLE IF NOT EXISTS users (
@@ -67,6 +68,15 @@ CREATE TABLE IF NOT EXISTS official_whitelist (
     username TEXT PRIMARY KEY,
     created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS verification_codes (
+    email TEXT,
+    code TEXT NOT NULL,
+    type TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY(email, type)
+);
 """
 
 class Database(BaseDB):
@@ -75,6 +85,7 @@ class Database(BaseDB):
         self.user = UserModule(self)
         self.setting = SettingModule(self)
         self.texture = TextureModule(self)
+        self.verification = VerificationModule(self)
 
     async def init(self):
         """初始化表结构及执行迁移"""
@@ -102,6 +113,33 @@ class Database(BaseDB):
             await conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('enable_official_whitelist', 'false')"
             )
+            
+            # SMTP Default Settings
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('email_verify_enabled', 'false')"
+            )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('email_verify_ttl', '300')"
+            )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('smtp_host', 'smtp.example.com')"
+            )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('smtp_port', '465')"
+            )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('smtp_user', 'user@example.com')"
+            )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('smtp_password', 'password')"
+            )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('smtp_ssl', 'true')"
+            )
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('smtp_sender', 'SkinServer <no-reply@example.com>')"
+            )
+            
             await conn.commit()
 
     # Proxy methods for backward compatibility or direct access if needed

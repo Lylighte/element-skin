@@ -40,6 +40,12 @@
         </el-form-item>
       </el-form>
 
+      <div class="login-actions" v-if="emailVerifyEnabled">
+        <el-button link type="info" @click="$router.push('/reset-password')">
+          忘记密码？
+        </el-button>
+      </div>
+
       <div class="login-footer">
         <span>还没有账号？</span>
         <el-button link type="primary" @click="$router.push('/register')">
@@ -64,6 +70,18 @@ const loading = ref(false)
 const form = reactive({
   email: '',
   password: ''
+})
+
+const emailVerifyEnabled = ref(false)
+import { onMounted } from 'vue'
+
+onMounted(async () => {
+  try {
+    const res = await axios.get('/public/settings')
+    emailVerifyEnabled.value = res.data.email_verify_enabled
+  } catch (e) {
+    console.error('Failed to fetch settings', e)
+  }
 })
 
 const rules = {
@@ -157,6 +175,12 @@ async function login() {
   color: #909399;
 }
 
+.login-actions {
+  text-align: right;
+  margin-top: -12px;
+  margin-bottom: 20px;
+}
+
 .login-footer {
   text-align: center;
   margin-top: 24px;
@@ -169,7 +193,7 @@ async function login() {
   color: #606266;
 }
 
-:deep(.el-input__inner) {
-  height: 44px;
+:deep(.el-input__wrapper) {
+  height: 48px;
 }
 </style>

@@ -55,12 +55,34 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
         email = req.get("email")
         password = req.get("password")
         invite = req.get("invite")
+        code = req.get("code")
 
         if not email or not password:
             raise HTTPException(status_code=400, detail="email and password required")
 
-        user_id = await site_backend.register(email, password, invite)
+        user_id = await site_backend.register(email, password, invite, code)
         return {"id": user_id}
+
+    @router.post("/send-verification-code")
+    async def send_code(req: dict, request: Request):
+        # Using auth endpoint rate limit for code sending
+        await rate_limiter.check(request, is_auth_endpoint=True)
+        email = req.get("email")
+        type = req.get("type", "register") # register or reset
+        if not email:
+            raise HTTPException(status_code=400, detail="email required")
+        return await site_backend.send_verification_code(email, type)
+
+    @router.post("/reset-password")
+    async def reset_password(req: dict, request: Request):
+        await rate_limiter.check(request, is_auth_endpoint=True)
+        email = req.get("email")
+        password = req.get("password")
+        code = req.get("code")
+        if not email or not password or not code:
+             raise HTTPException(status_code=400, detail="email, password and code required")
+        await site_backend.reset_password(email, password, code)
+        return {"ok": True}
 
     @router.get("/me")
     async def me(payload: dict = Depends(get_current_user)):
@@ -221,6 +243,7 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
             "site_name": settings.get("site_name", "皮肤站"),
             "site_url": settings.get("site_url", ""),
             "allow_register": settings.get("allow_register", "true") == "true",
+            "email_verify_enabled": settings.get("email_verify_enabled", "false") == "true",
             "mojang_status_urls": {
                 "session": settings.get(
                     "mojang_session_url", "https://sessionserver.mojang.com"

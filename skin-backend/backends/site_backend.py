@@ -3,10 +3,13 @@ import re
 import time
 import secrets
 import os
+import random
+import string
 from fastapi import HTTPException
 
 from utils.password_utils import hash_password, verify_password, needs_rehash
 from utils.jwt_utils import create_jwt_token
+from utils.email_utils import EmailSender
 from utils.uuid_utils import generate_random_uuid
 from utils.typing import User, InviteCode, PlayerProfile
 from database_module import Database
@@ -19,8 +22,57 @@ class SiteBackend:
     ):  # Use forward reference for type hint
         self.db = db
         self.config = config
+        self.email_sender = EmailSender(db)
 
     # ========== Auth & User ==========
+
+    async def send_verification_code(self, email: str, type: str):
+        # Check if email verification is enabled
+        enabled = await self.db.setting.get("email_verify_enabled", "false")
+        if enabled != "true":
+            raise HTTPException(status_code=400, detail="Email verification is disabled")
+
+        # Validate email format
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+             raise HTTPException(status_code=400, detail="Invalid email format")
+
+        # For reset password, check if user exists
+        if type == "reset":
+            user = await self.db.user.get_by_email(email)
+            if not user:
+                 return {"ok": True, "ttl": 0} 
+
+        # For register, check if user exists
+        if type == "register":
+            user = await self.db.user.get_by_email(email)
+            if user:
+                raise HTTPException(status_code=400, detail="Email already registered")
+
+        # 8 chars uppercase letters + digits
+        code = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        ttl = int(await self.db.setting.get("email_verify_ttl", "300"))
+        
+        await self.db.verification.create_code(email, code, type, ttl)
+        
+        sent = await self.email_sender.send_verification_code(email, code, type)
+        if not sent:
+             raise HTTPException(status_code=500, detail="Failed to send verification email")
+
+        return {"ok": True, "ttl": ttl}
+
+    async def verify_code(self, email: str, code: str, type: str) -> bool:
+        record = await self.db.verification.get_code(email, type)
+        if not record:
+            return False
+        
+        db_code, expires_at = record
+        if str(db_code).upper() != str(code).upper():
+            return False
+            
+        if int(time.time() * 1000) > expires_at:
+            return False
+            
+        return True
 
     async def login(self, email, password) -> Dict[str, Any]:
         user_row = await self.db.user.get_by_email(email)
@@ -47,7 +99,7 @@ class SiteBackend:
 
         return {"token": token, "user_id": user_id}
 
-    async def register(self, email, password, invite_code=None) -> str:
+    async def register(self, email, password, invite_code=None, verification_code=None) -> str:
         if len(password) < 6:
             raise HTTPException(
                 status_code=400, detail="password must be at least 6 characters"
@@ -56,6 +108,19 @@ class SiteBackend:
         allow_register = await self.db.setting.get("allow_register", "true")
         if allow_register != "true":
             raise HTTPException(status_code=403, detail="registration is disabled")
+
+        # Email Verification Check
+        email_verify_enabled = await self.db.setting.get("email_verify_enabled", "false") == "true"
+        if email_verify_enabled:
+            if not verification_code:
+                raise HTTPException(status_code=400, detail="Verification code required")
+            
+            is_valid = await self.verify_code(email, verification_code, "register")
+            if not is_valid:
+                raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+            
+            # Delete code after usage
+            await self.db.verification.delete_code(email, "register")
 
         require_invite = await self.db.setting.get("require_invite", "false")
         if require_invite == "true":
@@ -177,6 +242,28 @@ class SiteBackend:
         await self.db.user.delete(user_id)
         return True
 
+    async def reset_password(self, email: str, new_password: str, verification_code: str):
+        if len(new_password) < 6:
+             raise HTTPException(status_code=400, detail="Password too short")
+             
+        email_verify_enabled = await self.db.setting.get("email_verify_enabled", "false") == "true"
+        if not email_verify_enabled:
+             raise HTTPException(status_code=403, detail="Password reset via email is disabled")
+
+        is_valid = await self.verify_code(email, verification_code, "reset")
+        if not is_valid:
+             raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+        user = await self.db.user.get_by_email(email)
+        if not user:
+             raise HTTPException(status_code=404, detail="User not found")
+             
+        new_hash = hash_password(new_password)
+        await self.db.user.update_password(user.id, new_hash)
+        
+        await self.db.verification.delete_code(email, "reset")
+        return True
+
     async def change_password(self, user_id: str, old_password, new_password):
         if len(new_password) < 6:
             raise HTTPException(status_code=400, detail="新密码长度不能少于6个字符")
@@ -272,6 +359,14 @@ class SiteBackend:
                 "enable_official_whitelist", "false"
             )
             == "true",
+            # SMTP & Email Verification
+            "email_verify_enabled": settings.get("email_verify_enabled", "false") == "true",
+            "email_verify_ttl": int(settings.get("email_verify_ttl", "300")),
+            "smtp_host": settings.get("smtp_host", ""),
+            "smtp_port": settings.get("smtp_port", "465"),
+            "smtp_user": settings.get("smtp_user", ""),
+            "smtp_ssl": settings.get("smtp_ssl", "true") == "true",
+            "smtp_sender": settings.get("smtp_sender", ""),
         }
 
     async def save_admin_settings(self, body: dict):
@@ -291,6 +386,14 @@ class SiteBackend:
             "fallback_mojang_profile",
             "fallback_mojang_hasjoined",
             "enable_official_whitelist",
+            "email_verify_enabled",
+            "email_verify_ttl",
+            "smtp_host",
+            "smtp_port",
+            "smtp_user",
+            "smtp_password",
+            "smtp_ssl",
+            "smtp_sender"
         ]:
             if key in body:
                 val = body[key]
@@ -298,6 +401,9 @@ class SiteBackend:
                     value = "true" if val else "false"
                 else:
                     value = str(val)
+                # Don't save empty password if not provided
+                if key == "smtp_password" and not value:
+                    continue
                 await self.db.setting.set(key, value)
 
     async def get_official_whitelist(self):

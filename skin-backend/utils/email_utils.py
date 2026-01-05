@@ -1,0 +1,75 @@
+import aiosmtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.header import Header
+from database_module import Database
+
+class EmailSender:
+    def __init__(self, db: Database):
+        self.db = db
+
+    async def _get_settings(self):
+        settings = await self.db.setting.get_all()
+        return {
+            "host": settings.get("smtp_host", ""),
+            "port": int(settings.get("smtp_port", "465")),
+            "user": settings.get("smtp_user", ""),
+            "password": settings.get("smtp_password", ""),
+            "ssl": settings.get("smtp_ssl", "true") == "true",
+            "sender": settings.get("smtp_sender", ""),
+            "enabled": settings.get("email_verify_enabled", "false") == "true"
+        }
+
+    async def send_verification_code(self, to_email: str, code: str, type: str):
+        settings = await self._get_settings()
+        if not settings["enabled"]:
+            return False
+
+        if not settings["host"]:
+             print("SMTP host not configured.")
+             return False
+
+        subject = "SkinServer 验证码"
+        if type == "register":
+            body = f"""
+            <html>
+            <body>
+                <h2>欢迎注册 SkinServer</h2>
+                <p>您的验证码是：<strong style="font-size: 20px; color: #409EFF;">{code}</strong></p>
+                <p>该验证码将在几分钟后过期，请尽快完成注册。</p>
+            </body>
+            </html>
+            """
+        elif type == "reset":
+            body = f"""
+            <html>
+            <body>
+                <h2>SkinServer 密码重置</h2>
+                <p>您正在进行密码重置操作。</p>
+                <p>您的验证码是：<strong style="font-size: 20px; color: #409EFF;">{code}</strong></p>
+                <p>如果这不是您本人的操作，请忽略此邮件。</p>
+            </body>
+            </html>
+            """
+        else:
+            return False
+
+        message = MIMEMultipart()
+        message["From"] = settings["sender"]
+        message["To"] = to_email
+        message["Subject"] = Header(subject, 'utf-8')
+        message.attach(MIMEText(body, "html", "utf-8"))
+
+        try:
+            await aiosmtplib.send(
+                message,
+                hostname=settings["host"],
+                port=settings["port"],
+                username=settings["user"],
+                password=settings["password"],
+                use_tls=settings["ssl"],
+            )
+            return True
+        except Exception as e:
+            print(f"Failed to send email: {e}")
+            return False
