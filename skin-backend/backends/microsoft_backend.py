@@ -249,7 +249,8 @@ class MicrosoftAuthService:
 
 async def download_texture(url: str) -> bytes:
     """下载皮肤或披风纹理"""
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.get(url) as resp:
             if resp.status == 200:
                 return await resp.read()

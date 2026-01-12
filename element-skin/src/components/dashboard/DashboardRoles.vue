@@ -89,68 +89,44 @@
     <el-dialog
       v-model="showMicrosoftLoginDialog"
       title="绑定正版角色"
-      width="600px"
+      width="400px"
       :close-on-click-modal="false"
       :destroy-on-close="true"
+      :before-close="handleMicrosoftDialogClose"
     >
       <div class="microsoft-login-content">
-        <!-- 选择角色 -->
-        <div v-if="microsoftStep === 'select-profile'" class="step-container">
-          <el-result icon="success" title="登录成功！">
-            <template #sub-title>
-              <div class="profile-selection">
-                <p style="margin-bottom: 16px;">检测到正版角色：</p>
-                <el-card class="profile-card">
-                  <div class="profile-info-display">
-                    <el-avatar :size="80" class="profile-avatar">
-                      {{ microsoftProfile.name.charAt(0).toUpperCase() }}
-                    </el-avatar>
-                    <div class="profile-details">
-                      <h3>{{ microsoftProfile.name }}</h3>
-                      <p>UUID: {{ formatUUID(microsoftProfile.id) }}</p>
-                      <el-tag v-if="microsoftProfile.has_game" type="success" size="large">
-                        <el-icon><Select /></el-icon>
-                        拥有游戏
-                      </el-tag>
-                      <el-tag v-else type="info" size="large">
-                        <el-icon><Warning /></el-icon>
-                        Demo 版本
-                      </el-tag>
-                    </div>
-                  </div>
-                  <el-divider />
-                  <div class="skin-preview">
-                    <div v-if="microsoftProfile.skins && microsoftProfile.skins.length > 0">
-                      <p><strong>皮肤：</strong>{{ microsoftProfile.skins[0].variant }}</p>
-                    </div>
-                    <div v-if="microsoftProfile.capes && microsoftProfile.capes.length > 0">
-                      <p><strong>披风：</strong>已拥有</p>
-                    </div>
-                  </div>
-                </el-card>
-              </div>
-            </template>
-            <template #extra>
-              <el-button type="primary" @click="importMicrosoftProfile" size="large" :loading="importing">
-                <el-icon v-if="!importing"><Download /></el-icon>
-                导入角色
-              </el-button>
-            </template>
-          </el-result>
-        </div>
-
-        <!-- 步骤3: 导入中 -->
-        <div v-else-if="microsoftStep === 'importing'" class="step-container">
-          <el-result icon="info" title="正在导入角色...">
-            <template #sub-title>
-              <p>正在下载皮肤和披风，请稍候...</p>
-            </template>
-          </el-result>
+        <!-- 步骤2: 选择角色 (已找到) -->
+        <div v-if="microsoftStep === 'select-profile' && microsoftProfile" class="step-content">
+          <div class="simple-profile-info">
+            <div class="info-text">
+              <h3 class="profile-name">{{ microsoftProfile?.name }}</h3>
+              <p class="profile-uuid">{{ formatUUID(microsoftProfile?.id || '') }}</p>
+            </div>
+            <div class="info-status">
+               <el-tag v-if="microsoftProfile?.has_game" type="success" effect="dark">
+                  拥有游戏
+               </el-tag>
+               <el-tag v-else type="danger" effect="dark">
+                  无游戏权限
+               </el-tag>
+            </div>
+          </div>
         </div>
       </div>
 
       <template #footer>
-        <el-button @click="cancelMicrosoftLogin">取消</el-button>
+        <div class="dialog-footer">
+          <el-button @click="cancelMicrosoftLogin" :disabled="importing">取消</el-button>
+          <el-button 
+            v-if="microsoftStep === 'select-profile'"
+            type="primary" 
+            @click="importMicrosoftProfile" 
+            :loading="importing"
+            :disabled="!microsoftProfile?.has_game"
+          >
+            确认导入
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -269,7 +245,7 @@ async function importMicrosoftProfile() {
 
   try {
     importing.value = true
-    microsoftStep.value = 'importing'
+    // Do NOT switch step, just show loading on button
 
     const skinData = microsoftProfile.value.skins?.[0]
     const capeData = microsoftProfile.value.capes?.[0]
@@ -283,18 +259,28 @@ async function importMicrosoftProfile() {
     }
 
     await axios.post('/microsoft/import-profile', importData, { headers: authHeaders() })
-
+    
     ElMessage.success('正版角色导入成功！')
-    fetchMe()
-
+    
     showMicrosoftLoginDialog.value = false
-    microsoftStep.value = 'select-profile'
-    microsoftProfile.value = null
-    importing.value = false
+    // Delay clearing the profile slightly to allow transition, or just leave it since dialog is destroying anyway
+    // But safely clearing it prevents state leak if reopened somehow without reload (unlikely but possible)
+    setTimeout(() => {
+        microsoftProfile.value = null
+        microsoftStep.value = 'select-profile'
+    }, 300)
+
+    // Refresh data in background
+    try {
+      if (fetchMe) await fetchMe()
+    } catch (e) {
+      console.warn('Failed to refresh user profile:', e)
+    }
+
   } catch (error) {
     ElMessage.error('导入失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
     importing.value = false
-    microsoftStep.value = 'select-profile'
   }
 }
 
@@ -303,6 +289,14 @@ function cancelMicrosoftLogin() {
   microsoftStep.value = 'select-profile'
   microsoftProfile.value = null
   importing.value = false
+}
+
+function handleMicrosoftDialogClose(done) {
+  if (importing.value) {
+    return; // Prevent closing while importing
+  }
+  cancelMicrosoftLogin()
+  done()
 }
 
 onMounted(async () => {
@@ -335,6 +329,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Previous Styles ... */
 .roles-section {
   animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -504,56 +499,82 @@ onMounted(async () => {
   box-shadow: 0 6px 16px rgba(251,140,0,0.18);
 }
 
-/* Microsoft Login Styles */
+/* Microsoft Login New Styles */
 .microsoft-login-content {
-  padding: 20px;
+  padding: 10px 0;
 }
-.step-container {
-  min-height: 300px;
+
+.step-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
-.profile-selection {
-  width: 100%;
-}
-.profile-card {
-  margin: 0 auto;
-  max-width: 500px;
-}
-.profile-info-display {
+
+.simple-profile-info {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 16px 0;
+  gap: 20px;
+  padding: 20px;
+  background: #F5F7FA;
+  border-radius: 8px;
+  width: 100%;
 }
-.profile-avatar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  font-weight: bold;
-  font-size: 32px;
-  flex-shrink: 0;
+
+.info-text {
+  text-align: left;
 }
-.profile-details {
-  flex: 1;
-}
-.profile-details h3 {
-  margin: 0 0 8px 0;
+
+.profile-name {
+  margin: 0 0 4px 0;
   font-size: 20px;
   color: #303133;
 }
-.profile-details p {
-  margin: 8px 0;
-  color: #606266;
-  font-family: 'Courier New', monospace;
+
+.profile-uuid {
+  margin: 0;
+  font-family: monospace;
   font-size: 13px;
+  color: #909399;
 }
-.profile-details .el-tag {
-  margin-top: 12px;
+
+.centered-step {
+  padding: 40px 0;
 }
-.skin-preview {
-  padding: 12px 0 0 0;
+
+.loading-spinner {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.skin-preview p {
-  margin: 8px 0;
+
+.spinner-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 3px solid #EBEEF5;
+  border-top-color: #409EFF;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.spinner-icon {
+  font-size: 20px;
+  color: #409EFF;
+}
+
+.loading-text {
   color: #606266;
   font-size: 14px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

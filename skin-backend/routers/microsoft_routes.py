@@ -61,8 +61,9 @@ def setup_routes(db: Database, config):
             }
 
             # 获取 redirect_uri 配置
+            default_redirect = config.get("server.site_url", "http://localhost:8000").rstrip("/") + "/microsoft/callback"
             redirect_uri = await db.setting.get(
-                "microsoft_redirect_uri", "http://localhost:8000/microsoft/callback"
+                "microsoft_redirect_uri", default_redirect
             )
 
             service = MicrosoftAuthService(client_id, client_secret, redirect_uri)
@@ -104,8 +105,9 @@ def setup_routes(db: Database, config):
         # 获取 OAuth 配置
         client_id = await db.setting.get("microsoft_client_id")
         client_secret = await db.setting.get("microsoft_client_secret")
+        default_redirect = config.get("server.site_url", "http://localhost:8000").rstrip("/") + "/microsoft/callback"
         redirect_uri = await db.setting.get(
-            "microsoft_redirect_uri", "http://localhost:8000/microsoft/callback"
+            "microsoft_redirect_uri", default_redirect
         )
 
         try:
@@ -117,6 +119,9 @@ def setup_routes(db: Database, config):
 
             # 执行完整认证链
             profile = await service.complete_auth_flow(ms_access_token)
+
+            if not profile.get("profile"):
+                raise Exception("No Minecraft Java Edition profile found for this account.")
 
             # 将 profile 数据临时存储，供前端获取
             temp_token = secrets.token_urlsafe(32)
@@ -237,9 +242,15 @@ def setup_routes(db: Database, config):
         texture_model = "slim" if skin_variant == "slim" else "default"
         await db.user.create_profile(
             PlayerProfile(
-                profile_id, user_id, profile_name, texture_model, skin_hash, cape_hash
+                profile_id, user_id, profile_name, texture_model
             )
         )
+
+        if skin_hash:
+            await db.user.update_profile_skin(profile_id, skin_hash)
+        
+        if cape_hash:
+            await db.user.update_profile_cape(profile_id, cape_hash)
 
         return {
             "ok": True,
