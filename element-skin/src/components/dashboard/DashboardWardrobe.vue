@@ -9,7 +9,7 @@
     </div>
 
     <div class="common-grid" v-if="textures.length > 0">
-      <div class="common-card" v-for="tex in textures" :key="tex.hash + tex.type">
+      <div class="common-card" v-for="(tex, index) in textures" :key="tex.hash + tex.type" :style="{ '--delay-index': index }">
         <div class="texture-preview bg-gradient-purple">
           <SkinViewer
             v-if="tex.type === 'skin'"

@@ -93,16 +93,8 @@ body {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+  animation-delay: calc(var(--delay-index, 0) * 0.05s);
 }
-
-.common-card:nth-child(1) { animation-delay: 0.05s; }
-.common-card:nth-child(2) { animation-delay: 0.1s; }
-.common-card:nth-child(3) { animation-delay: 0.15s; }
-.common-card:nth-child(4) { animation-delay: 0.2s; }
-.common-card:nth-child(5) { animation-delay: 0.25s; }
-.common-card:nth-child(6) { animation-delay: 0.3s; }
-.common-card:nth-child(7) { animation-delay: 0.35s; }
-.common-card:nth-child(8) { animation-delay: 0.4s; }
 
 .common-card:hover {
   transform: translateY(-4px);

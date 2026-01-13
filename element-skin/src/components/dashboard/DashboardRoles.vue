@@ -15,7 +15,7 @@
     </div>
 
     <div class="common-grid">
-      <div v-for="profile in user?.profiles || []" :key="profile.id" class="common-card">
+      <div v-for="(profile, index) in user?.profiles || []" :key="profile.id" class="common-card" :style="{ '--delay-index': index }">
         <div class="role-preview bg-gradient-purple">
           <SkinViewer
             v-if="profile.skin_hash"
