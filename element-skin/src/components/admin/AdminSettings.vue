@@ -43,12 +43,12 @@
           </el-text>
         </el-form-item>
 
-        <el-form-item label="启用强密码检测">
+        <!-- <el-form-item label="启用强密码检测">
           <el-switch v-model="siteSettings.password_strength_enabled" />
           <el-text size="small" type="info" style="margin-left:12px;">
             关闭后仅保留最少6位长度限制
           </el-text>
-        </el-form-item>
+        </el-form-item> -->
 
         <el-form-item label="登录失败限制" v-if="siteSettings.rate_limit_enabled">
           <el-input v-model="siteSettings.rate_limit_auth_attempts" type="number">
@@ -132,7 +132,7 @@ const siteSettings = ref({
   rate_limit_auth_attempts: 5,
   rate_limit_auth_window: 15,
   jwt_expire_days: 7,
-  password_strength_enabled: true,
+  // password_strength_enabled: true,
   microsoft_client_id: '',
   microsoft_client_secret: '',
   microsoft_redirect_uri: '',

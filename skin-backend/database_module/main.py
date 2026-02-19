@@ -122,9 +122,9 @@ class Database(BaseDB):
             await conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('enable_official_whitelist', 'false')"
             )
-            await conn.execute(
-                "INSERT OR IGNORE INTO settings (key, value) VALUES ('password_strength_enabled', 'false')"
-            )
+            # await conn.execute(
+            #     "INSERT OR IGNORE INTO settings (key, value) VALUES ('password_strength_enabled', 'false')"
+            # )
             
             # SMTP Default Settings
             await conn.execute(

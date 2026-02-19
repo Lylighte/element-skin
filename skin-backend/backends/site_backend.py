@@ -251,14 +251,14 @@ class SiteBackend:
         await self.db.user.delete(user_id)
         return True
 
-        async def reset_password(self, email: str, new_password: str, verification_code: str):
-            enable_strong_password_check = await self.db.setting.get("enable_strong_password_check", "false") == "true"
-            if enable_strong_password_check:
-                errors = validate_strong_password(new_password)
-                if errors:
-                    raise HTTPException(
-                        status_code=400, detail="；".join(errors)
-                    )
+    async def reset_password(self, email: str, new_password: str, verification_code: str):
+        enable_strong_password_check = await self.db.setting.get("enable_strong_password_check", "false") == "true"
+        if enable_strong_password_check:
+            errors = validate_strong_password(new_password)
+            if errors:
+                raise HTTPException(
+                    status_code=400, detail="；".join(errors)
+                )
              
         email_verify_enabled = await self.db.setting.get("email_verify_enabled", "false") == "true"
         if not email_verify_enabled:
@@ -278,14 +278,14 @@ class SiteBackend:
         await self.db.verification.delete_code(email, "reset")
         return True
 
-        async def change_password(self, user_id: str, old_password, new_password):
-            enable_strong_password_check = await self.db.setting.get("enable_strong_password_check", "false") == "true"
-            if enable_strong_password_check:
-                errors = validate_strong_password(new_password)
-                if errors:
-                    raise HTTPException(
-                        status_code=400, detail="；".join(errors)
-                    )
+    async def change_password(self, user_id: str, old_password, new_password):
+        enable_strong_password_check = await self.db.setting.get("enable_strong_password_check", "false") == "true"
+        if enable_strong_password_check:
+            errors = validate_strong_password(new_password)
+            if errors:
+                raise HTTPException(
+                    status_code=400, detail="；".join(errors)
+                )
 
         user_row = await self.db.user.get_by_id(user_id)
         if not user_row:
@@ -387,10 +387,10 @@ class SiteBackend:
             "smtp_user": settings.get("smtp_user", ""),
             "smtp_ssl": settings.get("smtp_ssl", "true") == "true",
             "smtp_sender": settings.get("smtp_sender", ""),
-            "password_strength_enabled": settings.get(
-                "password_strength_enabled", "true"
-            )
-            == "true",
+            # "password_strength_enabled": settings.get(
+            #     "password_strength_enabled", "true"
+            # )
+            # == "true",
         }
 
     async def save_admin_settings(self, body: dict):
@@ -419,7 +419,7 @@ class SiteBackend:
             "smtp_password",
             "smtp_ssl",
             "smtp_sender",
-            "password_strength_enabled",
+            # "password_strength_enabled",
         ]:
             if key in body:
                 val = body[key]

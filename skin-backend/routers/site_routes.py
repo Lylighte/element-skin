@@ -80,7 +80,7 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
         password = req.get("password")
         code = req.get("code")
         if not email or not password or not code:
-             raise HTTPException(status_code=400, detail="email, password and code required")
+            raise HTTPException(status_code=400, detail="email, password and code required")
         await site_backend.reset_password(email, password, code)
         return {"ok": True}
 
