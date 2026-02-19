@@ -32,6 +32,9 @@
           </el-input>
         </el-form-item>
         <el-divider content-position="left">安全设置</el-divider>
+        <el-form-item label="启用强密码检查">
+          <el-switch v-model="siteSettings.enable_strong_password_check" />
+        </el-form-item>
         <el-form-item label="启用速率限制">
           <el-switch v-model="siteSettings.rate_limit_enabled" />
         </el-form-item>
@@ -116,7 +119,8 @@ const siteSettings = ref({
   jwt_expire_days: 7,
   microsoft_client_id: '',
   microsoft_client_secret: '',
-  microsoft_redirect_uri: ''
+  microsoft_redirect_uri: '',
+  enable_strong_password_check: false
 })
 
 const windowWidth = ref(window.innerWidth)

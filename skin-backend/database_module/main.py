@@ -119,6 +119,9 @@ class Database(BaseDB):
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('email_verify_enabled', 'false')"
             )
             await conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('enable_strong_password_check', 'false')"
+            )
+            await conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('email_verify_ttl', '300')"
             )
             await conn.execute(
