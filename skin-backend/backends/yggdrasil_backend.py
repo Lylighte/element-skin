@@ -201,6 +201,11 @@ class YggdrasilBackend:
         if not profile or profile.name != username:
             return None
 
+        if await self.db.user.is_banned(profile.user_id):
+            raise ForbiddenOperationException(
+                "Account is banned. Please contact administrator."
+            )
+
         return profile
 
     async def get_profile(self, uuid: str) -> Optional[PlayerProfile]:
@@ -208,10 +213,6 @@ class YggdrasilBackend:
         profile = await self.db.user.get_profile_by_id(uuid)
         if not profile:
             return None
-        if await self.db.user.is_banned(profile.user_id):
-            raise ForbiddenOperationException(
-                "Account is banned. Please contact administrator."
-            )
         return profile
 
     async def get_profiles_by_names(
