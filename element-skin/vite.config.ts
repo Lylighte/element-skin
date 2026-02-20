@@ -31,22 +31,16 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path,
       },
-      // Register, admin, me, textures etc
-      '^/site-login': {
+      // API routes that might conflict with frontend routes
+      // When a browser refreshes on these paths, it should serve index.html instead of proxying to the backend
+      '^/(admin|register|reset-password|site-login|me|public|microsoft|textures|send-verification-code)': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-      },
-      '^/register': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '^/admin': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '^/textures': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
+        bypass: (req) => {
+          if (req.headers.accept?.indexOf('text/html') !== -1) {
+            return '/index.html';
+          }
+        }
       },
       '^/static/textures': {
         target: 'http://127.0.0.1:8000',
@@ -56,27 +50,6 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
-      '^/me': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '^/microsoft': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '^/public': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '^/send-verification-code': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '^/reset-password': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      // 注意: 不代理根路径 '/'，以免覆盖 Vite 的 index.html
     }
   }
 })
