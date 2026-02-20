@@ -142,14 +142,16 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
         file: UploadFile = File(...),
         texture_type: str = Form(...),
         note: str = Form(""),
+        is_public: str = Form("false"),
     ):
         user_id = payload.get("sub")
         content = await file.read()
+        public_bool = is_public.lower() == "true"
         try:
             texture_hash, texture_type = await db.texture.upload(
-                user_id, content, texture_type, note
+                user_id, content, texture_type, note, is_public=public_bool
             )
-            return {"hash": texture_hash, "type": texture_type, "note": note}
+            return {"hash": texture_hash, "type": texture_type, "note": note, "is_public": public_bool}
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -202,6 +204,7 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
         uuid: str = Form(...),
         texture_type: str = Form(...),
         model: str = Form(""),
+        is_public: str = Form("false"),
     ):
         """
         前端直接上传材质接口.
@@ -209,11 +212,12 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
         """
         content = await file.read()
         user_id = payload.get("sub")
+        public_bool = is_public.lower() == "true"
 
         try:
             # 1. 上传材质到用户库 (或直接保存文件)
             texture_hash, _ = await db.texture.upload(
-                user_id, content, texture_type, f"Direct upload to profile {uuid}"
+                user_id, content, texture_type, f"Direct upload to profile {uuid}", is_public=public_bool
             )
 
             # 2. 应用到角色

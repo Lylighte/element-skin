@@ -21,7 +21,7 @@ class TextureModule:
         os.makedirs(self.textures_dir, exist_ok=True)
 
     async def upload(
-        self, user_id: str, file_bytes: bytes, texture_type: str, note: str = ""
+        self, user_id: str, file_bytes: bytes, texture_type: str, note: str = "", is_public: bool = False
     ) -> Tuple[str, str]:
         """
         验证、保存并记录材质
@@ -42,11 +42,11 @@ class TextureModule:
         with open(file_path, "wb") as f:
             f.write(normalized_bytes)
 
-        await self.add_to_library(user_id, texture_hash, texture_type, note)
+        await self.add_to_library(user_id, texture_hash, texture_type, note, is_public)
 
         return texture_hash, texture_type
 
-    async def add_to_library(self, user_id: str, texture_hash: str, texture_type: str, note: str = "") -> bool:
+    async def add_to_library(self, user_id: str, texture_hash: str, texture_type: str, note: str = "", is_public: bool = False) -> bool:
         async with self.db.get_conn() as conn:
             created_at = int(time.time() * 1000)
             try:
@@ -59,7 +59,7 @@ class TextureModule:
                 # 记录到全局皮肤库（如果尚不存在）
                 await conn.execute(
                     "INSERT OR IGNORE INTO skin_library (skin_hash, texture_type, is_public, uploader, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (texture_hash, texture_type, 0, user_id, created_at),
+                    (texture_hash, texture_type, 1 if is_public else 0, user_id, created_at),
                 )
                 
                 await conn.commit()
