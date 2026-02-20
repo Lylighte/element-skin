@@ -228,6 +228,16 @@ class UserModule:
                 row = await cur.fetchone()
                 return row[0] if row else 0
 
+    async def get_display_names_by_ids(self, user_ids: list[str]) -> dict[str, str]:
+        if not user_ids:
+            return {}
+        async with self.db.get_conn() as conn:
+            placeholders = ",".join("?" * len(user_ids))
+            query = f"SELECT id, display_name FROM users WHERE id IN ({placeholders})"
+            async with conn.execute(query, user_ids) as cur:
+                rows = await cur.fetchall()
+                return {r[0]: r[1] or "" for r in rows}
+
     # ========== Tokens ==========
     
     async def add_token(self, token: Token):

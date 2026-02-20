@@ -15,9 +15,9 @@
       </div>
       <div class="header-filters">
         <el-radio-group v-model="filterType" @change="handleFilterChange" size="large">
-          <el-radio-button label="">全部</el-radio-button>
-          <el-radio-button label="skin">皮肤</el-radio-button>
-          <el-radio-button label="cape">披风</el-radio-button>
+          <el-radio-button value="">全部</el-radio-button>
+          <el-radio-button value="skin">皮肤</el-radio-button>
+          <el-radio-button value="cape">披风</el-radio-button>
         </el-radio-group>
       </div>
     </div>
@@ -56,8 +56,14 @@
             <div class="texture-type-badge" :class="item.type">
               {{ item.type === 'skin' ? '皮肤' : '披风' }}
             </div>
-            <div class="texture-date">
-              {{ formatDate(item.created_at) }}
+            <div class="texture-meta-info">
+              <span class="uploader-name" v-if="item.uploader_name">
+                <el-icon><User /></el-icon>
+                {{ item.uploader_name }}
+              </span>
+              <span class="texture-date">
+                {{ formatDate(item.created_at) }}
+              </span>
             </div>
           </div>
           <div class="texture-actions">
@@ -94,7 +100,7 @@
 import { ref, onMounted, inject, computed } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, User } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CapeViewer from '@/components/CapeViewer.vue'
 
@@ -296,6 +302,21 @@ onMounted(() => {
 .texture-type-badge.cape {
   background: rgba(103, 194, 58, 0.1);
   color: #67c23a;
+}
+
+.texture-meta-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.uploader-name {
+  font-size: 13px;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .texture-date {

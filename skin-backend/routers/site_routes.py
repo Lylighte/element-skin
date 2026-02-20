@@ -207,6 +207,10 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
         total = await db.texture.count_library(texture_type=texture_type)
         items = await db.texture.get_from_library(limit=limit, offset=offset, texture_type=texture_type)
         
+        # 批量获取上传者名称
+        uploader_ids = list(set(r[3] for r in items if r[3]))
+        uploader_names = await db.user.get_display_names_by_ids(uploader_ids)
+        
         return {
             "total": total,
             "items": [
@@ -215,6 +219,7 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
                     "type": r[1],
                     "is_public": r[2],
                     "uploader": r[3],
+                    "uploader_name": uploader_names.get(r[3], ""),
                     "created_at": r[4]
                 }
                 for r in items
