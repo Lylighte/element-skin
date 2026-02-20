@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
+const isLowMemory = process.env.BUILD_MODE === 'low-memory'
+
 // https://vite.dev/config/
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || '/',
@@ -50,6 +52,21 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
+    }
+  },
+  build: {
+    sourcemap: !isLowMemory,
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      // 在低内存模式下将 maxParallelFileOps 设为 1，以极大地减小内存占用
+      ...(isLowMemory ? { maxParallelFileOps: 1 } : {}),
+      output: {
+        manualChunks: {
+          'vendor-element': ['element-plus'],
+          'vendor-utils': ['axios', 'vue', 'vue-router', 'pinia'],
+          'vendor-render': ['three', 'skinview3d'],
+        }
+      }
     }
   }
 })
