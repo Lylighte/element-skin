@@ -146,3 +146,43 @@ class TextureModule:
                 rows = await cur.fetchall()
                 # skin_hash, texture_type, is_public, uploader, created_at
                 return [(r[0], r[1], bool(r[2]), r[3], r[4]) for r in rows]
+
+    async def count_library(self, texture_type: Optional[str] = None, only_public: bool = True) -> int:
+        async with self.db.get_conn() as conn:
+            query = "SELECT COUNT(*) FROM skin_library"
+            conditions = []
+            params = []
+            if only_public:
+                conditions.append("is_public = 1")
+            if texture_type:
+                conditions.append("texture_type = ?")
+                params.append(texture_type)
+            
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            
+            async with conn.execute(query, params) as cur:
+                row = await cur.fetchone()
+                return row[0] if row else 0
+
+    async def add_to_user_wardrobe(self, user_id: str, texture_hash: str) -> bool:
+        """
+        从公共库添加材质到用户衣柜
+        """
+        async with self.db.get_conn() as conn:
+            # 获取材质信息
+            async with conn.execute(
+                "SELECT texture_type FROM skin_library WHERE skin_hash = ?", (texture_hash,)
+            ) as cur:
+                row = await cur.fetchone()
+                if not row:
+                    return False
+                texture_type = row[0]
+            
+            created_at = int(time.time() * 1000)
+            await conn.execute(
+                "INSERT OR IGNORE INTO user_textures (user_id, hash, texture_type, created_at) VALUES (?, ?, ?, ?)",
+                (user_id, texture_hash, texture_type, created_at),
+            )
+            await conn.commit()
+            return True

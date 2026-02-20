@@ -15,6 +15,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 import os
 import uuid
+from typing import Optional
 
 from utils.jwt_utils import decode_jwt_token
 from database_module import Database
@@ -182,6 +183,43 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
         await db.texture.delete_from_library(payload.get("sub"), hash, texture_type)
         return {"ok": True}
 
+    @router.post("/me/textures/{hash}/add")
+    async def add_texture_to_wardrobe(
+        hash: str, payload: dict = Depends(get_current_user)
+    ):
+        success = await db.texture.add_to_user_wardrobe(payload.get("sub"), hash)
+        if not success:
+            raise HTTPException(status_code=404, detail="Texture not found in library")
+        return {"ok": True}
+
+    @router.get("/public/skin-library")
+    async def get_skin_library(
+        page: int = 1,
+        limit: int = 20,
+        texture_type: Optional[str] = None
+    ):
+        enabled = await db.setting.get("enable_skin_library", "true")
+        if enabled != "true":
+            raise HTTPException(status_code=403, detail="Skin library is disabled by administrator")
+        
+        offset = (page - 1) * limit
+        total = await db.texture.count_library(texture_type=texture_type)
+        items = await db.texture.get_from_library(limit=limit, offset=offset, texture_type=texture_type)
+        
+        return {
+            "total": total,
+            "items": [
+                {
+                    "hash": r[0],
+                    "type": r[1],
+                    "is_public": r[2],
+                    "uploader": r[3],
+                    "created_at": r[4]
+                }
+                for r in items
+            ]
+        }
+
     @router.post("/me/textures/{hash}/apply")
     async def apply_texture_to_profile(
         hash: str, payload: dict = Depends(get_current_user), body: dict = Body(...)
@@ -247,6 +285,7 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
             "site_name": settings.get("site_name", "皮肤站"),
             "site_url": settings.get("site_url", ""),
             "allow_register": settings.get("allow_register", "true") == "true",
+            "enable_skin_library": settings.get("enable_skin_library", "true") == "true",
             "email_verify_enabled": settings.get("email_verify_enabled", "false") == "true",
             "mojang_status_urls": {
                 "session": settings.get(
