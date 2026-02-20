@@ -65,6 +65,15 @@ CREATE TABLE IF NOT EXISTS user_textures (
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS skin_library (
+    skin_hash TEXT PRIMARY KEY,
+    texture_type TEXT NOT NULL,
+    is_public INTEGER DEFAULT 0,
+    uploader TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(uploader) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS official_whitelist (
     username TEXT PRIMARY KEY,
     created_at INTEGER NOT NULL
@@ -91,9 +100,27 @@ class Database(BaseDB):
     async def init(self):
         """初始化表结构及执行迁移"""
         async with self.get_conn() as conn:
+            # 检查 skin_library 是否已存在，用于后续判断是否需要从 user_textures 迁移数据
+            cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='skin_library'"
+            )
+            skin_library_exists = await cursor.fetchone() is not None
+
             # 创建基础表结构
             await conn.executescript(INIT_SQL)
             await conn.commit()
+
+            # 如果是新创建的 skin_library 表，从 user_textures 迁移现有数据
+            if not skin_library_exists:
+                await conn.execute(
+                    """
+                    INSERT OR IGNORE INTO skin_library (skin_hash, texture_type, is_public, uploader, created_at)
+                    SELECT hash, texture_type, 0, user_id, created_at 
+                    FROM user_textures 
+                    GROUP BY hash
+                    """
+                )
+                await conn.commit()
 
             # 兼容旧库新增列
             cursor = await conn.execute("PRAGMA table_info(invites)")

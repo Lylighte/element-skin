@@ -50,10 +50,18 @@ class TextureModule:
         async with self.db.get_conn() as conn:
             created_at = int(time.time() * 1000)
             try:
+                # 记录用户材质
                 await conn.execute(
                     "INSERT OR IGNORE INTO user_textures (user_id, hash, texture_type, note, created_at) VALUES (?, ?, ?, ?, ?)",
                     (user_id, texture_hash, texture_type, note, created_at),
                 )
+                
+                # 记录到全局皮肤库（如果尚不存在）
+                await conn.execute(
+                    "INSERT OR IGNORE INTO skin_library (skin_hash, texture_type, is_public, uploader, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (texture_hash, texture_type, 0, user_id, created_at),
+                )
+                
                 await conn.commit()
                 return True
             except aiosqlite.IntegrityError:
