@@ -55,13 +55,14 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
 
         email = req.get("email")
         password = req.get("password")
+        username = req.get("username")
         invite = req.get("invite")
         code = req.get("code")
 
-        if not email or not password:
-            raise HTTPException(status_code=400, detail="email and password required")
+        if not email or not password or not username:
+            raise HTTPException(status_code=400, detail="email, password and username required")
 
-        user_id = await site_backend.register(email, password, invite, code)
+        user_id = await site_backend.register(email, password, username, invite, code)
         return {"id": user_id}
 
     @router.post("/send-verification-code")

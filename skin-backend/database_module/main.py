@@ -121,6 +121,16 @@ class Database(BaseDB):
                 )
                 await conn.commit()
 
+            # 迁移：为没有显示名（用户名）的用户设置默认用户名
+            await conn.execute(
+                """
+                UPDATE users 
+                SET display_name = SUBSTR(email, 1, INSTR(email, '@') - 1)
+                WHERE display_name IS NULL OR display_name = ''
+                """
+            )
+            await conn.commit()
+
             # 兼容旧库新增列
             cursor = await conn.execute("PRAGMA table_info(invites)")
             columns = [row[1] for row in await cursor.fetchall()]
