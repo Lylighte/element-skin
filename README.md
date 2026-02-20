@@ -64,11 +64,64 @@ textures:
 
 ### 2. 启动容器
 
-```bash
-# 根目录部署（推荐）
-docker compose up -d --build
+#### 默认方案：使用 GHCR 镜像（根目录部署）
 
-# 子目录部署示例（前端在 /skin/，后端在 /skin/api/）
+创建 `docker-compose.yml`（或直接替换现有配置）：
+
+```yaml
+version: '3.8'
+networks:
+  element-skin:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+          gateway: 172.18.0.1
+
+services:
+  # 后端服务
+  backend:
+    image: ghcr.io/water2004/element-skin-backend:latest
+    container_name: element-skin-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/data
+    networks:
+      - element-skin
+
+  # 前端服务
+  frontend:
+    image: ghcr.io/water2004/element-skin-frontend:latest
+    container_name: element-skin-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    networks:
+      - element-skin
+```
+
+启动容器：
+
+```bash
+docker compose up -d
+
+# 更新到最新镜像版本
+docker compose pull
+docker compose up -d
+```
+
+#### 子目录部署方案（必须本地构建）
+
+保持原始 `docker-compose.yml` 配置，使用本地构建：
+
+```bash
+# 子目录部署示例1（前端在 /skin/，后端在 /skinapi）
+VITE_BASE_PATH=/skin/ docker compose up -d --build
+
+# 子目录部署示例2（前端在 /skin/，后端在 /skin/api/）
 VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d --build
 
 # 低内存环境部署（跳过前端类型检查，减少构建时内存占用）
@@ -77,7 +130,9 @@ BUILD_MODE=low-memory docker compose up -d --build
 
 ### 3. 配置主机 Nginx
 
-参考 `nginx-host.conf`。确保拦截所有必要的 API 路径：
+根据部署方案选择相应的配置。
+
+#### 默认方案 Nginx 配置（根目录部署）
 
 ```nginx
 server {
@@ -88,9 +143,72 @@ server {
         proxy_pass http://localhost:3000;
     }
 
-    # 后端 API 路径匹配
-    location ~ ^/(authserver|sessionserver|admin|register|site-login|send-verification-code|reset-password|microsoft|textures|static|api|me|public|docs) {
-        proxy_pass http://localhost:8000;
+    # 后端 API（/skinapi 前缀）
+    location /skinapi/ {
+        proxy_pass http://localhost:8000/skinapi/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # 后端 API（/skinapi 本身）
+    location = /skinapi {
+        proxy_pass http://localhost:8000/skinapi;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+#### 子目录部署方案1 Nginx 配置（前端 /skin/，后端 /skinapi）
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    # 前端子目录
+    location /skin/ {
+        proxy_pass http://localhost:3000/;
+    }
+
+    # 后端 API（/skinapi 前缀）
+    location /skinapi/ {
+        proxy_pass http://localhost:8000/skinapi/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # 后端 API（/skinapi 本身）
+    location = /skinapi {
+        proxy_pass http://localhost:8000/skinapi;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+#### 子目录部署方案2 Nginx 配置（前端 /skin/，后端 /skin/api/）
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    # 前端子目录
+    location /skin/ {
+        proxy_pass http://localhost:3000/;
+    }
+
+    # 后端 API（/skin/api 前缀）
+    location /skin/api/ {
+        proxy_pass http://localhost:8000/skin/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # 后端 API（/skin/api 本身）
+    location = /skin/api {
+        proxy_pass http://localhost:8000/skin/api;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -109,13 +227,13 @@ server {
 
 ## 部署方案对比
 
-| 方案 | 前端路径 | 后端路径 | 环境变量配置 | 适用场景 |
-|-----|---------|---------|---------|---------|
-| **方案1** | `/` | `/authserver` 等 | 默认 | **推荐**，配置最简单 |
-| **方案2** | `/skin/` | `/authserver` 等 | `VITE_BASE_PATH=/skin/` | 前端需与其他应用共存 |
-| **方案3** | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/`<br>`VITE_API_BASE=/skin/api` | 后端也需要完全隔离 |
+| 方案 | 构建方式 | 前端路径 | 后端路径 | 环境变量配置 | 命令 |
+|-----|---------|---------|---------|---------|------|
+| **默认方案** | GHCR 镜像 | `/` | `/skinapi` 等 | 无需配置 | `docker compose up -d` |
+| **子目录方案1** | 本地构建 | `/skin/` | `/skinapi` 等 | `VITE_BASE_PATH=/skin/` | `VITE_BASE_PATH=/skin/ docker compose up -d --build` |
+| **子目录方案2** | 本地构建 | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/` `VITE_API_BASE=/skin/api` | `VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d --build` |
 
-> **注意**: 修改环境变量或配置后，请务必执行 `docker compose up -d --build` 重新构建。
+> **强烈推荐**：使用 **默认方案**（GHCR 镜像），无需本地构建，开箱即用。*子目录部署因需要环境变量定制，必须进行本地构建。*
 
 ---
 
