@@ -1,65 +1,40 @@
 # Element-Skin — Minecraft Yggdrasil 皮肤站
+
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/water2004/element-skin)
 
-基于 Vue 3 + FastAPI 的 Minecraft 外置登录系统，提供现代化的 UI 体验和完整的 Yggdrasil 协议支持。
+基于 Vue 3 + FastAPI 的现代化 Minecraft 外置登录系统。提供极佳的 UI 体验，完整支持 Yggdrasil 协议，兼容所有主流启动器。
 
 ![](./img/root.png)
 
-## 功能特性
+## ✨ 功能特性
 
-- ✅ **完整协议支持**: 完善的 Yggdrasil API 实现，兼容所有主流启动器。
-- ✅ **皮肤管理**: 支持皮肤/披风上传及 3D 实时预览。
-- ✅ **邮箱验证**: 完整的注册验证码及密码找回流程（支持 SMTP）。
-- ✅ **管理系统**: 响应式管理后台，支持用户管理、邀请码、轮播图及邮件服务配置。
-- ✅ **安全防护**: 内置速率限制 (Rate Limiting) 及安全防护机制。
-- ✅ **灵活部署**: 支持 Docker 一键部署及子目录 (Sub-path) 部署。
-
----
-
-## 快速开始
-
-### 开发环境
-
-#### 后端
-```bash
-cd skin-backend
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/macOS
-pip install -r requirements.txt
-python gen_key.py  # 生成 RSA 密钥
-uvicorn routes_reference:app --reload
-```
-
-#### 前端
-```bash
-cd element-skin
-npm install
-npm run dev
-```
-访问 http://localhost:5173
+- **✅ 完整协议支持**: 完美实现 Yggdrasil API，无缝对接 Authlib-Injector 等主流加载器。
+- **✅ 皮肤管理**: 支持皮肤/披风上传，集成 SkinView3D 提供丝滑的 3D 实时预览。
+- **✅ 完善的用户系统**: 包含邮箱验证、注册验证码、密码找回流程（支持 SMTP）。
+- **✅ 强大的管理后台**: 响应式设计，支持用户管理、邀请码机制、轮播图配置及邮件服务测试。
+- **✅ 安全与防护**: 内置 API 速率限制 (Rate Limiting) 及多种安全防护机制。
+- **✅ 灵活部署**: 既支持 Docker 一键部署，也支持复杂的子目录 (Sub-path) 架构。
 
 ---
 
-## Docker 部署
+## 🚀 Docker 部署指南 (推荐)
 
-### 镜像地址 (GHCR)
+我们提供了三种部署方案，**强烈建议使用方案 A（默认方案）**，直接使用预构建镜像，无需本地编译。
 
-本项目支持自动构建镜像，你可以直接从 GitHub Container Registry 获取：
+### 1. 准备配置文件
 
-- **后端**: `ghcr.io/water2004/element-skin-backend`
-- **前端**: `ghcr.io/water2004/element-skin-frontend`
+在宿主机创建 `config.yaml` 文件。这是系统运行的核心配置。
 
-### 1. 准备配置
+<details>
+<summary><b>📄 点击展开查看 config.yaml 模板（必须配置）</b></summary>
 
-创建 `config.yaml`（参考 `skin-backend/config.yaml`）：
 ```yaml
 # Element-Skin 配置文件
 
 jwt:
-  secret: "CHANGE-ME-TO-RANDOM-SECRET"  # ⚠️ 生产环境必须修改
+  secret: "CHANGE-ME-TO-RANDOM-SECRET"  # ⚠️ 生产环境必须修改为随机字符串
 
-# RSA 密钥配置
+# RSA 密钥配置 (系统会自动生成，指定路径即可)
 keys:
   private_key: "/data/private.pem"
   public_key: "/data/public.pem"
@@ -76,16 +51,16 @@ carousel:
 server:
   host: "0.0.0.0"
   port: 8000
-  root_path: "/skinapi"  # 子目录部署时配置，如 "/skin/api"
-  site_url: "http://yourdomain.com" # 站点外部访问地址 (用于 OAuth 回调等)
+  # ⚠️ 如果使用方案A (GHCR镜像)，此处必须保留为 /skinapi
+  # 如果是本地构建且自定义路径，请根据实际情况修改
+  root_path: "/skinapi" 
+  # ⚠️ 站点的外部访问地址 (用于 OAuth 回调及 Yggdrasil 发现服务)
+  site_url: "http://yourdomain.com" 
 
 # CORS 跨域配置
 cors:
-  # 允许的源列表（生产环境必须配置具体域名，支持通配符 *）
-  # 示例: ["https://yourdomain.com", "https://skin.yourdomain.com"]
-  # 开发环境可以用 ["*"] 允许所有来源
+  # 生产环境建议配置具体域名，如 ["https://yourdomain.com"]
   allow_origins: ["*"]
-  # 是否允许携带凭证（cookies）
   allow_credentials: true
 
 mojang:
@@ -94,31 +69,21 @@ mojang:
   services_url: "https://api.minecraftservices.com"
   skin_domains:
     - "textures.minecraft.net"
-  cache_ttl: 3600  # 单位：秒
+  cache_ttl: 3600
 ```
+</details>
 
-需要注意, 如果使用ghcr镜像和下面对应的nginx配置, server.root_path需要设置为`/skinapi`, 这样设置以后, 发往`8000`端口的请求路径都需要为`/skinapi/*`, 因此对应的nginx配置需要转发完整请求地址
+### 2. 选择部署方案
 
-此外, `site_url`用于后端的yggdrasil发现服务, 因此需要设置为站点的实际地址
+请根据你的需求选择一种方案，配置 `docker-compose.yml` 和 `Nginx`。
 
-### 2. 启动容器
+#### 方案 A：根目录部署 (GHCR 镜像) —— ✅ 推荐
+*无需本地构建，开箱即用。*
 
-#### 默认方案：使用 GHCR 镜像（根目录部署）
-
-创建 `docker-compose.yml`（或直接替换现有配置）：
-
+**docker-compose.yml**
 ```yaml
 version: '3.8'
-networks:
-  element-skin:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.18.0.0/16
-          gateway: 172.18.0.1
-
 services:
-  # 后端服务
   backend:
     image: ghcr.io/water2004/element-skin-backend:main
     container_name: element-skin-backend
@@ -128,72 +93,36 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./data:/data
-    networks:
-      - element-skin
-
-  # 前端服务
   frontend:
     image: ghcr.io/water2004/element-skin-frontend:main
     container_name: element-skin-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
-    networks:
-      - element-skin
+      - "3000:3000"
 ```
 
-启动容器：
+在项目的根目录下, 有一份完整的`docker-compose.yml`配置模板, 但若是使用ghcr镜像, 上面的配置已经足够
 
-```bash
-docker compose up -d
-
-# 更新到最新镜像版本
-docker compose pull
-docker compose up -d
-```
-
-#### 子目录部署方案（必须本地构建）
-
-保持原始 `docker-compose.yml` 配置，使用本地构建：
-
-```bash
-# 子目录部署示例1（前端在 /skin/，后端在 /skinapi）
-VITE_BASE_PATH=/skin/ docker compose up -d --build
-
-# 子目录部署示例2（前端在 /skin/，后端在 /skin/api/）
-VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d --build
-
-# 低内存环境部署（跳过前端类型检查，减少构建时内存占用）
-BUILD_MODE=low-memory docker compose up -d --build
-```
-
-### 3. 配置主机 Nginx
-
-根据部署方案选择相应的配置。
-
-#### 默认方案 Nginx 配置（根目录部署）
-
+**Nginx 主机配置**
 ```nginx
 server {
     listen 80;
     server_name yourdomain.com;
 
     location / {
-        #此处带有'/'
-        proxy_pass http://localhost:3000/;
+        proxy_pass http://localhost:3000/; # 注意末尾的 /
     }
 
-    # 后端 API（/skinapi 前缀）
+    # 后端 API 转发
+    # 注意：使用 GHCR 镜像时，后端必须匹配 /skinapi 路径
     location /skinapi/ {
-        #此处不带有'/'
-        proxy_pass http://localhost:8000;
+        proxy_pass http://localhost:8000; # 注意末尾没有 /
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
-
-    # 后端 API（/skinapi 本身）
+    
+    # 处理不带斜杠的请求
     location = /skinapi {
-        #此处不带有'/'
         proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -201,114 +130,103 @@ server {
 }
 ```
 
-#### 子目录部署方案1 Nginx 配置（前端 /skin/，后端 /skinapi）
+---
 
+#### 方案 B：子目录部署 (本地构建)
+*适用于将皮肤站部署在 `https://example.com/skin/` 这样的子路径下。此方案需要本地编译前端。*
+
+**启动命令**
+根据你的路径需求，修改项目根目录下的`docker-compose.yml`, 并使用对应的环境变量启动：
+
+| 场景 | 前端路径 | 后端路径 | 启动命令 |
+|-----|---------|---------|---------|
+| **场景 1** | `/skin/` | `/skinapi` | `VITE_BASE_PATH=/skin/ docker compose up -d --build` |
+| **场景 2** | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d --build` |
+
+> 💡 **低内存模式**: 如果构建时内存不足，可添加 `BUILD_MODE=low-memory` 环境变量跳过类型检查。
+
+**Nginx 主机配置 (对应场景 1)**
 ```nginx
-server {
-    listen 80;
-    server_name yourdomain.com;
-
-    # 前端子目录
-    location /skin/ {
-        #此处带有'/', 是为了让nginx去除前面的'/skin/'
-        proxy_pass http://localhost:3000/;
-    }
-
-    # 后端 API（/skinapi 前缀）
-    location /skinapi/ {
-        #此处不带有'/', 完整的请求路径将转发到后端
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    # 后端 API（/skinapi 本身）
-    location = /skinapi {
-        #此处不带有'/', 完整的请求路径将转发到后端
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+location /skin/ {
+    proxy_pass http://localhost:3000/; # 末尾有 /，去除 /skin/ 前缀
+}
+location /skinapi/ {
+    proxy_pass http://localhost:8000;  # 末尾无 /，保留完整路径
+    proxy_set_header Host $host;
 }
 ```
 
-#### 子目录部署方案2 Nginx 配置（前端 /skin/，后端 /skin/api/）
-
+**Nginx 主机配置 (对应场景 2)**
 ```nginx
-server {
-    listen 80;
-    server_name yourdomain.com;
-
-    # 前端子目录
-    location /skin/ {
-        proxy_pass http://localhost:3000/;
-    }
-
-    # 后端 API（/skin/api 前缀）
-    location /skin/api/ {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    # 后端 API（/skin/api 本身）
-    location = /skin/api {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+location /skin/ {
+    proxy_pass http://localhost:3000/;
+}
+location /skin/api/ {
+    proxy_pass http://localhost:8000;
+    proxy_set_header Host $host;
 }
 ```
 
 ---
 
-### 4. 配置后端api地址
-注册皮肤站账户, 第一个账户将自动成为管理员. 随后来到`管理员页面-站点设置`, 配置实际的后端api地址
-![](/img/backend_api_setting.png)
-保存设置后即可正常使用
+### 3. 初始化设置 (重要)
 
-## 首次配置
+容器启动成功后，请按以下步骤完成初始化：
 
-1. **管理员账号**: 注册的第一个用户将自动获得管理员权限。
-2. **后端api配置**: 登录后进入「管理面板」→「站点设置」，配置 **后端api地址**（必须与实际访问地址一致，否则材质无法加载）。
-3. **邮件服务**: 进入「管理面板」→「邮件服务」，配置 SMTP 信息并开启 **邮件验证开关**，即可启用注册验证码和找回密码功能。
+1.  **注册管理员**: 访问你的站点，注册的**第一个账号**将自动获得管理员权限。
+2.  **配置后端 API**:
+    *   登录后进入 `管理面板` -> `站点设置`。
+    *   修改 **后端 API 地址**。
+    *   ⚠️ **注意**: 此处必须填写浏览器可访问的完整 URL（例如 `https://yourdomain.com/skinapi` 或 `https://yourdomain.com/skin/api`）。如果配置错误，材质预览将无法加载。
+    
+    ![](./img/backend_api_setting.png)
 
----
-
-## 部署方案对比
-
-| 方案 | 构建方式 | 前端路径 | 后端路径 | 环境变量配置 | 命令 |
-|-----|---------|---------|---------|---------|------|
-| **默认方案** | GHCR 镜像 | `/` | `/skinapi` 等 | 无需配置 | `docker compose up -d` |
-| **子目录方案1** | 本地构建 | `/skin/` | `/skinapi` 等 | `VITE_BASE_PATH=/skin/` | `VITE_BASE_PATH=/skin/ docker compose up -d --build` |
-| **子目录方案2** | 本地构建 | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/` `VITE_API_BASE=/skin/api` | `VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d --build` |
-
-> **强烈推荐**：使用 **默认方案**（GHCR 镜像），无需本地构建，开箱即用。*子目录部署因需要环境变量定制，必须进行本地构建。*
+3.  **配置邮件服务**:
+    *   进入 `管理面板` -> `邮件服务`。
+    *   配置 SMTP 信息并开启“邮件验证开关”，即可启用验证码和密码找回功能。
 
 ---
 
-## 项目结构
+## 🛠️ 本地开发环境
 
+如果你需要修改代码或参与贡献：
+
+### 后端 (Python)
+```bash
+cd skin-backend
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
+
+pip install -r requirements.txt
+python gen_key.py                # 生成 RSA 密钥
+uvicorn routes_reference:app --reload
 ```
+
+### 前端 (Node.js)
+```bash
+cd element-skin
+npm install
+npm run dev
+```
+访问 http://localhost:5173
+
+---
+
+## 📂 项目结构
+
+```text
 element-skin/
-├── element-skin/       # 前端（Vue 3 + Element Plus）
-├── skin-backend/       # 后端（FastAPI + SQLite）
-├── config.yaml         # 配置文件（手动创建）
-├── data/               # 数据目录（自动生成：数据库、材质、密钥）
-├── docker-compose.yml  # Docker 编排
-└── nginx-host.conf     # Nginx 参考配置
+├── element-skin/       # 前端源码 (Vue 3 + Element Plus)
+├── skin-backend/       # 后端源码 (FastAPI)
+├── config.yaml         # 配置文件 (需手动创建)
+├── data/               # 数据存储 (数据库、材质、密钥，自动生成)
+├── docker-compose.yml  # Docker 编排文件
+└── nginx-host.conf     # Nginx 配置参考
 ```
 
----
-
-## 技术栈
-
-- **Frontend**: Vue 3, Vite, Element Plus, SkinView3D
-- **Backend**: FastAPI, aiosqlite, aiosmtplib, PyJWT
-- **Database**: SQLite (WAL mode)
-
----
-
-## 许可证
+## 📄 许可证
 
 [MIT License](LICENSE)
