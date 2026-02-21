@@ -40,10 +40,10 @@
           </div>
         </div>
         <div class="texture-info-simple">
-          <div class="texture-note-simple">{{ tex.note || '未命名纹理' }}</div>
           <div class="texture-type-tag" :class="tex.type">
             {{ tex.type === 'skin' ? '皮肤' : '披风' }}
           </div>
+          <div class="texture-note-simple">{{ tex.note || '未命名纹理' }}</div>
         </div>
       </div>
     </div>
@@ -98,8 +98,8 @@
           <section class="info-section" v-if="selectedTexture.type === 'skin'">
             <div class="section-label">模型选择</div>
             <el-radio-group v-model="selectedTexture.model" @change="updateModel" class="capsule-radio">
-              <el-radio-button label="default">Default</el-radio-button>
-              <el-radio-button label="slim">Slim</el-radio-button>
+              <el-radio-button value="default">Default</el-radio-button>
+              <el-radio-button value="slim">Slim</el-radio-button>
             </el-radio-group>
           </section>
 
@@ -459,25 +459,30 @@ onMounted(() => {
 .texture-info-simple {
   padding: 12px;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
+  gap: 6px;
   background: var(--color-card-background);
 }
 
 .texture-note-simple {
   font-size: 14px;
+  font-weight: 600;
   color: var(--color-text);
-  max-width: 130px;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: center;
 }
 
 .texture-type-tag {
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: 10px;
+  padding: 1px 8px;
   border-radius: 10px;
-  font-weight: 700;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .texture-type-tag.skin {

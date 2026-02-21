@@ -281,7 +281,7 @@ onMounted(() => {
 
 .texture-info {
   padding: 12px 16px;
-  text-align: left;
+  text-align: center;
   background: var(--color-card-background);
 }
 
@@ -298,6 +298,7 @@ onMounted(() => {
 .texture-meta-info {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   color: var(--color-text-light);
 }
