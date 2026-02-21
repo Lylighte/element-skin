@@ -50,8 +50,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}-${{ matrix.image_suffix }}
           tags: |
-            type=semver,pattern={{version}}  # 仅根据版本标签生成版本号
-            main  # 为每个版本添加 main 标签
+            type=semver,pattern={{version}}
+            main
             type=sha,format=short
 
       - name: Build and push Docker image
@@ -61,8 +61,8 @@ jobs:
           context: ${{ matrix.context }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ steps.meta.outputs.tags }}  # 使用生成的版本号标签
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}-${{ matrix.image_suffix }}:main  # 打上 main 标签
+            ${{ steps.meta.outputs.tags }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}-${{ matrix.image_suffix }}:main  
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
