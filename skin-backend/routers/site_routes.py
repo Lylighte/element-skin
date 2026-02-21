@@ -161,10 +161,23 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
     @router.get("/me/textures")
     async def list_my_textures(payload: dict = Depends(get_current_user)):
         textures = await db.texture.get_for_user(payload.get("sub"))
+        # 返回基础信息用于网格展示
         return [
-            {"hash": r[0], "type": r[1], "note": r[2], "created_at": r[3], "model": r[4], "is_public": r[5]}
+            {"hash": r[0], "type": r[1], "note": r[2], "model": r[4]}
             for r in textures
         ]
+
+    @router.get("/me/textures/{hash}/{texture_type}")
+    async def get_my_texture_detail(
+        hash: str,
+        texture_type: str,
+        payload: dict = Depends(get_current_user)
+    ):
+        user_id = payload.get("sub")
+        info = await db.texture.get_texture_info(user_id, hash, texture_type)
+        if not info:
+            raise HTTPException(status_code=404, detail="Texture not found")
+        return info
 
     @router.patch("/me/textures/{hash}/{texture_type}")
     async def update_my_texture(

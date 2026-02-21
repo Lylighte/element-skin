@@ -73,8 +73,9 @@
           />
         </div>
 
-        <div class="gallery-info">
-          <section class="info-section title-section">
+        <div class="gallery-info" v-loading="isDetailLoading">
+          <template v-if="selectedTexture">
+            <section class="info-section title-section">
             <div class="title-row">
               <el-button text circle class="title-edit-btn" @click="focusNoteInput">
                 <el-icon><Edit /></el-icon>
@@ -103,7 +104,7 @@
             </el-radio-group>
           </section>
 
-          <section class="info-section" v-if="selectedTexture.is_public !== 2">
+          <section class="info-section" v-if="!isDetailLoading && selectedTexture.is_public !== 2">
             <div class="section-label">公开状态</div>
             <div class="public-toggle-row">
               <el-switch
@@ -140,6 +141,7 @@
               删除纹理
             </el-button>
           </section>
+          </template>
         </div>
       </div>
     </el-dialog>
@@ -220,6 +222,7 @@ const textures = ref([])
 const textureResolutions = ref(new Map())
 const showDetailDialog = ref(false)
 const selectedTexture = ref(null)
+const isDetailLoading = ref(false)
 const editingNoteValue = ref('')
 const isApplying = ref(false)
 const noteInputRef = ref(null)
@@ -239,13 +242,29 @@ function texturesUrl(hash) {
   return (import.meta.env.VITE_API_BASE || '') + '/static/textures/' + hash + '.png'
 }
 
-function openDetailDialog(tex) {
-  selectedTexture.value = tex
+async function openDetailDialog(tex) {
+  // 先设置基础信息用于预览展示
+  // 显式设置 is_public 为 2 (隐藏)，直到详情加载完成，防止 el-switch 状态错误
+  selectedTexture.value = { ...tex, is_public: 2 }
   editingNoteValue.value = tex.note || ''
   applyForm.value.hash = tex.hash
   applyForm.value.texture_type = tex.type
   applyForm.value.profile_id = ''
+  
   showDetailDialog.value = true
+  isDetailLoading.value = true
+  
+  try {
+    const res = await axios.get(`/me/textures/${tex.hash}/${tex.type}`, { headers: authHeaders() })
+    // 更新为完整信息（包含 is_public 等）
+    selectedTexture.value = res.data
+    editingNoteValue.value = res.data.note || ''
+  } catch (e) {
+    console.error('Fetch texture detail error:', e)
+    ElMessage.error('获取详情失败')
+  } finally {
+    isDetailLoading.value = false
+  }
 }
 
 function focusNoteInput() {
@@ -253,7 +272,7 @@ function focusNoteInput() {
 }
 
 async function updateNote() {
-  if (!selectedTexture.value) return
+  if (!selectedTexture.value || isDetailLoading.value) return
   const tex = selectedTexture.value
   const updated = editingNoteValue.value.trim()
   if (updated === (tex.note || '')) return
@@ -261,6 +280,9 @@ async function updateNote() {
   try {
     await axios.patch(`/me/textures/${tex.hash}/${tex.type}`, { note: updated }, { headers: authHeaders() })
     tex.note = updated
+    // 同步更新本地列表，避免重新获取
+    const localTex = textures.value.find(t => t.hash === tex.hash && t.type === tex.type)
+    if (localTex) localTex.note = updated
     ElMessage.success('备注已更新')
   } catch (e) {
     ElMessage.error('更新备注失败')
@@ -268,10 +290,14 @@ async function updateNote() {
 }
 
 async function updateModel(val) {
-  if (!selectedTexture.value) return
+  if (!selectedTexture.value || isDetailLoading.value) return
   const tex = selectedTexture.value
   try {
     await axios.patch(`/me/textures/${tex.hash}/${tex.type}`, { model: val }, { headers: authHeaders() })
+    tex.model = val
+    // 同步更新本地列表
+    const localTex = textures.value.find(t => t.hash === tex.hash && t.type === tex.type)
+    if (localTex) localTex.model = val
     ElMessage.success(`模型已切换为 ${val === 'slim' ? '纤细' : '普通'}`)
   } catch (e) {
     ElMessage.error('切换模型失败')
@@ -279,7 +305,9 @@ async function updateModel(val) {
 }
 
 async function updateIsPublic(val) {
-  if (!selectedTexture.value) return
+  // 数据加载中或对象为空时，拒绝任何更新操作
+  if (!selectedTexture.value || isDetailLoading.value) return
+  
   const tex = selectedTexture.value
   try {
     await axios.patch(`/me/textures/${tex.hash}/${tex.type}`, { is_public: val === 1 }, { headers: authHeaders() })
