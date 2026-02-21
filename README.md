@@ -54,13 +54,52 @@ npm run dev
 
 创建 `config.yaml`（参考 `skin-backend/config.yaml`）：
 ```yaml
+# Element-Skin 配置文件
+
 jwt:
-  secret: "随机字符串"
+  secret: "CHANGE-ME-TO-RANDOM-SECRET"  # ⚠️ 生产环境必须修改
+
+# RSA 密钥配置
+keys:
+  private_key: "/data/private.pem"
+  public_key: "/data/public.pem"
+
 database:
   path: "/data/yggdrasil.db"
+
 textures:
   directory: "/data/textures"
+
+carousel:
+  directory: "/data/carousel"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  root_path: "/skinapi"  # 子目录部署时配置，如 "/skin/api"
+  site_url: "http://yourdomain.com" # 站点外部访问地址 (用于 OAuth 回调等)
+
+# CORS 跨域配置
+cors:
+  # 允许的源列表（生产环境必须配置具体域名，支持通配符 *）
+  # 示例: ["https://yourdomain.com", "https://skin.yourdomain.com"]
+  # 开发环境可以用 ["*"] 允许所有来源
+  allow_origins: ["*"]
+  # 是否允许携带凭证（cookies）
+  allow_credentials: true
+
+mojang:
+  session_url: "https://sessionserver.mojang.com"
+  account_url: "https://api.mojang.com"
+  services_url: "https://api.minecraftservices.com"
+  skin_domains:
+    - "textures.minecraft.net"
+  cache_ttl: 3600  # 单位：秒
 ```
+
+需要注意, 如果使用ghcr镜像和下面对应的nginx配置, server.root_path需要设置为`/skinapi`, 这样设置以后, 发往`8000`端口的请求路径都需要为`/skinapi/*`, 因此对应的nginx配置需要转发完整请求地址
+
+此外, `site_url`用于后端的yggdrasil发现服务, 因此需要设置为站点的实际地址
 
 ### 2. 启动容器
 
@@ -81,7 +120,7 @@ networks:
 services:
   # 后端服务
   backend:
-    image: ghcr.io/water2004/element-skin-backend:latest
+    image: ghcr.io/water2004/element-skin-backend:main
     container_name: element-skin-backend
     restart: unless-stopped
     ports:
@@ -94,7 +133,7 @@ services:
 
   # 前端服务
   frontend:
-    image: ghcr.io/water2004/element-skin-frontend:latest
+    image: ghcr.io/water2004/element-skin-frontend:main
     container_name: element-skin-frontend
     restart: unless-stopped
     ports:
@@ -140,19 +179,22 @@ server {
     server_name yourdomain.com;
 
     location / {
-        proxy_pass http://localhost:3000;
+        #此处带有'/'
+        proxy_pass http://localhost:3000/;
     }
 
     # 后端 API（/skinapi 前缀）
     location /skinapi/ {
-        proxy_pass http://localhost:8000/skinapi/;
+        #此处不带有'/'
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     # 后端 API（/skinapi 本身）
     location = /skinapi {
-        proxy_pass http://localhost:8000/skinapi;
+        #此处不带有'/'
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -168,19 +210,22 @@ server {
 
     # 前端子目录
     location /skin/ {
+        #此处带有'/', 是为了让nginx去除前面的'/skin/'
         proxy_pass http://localhost:3000/;
     }
 
     # 后端 API（/skinapi 前缀）
     location /skinapi/ {
-        proxy_pass http://localhost:8000/skinapi/;
+        #此处不带有'/', 完整的请求路径将转发到后端
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     # 后端 API（/skinapi 本身）
     location = /skinapi {
-        proxy_pass http://localhost:8000/skinapi;
+        #此处不带有'/', 完整的请求路径将转发到后端
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -201,14 +246,14 @@ server {
 
     # 后端 API（/skin/api 前缀）
     location /skin/api/ {
-        proxy_pass http://localhost:8000/skin/api/;
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     # 后端 API（/skin/api 本身）
     location = /skin/api {
-        proxy_pass http://localhost:8000/skin/api;
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -217,10 +262,15 @@ server {
 
 ---
 
+### 4. 配置后端api地址
+注册皮肤站账户, 第一个账户将自动成为管理员. 随后来到`管理员页面-站点设置`, 配置实际的后端api地址
+![](/img/backend_api_setting.png)
+保存设置后即可正常使用
+
 ## 首次配置
 
 1. **管理员账号**: 注册的第一个用户将自动获得管理员权限。
-2. **站点配置**: 登录后进入「管理面板」→「站点设置」，配置 **站点 URL**（必须与实际访问地址一致，否则材质无法加载）。
+2. **后端api配置**: 登录后进入「管理面板」→「站点设置」，配置 **后端api地址**（必须与实际访问地址一致，否则材质无法加载）。
 3. **邮件服务**: 进入「管理面板」→「邮件服务」，配置 SMTP 信息并开启 **邮件验证开关**，即可启用注册验证码和找回密码功能。
 
 ---
