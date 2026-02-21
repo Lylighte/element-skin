@@ -20,6 +20,7 @@
           <SkinViewer
             v-if="tex.type === 'skin'"
             :skinUrl="texturesUrl(tex.hash)"
+            :model="tex.model || 'default'"
             :width="200"
             :height="280"
           />

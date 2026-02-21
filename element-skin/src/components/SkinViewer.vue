@@ -15,6 +15,10 @@ const props = defineProps({
     type: String,
     default: null
   },
+  model: {
+    type: String,
+    default: 'default' // 'default' (4px) or 'slim' (3px)
+  },
   width: {
     type: Number,
     default: 300
@@ -36,6 +40,7 @@ onMounted(() => {
       height: props.height,
       skin: props.skinUrl,
       cape: props.capeUrl,
+      model: props.model === 'slim' ? 'slim' : 'steve'
     })
 
     container.value.appendChild(viewer.canvas)
@@ -61,7 +66,13 @@ onUnmounted(() => {
 
 watch(() => props.skinUrl, (newUrl) => {
   if (viewer && newUrl) {
-    viewer.loadSkin(newUrl)
+    viewer.loadSkin(newUrl, { model: props.model === 'slim' ? 'slim' : 'steve' })
+  }
+})
+
+watch(() => props.model, (newModel) => {
+  if (viewer) {
+    viewer.loadSkin(props.skinUrl, { model: newModel === 'slim' ? 'slim' : 'steve' })
   }
 })
 

@@ -143,6 +143,12 @@ class TextureModule:
                 "UPDATE skin_library SET model=? WHERE skin_hash=? AND uploader=?",
                 (model, texture_hash, user_id),
             )
+            # If it's a skin, also update all profiles using this skin to match the new model
+            if texture_type.lower() == "skin":
+                await conn.execute(
+                    "UPDATE profiles SET texture_model=? WHERE skin_hash=? AND user_id=?",
+                    (model, texture_hash, user_id),
+                )
             await conn.commit()
 
     async def get_from_library(

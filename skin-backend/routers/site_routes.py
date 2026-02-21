@@ -145,15 +145,16 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
         texture_type: str = Form(...),
         note: str = Form(""),
         is_public: str = Form("false"),
+        model: str = Form("default"),
     ):
         user_id = payload.get("sub")
         content = await file.read()
         public_bool = is_public.lower() == "true"
         try:
             texture_hash, texture_type = await db.texture.upload(
-                user_id, content, texture_type, note, is_public=public_bool
+                user_id, content, texture_type, note, is_public=public_bool, model=model
             )
-            return {"hash": texture_hash, "type": texture_type, "note": note, "is_public": public_bool}
+            return {"hash": texture_hash, "type": texture_type, "note": note, "is_public": public_bool, "model": model}
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 

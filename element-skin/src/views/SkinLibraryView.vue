@@ -34,6 +34,7 @@
             <SkinViewer
               v-if="item.type === 'skin'"
               :skinUrl="texturesUrl(item.hash)"
+              :model="item.model || 'default'"
               :width="200"
               :height="280"
               @load="handleTextureLoad(item.hash)"

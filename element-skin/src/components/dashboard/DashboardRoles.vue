@@ -21,6 +21,7 @@
             v-if="profile.skin_hash"
             :skinUrl="texturesUrl(profile.skin_hash)"
             :capeUrl="profile.cape_hash ? texturesUrl(profile.cape_hash) : null"
+            :model="profile.model || 'default'"
             :width="200"
             :height="280"
           />
