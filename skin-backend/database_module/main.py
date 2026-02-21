@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS skin_library (
     is_public INTEGER DEFAULT 0,
     uploader TEXT,
     model TEXT DEFAULT 'default',
+    name TEXT DEFAULT '',
     created_at INTEGER NOT NULL
 );
 
@@ -155,13 +156,36 @@ class Database(BaseDB):
             # 兼容旧库：skin_library 增加 model 列
             cursor = await conn.execute("PRAGMA table_info(skin_library)")
             columns = [row[1] for row in await cursor.fetchall()]
-            if "model" not in columns:
-                await conn.execute(
-                    "ALTER TABLE skin_library ADD COLUMN model TEXT DEFAULT 'default'"
-                )
-                await conn.commit()
+        if "model" not in columns:
+            await conn.execute(
+                "ALTER TABLE skin_library ADD COLUMN model TEXT DEFAULT 'default'"
+            )
+            await conn.commit()
 
-            # 兼容旧库：user_textures 增加 is_public 列 (0:私有, 1:公开, 2:非上传者)
+        # 兼容旧库：skin_library 增加 name 列
+        cursor = await conn.execute("PRAGMA table_info(skin_library)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if "name" not in columns:
+            await conn.execute(
+                "ALTER TABLE skin_library ADD COLUMN name TEXT DEFAULT ''"
+            )
+            await conn.commit()
+            # 从上传者的 user_textures 中同步备注作为名称
+            await conn.execute(
+                """
+                UPDATE skin_library 
+                SET name = (
+                    SELECT note FROM user_textures 
+                    WHERE user_textures.hash = skin_library.skin_hash 
+                    AND user_textures.user_id = skin_library.uploader
+                    LIMIT 1
+                )
+                WHERE uploader IS NOT NULL
+                """
+            )
+            await conn.commit()
+            
+            # 兼容旧库：user_textures 增加 is_public 列(0:私有, 1:公开, 2:非上传者)
             cursor = await conn.execute("PRAGMA table_info(user_textures)")
             columns = [row[1] for row in await cursor.fetchall()]
             if "is_public" not in columns:

@@ -54,14 +54,13 @@
             </div>
           </div>
           <div class="texture-info">
-            <div class="texture-type-badge" :class="item.type">
-              {{ item.type === 'skin' ? '皮肤' : '披风' }}
-            </div>
+            <div class="texture-title">{{ item.name || '未命名材质' }}</div>
             <div class="texture-meta-info">
               <span class="uploader-name" v-if="item.uploader_name">
                 <el-icon><User /></el-icon>
                 {{ item.uploader_name }}
               </span>
+              <span class="meta-separator" v-if="item.uploader_name">·</span>
               <span class="texture-date">
                 {{ formatDate(item.created_at) }}
               </span>
@@ -281,48 +280,45 @@ onMounted(() => {
 }
 
 .texture-info {
-  padding: 16px;
-  text-align: center;
+  padding: 12px 16px;
+  text-align: left;
   background: var(--color-card-background);
 }
 
-.texture-type-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
+.texture-title {
+  font-size: 15px;
   font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.texture-type-badge.skin {
-  background: rgba(64, 158, 255, 0.1);
-  color: #409eff;
-}
-
-.texture-type-badge.cape {
-  background: rgba(103, 194, 58, 0.1);
-  color: #67c23a;
+  color: var(--color-heading);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .texture-meta-info {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
   align-items: center;
+  gap: 6px;
+  color: var(--color-text-light);
+}
+
+.meta-separator {
+  opacity: 0.5;
 }
 
 .uploader-name {
-  font-size: 13px;
-  color: var(--color-text);
+  font-size: 12px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .texture-date {
   font-size: 12px;
-  color: var(--color-text-light);
 }
 
 .texture-actions {

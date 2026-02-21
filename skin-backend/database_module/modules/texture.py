@@ -57,10 +57,10 @@ class TextureModule:
                     (user_id, texture_hash, texture_type, note, model, is_public_val, created_at),
                 )
                 
-                # 记录到全局皮肤库（如果尚不存在）
+                # 记录到全局皮肤库
                 await conn.execute(
-                    "INSERT OR IGNORE INTO skin_library (skin_hash, texture_type, is_public, uploader, model, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (texture_hash, texture_type, is_public_val, user_id, model, created_at),
+                    "INSERT OR IGNORE INTO skin_library (skin_hash, texture_type, is_public, uploader, model, name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (texture_hash, texture_type, is_public_val, user_id, model, note, created_at),
                 )
                 
                 await conn.commit()
@@ -131,6 +131,11 @@ class TextureModule:
                 "UPDATE user_textures SET note=? WHERE user_id=? AND hash=? AND texture_type=?",
                 (note, user_id, texture_hash, texture_type),
             )
+            # 同时更新皮肤库中的名称 (如果是上传者)
+            await conn.execute(
+                "UPDATE skin_library SET name=? WHERE skin_hash=? AND uploader=?",
+                (note, texture_hash, user_id),
+            )
             await conn.commit()
 
     async def update_model(self, user_id: str, texture_hash: str, texture_type: str, model: str):
@@ -179,7 +184,7 @@ class TextureModule:
         获取皮肤库中的材质
         """
         async with self.db.get_conn() as conn:
-            query = "SELECT skin_hash, texture_type, is_public, uploader, created_at, model FROM skin_library"
+            query = "SELECT skin_hash, texture_type, is_public, uploader, created_at, model, name FROM skin_library"
             conditions = []
             params = []
 
@@ -198,8 +203,8 @@ class TextureModule:
 
             async with conn.execute(query, params) as cur:
                 rows = await cur.fetchall()
-                # skin_hash, texture_type, is_public, uploader, created_at, model
-                return [(r[0], r[1], bool(r[2]), r[3], r[4], r[5]) for r in rows]
+                # skin_hash, texture_type, is_public, uploader, created_at, model, name
+                return [(r[0], r[1], bool(r[2]), r[3], r[4], r[5], r[6]) for r in rows]
 
     async def count_library(self, texture_type: Optional[str] = None, only_public: bool = True) -> int:
         async with self.db.get_conn() as conn:

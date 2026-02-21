@@ -228,7 +228,8 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
                     "uploader": r[3],
                     "uploader_name": uploader_names.get(r[3], ""),
                     "created_at": r[4],
-                    "model": r[5]
+                    "model": r[5],
+                    "name": r[6]
                 }
                 for r in items
             ]
