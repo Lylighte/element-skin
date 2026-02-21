@@ -378,8 +378,8 @@ def setup_routes(backend: YggdrasilBackend, db: Database, crypto, rate_limiter):
                 "implementationName": "element-skin",
                 "implementationVersion": "1.0.0",
                 "links": {
-                    "homepage": site_url,
-                    "register": f"{site_url}/register" if site_url else None,
+                    "homepage": f"{site_url}/" if site_url else None,
+                    "register": f"{site_url}/register/" if site_url else None,
                 },
                 "feature.non_email_login": True,
             },
