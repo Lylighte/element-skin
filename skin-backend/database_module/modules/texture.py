@@ -49,17 +49,18 @@ class TextureModule:
     async def add_to_library(self, user_id: str, texture_hash: str, texture_type: str, note: str = "", is_public: bool = False, model: str = "default") -> bool:
         async with self.db.get_conn() as conn:
             created_at = int(time.time() * 1000)
+            is_public_val = 1 if is_public else 0
             try:
                 # 记录用户材质
                 await conn.execute(
-                    "INSERT OR IGNORE INTO user_textures (user_id, hash, texture_type, note, model, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (user_id, texture_hash, texture_type, note, model, created_at),
+                    "INSERT OR IGNORE INTO user_textures (user_id, hash, texture_type, note, model, is_public, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, texture_hash, texture_type, note, model, is_public_val, created_at),
                 )
                 
                 # 记录到全局皮肤库（如果尚不存在）
                 await conn.execute(
                     "INSERT OR IGNORE INTO skin_library (skin_hash, texture_type, is_public, uploader, model, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (texture_hash, texture_type, 1 if is_public else 0, user_id, model, created_at),
+                    (texture_hash, texture_type, is_public_val, user_id, model, created_at),
                 )
                 
                 await conn.commit()
@@ -86,16 +87,16 @@ class TextureModule:
     async def get_for_user(self, user_id: str, texture_type: Optional[str] = None) -> list[tuple]:
         async with self.db.get_conn() as conn:
             if texture_type:
-                query = "SELECT hash, texture_type, note, created_at, model FROM user_textures WHERE user_id=? AND texture_type=? ORDER BY created_at DESC"
+                query = "SELECT hash, texture_type, note, created_at, model, is_public FROM user_textures WHERE user_id=? AND texture_type=? ORDER BY created_at DESC"
                 params = (user_id, texture_type)
             else:
-                query = "SELECT hash, texture_type, note, created_at, model FROM user_textures WHERE user_id=? ORDER BY created_at DESC"
+                query = "SELECT hash, texture_type, note, created_at, model, is_public FROM user_textures WHERE user_id=? ORDER BY created_at DESC"
                 params = (user_id,)
             
             async with conn.execute(query, params) as cur:
                 rows = await cur.fetchall()
-                # hash, texture_type, note, created_at, model
-                return [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
+                # hash, texture_type, note, created_at, model, is_public
+                return [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in rows]
 
     async def verify_ownership(self, user_id: str, texture_hash: str, texture_type: str) -> bool:
         async with self.db.get_conn() as conn:
@@ -109,7 +110,7 @@ class TextureModule:
     async def get_texture_info(self, user_id: str, texture_hash: str, texture_type: str) -> Optional[dict]:
         async with self.db.get_conn() as conn:
             async with conn.execute(
-                "SELECT hash, texture_type, note, model, created_at FROM user_textures WHERE user_id=? AND hash=? AND texture_type=?",
+                "SELECT hash, texture_type, note, model, created_at, is_public FROM user_textures WHERE user_id=? AND hash=? AND texture_type=?",
                 (user_id, texture_hash, texture_type),
             ) as cur:
                 row = await cur.fetchone()
@@ -119,7 +120,8 @@ class TextureModule:
                         "type": row[1],
                         "note": row[2],
                         "model": row[3],
-                        "created_at": row[4]
+                        "created_at": row[4],
+                        "is_public": row[5]
                     }
                 return None
 
@@ -149,6 +151,21 @@ class TextureModule:
                     "UPDATE profiles SET texture_model=? WHERE skin_hash=? AND user_id=?",
                     (model, texture_hash, user_id),
                 )
+            await conn.commit()
+
+    async def update_is_public(self, user_id: str, texture_hash: str, texture_type: str, is_public: bool):
+        async with self.db.get_conn() as conn:
+            is_public_val = 1 if is_public else 0
+            # 只有上传者才能修改公开状态 (is_public != 2)
+            await conn.execute(
+                "UPDATE user_textures SET is_public=? WHERE user_id=? AND hash=? AND texture_type=? AND is_public != 2",
+                (is_public_val, user_id, texture_hash, texture_type),
+            )
+            # 同时更新皮肤库
+            await conn.execute(
+                "UPDATE skin_library SET is_public=? WHERE skin_hash=? AND uploader=?",
+                (is_public_val, texture_hash, user_id),
+            )
             await conn.commit()
 
     async def get_from_library(
@@ -218,9 +235,10 @@ class TextureModule:
                 model = row[1]
             
             created_at = int(time.time() * 1000)
+            # 非上传者添加，状态设为 2
             await conn.execute(
-                "INSERT OR IGNORE INTO user_textures (user_id, hash, texture_type, model, created_at) VALUES (?, ?, ?, ?, ?)",
-                (user_id, texture_hash, texture_type, model, created_at),
+                "INSERT OR IGNORE INTO user_textures (user_id, hash, texture_type, model, is_public, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, texture_hash, texture_type, model, 2, created_at),
             )
             await conn.commit()
             return True

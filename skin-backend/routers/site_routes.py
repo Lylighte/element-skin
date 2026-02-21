@@ -178,6 +178,8 @@ def setup_routes(db: Database, backend, rate_limiter, config: Config):
             await db.texture.update_note(user_id, hash, texture_type, body["note"])
         if "model" in body:
             await db.texture.update_model(user_id, hash, texture_type, body["model"])
+        if "is_public" in body:
+            await db.texture.update_is_public(user_id, hash, texture_type, body["is_public"])
         
         info = await db.texture.get_texture_info(user_id, hash, texture_type)
         return {"ok": True, **info}

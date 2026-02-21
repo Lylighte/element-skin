@@ -103,6 +103,21 @@
             </el-radio-group>
           </section>
 
+          <section class="info-section" v-if="selectedTexture.is_public !== 2">
+            <div class="section-label">公开状态</div>
+            <div class="public-toggle-row">
+              <el-switch
+                v-model="selectedTexture.is_public"
+                :active-value="1"
+                :inactive-value="0"
+                @change="updateIsPublic"
+              />
+              <span class="public-status-text">
+                {{ selectedTexture.is_public === 1 ? '公开（其他用户可在皮肤库看到）' : '私有（仅自己可见）' }}
+              </span>
+            </div>
+          </section>
+
           <section class="info-section">
             <div class="section-label">应用到角色</div>
             <div class="apply-row">
@@ -260,6 +275,19 @@ async function updateModel(val) {
     ElMessage.success(`模型已切换为 ${val === 'slim' ? '纤细' : '普通'}`)
   } catch (e) {
     ElMessage.error('切换模型失败')
+  }
+}
+
+async function updateIsPublic(val) {
+  if (!selectedTexture.value) return
+  const tex = selectedTexture.value
+  try {
+    await axios.patch(`/me/textures/${tex.hash}/${tex.type}`, { is_public: val === 1 }, { headers: authHeaders() })
+    ElMessage.success(val === 1 ? '材质已公开' : '材质已设为私有')
+  } catch (e) {
+    ElMessage.error('更新公开状态失败')
+    // 恢复原状态
+    tex.is_public = val === 1 ? 0 : 1
   }
 }
 
@@ -579,6 +607,17 @@ onMounted(() => {
 .apply-row {
   display: flex;
   gap: 8px;
+}
+
+.public-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.public-status-text {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 
 .gallery-select {

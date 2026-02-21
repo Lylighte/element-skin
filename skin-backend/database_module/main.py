@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS user_textures (
     texture_type TEXT NOT NULL,
     note TEXT DEFAULT '',
     model TEXT DEFAULT 'default',
+    is_public INTEGER DEFAULT 0,
     created_at INTEGER NOT NULL,
     PRIMARY KEY(user_id, hash, texture_type),
     FOREIGN KEY(user_id) REFERENCES users(id)
@@ -157,6 +158,32 @@ class Database(BaseDB):
             if "model" not in columns:
                 await conn.execute(
                     "ALTER TABLE skin_library ADD COLUMN model TEXT DEFAULT 'default'"
+                )
+                await conn.commit()
+
+            # 兼容旧库：user_textures 增加 is_public 列 (0:私有, 1:公开, 2:非上传者)
+            cursor = await conn.execute("PRAGMA table_info(user_textures)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if "is_public" not in columns:
+                await conn.execute(
+                    "ALTER TABLE user_textures ADD COLUMN is_public INTEGER DEFAULT 0"
+                )
+                await conn.commit()
+                
+                # 数据迁移：根据 skin_library 补全 is_public 状态
+                await conn.execute(
+                    """
+                    UPDATE user_textures 
+                    SET is_public = (
+                        SELECT CASE 
+                            WHEN sl.uploader = user_textures.user_id THEN sl.is_public 
+                            ELSE 2 
+                        END
+                        FROM skin_library sl 
+                        WHERE sl.skin_hash = user_textures.hash
+                    )
+                    WHERE hash IN (SELECT skin_hash FROM skin_library)
+                    """
                 )
                 await conn.commit()
             
