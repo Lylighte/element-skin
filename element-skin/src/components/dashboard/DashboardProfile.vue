@@ -46,7 +46,7 @@
           <el-input v-model="form.display_name" placeholder="请输入用户名" />
         </el-form-item>
 
-        <el-divider content-position="left">修改密码</el-divider>
+        <el-divider content-position="left" class="form-divider password-divider">修改密码</el-divider>
 
         <el-form-item label="旧密码">
           <el-input type="password" v-model="form.old_password" placeholder="请输入旧密码" show-password />
@@ -56,6 +56,20 @@
         </el-form-item>
         <el-form-item label="确认新密码">
           <el-input type="password" v-model="form.confirm_password" placeholder="请再次输入新密码" show-password />
+        </el-form-item>
+
+        <el-divider
+          v-if="user"
+          content-position="left"
+          class="form-divider personalize-divider"
+        >
+          个性化
+        </el-divider>
+        <el-form-item v-if="user" label="关闭页面动效">
+          <el-switch v-model="motionDisabled" />
+          <el-text size="small" type="info" style="margin-left: 12px">
+            关闭页面进入动画
+          </el-text>
         </el-form-item>
 
         <div class="profile-actions">
@@ -109,7 +123,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, inject } from 'vue'
+import { ref, computed, watch, inject, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -123,6 +137,7 @@ const router = useRouter()
 const form = ref({ email: '', display_name: '', old_password: '', new_password: '', confirm_password: '' })
 const showDeleteDialog = ref(false)
 const deleteConfirmText = ref('')
+const motionDisabled = ref(localStorage.getItem('motionDisabled') === '1')
 
 const emailInitial = computed(() => {
   const email = user.value?.email || user.value?.display_name || 'U'
@@ -135,6 +150,19 @@ watch(() => user.value, (newUser) => {
     form.value.display_name = newUser.display_name || ''
   }
 }, { immediate: true, deep: true })
+
+function applyMotionSetting(disabled) {
+  document.documentElement.classList.toggle('motion-off', disabled)
+}
+
+watch(motionDisabled, (disabled) => {
+  localStorage.setItem('motionDisabled', disabled ? '1' : '0')
+  applyMotionSetting(disabled)
+})
+
+onMounted(() => {
+  applyMotionSetting(motionDisabled.value)
+})
 
 function authHeaders() {
   const token = localStorage.getItem('jwt')
@@ -277,7 +305,7 @@ async function confirmDeleteAccount() {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.6s backwards;
+  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.75s backwards;
 }
 
 .profile-form-card :deep(.el-form-item__label) {
@@ -302,14 +330,18 @@ async function confirmDeleteAccount() {
 .profile-form-card :deep(.el-form-item):nth-child(1) { animation-delay: 0.3s; }
 /* 2. Display Name */
 .profile-form-card :deep(.el-form-item):nth-child(2) { animation-delay: 0.35s; }
-/* 3. Divider */
-.profile-form-card :deep(.el-divider) { animation-delay: 0.4s; }
+/* 3. Password Divider */
+.profile-form-card :deep(.form-divider.password-divider) { animation-delay: 0.4s; }
 /* 4. Old Password */
 .profile-form-card :deep(.el-form-item):nth-child(4) { animation-delay: 0.45s; }
 /* 5. New Password */
 .profile-form-card :deep(.el-form-item):nth-child(5) { animation-delay: 0.5s; }
 /* 6. Confirm Password */
 .profile-form-card :deep(.el-form-item):nth-child(6) { animation-delay: 0.55s; }
+/* 7. Personalization Divider */
+.profile-form-card :deep(.form-divider.personalize-divider) { animation-delay: 0.6s; }
+/* 8. Motion Toggle */
+.profile-form-card :deep(.el-form-item):nth-child(8) { animation-delay: 0.65s; }
 
 .profile-form-card :deep(.el-form-item:hover) {
   transform: translateX(4px);
