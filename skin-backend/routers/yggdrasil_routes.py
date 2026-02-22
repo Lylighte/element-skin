@@ -35,7 +35,7 @@ async def _get_fallback_services(db: Database) -> list[dict]:
     async with db.get_conn() as conn:
         async with conn.execute(
             """
-            SELECT id, priority, session_url, account_url, services_url, cache_ttl
+            SELECT id, priority, session_url, account_url, services_url, cache_ttl, skin_domains
             FROM fallback_endpoints
             ORDER BY priority ASC, id ASC
             """
@@ -49,13 +49,26 @@ async def _get_fallback_services(db: Database) -> list[dict]:
                     "account_url": r[3],
                     "services_url": r[4],
                     "cache_ttl": r[5],
+                    "skin_domains": r[6],
                 }
                 for r in rows
             ]
 
 
 async def _collect_skin_domains(db: Database) -> list[str]:
-    return config.get("mojang.skin_domains", [])
+    fallbacks = await _get_fallback_services(db)
+    domains: list[str] = []
+    for entry in fallbacks:
+        raw = entry.get("skin_domains")
+        if not raw:
+            continue
+        for domain in str(raw).split(","):
+            value = domain.strip()
+            if value and value not in domains:
+                domains.append(value)
+    if not domains:
+        domains = config.get("mojang.skin_domains", [])
+    return domains
 
 
 async def _resolve_fallbacks(db: Database) -> tuple[list[dict], str]:

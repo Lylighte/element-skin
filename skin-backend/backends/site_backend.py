@@ -373,7 +373,14 @@ class SiteBackend:
         fallbacks = await self._get_fallback_services()
         fallback_strategy = settings.get("fallback_strategy", "serial")
         primary_fallback = fallbacks[0] if fallbacks else None
-        primary_domains = self.config.get("mojang.skin_domains", [])
+        primary_domains = []
+        if primary_fallback:
+            raw_domains = primary_fallback.get("skin_domains", "")
+            primary_domains = [
+                item.strip()
+                for item in str(raw_domains).split(",")
+                if item.strip()
+            ]
         return {
             "site_name": settings.get("site_name", "皮肤站"),
             "site_url": settings.get("site_url", ""),
@@ -492,7 +499,7 @@ class SiteBackend:
         async with self.db.get_conn() as conn:
             async with conn.execute(
                 """
-                SELECT id, priority, session_url, account_url, services_url, cache_ttl
+                SELECT id, priority, session_url, account_url, services_url, cache_ttl, skin_domains
                 FROM fallback_endpoints
                 ORDER BY priority ASC, id ASC
                 """
@@ -506,6 +513,7 @@ class SiteBackend:
                         "account_url": r[3],
                         "services_url": r[4],
                         "cache_ttl": r[5],
+                        "skin_domains": r[6],
                     }
                     for r in rows
                 ]
@@ -529,11 +537,12 @@ class SiteBackend:
                 account_url = entry["account_url"]
                 services_url = entry["services_url"]
                 cache_ttl = entry["cache_ttl"]
+                skin_domains = entry.get("skin_domains", "")
                 if entry.get("id") is not None:
                     await conn.execute(
                         """
                         UPDATE fallback_endpoints
-                        SET priority=?, session_url=?, account_url=?, services_url=?, cache_ttl=?
+                        SET priority=?, session_url=?, account_url=?, services_url=?, cache_ttl=?, skin_domains=?
                         WHERE id=?
                         """,
                         (
@@ -542,14 +551,17 @@ class SiteBackend:
                             account_url,
                             services_url,
                             cache_ttl,
+                            skin_domains,
                             entry["id"],
                         ),
                     )
                 else:
                     await conn.execute(
                         """
-                        INSERT INTO fallback_endpoints (priority, session_url, account_url, services_url, cache_ttl)
-                        VALUES (?, ?, ?, ?, ?)
+                        INSERT INTO fallback_endpoints (
+                            priority, session_url, account_url, services_url, cache_ttl, skin_domains
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
                         """,
                         (
                             priority,
@@ -557,6 +569,7 @@ class SiteBackend:
                             account_url,
                             services_url,
                             cache_ttl,
+                            skin_domains,
                         ),
                     )
             await conn.commit()
@@ -583,11 +596,23 @@ class SiteBackend:
             account_url = str(entry.get("account_url", "")).strip()
             services_url = str(entry.get("services_url", "")).strip()
             cache_ttl = entry.get("cache_ttl", 60)
+            raw_domains = entry.get("skin_domains", "")
             if not session_url or not account_url or not services_url:
                 raise HTTPException(
                     status_code=400,
                     detail=f"fallback[{idx}] urls are required",
                 )
+
+            if isinstance(raw_domains, list):
+                skin_domains = [
+                    str(item).strip() for item in raw_domains if str(item).strip()
+                ]
+            else:
+                skin_domains = [
+                    item.strip()
+                    for item in str(raw_domains).split(",")
+                    if item.strip()
+                ]
 
             try:
                 cache_ttl = int(cache_ttl)
@@ -609,6 +634,7 @@ class SiteBackend:
                     "account_url": account_url,
                     "services_url": services_url,
                     "cache_ttl": cache_ttl,
+                    "skin_domains": ",".join(skin_domains),
                 }
             )
 

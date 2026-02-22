@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS fallback_endpoints (
     session_url TEXT NOT NULL,
     account_url TEXT NOT NULL,
     services_url TEXT NOT NULL,
-    cache_ttl INTEGER NOT NULL
+    cache_ttl INTEGER NOT NULL,
+    skin_domains TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS whitelisted_users (
@@ -137,10 +138,13 @@ class Database(BaseDB):
             row = await cursor.fetchone()
             if row and row[0] == 0:
                 mojang = config.get("mojang", {})
+                skin_domains = mojang.get("skin_domains", []) or []
                 await conn.execute(
                     """
-                    INSERT INTO fallback_endpoints (priority, session_url, account_url, services_url, cache_ttl)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO fallback_endpoints (
+                        priority, session_url, account_url, services_url, cache_ttl, skin_domains
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
                         1,
@@ -148,7 +152,30 @@ class Database(BaseDB):
                         mojang.get("account_url", ""),
                         mojang.get("services_url", ""),
                         int(mojang.get("cache_ttl", 60)),
+                        ",".join([str(item).strip() for item in skin_domains if str(item).strip()]),
                     ),
+                )
+                await conn.commit()
+
+            # 兼容旧库：fallback_endpoints 增加 skin_domains 列
+            cursor = await conn.execute("PRAGMA table_info(fallback_endpoints)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if "skin_domains" not in columns:
+                await conn.execute(
+                    "ALTER TABLE fallback_endpoints ADD COLUMN skin_domains TEXT DEFAULT ''"
+                )
+                await conn.commit()
+                mojang_domains = config.get("mojang.skin_domains", []) or []
+                domains_csv = ",".join(
+                    [str(item).strip() for item in mojang_domains if str(item).strip()]
+                )
+                await conn.execute(
+                    """
+                    UPDATE fallback_endpoints
+                    SET skin_domains=?
+                    WHERE skin_domains IS NULL OR skin_domains = ''
+                    """,
+                    (domains_csv,),
                 )
                 await conn.commit()
 
@@ -195,7 +222,7 @@ class Database(BaseDB):
             )
             await conn.commit()
 
-            # 兼容旧库新增列
+            # 兼容旧库：invites 新增 note 列
             cursor = await conn.execute("PRAGMA table_info(invites)")
             columns = [row[1] for row in await cursor.fetchall()]
             if "note" not in columns:

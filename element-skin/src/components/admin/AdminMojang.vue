@@ -39,7 +39,7 @@
       </template>
       <el-form label-position="top">
         <el-form-item label="Fallback 策略">
-          <el-select v-model="settings.fallback_strategy" placeholder="选择策略" style="width: 220px">
+          <el-select v-model="settings.fallback_strategy" placeholder="选择策略" style="width: 120px">
             <el-option label="顺序尝试" value="serial" />
             <el-option label="并发尝试" value="parallel" />
           </el-select>
@@ -47,12 +47,12 @@
         </el-form-item>
         <el-form-item label="Fallback 服务顺序">
           <el-table :data="fallbacks" style="width: 100%" size="small">
-            <el-table-column label="Endpoint ID" min-width="120">
+            <el-table-column label="Endpoint ID" min-width="40">
               <template #default="scope">
                 <span class="mono">{{ scope.row.id ?? 'new' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="URLs" min-width="240">
+            <el-table-column label="URLs" min-width="200">
               <template #default="scope">
                 <div class="fallback-urls">
                   <el-input v-model="scope.row.session_url" size="small" placeholder="Session URL" />
@@ -61,7 +61,12 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="缓存 TTL" width="120">
+            <el-table-column label="Skin Domains" min-width="160">
+              <template #default="scope">
+                <el-input v-model="scope.row.skin_domains_text" size="small" placeholder="textures.minecraft.net" />
+              </template>
+            </el-table-column>
+            <el-table-column label="缓存 TTL" width="140">
               <template #default="scope">
                 <el-input-number v-model="scope.row.cache_ttl" :min="1" :step="60" size="small" />
               </template>
@@ -241,7 +246,10 @@ function normalizeFallbackEntries() {
     session_url: item.session_url || '',
     account_url: item.account_url || '',
     services_url: item.services_url || '',
-    cache_ttl: Number(item.cache_ttl || 60)
+    cache_ttl: Number(item.cache_ttl || 60),
+    skin_domains_text: Array.isArray(item.skin_domains)
+      ? item.skin_domains.join(',')
+      : String(item.skin_domains || '')
   }))
   fallbacks.value.sort((a, b) => (a.priority || 0) - (b.priority || 0))
   syncPriorityFromOrder()
@@ -261,7 +269,8 @@ function addFallback() {
     session_url: '',
     account_url: '',
     services_url: '',
-    cache_ttl: 60
+    cache_ttl: 60,
+    skin_domains_text: ''
   })
   syncPriorityFromOrder()
 }
@@ -278,7 +287,11 @@ function serializeFallbacks() {
     session_url: (item.session_url || '').trim(),
     account_url: (item.account_url || '').trim(),
     services_url: (item.services_url || '').trim(),
-    cache_ttl: Number(item.cache_ttl || 60)
+    cache_ttl: Number(item.cache_ttl || 60),
+    skin_domains: (item.skin_domains_text || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value)
   }))
 }
 
@@ -436,6 +449,7 @@ onMounted(() => {
 .setting-desc {
   font-size: 13px;
   color: var(--color-text-light);
+  margin-left: 12px;
 }
 .status-item {
   display: flex;
