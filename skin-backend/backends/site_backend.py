@@ -395,19 +395,19 @@ class SiteBackend:
             ),
             # Mojang API Settings (URLs from static config, switches from DB)
             "mojang_session_url": (primary_fallback or {}).get(
-                "session_url", self.config.get("mojang.session_url")
+                "session_url", "https://sessionserver.mojang.com"
             ),
             "mojang_account_url": (primary_fallback or {}).get(
-                "account_url", self.config.get("mojang.account_url")
+                "account_url", "https://api.mojang.com"
             ),
             "mojang_services_url": (primary_fallback or {}).get(
-                "services_url", self.config.get("mojang.services_url")
+                "services_url", "https://api.minecraftservices.com"
             ),
             "mojang_skin_domains": ",".join(
-                primary_domains or self.config.get("mojang.skin_domains", [])
+                primary_domains or "textures.minecraft.net"
             ),
             "mojang_cache_ttl": (primary_fallback or {}).get(
-                "cache_ttl", self.config.get("mojang.cache_ttl")
+                "cache_ttl", 60
             ),
             "fallbacks": fallbacks,
             "fallback_strategy": fallback_strategy,
