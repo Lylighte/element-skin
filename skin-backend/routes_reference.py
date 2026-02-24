@@ -61,6 +61,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 统一路径结尾斜杠中间件
+@app.middleware("http")
+async def append_slash_middleware(request: Request, call_next):    
+    # 为非根路径且不以斜杠结尾的路径添加斜杠
+    request.scope["path"] += "/"
+    # 去除重复斜杠
+    request.scope["path"] = request.scope["path"].replace("//", "/")
+        
+    response = await call_next(request)
+    return response
+
 # 挂载静态材质目录
 textures_path = config.get("textures.directory", "textures")
 os.makedirs(textures_path, exist_ok=True)
