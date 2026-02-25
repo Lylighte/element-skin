@@ -87,6 +87,10 @@
                     <label>材质域名 (逗号分隔)</label>
                     <el-input v-model="row.skin_domains_text" placeholder="textures.minecraft.net" />
                   </div>
+                  <div class="url-item">
+                    <label>缓存 TTL (秒)</label>
+                    <el-input-number v-model="row.cache_ttl" :min="0" :controls="true" style="width: 100%" />
+                  </div>
                 </div>
               </div>
 
@@ -189,18 +193,6 @@
                 </el-tooltip>
               </div>
             </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="缓存 (秒)" width="120" align="center">
-          <template #default="scope">
-            <el-input-number 
-              v-model="scope.row.cache_ttl" 
-              :min="0" 
-              :controls="false" 
-              size="small" 
-              class="narrow-num"
-            />
           </template>
         </el-table-column>
 
@@ -559,7 +551,7 @@ onMounted(fetchSettings)
 }
 .url-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
 .url-item label {
