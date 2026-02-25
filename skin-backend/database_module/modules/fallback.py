@@ -4,8 +4,41 @@ import time
 class FallbackModule:
     def __init__(self, db: BaseDB):
         self.db = db
+        self._endpoints_cache = []
+        self._domains_cache = []
+        self._whitelist_cache = {} # {endpoint_id: set(usernames)}
+
+    async def init(self):
+        """Initialize all fallback related caches"""
+        await self.refresh_endpoints_cache()
+        await self.refresh_whitelist_cache()
+
+    async def refresh_endpoints_cache(self):
+        self._endpoints_cache = await self._list_endpoints_from_db()
+        # Pre-parse domains
+        domains = []
+        for ep in self._endpoints_cache:
+            raw = ep.get("skin_domains")
+            if raw:
+                parts = [part.strip() for part in raw.split(",") if part.strip()]
+                domains.extend(parts)
+        self._domains_cache = list(set(domains))
+
+    async def refresh_whitelist_cache(self):
+        async with self.db.get_conn() as conn:
+            async with conn.execute("SELECT username, endpoint_id FROM whitelisted_users") as cur:
+                rows = await cur.fetchall()
+                new_cache = {}
+                for username, ep_id in rows:
+                    if ep_id not in new_cache:
+                        new_cache[ep_id] = set()
+                    new_cache[ep_id].add(username.lower())
+                self._whitelist_cache = new_cache
 
     async def list_endpoints(self) -> list[dict]:
+        return self._endpoints_cache
+
+    async def _list_endpoints_from_db(self) -> list[dict]:
         async with self.db.get_conn() as conn:
             async with conn.execute(
                 """
@@ -34,8 +67,7 @@ class FallbackModule:
                 ]
 
     async def get_primary_endpoint(self) -> dict | None:
-        endpoints = await self.list_endpoints()
-        return endpoints[0] if endpoints else None
+        return self._endpoints_cache[0] if self._endpoints_cache else None
 
     async def save_endpoints(self, fallbacks: list[dict]):
         async with self.db.get_conn() as conn:
@@ -107,21 +139,10 @@ class FallbackModule:
                         ),
                     )
             await conn.commit()
+        await self.refresh_endpoints_cache()
             
     async def collect_skin_domains(self) -> list[str]:
-        async with self.db.get_conn() as conn:
-            async with conn.execute(
-                "SELECT skin_domains FROM fallback_endpoints WHERE skin_domains IS NOT NULL AND skin_domains != ''"
-            ) as cur:
-                rows = await cur.fetchall()
-                # 对于每一个非空的 skin_domains 字段，按逗号分割并收集所有域名
-                domains = []
-                for row in rows:
-                    raw = row[0]
-                    if raw:
-                        parts = [part.strip() for part in raw.split(",") if part.strip()]
-                        domains.extend(parts)
-                return domains
+        return self._domains_cache
             
     # ========== Fallback Whitelist ==========
 
@@ -136,6 +157,11 @@ class FallbackModule:
                 (username, endpoint_id, created_at),
             )
             await conn.commit()
+        
+        # Update cache
+        if endpoint_id not in self._whitelist_cache:
+            self._whitelist_cache[endpoint_id] = set()
+        self._whitelist_cache[endpoint_id].add(username.lower())
 
     async def remove_whitelist_user(
         self, username: str, endpoint_id: int
@@ -146,22 +172,23 @@ class FallbackModule:
                 (username, endpoint_id),
             )
             await conn.commit()
+        
+        # Update cache
+        if endpoint_id in self._whitelist_cache:
+            self._whitelist_cache[endpoint_id].discard(username.lower())
 
     async def is_user_in_whitelist(
         self, username: str, endpoint_id: int
     ) -> bool:
-        async with self.db.get_conn() as conn:
-            query = (
-                "SELECT 1 FROM whitelisted_users WHERE username=? COLLATE NOCASE AND endpoint_id=?"
-            )
-            params = (username, endpoint_id)
-            async with conn.execute(query, params) as cur:
-                row = await cur.fetchone()
-                return row is not None
+        """High-performance cache check"""
+        if endpoint_id not in self._whitelist_cache:
+            return False
+        return username.lower() in self._whitelist_cache[endpoint_id]
 
     async def list_whitelist_users(
         self, endpoint_id: int
     ) -> list[dict]:
+        """Keep DB query for list method to get timestamps, but usually used in Admin UI only"""
         async with self.db.get_conn() as conn:
             query = (
                 "SELECT username, created_at FROM whitelisted_users WHERE endpoint_id=? ORDER BY created_at DESC"

@@ -392,6 +392,10 @@ class Database(BaseDB):
 
             await conn.commit()
 
+        # 初始化模块缓存
+        await self.setting.init()
+        await self.fallback.init()
+
     # Proxy methods for backward compatibility or direct access if needed
     # But strictly speaking, the user asked for db.user.xxx
     # We will only expose raw connection via get_conn()
