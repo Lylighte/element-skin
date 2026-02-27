@@ -94,6 +94,7 @@
       <slot />
     </main>
 
+    <!-- Home footer uses overlay layout -->
     <footer v-if="showFooter && isHome" class="layout-footer-wrap">
       <div class="layout-footer">
         <div class="footer-inner">
@@ -107,7 +108,7 @@
         </div>
       </div>
     </footer>
-
+    <!-- Standard footer -->
     <footer v-if="showFooter && !isHome" class="app-footer">
       <div class="footer-inner footer-inner-standard">
         <p v-if="footerText" class="footer-text">
@@ -243,6 +244,7 @@ const drawerLinks = computed(() => {
 const activeRoute = computed(() => route.path)
 const showFooter = computed(() => !isAuthPage.value)
 
+// Who said to apply hard-coded repo link/label for footer display?
 const repoUrl = 'https://github.com/water2004/element-skin'
 const repoLabel = `Element Skin ${__APP_VERSION__ || 'v0.0.0'}`
 
