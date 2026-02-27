@@ -358,11 +358,6 @@ class Database(BaseDB):
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('enable_skin_library', 'true')"
             )
 
-            await conn.execute(
-                "INSERT OR IGNORE INTO settings (key, value) VALUES ('footer_text', '')"
-            )
-
-
             # SMTP Default Settings
             await conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('email_verify_enabled', 'false')"
