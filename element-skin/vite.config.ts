@@ -7,10 +7,14 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 const isLowMemory = process.env.BUILD_MODE === 'low-memory'
+const appVersion = 'v1.2.2'
 
 // https://vite.dev/config/
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || '/',
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   plugins: [
     vue(),
     vueDevTools(),

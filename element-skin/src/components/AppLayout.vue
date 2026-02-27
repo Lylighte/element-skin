@@ -98,6 +98,10 @@
       <div class="layout-footer">
         <div class="footer-inner">
           <p v-if="footerText" class="footer-text">{{ footerText }}</p>
+          <p class="footer-powered">
+            Powered by
+            <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
+          </p>
         </div>
       </div>
     </footer>
@@ -105,6 +109,10 @@
     <footer v-if="showFooter && !isHome" class="app-footer">
       <div class="footer-inner footer-inner-standard">
         <p v-if="footerText" class="footer-text">{{ footerText }}</p>
+        <p class="footer-powered">
+          Powered by
+          <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
+        </p>
       </div>
     </footer>
   </div>
@@ -227,7 +235,10 @@ const drawerLinks = computed(() => {
 })
 
 const activeRoute = computed(() => route.path)
-const showFooter = computed(() => !isAuthPage.value && footerText.value)
+const showFooter = computed(() => !isAuthPage.value)
+
+const repoUrl = 'https://github.com/water2004/element-skin'
+const repoLabel = `Element Skin ${__APP_VERSION__ || 'v0.0.0'}`
 
 
 // --- Authentication and User State ---
@@ -452,6 +463,22 @@ onUnmounted(() => {
   line-height: 1.5;
   font-weight: 500;
   white-space: nowrap;
+}
+
+.footer-powered {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.footer-powered a {
+  color: #409eff;
+  text-decoration: none;
+  cursor: pointer;
+  padding: 0;
+  /* background-color: transparent; */
 }
 
 .app-footer {

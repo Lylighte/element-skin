@@ -55,8 +55,8 @@
         <el-divider />
         <el-row :gutter="20">
           <el-col :span="24">
-            <el-form-item label="页脚版权信息">
-              <el-input v-model="settings.site.footer_text" placeholder="如：© 2026 站点名称" />
+            <el-form-item label="页脚附加信息">
+              <el-input v-model="settings.site.footer_text" placeholder="Copyright © 2026 Element Skin" />
             </el-form-item>
           </el-col>
         </el-row>
