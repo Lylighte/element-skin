@@ -308,6 +308,10 @@ def setup_routes(db: Database, site_backend, rate_limiter, config: Config):
             "enable_skin_library": settings.get("enable_skin_library", "true") == "true",
             "email_verify_enabled": settings.get("email_verify_enabled", "false") == "true",
             "footer_text": settings.get("footer_text", ""),
+            "filing_icp": settings.get("filing_icp", ""),
+            "filing_icp_link": settings.get("filing_icp_link", ""),
+            "filing_mps": settings.get("filing_mps", ""),
+            "filing_mps_link": settings.get("filing_mps_link", ""),
             "mojang_status_urls": {
                 "session": (primary or {}).get(
                     "session_url", "https://sessionserver.mojang.com"

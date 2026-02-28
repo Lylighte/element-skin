@@ -99,9 +99,26 @@
       <div class="layout-footer">
         <div class="footer-inner">
           <p v-if="footerText" class="footer-text">
-            <TextSegments :text="footerText" :site-name="siteName" link-class="footer-link" />
+            {{ footerText }}
           </p>
-          <p class="footer-powered">
+          <p v-if="showIcp" class="footer-powered footer-filing-item">
+            <a
+              :href="filingIcpLink"
+              target="_blank"
+              rel="noopener noreferrer"
+            >{{ filingIcp }}</a>
+          </p>
+          <p v-if="showMps" class="footer-powered footer-filing-item">
+            <a
+              :href="filingMpsLink"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mps-link"
+            >
+              <span>{{ filingMps }}</span>
+            </a>
+          </p>
+          <p class="footer-powered footer-powered-main">
             Powered by
             <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
           </p>
@@ -112,9 +129,26 @@
     <footer v-if="showFooter && !isHome" class="app-footer">
       <div class="footer-inner footer-inner-standard">
         <p v-if="footerText" class="footer-text">
-          <TextSegments :text="footerText" :site-name="siteName" link-class="footer-link" />
+          {{ footerText }}
         </p>
-        <p class="footer-powered">
+        <p v-if="showIcp" class="footer-powered footer-filing-item">
+          <a
+            :href="filingIcpLink"
+            target="_blank"
+            rel="noopener noreferrer"
+          >{{ filingIcp }}</a>
+        </p>
+        <p v-if="showMps" class="footer-powered footer-filing-item">
+          <a
+            :href="filingMpsLink"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mps-link"
+          >
+            <span>{{ filingMps }}</span>
+          </a>
+        </p>
+        <p class="footer-powered footer-powered-main">
           Powered by
           <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
         </p>
@@ -131,8 +165,6 @@ import {
   Menu as MenuIcon, Box, User, Setting, Tools, Back, Odometer, Link, Picture, Message, Moon, Sunny
 } from '@element-plus/icons-vue'
 
-import TextSegments from './TextSegments.vue'
-
 const route = useRoute()
 const { push } = useRouter()
 const isHome = computed(() => route.path === '/')
@@ -143,6 +175,10 @@ const jwtToken = ref(localStorage.getItem('jwt') || '')
 const user = ref(null)
 const drawer = ref(false)
 const footerText = ref('')
+const filingIcp = ref('')
+const filingIcpLink = ref('')
+const filingMps = ref('')
+const filingMpsLink = ref('')
 
 // --- Theme Management ---
 const isDark = ref(false)
@@ -243,6 +279,8 @@ const drawerLinks = computed(() => {
 
 const activeRoute = computed(() => route.path)
 const showFooter = computed(() => !isAuthPage.value)
+const showIcp = computed(() => Boolean(filingIcp.value && filingIcpLink.value))
+const showMps = computed(() => Boolean(showIcp.value && filingMps.value && filingMpsLink.value))
 
 // Who said to apply hard-coded repo link/label for footer display?
 const repoUrl = 'https://github.com/water2004/element-skin'
@@ -323,6 +361,18 @@ onMounted(async () => {
     }
     if (res.data.footer_text !== undefined) {
       footerText.value = res.data.footer_text
+    }
+    if (res.data.filing_icp !== undefined) {
+      filingIcp.value = res.data.filing_icp
+    }
+    if (res.data.filing_icp_link !== undefined) {
+      filingIcpLink.value = res.data.filing_icp_link
+    }
+    if (res.data.filing_mps !== undefined) {
+      filingMps.value = res.data.filing_mps
+    }
+    if (res.data.filing_mps_link !== undefined) {
+      filingMpsLink.value = res.data.filing_mps_link
     }
   } catch (e) {
     console.warn('Failed to load site settings:', e)
@@ -473,7 +523,6 @@ onUnmounted(() => {
   white-space: normal;
 }
 
-:deep(.footer-link),
 .footer-powered a {
   color: inherit;
   text-decoration: underline;
@@ -482,7 +531,6 @@ onUnmounted(() => {
   padding: 0;
 }
 
-:deep(.footer-link:hover),
 .footer-powered a:hover {
   color: #409eff;
 }
@@ -504,6 +552,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.footer-powered-main {
+  margin-left: 40px;
+}
+
+.mps-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .is-home-layout .app-main {

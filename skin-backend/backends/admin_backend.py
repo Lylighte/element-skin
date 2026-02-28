@@ -26,6 +26,10 @@ class AdminBackend:
             "enable_skin_library": s.get("enable_skin_library", "true") == "true",
             "max_texture_size": int(s.get("max_texture_size", "1024")),
             "footer_text": s.get("footer_text", ""),
+            "filing_icp": s.get("filing_icp", ""),
+            "filing_icp_link": s.get("filing_icp_link", ""),
+            "filing_mps": s.get("filing_mps", ""),
+            "filing_mps_link": s.get("filing_mps_link", ""),
         }
 
     async def get_security_settings(self):
@@ -80,6 +84,10 @@ class AdminBackend:
                 "enable_skin_library",
                 "max_texture_size",
                 "footer_text",
+                "filing_icp",
+                "filing_icp_link",
+                "filing_mps",
+                "filing_mps_link",
             ],
             "security": ["rate_limit_enabled", "rate_limit_auth_attempts", "rate_limit_auth_window", "enable_strong_password_check"],
             "auth": ["jwt_expire_days"],

@@ -65,8 +65,39 @@
           <el-col :span="24">
             <el-form-item label="页脚附加信息">
               <el-input v-model="settings.site.footer_text" placeholder="Copyright © 2026 Element Skin" />
-              <span class="hint">支持 Markdown 链接，占位符 {site} 返回站点链接，{year} 返回当前年份</span>
             </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-collapse class="regulatory-section" v-model="regulatoryCollapse">
+              <el-collapse-item title="监管信息" name="regulatory-info">
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="ICP 备案信息">
+                      <el-input v-model="settings.site.filing_icp" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="ICP 备案链接">
+                      <el-input v-model="settings.site.filing_icp_link" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="公安备案信息">
+                      <el-input v-model="settings.site.filing_mps" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="公安备案链接">
+                      <el-input v-model="settings.site.filing_mps_link" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </el-collapse-item>
+            </el-collapse>
           </el-col>
         </el-row>
       </el-form>
@@ -169,7 +200,11 @@ const settings = reactive({
     allow_register: true,
     enable_skin_library: true,
     max_texture_size: 1024,
-    footer_text: ''
+    footer_text: '',
+    filing_icp: '',
+    filing_icp_link: '',
+    filing_mps: '',
+    filing_mps_link: ''
   },
   security: {
     rate_limit_enabled: true,
@@ -193,6 +228,8 @@ const saving = reactive({
   auth: false,
   microsoft: false
 })
+
+const regulatoryCollapse = ref([])
 
 const authHeaders = () => ({ Authorization: 'Bearer ' + localStorage.getItem('jwt') })
 
