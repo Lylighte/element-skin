@@ -93,6 +93,67 @@
     <main class="app-main">
       <slot />
     </main>
+
+    <!-- Home footer uses overlay layout -->
+    <footer v-if="showFooter && isHome" class="layout-footer-wrap">
+      <div class="layout-footer">
+        <div class="footer-inner">
+          <p v-if="footerText" class="footer-text">
+            {{ footerText }}
+          </p>
+          <p v-if="showIcp" class="footer-powered footer-filing-item">
+            <a
+              :href="filingIcpLink"
+              target="_blank"
+              rel="noopener noreferrer"
+            >{{ filingIcp }}</a>
+          </p>
+          <p v-if="showMps" class="footer-powered footer-filing-item">
+            <a
+              :href="filingMpsLink"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mps-link"
+            >
+              <span>{{ filingMps }}</span>
+            </a>
+          </p>
+            <p class="footer-powered" :class="{ 'footer-powered-main': hasFooterLeadingItems }">
+            Powered by
+            <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
+          </p>
+        </div>
+      </div>
+    </footer>
+    <!-- Standard footer -->
+    <footer v-if="showFooter && !isHome" class="app-footer">
+      <div class="footer-inner footer-inner-standard">
+        <p v-if="footerText" class="footer-text">
+          {{ footerText }}
+        </p>
+        <p v-if="showIcp" class="footer-powered footer-filing-item">
+          <a
+            :href="filingIcpLink"
+            target="_blank"
+            rel="noopener noreferrer"
+          >{{ filingIcp }}</a>
+        </p>
+        <p v-if="showMps" class="footer-powered footer-filing-item">
+          <a
+            :href="filingMpsLink"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mps-link"
+          >
+            <span>{{ filingMps }}</span>
+          </a>
+        </p>
+          <p class="footer-powered" :class="{ 'footer-powered-main': hasFooterLeadingItems }">
+          Powered by
+          <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
+        </p>
+      </div>
+    </footer>
   </div>
 </template>
 
@@ -113,6 +174,11 @@ const enableSkinLibrary = ref(localStorage.getItem('enable_skin_library_cache') 
 const jwtToken = ref(localStorage.getItem('jwt') || '')
 const user = ref(null)
 const drawer = ref(false)
+const footerText = ref('')
+const filingIcp = ref('')
+const filingIcpLink = ref('')
+const filingMps = ref('')
+const filingMpsLink = ref('')
 
 // --- Theme Management ---
 const isDark = ref(false)
@@ -212,7 +278,14 @@ const drawerLinks = computed(() => {
 })
 
 const activeRoute = computed(() => route.path)
+const showFooter = computed(() => !isAuthPage.value)
+const showIcp = computed(() => Boolean(filingIcp.value && filingIcpLink.value))
+const showMps = computed(() => Boolean(showIcp.value && filingMps.value && filingMpsLink.value))
+const hasFooterLeadingItems = computed(() => Boolean(footerText.value || showIcp.value || showMps.value))
 
+// Who said to apply hard-coded repo link/label for footer display?
+const repoUrl = 'https://github.com/water2004/element-skin'
+const repoLabel = `Element Skin ${__APP_VERSION__ || 'v0.0.0'}`
 
 // --- Authentication and User State ---
 function parseJwt(token) {
@@ -287,6 +360,21 @@ onMounted(async () => {
       enableSkinLibrary.value = res.data.enable_skin_library
       localStorage.setItem('enable_skin_library_cache', res.data.enable_skin_library.toString())
     }
+    if (res.data.footer_text !== undefined) {
+      footerText.value = res.data.footer_text
+    }
+    if (res.data.filing_icp !== undefined) {
+      filingIcp.value = res.data.filing_icp
+    }
+    if (res.data.filing_icp_link !== undefined) {
+      filingIcpLink.value = res.data.filing_icp_link
+    }
+    if (res.data.filing_mps !== undefined) {
+      filingMps.value = res.data.filing_mps
+    }
+    if (res.data.filing_mps_link !== undefined) {
+      filingMpsLink.value = res.data.filing_mps_link
+    }
   } catch (e) {
     console.warn('Failed to load site settings:', e)
   }
@@ -306,6 +394,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .layout-header-wrap {
   padding: 0 20px;
   background: var(--color-header-background);
@@ -394,8 +488,105 @@ onUnmounted(() => {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+.layout-footer-wrap {
+  display: none;
+}
+
+.is-home-layout .layout-footer-wrap {
+  display: block;
+  position: relative;
+  margin-top: 0px;
+  padding: 24px 20px 32px;
+  z-index: 20;
+}
+
+.layout-footer {
+  color: #fff;
+}
+
+.layout-footer .footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+  flex-wrap: wrap;
+}
+
+.footer-text,
+.footer-powered {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.footer-powered a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.footer-powered a:hover {
+  color: #409eff;
+}
+
+.app-footer {
+  border-top: 1px solid var(--color-border);
+  background: var(--color-card-background);
+  color: var(--color-text-light);
+  padding: 16px 20px;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.footer-inner-standard {
+  margin: 0 auto;
+  max-width: 1200px;
+  text-align: center;
+  justify-content: center;
+  gap: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.footer-powered-main {
+  margin-left: 40px;
+}
+
+.mps-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .is-home-layout .app-main {
   padding: 0;
+  overflow: auto;
+}
+
+.is-home-layout :deep(.home-container) {
+  min-height: 100vh;
+}
+
+.is-home-layout :deep(.hero-wrapper) {
+  min-height: 100vh;
+}
+
+.is-home-layout :deep(.hero-carousel-bg),
+.is-home-layout :deep(.hero-gradient-bg),
+.is-home-layout :deep(.el-carousel) {
+  position: fixed;
+  top: 0px;
+  right: 0px;
+  bottom: 0px;
+  left: 0px;
+  z-index: 1;
 }
 
 .is-auth-layout .app-main {

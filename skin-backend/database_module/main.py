@@ -353,13 +353,10 @@ class Database(BaseDB):
             await conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('fallback_strategy', 'serial')"
             )
-            # NOTE: fallback_services_json 已弃用，改用 fallback_endpoints 表存储结构化配置。
+
             await conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('enable_skin_library', 'true')"
             )
-            # await conn.execute(
-            #     "INSERT OR IGNORE INTO settings (key, value) VALUES ('password_strength_enabled', 'false')"
-            # )
 
             # SMTP Default Settings
             await conn.execute(

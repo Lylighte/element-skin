@@ -25,13 +25,7 @@
         </div>
       </template>
       <el-form label-position="top" :model="settings.site">
-        <el-row :gutter="20">
-          <el-col :span="24">
-            <el-form-item label="站点名称">
-              <el-input v-model="settings.site.site_name" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="允许新用户注册">
@@ -52,6 +46,60 @@
         <el-form-item label="最大纹理大小 (KB)">
           <el-input-number v-model="settings.site.max_texture_size" :min="64" :step="128" />
         </el-form-item>
+        <el-divider />
+                <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="站点名称">
+              <el-input v-model="settings.site.site_name" placeholder="皮肤站" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="站点副标题">
+              <el-input v-model="settings.site.site_subtitle" placeholder="简洁、高效、现代的 Minecraft 皮肤管理站" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="页脚附加信息">
+              <el-input v-model="settings.site.footer_text" placeholder="Copyright © 2026 Element Skin" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-collapse class="regulatory-section" v-model="regulatoryCollapse">
+              <el-collapse-item title="监管信息" name="regulatory-info">
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="ICP 备案信息">
+                      <el-input v-model="settings.site.filing_icp" placeholder="留空则不展示" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="ICP 备案链接">
+                      <el-input v-model="settings.site.filing_icp_link" placeholder="留空则不展示" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="公安备案信息">
+                      <el-input v-model="settings.site.filing_mps" placeholder="留空则不展示" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="公安备案链接">
+                      <el-input v-model="settings.site.filing_mps_link" placeholder="留空则不展示" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </el-collapse-item>
+            </el-collapse>
+          </el-col>
+        </el-row>
       </el-form>
     </el-card>
 
@@ -147,10 +195,16 @@ import {
 const settings = reactive({
   site: {
     site_name: '',
+    site_subtitle: '',
     require_invite: false,
     allow_register: true,
     enable_skin_library: true,
-    max_texture_size: 1024
+    max_texture_size: 1024,
+    footer_text: '',
+    filing_icp: '',
+    filing_icp_link: '',
+    filing_mps: '',
+    filing_mps_link: ''
   },
   security: {
     rate_limit_enabled: true,
@@ -174,6 +228,8 @@ const saving = reactive({
   auth: false,
   microsoft: false
 })
+
+const regulatoryCollapse = ref([])
 
 const authHeaders = () => ({ Authorization: 'Bearer ' + localStorage.getItem('jwt') })
 
