@@ -22,6 +22,7 @@
         </div>
 
         <div class="header-actions">
+          <!-- Theme Toggle -->
           <el-button
             class="theme-toggle"
             :icon="isDark ? Sunny : Moon"
@@ -76,7 +77,7 @@
       </div>
     </el-header>
 
-    <!-- Mobile Drawer - Styles are independent -->
+    <!-- Mobile Drawer -->
     <el-drawer v-model="drawer" title="导航菜单" direction="ltr" size="280px" class="mobile-drawer">
       <el-menu :default-active="activeRoute" router @select="drawer = false" class="drawer-menu">
         <template v-for="(item, index) in drawerLinks" :key="index">
@@ -220,7 +221,8 @@ const drawerLinks = computed(() => {
 const activeRoute = computed(() => route.path)
 const showFooter = computed(() => !isAuthPage.value)
 const repoUrl = 'https://github.com/water2004/element-skin'
-const repoLabel = `Element Skin`
+// Ensure __APP_VERSION__ is correctly used
+const repoLabel = `Element Skin ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v1.3.0'}`
 
 function parseJwt(token) {
   if (!token) return null
@@ -258,7 +260,7 @@ async function fetchMe() {
     user.value = res.data
   } catch (e) {
     user.value = null
-    console.error('Failed to fetch user data:', e)
+    console.error('Failed to fetch user data in AppLayout:', e)
   }
 }
 
@@ -315,7 +317,7 @@ onUnmounted(() => {
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
 
-/* Home Mode Shell - Force no scroll */
+/* Home Mode Shell - Strict首屏，防止滚动 */
 .is-home-layout { height: 100vh; overflow: hidden; }
 
 .layout-header-wrap {
@@ -328,7 +330,7 @@ onUnmounted(() => {
   position: absolute; top: 0; left: 0; right: 0; background: transparent; border-bottom: none; box-shadow: none; backdrop-filter: none;
 }
 
-/* Home Layout UI Enforcement - Precise Scoping */
+/* Home Layout UI Enforcement - Scoped to .layout-header */
 .is-home-layout .layout-header .logo,
 .is-home-layout .layout-header .account-name,
 .is-home-layout .layout-header .theme-toggle,
@@ -356,7 +358,7 @@ onUnmounted(() => {
   color: #fff !important; backdrop-filter: blur(8px); border-radius: 8px; height: 32px; padding: 0 15px; font-size: 14px;
 }
 
-/* Mobile Drawer (Respects global theme) */
+/* Mobile Drawer reset - Respect Global Theme */
 .mobile-drawer :deep(.el-menu) { border-right: none; background: transparent; }
 .mobile-drawer :deep(.el-menu-item) { color: var(--color-text); border-radius: 8px; margin: 4px 8px; height: 44px; line-height: 44px; }
 .mobile-drawer :deep(.el-menu-item.is-active) { background-color: rgba(64, 158, 255, 0.1); color: var(--el-color-primary); font-weight: 600; }
@@ -371,7 +373,6 @@ onUnmounted(() => {
 .header-actions { display: flex; align-items: center; gap: 8px; }
 .theme-toggle { font-size: 20px; border-radius: 8px; }
 
-/* Main Area logic for filling space without overflow */
 .app-main { padding: 20px; flex: 1; display: flex; flex-direction: column; background-color: var(--color-background); }
 .is-home-layout .app-main { padding: 0; flex: 1; height: 0; min-height: 0; }
 
