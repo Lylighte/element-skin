@@ -98,68 +98,61 @@
     <footer v-if="showFooter && isHome" ref="footerRef" class="layout-footer-wrap">
       <div class="layout-footer">
         <div class="footer-inner">
-          <p v-if="footerText" class="footer-text">
-            {{ footerText }}
-          </p>
-          <p v-if="filingIcp" class="footer-powered footer-filing-item">
-            <a
-              v-if="filingIcpLink"
-              :href="filingIcpLink"
-              target="_blank"
-              rel="noopener noreferrer"
-            >{{ filingIcp }}</a>
-            <span v-else>{{ filingIcp }}</span>
-          </p>
-          <p v-if="filingMps" class="footer-powered footer-filing-item">
-            <a
-              v-if="filingMpsLink"
-              :href="filingMpsLink"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="mps-link"
-            >
-              <span>{{ filingMps }}</span>
-            </a>
-            <span v-else class="mps-link">{{ filingMps }}</span>
-          </p>
-            <p class="footer-powered" :class="{ 'footer-powered-main': hasFooterLeadingItems }">
-            Powered by
-            <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
-          </p>
+          <div class="footer-links">
+            <span v-if="footerText" class="footer-item footer-text">
+              {{ footerText }}
+            </span>
+            <span v-if="filingIcp" class="footer-item">
+              <a v-if="filingIcpLink" :href="filingIcpLink" target="_blank" rel="noopener noreferrer">{{ filingIcp }}</a>
+              <span v-else>{{ filingIcp }}</span>
+            </span>
+            <span v-if="filingMps" class="footer-item">
+              <a v-if="filingMpsLink" :href="filingMpsLink" target="_blank" rel="noopener noreferrer" class="mps-link">
+                <img src="https://www.beian.gov.cn/img/ghs.png" class="mps-icon" />
+                <span>{{ filingMps }}</span>
+              </a>
+              <span v-else class="mps-link">
+                <img src="https://www.beian.gov.cn/img/ghs.png" class="mps-icon" />
+                <span>{{ filingMps }}</span>
+              </span>
+            </span>
+          </div>
+          <div class="footer-credits">
+            <span class="footer-item powered-by">
+              Powered by <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
+            </span>
+          </div>
         </div>
       </div>
     </footer>
+
     <!-- Standard footer -->
     <footer v-if="showFooter && !isHome" ref="footerRef" class="app-footer">
       <div class="footer-inner footer-inner-standard">
-        <p v-if="footerText" class="footer-text">
-          {{ footerText }}
-        </p>
-        <p v-if="filingIcp" class="footer-powered footer-filing-item">
-          <a
-            v-if="filingIcpLink"
-            :href="filingIcpLink"
-            target="_blank"
-            rel="noopener noreferrer"
-          >{{ filingIcp }}</a>
-          <span v-else>{{ filingIcp }}</span>
-        </p>
-        <p v-if="filingMps" class="footer-powered footer-filing-item">
-          <a
-            v-if="filingMpsLink"
-            :href="filingMpsLink"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="mps-link"
-          >
-            <span>{{ filingMps }}</span>
-          </a>
-          <span v-else class="mps-link">{{ filingMps }}</span>
-        </p>
-          <p class="footer-powered" :class="{ 'footer-powered-main': hasFooterLeadingItems }">
-          Powered by
-          <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
-        </p>
+        <div class="footer-links">
+          <span v-if="footerText" class="footer-item footer-text">
+            {{ footerText }}
+          </span>
+          <span v-if="filingIcp" class="footer-item">
+            <a v-if="filingIcpLink" :href="filingIcpLink" target="_blank" rel="noopener noreferrer">{{ filingIcp }}</a>
+            <span v-else>{{ filingIcp }}</span>
+          </span>
+          <span v-if="filingMps" class="footer-item">
+            <a v-if="filingMpsLink" :href="filingMpsLink" target="_blank" rel="noopener noreferrer" class="mps-link">
+              <img src="https://www.beian.gov.cn/img/ghs.png" class="mps-icon" />
+              <span>{{ filingMps }}</span>
+            </a>
+            <span v-else class="mps-link">
+              <img src="https://www.beian.gov.cn/img/ghs.png" class="mps-icon" />
+              <span>{{ filingMps }}</span>
+            </span>
+          </span>
+        </div>
+        <div class="footer-credits">
+          <span class="footer-item powered-by">
+            Powered by <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ repoLabel }}</a>
+          </span>
+        </div>
       </div>
     </footer>
   </div>
@@ -550,64 +543,108 @@ onUnmounted(() => {
 
 .layout-footer .footer-inner {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 2px;
   max-width: 1200px;
   margin: 0 auto;
   text-align: center;
+}
+
+.footer-links, .footer-credits {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
+  gap: 0;
+  line-height: 1.2;
 }
 
-.footer-text,
-.footer-powered {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  font-weight: 500;
-  white-space: normal;
+.footer-item {
+  font-size: 12px;
+  font-weight: 400;
+  display: inline-flex;
+  align-items: center;
 }
 
-.footer-powered a {
+.footer-item + .footer-item::before {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 9px;
+  background: currentColor;
+  margin: 0 10px;
+  opacity: 0.12;
+}
+
+.footer-item a {
   color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-  padding: 0;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  opacity: 0.75;
 }
 
-.footer-powered a:hover {
+.footer-item a:hover {
+  opacity: 1;
   color: #409eff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.mps-icon {
+  width: 13px;
+  height: 13px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.layout-footer .footer-inner {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.layout-footer .footer-item a:hover {
+  color: #fff;
 }
 
 .app-footer {
   border-top: 1px solid var(--color-border);
   background: var(--color-card-background);
   color: var(--color-text-light);
-  padding: 16px 20px;
-  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  padding: 10px 20px;
+  transition: all 0.3s ease;
   flex-shrink: 0;
 }
 
 .footer-inner-standard {
   margin: 0 auto;
   max-width: 1200px;
-  text-align: center;
-  justify-content: center;
-  gap: 16px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  flex-wrap: wrap;
+  gap: 2px;
 }
 
-.footer-powered-main {
-  margin-left: 40px;
+.powered-by {
+  font-size: 11px;
+  opacity: 0.45;
+}
+
+@media (max-width: 768px) {
+  .footer-item + .footer-item::before {
+    margin: 0 6px;
+  }
+  .app-footer {
+    padding: 8px 16px;
+  }
+  .is-home-layout .layout-footer-wrap {
+    padding: 12px 16px 16px;
+  }
 }
 
 .mps-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
 }
 
 .is-home-layout .app-main {
