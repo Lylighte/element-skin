@@ -221,7 +221,7 @@ const drawerLinks = computed(() => {
 const activeRoute = computed(() => route.path)
 const showFooter = computed(() => !isAuthPage.value)
 const repoUrl = 'https://github.com/water2004/element-skin'
-// Ensure __APP_VERSION__ is correctly used
+// REPAIRED: Correct version number display
 const repoLabel = `Element Skin ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v1.3.0'}`
 
 function parseJwt(token) {

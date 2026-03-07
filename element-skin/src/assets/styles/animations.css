@@ -29,11 +29,13 @@
 
 /* 2. Animation Classes */
 .animate-fade-in {
-  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
+/* Fix: Added animation-delay and both fill mode for staggered entrance */
 .animate-card-slide {
-  animation: cardSlideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: cardSlideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: calc(var(--delay-index, 0) * 0.05s);
 }
 
 .animate-spin {

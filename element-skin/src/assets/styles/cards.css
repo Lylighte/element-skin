@@ -1,21 +1,20 @@
-/* Global Card System */
+/* Card Styles */
 
 .surface-card {
   border-radius: 12px;
   border: 1px solid var(--color-border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   background: var(--color-card-background);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  /* Fix: 强制剪裁内部背景 */
-  overflow: hidden !important;
+  transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden; /* Fix: Prevent background color bleed past rounded corners */
 }
 
 .surface-card.hoverable:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
-/* Stats Card Specifics */
+/* Specific Card Layouts */
 .stats-card-content {
   display: flex;
   align-items: center;
@@ -51,5 +50,6 @@
   color: var(--color-heading);
 }
 
+/* Gradients for icons */
 .bg-gradient-blue { background: linear-gradient(135deg, #409eff, #337ecc); }
 .bg-gradient-purple { background: linear-gradient(135deg, #b37feb, #8553cf); }
