@@ -1,10 +1,10 @@
 # --- 第一阶段：编译前端 ---
 FROM node:20-alpine AS frontend-builder
 WORKDIR /web
-# 复制前端源码
-COPY ../element-skin/package*.json ./
+# 复制前端源码 (上下文为根目录)
+COPY element-skin/package*.json ./
 RUN npm install
-COPY ../element-skin/ .
+COPY element-skin/ .
 # 默认编译参数
 ARG VITE_BASE_PATH=/
 ARG VITE_API_BASE=
@@ -27,7 +27,8 @@ RUN wget -O python.tar.xz "${PYTHON_URL}" \
     && make -j$(nproc) \
     && make install
 ENV PATH="/opt/python-3.14-t/bin:$PATH"
-COPY requirements.txt /src/requirements.txt
+# 修正路径：从根目录复制后端依赖文件
+COPY skin-backend/requirements.txt /src/requirements.txt
 RUN pip3 install --no-cache-dir -r /src/requirements.txt
 
 # --- 第三阶段：最终镜像 ---
@@ -46,8 +47,8 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-0 libssl3 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制后端项目文件
-COPY . .
+# 复制后端项目文件 (修正路径：仅复制后端目录内容)
+COPY skin-backend/ .
 RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
