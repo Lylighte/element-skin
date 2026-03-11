@@ -72,9 +72,6 @@ mojang:
 
 ### 2. 选择部署方案
 
-#### 方案 A：根目录部署 —— ✅ 推荐
-请根据你的需求选择一种方案，配置 `docker-compose.yml` 和 `Nginx`。
-
 #### 方案 A：根目录部署 (GHCR 镜像) —— ✅ 推荐
 *无需本地构建，开箱即用。*
 
@@ -92,18 +89,19 @@ services:
     volumes:
       - ./data/db:/var/lib/postgresql/data
   backend:
-    build:
-      context: .
-      dockerfile: skin-backend/Dockerfile
-    restart: always
+    image: ghcr.io/water2004/element-skin:latest
+    container_name: element-skin
+    restart: unless-stopped
     environment:
       - DATABASE_DSN=postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable
     volumes:
       - ./config.yaml:/app/config.yaml:ro
-      - ./frontend:/app/frontend           # 👈 前端、皮肤、轮播图全部在这里
+      - ./frontend:/app/frontend           # 前端、皮肤、轮播图全部在这里
     ports:
       - "8000:8000"
 ```
+
+在项目的根目录下，有一份完整的 `docker-compose.yml` 配置模板。
 
 **Nginx 主机配置 (推荐方案)**
 只需将 Nginx 的 `root` 指向宿主机的 `./frontend` 目录。
