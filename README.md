@@ -2,12 +2,14 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/water2004/element-skin)
 
-基于 Vue 3 + FastAPI 的现代化 Minecraft 外置登录系统。提供极佳的 UI 体验，完整支持 Yggdrasil 协议，兼容所有主流启动器。
+基于 Vue 3 + FastAPI 的现代化 Minecraft 外置登录系统。采用 **Python 3.14 Free Threading** 构建，开启 GIL-free 时代，具备极致的并发处理潜能。
 
 ![](./img/root.png)
 
 ## ✨ 功能特性
 
+- **🚀 极致性能**: 后端基于 Python 3.14 并开启 **Free Threading (GIL-free)**，结合 `uvloop` 充分发挥多核并发优势。
+- **🗄️ 现代化数据库**: 使用 **PostgreSQL 18** 作为主存储，支持高性能异步驱动 (`asyncpg`)。
 - **✅ 完整协议支持**: 完美实现 Yggdrasil API，无缝对接 Authlib-Injector 等主流加载器。
 - **✅ 皮肤管理**: 支持皮肤/披风上传，集成 SkinView3D 提供丝滑的 3D 实时预览。
 - **✅ 完善的用户系统**: 包含邮箱验证、注册验证码、密码找回流程（支持 SMTP）。
@@ -19,7 +21,7 @@
 
 ## 🚀 Docker 部署指南 (推荐)
 
-我们提供了三种部署方案，**强烈建议使用方案 A（默认方案）**，直接使用预构建镜像，无需本地编译。
+项目现在默认使用 **PostgreSQL 18** 并支持自动化初始化。
 
 ### 1. 准备配置文件
 
@@ -29,28 +31,27 @@
 # Element-Skin 配置文件
 
 jwt:
-  secret: "CHANGE-ME-TO-RANDOM-SECRET"  # ⚠️ 生产环境必须修改为随机字符串
+  secret: "dev-secret-please-change-to-a-very-long-string-in-production"  # ⚠️ 生产环境必须修改为随机长字符串
 
-# RSA 密钥配置 (系统会自动生成，指定路径即可)
+# RSA 密钥配置 (系统会自动生成)
 keys:
-  private_key: "/data/private.pem"
-  public_key: "/data/public.pem"
+  private_key: "/app/private.pem"
+  public_key: "/app/public.pem"
 
 database:
-  path: "/data/yggdrasil.db"
+  # 格式: postgresql://用户名:密码@db:5432/数据库名?sslmode=disable
+  dsn: "postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable"
+  max_connections: 20
 
 textures:
-  directory: "/data/textures"
+  directory: "/app/textures"
 
 carousel:
-  directory: "/data/carousel"
+  directory: "/app/carousel"
 
 server:
   host: "0.0.0.0"
   port: 8000
-  # ⚠️ 如果使用方案A (GHCR镜像)，此处必须保留为 /skinapi
-  # 如果是本地构建且自定义路径，请根据实际情况修改
-  root_path: "/skinapi" 
   # ⚠️ 站点的外部访问地址
   site_url: "http://yourdomain.com" 
   # ⚠️ 后端 API 外部访问地址
@@ -58,7 +59,6 @@ server:
 
 # CORS 跨域配置
 cors:
-  # 生产环境建议配置具体域名，如 ["https://yourdomain.com"]
   allow_origins: ["*"]
   allow_credentials: true
 
@@ -66,13 +66,13 @@ mojang:
   session_url: "https://sessionserver.mojang.com"
   account_url: "https://api.mojang.com"
   services_url: "https://api.minecraftservices.com"
-  skin_domains:
-    - "textures.minecraft.net"
+  skin_domains: ["textures.minecraft.net"]
   cache_ttl: 3600
 ```
 
 ### 2. 选择部署方案
 
+#### 方案 A：根目录部署 —— ✅ 推荐
 请根据你的需求选择一种方案，配置 `docker-compose.yml` 和 `Nginx`。
 
 #### 方案 A：根目录部署 (GHCR 镜像) —— ✅ 推荐
@@ -182,36 +182,25 @@ location /skin/api {
 
 ### 3. 初始化设置 (重要)
 
-容器启动成功后，请按以下步骤完成初始化：
+容器启动成功后，PostgreSQL 会通过 `init.sql` 自动完成建表。
 
-1.  **注册管理员**: 访问你的站点，注册的**第一个账号**将自动获得管理员权限。
-2.  **配置站点设置**:
-    *   登录后进入 `管理面板` -> `站点设置`。
-    *   您可以修改站点名称、注册开关等。
-    *   ⚠️ **注意**: **后端 API 地址** (用于材质预览等) 现在已移至 `config.yaml` 中的 `server.api_url` 配置项。如果预览无法加载，请检查该配置是否正确。
-    
-3.  **配置邮件服务**:
-    *   进入 `管理面板` -> `邮件服务`。
-    *   配置 SMTP 信息并开启“邮件验证开关”，即可启用验证码和密码找回功能。
+1.  **注册管理员**: 访问站点，注册的**第一个账号**将自动获得管理员权限。
+2.  **配置站点设置**: 登录后进入 `管理面板` -> `站点设置` 修改名称和开关。
+3.  **配置邮件服务**: 进入 `管理面板` -> `邮件服务` 配置 SMTP，即可启用验证码和密码找回。
 
 ---
 
 ## 🛠️ 本地开发环境
 
-如果你需要修改代码或参与贡献：
-
-### 后端 (Python)
+### 后端 (Python 3.14+)
 ```bash
 cd skin-backend
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# Linux/macOS:
-source .venv/bin/activate
-
+# Windows: .venv\Scripts\activate | Linux: source .venv/bin/activate
 pip install -r requirements.txt
-python gen_key.py                # 生成 RSA 密钥
-uvicorn routes_reference:app --reload
+python gen_key.py                # 生成密钥
+# 运行测试 (需本地开启 PG)
+$env:PYTHONPATH='.'; ..\.venv\Scripts\python.exe -m pytest tests/
 ```
 
 ### 前端 (Node.js)
@@ -220,7 +209,6 @@ cd element-skin
 npm install
 npm run dev
 ```
-访问 http://localhost:5173
 
 ---
 
@@ -230,62 +218,36 @@ npm run dev
 element-skin/
 ├── element-skin/       # 前端源码 (Vue 3 + Element Plus)
 ├── skin-backend/       # 后端源码 (FastAPI)
-├── config.yaml         # 配置文件 (需手动创建)
-├── data/               # 数据存储 (数据库、材质、密钥，自动生成)
-├── docker-compose.yml  # Docker 编排文件
-└── nginx-host.conf     # Nginx 配置参考
+│   ├── database_module/# PostgreSQL 异步适配
+│   ├── init.sql        # 自动初始化脚本
+│   └── ...
+├── config.yaml         # 配置文件
+├── pgdata/             # 数据库物理存储 (自动生成)
+├── docker-compose.yml  
+└── README.md
 ```
 
 ## 📋 TODO 
 
 ### 核心功能
-- [x] 完整的yggdrasil协议支持
-- [x] 用户注册与登录
-- [x] 用户材质上传
-- [x] 游戏角色管理
-- [x] 邮箱验证码与密码找回
+- [x] 完整的 Yggdrasil 协议支持
+- [x] Python 3.14 Free Threading + uvloop 优化
+- [x] PostgreSQL 18 数据库适配
+- [x] 基于 Docker InitDB 的自动化建表
 - [x] 邀请码注册机制
-- [x] Mojang服务fallback机制
-- [x] 用户封禁与解封
 - [x] 公共皮肤库
 - [ ] 更好的用户材质管理
-  - [x] 允许用户删除自己上传到公共库的材质
-  - [x] 允许用户配置已有的材质信息, 如模型类型等
+  - [x] 允许用户配置已有的材质信息
   - [x] 公共皮肤库添加材质名称
-  - [ ] 公共皮肤库按名称搜索
-  - [ ] 公共皮肤库按上传时间排序,热度排序
-- [x] 多个fallback服务支持
-- [ ] 导入第三方皮肤站的角色和材质数据
+  - [ ] 公共皮肤库按热度/时间排序
+- [ ] 导入第三方皮肤站数据
 
 ### 安全与性能
-- [x] sqlite数据库模块
-- [x] JWT认证机制
-- [x] API速率限制
-- [x] 数据库内存缓存与连接池
-- [x] 管理员设置细粒度API
-- [ ] 数据库性能优化
-- [ ] 多数据库支持（PostgreSQL、MySQL等）
-- [ ] Redis缓存支持
-- [ ] 材质存储优化（如使用云存储或CDN）
-
-### 前端优化
-- [x] 响应式设计
-- [x] 深色模式支持
-- [ ] 页脚信息（如站点名称、版权信息等）
-- [ ] 国际化 (i18n) 支持
-- [ ] 移动端适配优化
-- [ ] 前端性能优化（如图片懒加载、代码分割等）
-
-### 端点与集成
-- [ ] 移动端 App 认证接口
-- [ ] 第三方登录（GitHub、微博等）
-- [ ] 批量材质导入工具
-
-### 测试
-- [x] 分层自动化测试框架 (Pytest + Asyncio)
-- [x] 数据库层 (Database Layer) 全接口覆盖
-- [ ] 业务逻辑层 (Backend Logic Layer) 完整覆盖
-- [ ] API 接口层 (Integration Layer) 核心流程覆盖
+- [x] JWT 认证 (HS256, 32字节以上密钥)
+- [x] API 速率限制
+- [x] 数据库连接池适配 (asyncpg)
+- [ ] Redis 缓存支持
+- [ ] 材质存储优化 (S3/OSS 支持)
 
 ---
 
@@ -293,32 +255,9 @@ element-skin/
 
 项目采用了分层测试架构，确保从底层数据库到顶层 API 的稳定性。
 
-### 测试架构
-1.  **数据库层 (tests/database/)**: 验证 SQL 逻辑、数据迁移及缓存一致性。
-2.  **业务逻辑层 (tests/backends/)**: 验证核心业务规则（如注册权限、材质级联更新）。
-3.  **API 接口层 (tests/api/)**: 模拟真实 HTTP 请求，验证路由、中间件及响应格式。
-
-### 运行测试
-测试会自动创建临时数据库和文件目录，不会影响本地开发数据。
-
-```bash
-cd skin-backend
-# 安装测试依赖
-pip install -r requirements.txt
-
-# 运行所有测试
-pytest tests/
-
-# 查看详细输出
-pytest -v
-```
-
-### 编写新测试
-利用 `tests/conftest.py` 中预定义的 Fixtures 可以极速编写测试：
-- `db_session`: 获取一个干净的临时数据库实例。
-- `user_factory`: 快速创建测试用户。
-- `auth_headers` / `admin_headers`: 自动生成带 JWT 的请求头。
-- `client`: 异步 API 客户端。
+1.  **数据库层 (tests/database/)**: 验证 PG 逻辑、Schema 自动重置及缓存一致性。
+2.  **业务逻辑层 (tests/backends/)**: 验证注册权限、材质级联更新。
+3.  **API 接口层 (tests/api/)**: 模拟真实 HTTP 请求，验证路由。
 
 ## 📄 许可证
 
