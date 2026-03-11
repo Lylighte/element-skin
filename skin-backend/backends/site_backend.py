@@ -156,7 +156,7 @@ class SiteBackend:
         password_hash = hash_password(password)
         user_id = generate_random_uuid()
         try:
-            new_user = User(user_id, email, password_hash, 1 if is_first_user else 0)
+            new_user = User(user_id, email, password_hash, is_first_user)
             new_user.display_name = username
             await self.db.user.create(new_user)
         except Exception:

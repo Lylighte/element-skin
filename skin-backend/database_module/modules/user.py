@@ -101,7 +101,7 @@ class UserModule:
 
     async def unban(self, user_id: str):
         await self.db.execute(
-            "UPDATE users SET banned_until=NULL WHERE id=$2", user_id
+            "UPDATE users SET banned_until=NULL WHERE id=$1", user_id
         )
             
     async def is_banned(self, user_id: str) -> bool:

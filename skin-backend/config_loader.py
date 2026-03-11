@@ -62,7 +62,7 @@ class Config:
         """默认配置"""
         return {
             "jwt": {
-                "secret": "dev-secret-please-change-in-production",
+                "secret": "dev-secret-please-change-to-a-very-long-string-in-production",
                 "expire_days": 7,
             },
             "rate_limit": {

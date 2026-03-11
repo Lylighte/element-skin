@@ -48,8 +48,7 @@ async def test_admin_user_controls(db_session, test_config, user_factory):
 
     # 3. 切换管理员状态
     await backend.toggle_user_admin(user.id, admin.id)
-    assert (await db_session.user.get_by_id(user.id)).is_admin == 1
-
+    assert (await db_session.user.get_by_id(user.id)).is_admin is True
     # 禁止取消自己的管理员
     with pytest.raises(HTTPException) as exc:
         await backend.toggle_user_admin(admin.id, admin.id)
@@ -57,7 +56,7 @@ async def test_admin_user_controls(db_session, test_config, user_factory):
 
     # 4. 降级并删除用户
     await backend.toggle_user_admin(user.id, admin.id) # 降级回普通用户
-    assert (await db_session.user.get_by_id(user.id)).is_admin == 0
+    assert (await db_session.user.get_by_id(user.id)).is_admin is False
 
     await backend.delete_user(user.id, is_admin_action=True)
     assert await db_session.user.get_by_id(user.id) is None
