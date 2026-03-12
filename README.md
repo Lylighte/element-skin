@@ -22,9 +22,11 @@
 
 ## ✨ 功能特性
 
-- **🚀 极致性能**: 后端基于 Python 3.14 并开启 **Free Threading (GIL-free)**，结合 `uvloop` 充分发挥多核并发优势。
-- **🗄️ 现代化数据库**: 使用 **PostgreSQL 18** 作为主存储，支持高性能异步驱动 (`asyncpg`)。
+- **✅ 极致性能**: 后端基于 Python 3.14 并开启 **Free Threading (GIL-free)**充分发挥多核并发优势。
+- **✅ 现代化数据库**: 使用 **PostgreSQL 18** 作为主存储，支持高性能异步驱动 (`asyncpg`)。
 - **✅ 完整协议支持**: 完美实现 Yggdrasil API，无缝对接 Authlib-Injector 等主流加载器。
+- **✅ 完整的Fallback机制**: 支持多个第三方服务作为数据源，允许其他其他皮肤站的用户进入服务器。
+- **✅ 正版登录支持**: 集成 Mojang 官方认证服务，允许正版用户直接使用 Minecraft 账号登录。
 - **✅ 皮肤管理**: 支持皮肤/披风上传，集成 SkinView3D 提供丝滑的 3D 实时预览。
 - **✅ 完善的用户系统**: 包含邮箱验证、注册验证码、密码找回流程（支持 SMTP）。
 - **✅ 强大的管理后台**: 响应式设计，支持用户管理、邀请码机制、轮播图配置及邮件服务测试。
@@ -301,8 +303,8 @@ element-skin/
 - [x] API速率限制
 - [x] 数据库内存缓存与连接池
 - [x] 管理员设置细粒度API
-- [ ] 数据库性能优化
-- [ ] 多数据库支持（PostgreSQL、MySQL等）
+- [x] 数据库性能优化
+- [x] 多数据库支持（PostgreSQL、MySQL等）
 - [ ] Redis缓存支持
 - [ ] 材质存储优化（如使用云存储或CDN）
 
@@ -312,7 +314,7 @@ element-skin/
 - [x] 页脚信息（如站点名称、版权信息等）
 - [ ] 国际化 (i18n) 支持
 - [ ] 移动端适配优化
-- [ ] 前端性能优化（如图片懒加载、代码分割等）
+- [x] 前端性能优化（如图片懒加载、代码分割等）
 
 ### 端点与集成
 - [ ] 移动端 App 认证接口
@@ -322,8 +324,8 @@ element-skin/
 ### 测试
 - [x] 分层自动化测试框架 (Pytest + Asyncio)
 - [x] 数据库层 (Database Layer) 全接口覆盖
-- [ ] 业务逻辑层 (Backend Logic Layer) 完整覆盖
-- [ ] API 接口层 (Integration Layer) 核心流程覆盖
+- [x] 业务逻辑层 (Backend Logic Layer) 完整覆盖
+- [x] API 接口层 (Integration Layer) 核心流程覆盖
 
 ---
 
