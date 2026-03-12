@@ -1,13 +1,9 @@
-<h1 align="center" style="margin-bottom: 8px;">
-  <img src="./logo.svg" width="92" alt="Element-Skin Logo" style="vertical-align: -33px;"> <span style="color: #3b91e6;">Element-Skin</span>
-</h1>
-
-<p align="center" style="margin-top: 0; margin-bottom: 14px; color: #374151;">
-  面向高并发场景的现代化外置登录与材质平台
+<p align="center">
+  <img src="./img/readme-header.svg" width="100%" alt="Element-Skin Header">
 </p>
 
-<p align="center" style="margin-top: 0; margin-bottom: 16px; color: #4B5563;">
-  基于 Vue 3 + FastAPI，采用 <strong>Python 3.14 Free Threading</strong> 构建，释放多核并发潜能。
+<p align="center">
+  面向高并发场景的现代化外置登录与材质平台
 </p>
 
 <p align="center">

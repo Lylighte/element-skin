@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="260" viewBox="0 0 1400 260" role="img" aria-labelledby="title desc">
+  <title id="title">Element-Skin Header</title>
+  <desc id="desc">Minimal header with left logo and right Element-Skin title.</desc>
+
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A78BFA" />
+      <stop offset="100%" stop-color="#7C3AED" />
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(88 -26) scale(0.57)">
+    <g fill="none" stroke-width="80" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 256 128 A 128 128 0 0 1 384 256" stroke="url(#g1)" opacity="0.9" />
+      <path d="M 384 256 A 128 128 0 0 1 256 384" stroke="url(#g2)" opacity="0.9" />
+      <path d="M 256 384 A 128 128 0 0 1 128 256" stroke="url(#g3)" opacity="0.9" />
+      <path d="M 128 256 A 128 128 0 0 1 256 128" stroke="#E2E8F0" stroke-width="80" opacity="0.6" />
+    </g>
+  </g>
+
+  <text x="412" y="130" fill="#3B91E6" font-family="Segoe UI, Arial, sans-serif" font-size="154" font-weight="600" dominant-baseline="middle" textLength="900" lengthAdjust="spacingAndGlyphs">
+    Element-Skin
+  </text>
+</svg>
