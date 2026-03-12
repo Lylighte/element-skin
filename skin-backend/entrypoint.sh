@@ -31,7 +31,24 @@ if [ -f "/app/frontend/favicon.ico" ]; then
 else
     cp -rf /app/frontend_dist/* /app/frontend/
 fi
-echo "前端文件释放完成。"
+
+# --- 2.5 运行时路径替换 ---
+# 获取环境变量并处理默认值
+BASE_PATH=${VITE_BASE_PATH:-/}
+API_BASE=${VITE_API_BASE:-/skinapi}
+
+# 规范化 BASE_PATH：确保以 / 开头且以 / 结尾
+[[ $BASE_PATH != /* ]] && BASE_PATH="/$BASE_PATH"
+[[ $BASE_PATH != */ ]] && BASE_PATH="$BASE_PATH/"
+
+echo "正在动态替换前端路径: BASE=$BASE_PATH, API=$API_BASE"
+
+# 扫描并替换 index.html 和 JS 文件中的占位符
+# 使用 | 作为 sed 分隔符以处理路径中的斜杠
+find /app/frontend -type f \( -name "*.js" -o -name "*.html" \) -exec sed -i "s|/VITE_BASE_PATH_PLACEHOLDER/|$BASE_PATH|g" {} +
+find /app/frontend -type f \( -name "*.js" -o -name "*.html" \) -exec sed -i "s|VITE_API_BASE_PLACEHOLDER|$API_BASE|g" {} +
+
+echo "前端文件释放及路径配置完成。"
 
 # --- 3. 密钥生成逻辑 ---
 if [ ! -f "private.pem" ] || [ ! -f "public.pem" ]; then

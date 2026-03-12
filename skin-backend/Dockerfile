@@ -5,11 +5,9 @@ WORKDIR /web
 COPY element-skin/package*.json ./
 RUN npm install
 COPY element-skin/ .
-# 默认编译参数
-ARG VITE_BASE_PATH=/
-ARG VITE_API_BASE=
-ENV VITE_BASE_PATH=${VITE_BASE_PATH}
-ENV VITE_API_BASE=${VITE_API_BASE}
+# 强制使用占位符进行编译，以便在运行时动态替换
+ENV VITE_BASE_PATH=/VITE_BASE_PATH_PLACEHOLDER/
+ENV VITE_API_BASE=VITE_API_BASE_PLACEHOLDER
 RUN npm run build
 
 # --- 第二阶段：编译支持 Free Threading 的 Python ---

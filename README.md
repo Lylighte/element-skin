@@ -144,10 +144,8 @@ server {
 ```bash
 docker compose up -d
 ```
----
 
-## Docker本地构建
-对于希望前端或后端地址部署在子目录的用户，可以通过构建参数灵活配置路径：
+对于希望前端或后端地址部署在子目录的用户，可以通过参数灵活配置路径：
 - **前端路径**: 通过 `VITE_BASE_PATH` 定义前端资源的基础路径
 - **后端路径**: 通过 `VITE_API_BASE` 定义后端 API 的基础路径
 
@@ -155,8 +153,8 @@ docker compose up -d
 
 | 场景 | 前端路径 | 后端路径 | 启动命令 |
 |-----|---------|---------|---------|
-| **场景 1** | `/skin/` | `/skinapi` | `VITE_BASE_PATH=/skin/ docker compose up -d --build` |
-| **场景 2** | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d --build` |
+| **场景 1** | `/skin/` | `/skinapi` | `VITE_BASE_PATH=/skin/ docker compose up -d |
+| **场景 2** | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d` |
 
 **Nginx 主机配置 (对应场景 1)**
 ```nginx
@@ -205,9 +203,6 @@ location = /skin/api {
     proxy_set_header Host $host;
 }
 ```
-
-> 💡 **低内存模式**: 如果构建时内存不足，可添加 `BUILD_MODE=low-memory` 环境变量跳过类型检查。
-
 ---
 
 ## 从1.3.1升级到2.0.0
