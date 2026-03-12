@@ -110,8 +110,13 @@ def setup_routes(db: Database, admin_backend, rate_limiter, config: Config):
     # ========== Users ==========
 
     @router.get("/admin/users")
-    async def get_admin_users(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_admin_users()
+    async def get_admin_users(
+        page: int = 1,
+        limit: int = 15,
+        payload: dict = Depends(admin_required)
+    ):
+        offset = (page - 1) * limit
+        return await admin_backend.get_admin_users(limit=limit, offset=offset)
 
     @router.get("/admin/users/{user_id}")
     async def get_single_user_admin(user_id: str, payload: dict = Depends(admin_required)):

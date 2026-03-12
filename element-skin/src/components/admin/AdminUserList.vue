@@ -52,6 +52,17 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-container" v-if="total > limit">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          v-model:current-page="currentPage"
+          @current-change="handlePageChange"
+        />
+      </div>
     </el-card>
 
     <!-- User Detail Dialog -->
@@ -229,6 +240,9 @@ import {
 } from '@element-plus/icons-vue'
 
 const users = ref([])
+const total = ref(0)
+const currentPage = ref(1)
+const limit = 15
 const loading = ref(false)
 const currentUser = ref(null)
 const userDetailDialogVisible = ref(false)
@@ -251,13 +265,25 @@ const authHeaders = () => ({ Authorization: 'Bearer ' + localStorage.getItem('jw
 async function refreshUsers() {
   loading.value = true
   try {
-    const res = await axios.get('/admin/users', { headers: authHeaders() })
-    users.value = res.data
+    const res = await axios.get('/admin/users', { 
+      headers: authHeaders(),
+      params: {
+        page: currentPage.value,
+        limit: limit
+      }
+    })
+    users.value = res.data.items
+    total.value = res.data.total
   } catch (e) {
     ElMessage.error('加载用户列表失败')
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(page) {
+  currentPage.value = page
+  refreshUsers()
 }
 
 async function showUserDetailDialog(user) {
