@@ -55,6 +55,17 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-container" v-if="total > limit">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+          :page-size="limit"
+          v-model:current-page="currentPage"
+          @current-change="handlePageChange"
+        />
+      </div>
     </el-card>
 
     <!-- Create Invite Dialog -->
@@ -123,6 +134,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Plus, Check, Delete, Ticket } from '@element-plus/icons-vue'
 
 const invites = ref([])
+const total = ref(0)
+const currentPage = ref(1)
+const limit = 15
 const inviteDialogVisible = ref(false)
 const inviteMode = ref('auto')
 const customInviteCode = ref('')
@@ -140,11 +154,23 @@ function formatDate(ts) {
 
 async function loadInvites() {
   try {
-    const res = await axios.get('/admin/invites', { headers: authHeaders() })
-    invites.value = res.data
+    const res = await axios.get('/admin/invites', { 
+      headers: authHeaders(),
+      params: {
+        page: currentPage.value,
+        limit: limit
+      }
+    })
+    invites.value = res.data.items
+    total.value = res.data.total
   } catch (e) {
     ElMessage.error('加载列表失败')
   }
+}
+
+function handlePageChange(page) {
+  currentPage.value = page
+  loadInvites()
 }
 
 function generateRandomCode() {

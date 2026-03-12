@@ -285,9 +285,13 @@ class UserModule:
                         used_by, code
                     )
 
-    async def list_invites(self) -> list[InviteCode]:
+    async def count_invites(self) -> int:
+        return await self.db.fetchval("SELECT COUNT(*) FROM invites") or 0
+
+    async def list_invites(self, limit: int = 15, offset: int = 0) -> list[InviteCode]:
         rows = await self.db.fetch(
-            "SELECT code, created_at, used_by, total_uses, used_count, note FROM invites ORDER BY created_at DESC"
+            "SELECT code, created_at, used_by, total_uses, used_count, note FROM invites ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+            limit, offset
         )
         return [InviteCode(*r) for r in rows]
 
