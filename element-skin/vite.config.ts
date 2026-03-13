@@ -11,7 +11,7 @@ const appVersion = 'v2.0.0'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: process.env.VITE_BASE_PATH || '/asdfgh/',
+  base: process.env.VITE_BASE_PATH || '/',
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
@@ -29,7 +29,7 @@ export default defineConfig({
             // 映射到后端目录（假设开发环境下后端在同级目录）
             const filePath = path.resolve(__dirname, `../skin-backend/${type}/${filename.split('?')[0]}`)
             
-            if (fs.existsSync(filePath)) {
+            if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
               res.setHeader('Content-Type', type === 'textures' ? 'image/png' : 'image/jpeg')
               res.end(fs.readFileSync(filePath))
               return

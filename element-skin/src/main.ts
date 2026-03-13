@@ -19,7 +19,7 @@ app.use(router)
 app.use(ElementPlus)
 
 // axios 全局基础配置，VITE_API_BASE 可用于后端地址
-axios.defaults.baseURL = import.meta.env.VITE_API_BASE || '127.0.0.1:8000'
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE || ''
 app.config.globalProperties.$http = axios
 
 app.mount('#app')

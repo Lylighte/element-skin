@@ -102,16 +102,16 @@ function getCarouselUrl(filename) {
 
 .home-container { 
   width: 100%; 
-  flex: 1; 
+  min-height: 100vh; 
   display: flex; 
   flex-direction: column; 
   position: relative;
-  overflow: hidden; /* Prevent any accidental content overflow */
 }
 
-/* FIXED Background logic - Using 100% instead of 100vw to avoid scrollbar calculation issues */
+/* FIXED Background logic */
 .hero-bg-fixed {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1;
+  transform: translateZ(0); /* Create stable layer for backdrop-filter sampling */
 }
 .hero-bg-fixed.is-gradient {
   background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
