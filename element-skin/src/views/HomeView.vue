@@ -102,7 +102,7 @@ function getCarouselUrl(filename) {
 
 .home-container { 
   width: 100%; 
-  min-height: 100vh; 
+  height: calc(100vh - var(--footer-height, 0px));
   display: flex; 
   flex-direction: column; 
   position: relative;
