@@ -55,7 +55,7 @@ services:
       POSTGRES_PASSWORD: password123 #⚠️ 生产环境请修改密码
       POSTGRES_DB: elementskin
     volumes:
-      - ./data/db:/var/lib/postgresql/data
+      - ./data/db:/var/lib/postgresql
     ports:
       - "5432:5432" # 在迁移完成后可以关闭这个端口暴露
   backend:
@@ -68,6 +68,7 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./frontend:/app/frontend           # 前端、皮肤、轮播图全部在这里
+      - ./data:/app/data                   # 密钥文件
     ports:
       - "8000:8000"
 ```
@@ -101,6 +102,8 @@ carousel:
 server:
   host: "0.0.0.0"
   port: 8000
+  # ⚠️ 如果前端部署在子目录, 这里也需要修改 (如 /skin/)
+  root_path: "/skinapi" 
   # ⚠️ 站点的外部访问地址
   site_url: "http://yourdomain.com" 
   # ⚠️ 后端 API 外部访问地址
