@@ -1,5 +1,5 @@
 # --- 第一阶段：编译前端 ---
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 WORKDIR /web
 # 复制前端源码 (上下文为根目录)
 COPY element-skin/package*.json ./
