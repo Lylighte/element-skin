@@ -22,7 +22,7 @@
         </div>
       </div>
 
-    <div class="library-grid-container" v-loading="loading">
+    <div class="library-grid-container" v-loading="loading" element-loading-background="transparent">
       <div class="auto-grid" v-if="items.length > 0">
         <div 
           class="surface-card hoverable animate-card-slide" 

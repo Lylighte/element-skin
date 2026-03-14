@@ -7,7 +7,7 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 const isLowMemory = process.env.BUILD_MODE === 'low-memory'
-const appVersion = 'v1.3.1'
+const appVersion = 'v2.0.0'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -35,7 +35,7 @@ export default defineConfig({
             // 映射到后端目录
             const filePath = path.resolve(__dirname, `../skin-backend/${type}/${filename.split('?')[0]}`)
             
-            if (fs.existsSync(filePath)) {
+            if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
               res.setHeader('Content-Type', type === 'textures' ? 'image/png' : 'image/jpeg')
               res.end(fs.readFileSync(filePath))
               return

@@ -102,14 +102,13 @@ function getCarouselUrl(filename) {
 
 .home-container { 
   width: 100%; 
-  flex: 1; 
+  height: calc(100vh - var(--footer-height, 0px));
   display: flex; 
   flex-direction: column; 
   position: relative;
-  overflow: hidden; /* Prevent any accidental content overflow */
 }
 
-/* FIXED Background logic - Using 100% instead of 100vw to avoid scrollbar calculation issues */
+/* FIXED Background logic */
 .hero-bg-fixed {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0;
 }

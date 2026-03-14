@@ -323,10 +323,10 @@ onUnmounted(() => {
 @import "@/assets/styles/cards.css";
 @import "@/assets/styles/footers.css";
 
-.app-shell { min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
 
-/* Home Mode Shell - Strict首屏，防止滚动 */
-.is-home-layout { height: 100vh; overflow: hidden; }
+/* Home Mode Shell - Allow natural scrolling for global overlays */
+.is-home-layout { min-height: 100vh; position: relative; }
 
 .layout-header-wrap {
   padding: 0 20px; background: var(--color-header-background); backdrop-filter: blur(8px);
@@ -335,7 +335,7 @@ onUnmounted(() => {
 }
 
 .is-home-layout .layout-header-wrap {
-  position: absolute; top: 0; left: 0; right: 0; background: transparent; border-bottom: none; box-shadow: none; backdrop-filter: none;
+  position: fixed; top: 0; left: 0; right: 0; background: transparent; border-bottom: none; box-shadow: none; backdrop-filter: none;
 }
 
 /* Home Layout UI Enforcement - Scoped to .layout-header */

@@ -192,8 +192,9 @@ class AdminBackend:
             })
         return normalized
 
-    async def get_admin_users(self):
-        users = await self.db.user.list_users(limit=1000, offset=0)
+    async def get_admin_users(self, limit: int = 15, offset: int = 0):
+        total = await self.db.user.count()
+        users = await self.db.user.list_users(limit=limit, offset=offset)
         result = []
         for row in users:
             profile_count = await self.db.user.count_profiles_by_user(row.id)
@@ -205,7 +206,7 @@ class AdminBackend:
                 "banned_until": row.banned_until,
                 "profile_count": profile_count,
             })
-        return result
+        return {"total": total, "items": result}
 
     async def get_user_info(self, user_id: str) -> Dict[str, Any]:
         user_row = await self.db.user.get_by_id(user_id)

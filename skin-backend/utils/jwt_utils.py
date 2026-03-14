@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from config_loader import config
 
 
-JWT_SECRET = config.get("jwt.secret", "dev-secret")
+JWT_SECRET = config.get("jwt.secret", "dev-secret-default-key-at-least-32-chars-long")
 JWT_ALGO = "HS256"
 
 

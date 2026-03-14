@@ -110,8 +110,13 @@ def setup_routes(db: Database, admin_backend, rate_limiter, config: Config):
     # ========== Users ==========
 
     @router.get("/admin/users")
-    async def get_admin_users(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_admin_users()
+    async def get_admin_users(
+        page: int = 1,
+        limit: int = 15,
+        payload: dict = Depends(admin_required)
+    ):
+        offset = (page - 1) * limit
+        return await admin_backend.get_admin_users(limit=limit, offset=offset)
 
     @router.get("/admin/users/{user_id}")
     async def get_single_user_admin(user_id: str, payload: dict = Depends(admin_required)):
@@ -154,19 +159,28 @@ def setup_routes(db: Database, admin_backend, rate_limiter, config: Config):
     # ========== Invites ==========
 
     @router.get("/admin/invites")
-    async def get_admin_invites(payload: dict = Depends(admin_required)):
-        invites = await db.user.list_invites()
-        return [
-            {
-                "code": row.code,
-                "created_at": row.created_at,
-                "used_by": row.used_by,
-                "total_uses": row.total_uses,
-                "used_count": row.used_count,
-                "note": row.note,
-            }
-            for row in invites
-        ]
+    async def get_admin_invites(
+        page: int = 1,
+        limit: int = 15,
+        payload: dict = Depends(admin_required)
+    ):
+        offset = (page - 1) * limit
+        total = await db.user.count_invites()
+        invites = await db.user.list_invites(limit=limit, offset=offset)
+        return {
+            "total": total,
+            "items": [
+                {
+                    "code": row.code,
+                    "created_at": row.created_at,
+                    "used_by": row.used_by,
+                    "total_uses": row.total_uses,
+                    "used_count": row.used_count,
+                    "note": row.note,
+                }
+                for row in invites
+            ]
+        }
 
     @router.post("/admin/invites")
     async def create_admin_invite(

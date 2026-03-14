@@ -2,13 +2,16 @@ name: Docker Publish
 
 on:
   push:
-    tags: [ 'v*.*.*' ]  # 只有推送符合版本号标签（如 v1.0.0）时才触发构建
+    branches: [ 'dev', 'main' ]
+    tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ "main" ]  # 监听 PR 合并到 main 但不触发构建
+    branches: [ "main" ]
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_PREFIX: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository }}
+  # 提前启用 Node.js 24 以消除 Node.js 20 弃用警告
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-and-push:
@@ -17,17 +20,6 @@ jobs:
       contents: read
       packages: write
       id-token: write
-
-    strategy:
-      matrix:
-        component: [backend, frontend]
-        include:
-          - component: backend
-            context: ./skin-backend
-            image_suffix: backend
-          - component: frontend
-            context: ./element-skin
-            image_suffix: frontend
 
     steps:
       - name: Checkout repository
@@ -48,24 +40,25 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}-${{ matrix.image_suffix }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
-            main
+            type=ref,event=branch
             type=sha,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
         id: build-and-push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
+          context: .
+          file: skin-backend/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}-${{ matrix.image_suffix }}:main  
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             BUILD_MODE=standard
+            VITE_BASE_PATH=/
             VITE_API_BASE=/skinapi

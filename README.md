@@ -1,14 +1,32 @@
-# Element-Skin — Minecraft Yggdrasil 皮肤站
+<p align="center">
+  <img src="./img/readme-header.svg" width="100%" alt="Element-Skin Header">
+</p>
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/water2004/element-skin)
+<p align="center">
+  面向高并发场景的现代化外置登录与材质平台
+</p>
 
-基于 Vue 3 + FastAPI 的现代化 Minecraft 外置登录系统。提供极佳的 UI 体验，完整支持 Yggdrasil 协议，兼容所有主流启动器。
+<p align="center">
+  <a href="https://deepwiki.com/water2004/element-skin">
+    <img src="https://deepwiki.com/badge.svg">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/water2004/element-skin">
+  </a>
+  <img src="https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js&logoColor=white">
+  <img src="https://img.shields.io/badge/Python-3.14t-3776AB?logo=python&logoColor=white">
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white">
+</p>
 
 ![](./img/root.png)
 
 ## ✨ 功能特性
 
+- **✅ 极致性能**: 后端基于 Python 3.14 并开启 **Free Threading (GIL-free)**充分发挥多核并发优势。
+- **✅ 现代化数据库**: 使用 **PostgreSQL 18** 作为主存储，支持高性能异步驱动 (`asyncpg`)。
 - **✅ 完整协议支持**: 完美实现 Yggdrasil API，无缝对接 Authlib-Injector 等主流加载器。
+- **✅ 完整的Fallback机制**: 支持多个第三方服务作为数据源，允许其他其他皮肤站的用户进入服务器。
+- **✅ 正版登录支持**: 集成 Mojang 官方认证服务，允许正版用户直接使用 Minecraft 账号登录。
 - **✅ 皮肤管理**: 支持皮肤/披风上传，集成 SkinView3D 提供丝滑的 3D 实时预览。
 - **✅ 完善的用户系统**: 包含邮箱验证、注册验证码、密码找回流程（支持 SMTP）。
 - **✅ 强大的管理后台**: 响应式设计，支持用户管理、邀请码机制、轮播图配置及邮件服务测试。
@@ -19,9 +37,43 @@
 
 ## 🚀 Docker 部署指南 (推荐)
 
-我们提供了三种部署方案，**强烈建议使用方案 A（默认方案）**，直接使用预构建镜像，无需本地编译。
+项目现在默认使用 **PostgreSQL 18** 并支持自动化初始化。
 
 ### 1. 准备配置文件
+
+在宿主机创建`docker-compose.yml`文件，内容如下：
+
+**docker-compose.yml**
+```yaml
+version: '3.8'
+services:
+  db:
+    image: postgres:18-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: elementskin
+      POSTGRES_PASSWORD: password123 #⚠️ 生产环境请修改密码
+      POSTGRES_DB: elementskin
+    volumes:
+      - ./data/db:/var/lib/postgresql
+    ports:
+      - "5432:5432" # 在迁移完成后可以关闭这个端口暴露
+  backend:
+    image: ghcr.io/water2004/element-skin:latest
+    container_name: element-skin
+    restart: unless-stopped
+    environment:
+      - VITE_BASE_PATH=${VITE_BASE_PATH:-/}    # 👈 前端部署路径 (如 /skin/)
+      - VITE_API_BASE=${VITE_API_BASE:-/skinapi} # 👈 后端 API 路径 (如 /skinapi)
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./frontend:/app/frontend           # 前端、皮肤、轮播图全部在这里
+      - ./data:/app/data                   # 密钥文件
+    ports:
+      - "8000:8000"
+```
+
+> 💡 **动态路径配置**: 镜像支持在启动时通过环境变量动态修改路径。修改后直接 `docker compose restart` 即可生效，无需重新构建。
 
 在宿主机创建 `config.yaml` 文件。这是系统运行的核心配置。
 
@@ -29,27 +81,28 @@
 # Element-Skin 配置文件
 
 jwt:
-  secret: "CHANGE-ME-TO-RANDOM-SECRET"  # ⚠️ 生产环境必须修改为随机字符串
+  secret: "dev-secret-please-change-to-a-very-long-string-in-production"  # ⚠️ 生产环境必须修改为随机长字符串
 
-# RSA 密钥配置 (系统会自动生成，指定路径即可)
+# RSA 密钥配置 (系统会自动生成并持久化)
 keys:
-  private_key: "/data/private.pem"
-  public_key: "/data/public.pem"
+  private_key: "/app/data/private.pem"
+  public_key: "/app/data/public.pem"
 
 database:
-  path: "/data/yggdrasil.db"
+  # 格式: postgresql://用户名:密码@db:5432/数据库名?sslmode=disable
+  dsn: "postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable" #⚠️ 用户名和密码请确保与 PostgreSQL 环境变量一致
+  max_connections: 20
 
 textures:
-  directory: "/data/textures"
+  directory: "/app/frontend/static/textures"
 
 carousel:
-  directory: "/data/carousel"
+  directory: "/app/frontend/static/carousel"
 
 server:
   host: "0.0.0.0"
   port: 8000
-  # ⚠️ 如果使用方案A (GHCR镜像)，此处必须保留为 /skinapi
-  # 如果是本地构建且自定义路径，请根据实际情况修改
+  # ⚠️ 如果前端部署在子目录, 这里也需要修改 (如 /skin/)
   root_path: "/skinapi" 
   # ⚠️ 站点的外部访问地址
   site_url: "http://yourdomain.com" 
@@ -58,169 +111,167 @@ server:
 
 # CORS 跨域配置
 cors:
-  # 生产环境建议配置具体域名，如 ["https://yourdomain.com"]
-  allow_origins: ["*"]
+  allow_origins: ["*"] # ⚠️ 生产环境请根据实际情况限制来源
   allow_credentials: true
-
-mojang:
-  session_url: "https://sessionserver.mojang.com"
-  account_url: "https://api.mojang.com"
-  services_url: "https://api.minecraftservices.com"
-  skin_domains:
-    - "textures.minecraft.net"
-  cache_ttl: 3600
 ```
-
-### 2. 选择部署方案
-
-请根据你的需求选择一种方案，配置 `docker-compose.yml` 和 `Nginx`。
-
-#### 方案 A：根目录部署 (GHCR 镜像) —— ✅ 推荐
-*无需本地构建，开箱即用。*
-
-**docker-compose.yml**
-```yaml
-version: '3.8'
-services:
-  backend:
-    image: ghcr.io/water2004/element-skin-backend:main
-    container_name: element-skin-backend
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./config.yaml:/app/config.yaml:ro
-      - ./data:/data
-  frontend:
-    image: ghcr.io/water2004/element-skin-frontend:main
-    container_name: element-skin-frontend
-    restart: unless-stopped
-    ports:
-      - "3000:80"
-    volumes:
-      - ./data/textures:/usr/share/nginx/html/static/textures:ro
-      - ./data/carousel:/usr/share/nginx/html/static/carousel:ro
-```
-
-在项目的根目录下, 有一份完整的`docker-compose.yml`配置模板, 但若是使用ghcr镜像, 上面的配置已经足够
 
 **Nginx 主机配置**
+只需将 Nginx 的 `root` 指向宿主机的 `./frontend` 目录。
+
 ```nginx
 server {
     listen 80;
     server_name yourdomain.com;
 
+    # 1. 前端根目录 (index.html, assets, 以及皮肤 static/)
+    root /your/path/to/frontend; 
+    index index.html;
+
     location / {
-        proxy_pass http://localhost:3000/; # 注意末尾的 /
+        try_files $uri $uri/ /index.html;
     }
 
-    # 后端 API 转发
-    # 注意：使用 GHCR 镜像时，后端必须匹配 /skinapi 路径
+    # 2. 后端 API 转发
     location /skinapi/ {
-        proxy_pass http://localhost:8000; # 注意末尾没有 /
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
     }
     
-    # 处理不带斜杠的请求
+    # 直接转发不带斜杠的 API 请求
     location = /skinapi {
-        proxy_pass http://localhost:8000/skinapi/; # 注意末尾的 /
+        proxy_pass http://localhost:8000/skinapi/;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```
+最后，启动 Docker：
 
----
+```bash
+docker compose up -d
+```
 
-#### 方案 B：子目录部署 (本地构建)
-*适用于将皮肤站部署在 `https://example.com/skin/` 这样的子路径下。此方案需要本地编译前端。*
+对于希望前端或后端地址部署在子目录的用户，可以通过参数灵活配置路径：
+- **前端路径**: 通过 `VITE_BASE_PATH` 定义前端资源的基础路径
+- **后端路径**: 通过 `VITE_API_BASE` 定义后端 API 的基础路径
 
-**启动命令**
-根据你的路径需求，修改项目根目录下的`docker-compose.yml`, 并使用对应的环境变量启动：
+根据你的路径需求，在启动时传入环境变量。前端会根据这些参数编译，并自动释放到宿主机的 `./frontend` 目录：
 
 | 场景 | 前端路径 | 后端路径 | 启动命令 |
 |-----|---------|---------|---------|
-| **场景 1** | `/skin/` | `/skinapi` | `VITE_BASE_PATH=/skin/ docker compose up -d --build` |
-| **场景 2** | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d --build` |
+| **场景 1** | `/skin/` | `/skinapi` | `VITE_BASE_PATH=/skin/ docker compose up -d` |
+| **场景 2** | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d` |
 
-> 💡 **低内存模式**: 如果构建时内存不足，可添加 `BUILD_MODE=low-memory` 环境变量跳过类型检查。
+需要注意的是，`config.yaml` 中的 `server.site_url` 和 `server.api_url` 也需要根据实际部署路径进行调整，以确保生成的链接正确。
 
 **Nginx 主机配置 (对应场景 1)**
 ```nginx
+# 1. 前端静态文件
 location /skin/ {
-    proxy_pass http://localhost:3000/; # 末尾有 /，去除 /skin/ 前缀
+    alias /your/path/to/frontend/;
+    index index.html;
+    try_files $uri $uri/ /skin/index.html;
 }
+location = /skin {
+    alias /your/path/to/frontend/;
+    try_files $uri $uri/ /skin/index.html;
+}
+
+# 2. 后端 API 转发
 location /skinapi/ {
-    proxy_pass http://localhost:8000;  # 末尾无 /，保留完整路径
+    proxy_pass http://localhost:8000;
     proxy_set_header Host $host;
 }
-# 处理不带斜杠的请求
-location /skinapi {
-    proxy_pass http://localhost:8000/skinapi/;  # 末尾有 /
+location = /skinapi {
+    proxy_pass http://localhost:8000/skinapi/;
     proxy_set_header Host $host;
 }
 ```
 
 **Nginx 主机配置 (对应场景 2)**
 ```nginx
+# 1. 前端静态文件
 location /skin/ {
-    proxy_pass http://localhost:3000/;
+    alias /your/path/to/frontend/;
+    index index.html;
+    try_files $uri $uri/ /skin/index.html;
 }
+location = /skin {
+    alias /your/path/to/frontend/;
+    try_files $uri $uri/ /skin/index.html;
+}
+
+# 2. 后端 API 转发 (嵌套路径)
 location /skin/api/ {
     proxy_pass http://localhost:8000;
     proxy_set_header Host $host;
 }
-# 处理不带斜杠的请求
-location /skin/api {
+location = /skin/api {
     proxy_pass http://localhost:8000/skin/api/;
     proxy_set_header Host $host;
 }
 ```
-
 ---
 
-### 3. 初始化设置 (重要)
+## 从1.3.1升级到2.0.0
+2.x版本最大的更新是数据库从 SQLite 切换到 PostgreSQL，因此需要进行数据迁移。在迁移之前，请**确保皮肤站版本已经升级到 v1.3.1**，并且已经备份了数据库文件。迁移步骤如下：
 
-容器启动成功后，请按以下步骤完成初始化：
-
-1.  **注册管理员**: 访问你的站点，注册的**第一个账号**将自动获得管理员权限。
-2.  **配置站点设置**:
-    *   登录后进入 `管理面板` -> `站点设置`。
-    *   您可以修改站点名称、注册开关等。
-    *   ⚠️ **注意**: **后端 API 地址** (用于材质预览等) 现在已移至 `config.yaml` 中的 `server.api_url` 配置项。如果预览无法加载，请检查该配置是否正确。
-    
-3.  **配置邮件服务**:
-    *   进入 `管理面板` -> `邮件服务`。
-    *   配置 SMTP 信息并开启“邮件验证开关”，即可启用验证码和密码找回功能。
-
+1. 按照上面的 Docker 部署指南，启动皮肤站服务
+2. 按照你的数据库配置，编辑`sqlite_to_postgres.py`文件中的数据库连接字符串。如果使用了上面的 Docker 配置，连接字符串应该是：
+```python
+SQLALCHEMY_DATABASE_URL = "postgresql://elementskin:password123@localhost:5432/elementskin?sslmode=disable"
+```
+3. 按照你原先的数据库文件路径，编辑`sqlite_to_postgres.py`文件中的SQLite数据库路径
+4. 运行迁移脚本：
+```bash
+python sqlite_to_postgres.py
+```
+5. 将原先的`textures`和`carousel`目录中的文件迁移到`./frontend/static/textures`和`./frontend/static/carousel`目录中
+6. 将原先的`public.pem`和`private.pem`文件迁移到`./data/`目录中
+7. 重新启动 Docker 服务：
+```bash
+docker compose restart
+```
 ---
 
 ## 🛠️ 本地开发环境
 
-如果你需要修改代码或参与贡献：
+### 本地开发环境
 
-### 后端 (Python)
+#### 1. 数据库配置 (PostgreSQL 18+)
+本地开发需要手动安装并初始化数据库：
+
+1.  **安装 PostgreSQL**: 确保本地已安装 PostgreSQL 18（或 16+）。
+2.  **创建数据库**: 使用 `psql` 或 GUI 工具（如 pgAdmin/DBeaver）创建用户和数据库：
+    ```sql
+    -- 建议创建专用用户和库
+    CREATE USER elementskin WITH PASSWORD 'password123';
+    CREATE DATABASE elementskin OWNER elementskin;
+    ```
+3.  **修改配置**: 编辑 `skin-backend/config.yaml` 中的 `database.dsn`：
+    ```yaml
+    database:
+      # 必须匹配：.../数据库名?sslmode...
+      dsn: "postgresql://elementskin:password123@localhost:5432/elementskin?sslmode=disable"
+    ```
+    > 💡 **自动初始化**: 后端在每次启动时会自动同步数据库结构（创建缺失的表及默认配置），无需手动执行 SQL 脚本。
+
+#### 2. 后端 (Python 3.14+)
 ```bash
 cd skin-backend
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# Linux/macOS:
-source .venv/bin/activate
-
+# Windows: .venv\Scripts\activate | Linux: source .venv/bin/activate
 pip install -r requirements.txt
-python gen_key.py                # 生成 RSA 密钥
-uvicorn routes_reference:app --reload
+python gen_key.py                # 生成密钥
+# 运行测试 (需本地开启 PG)
+uvicorn routes_reference:app --reload --host 0.0.0.0
 ```
 
-### 前端 (Node.js)
+#### 3. 前端 (Node.js)
 ```bash
 cd element-skin
 npm install
 npm run dev
 ```
-访问 http://localhost:5173
 
 ---
 
@@ -230,10 +281,13 @@ npm run dev
 element-skin/
 ├── element-skin/       # 前端源码 (Vue 3 + Element Plus)
 ├── skin-backend/       # 后端源码 (FastAPI)
-├── config.yaml         # 配置文件 (需手动创建)
-├── data/               # 数据存储 (数据库、材质、密钥，自动生成)
-├── docker-compose.yml  # Docker 编排文件
-└── nginx-host.conf     # Nginx 配置参考
+│   ├── database_module/# PostgreSQL 异步适配
+│   ├── init.sql        # 自动初始化脚本
+│   └── ...
+├── config.yaml         # 配置文件
+├── pgdata/             # 数据库物理存储 (自动生成)
+├── docker-compose.yml  
+└── README.md
 ```
 
 ## 📋 TODO 
@@ -263,8 +317,8 @@ element-skin/
 - [x] API速率限制
 - [x] 数据库内存缓存与连接池
 - [x] 管理员设置细粒度API
-- [ ] 数据库性能优化
-- [ ] 多数据库支持（PostgreSQL、MySQL等）
+- [x] 数据库性能优化
+- [x] 多数据库支持（PostgreSQL、MySQL等）
 - [ ] Redis缓存支持
 - [ ] 材质存储优化（如使用云存储或CDN）
 
@@ -274,7 +328,7 @@ element-skin/
 - [x] 页脚信息（如站点名称、版权信息等）
 - [ ] 国际化 (i18n) 支持
 - [ ] 移动端适配优化
-- [ ] 前端性能优化（如图片懒加载、代码分割等）
+- [x] 前端性能优化（如图片懒加载、代码分割等）
 
 ### 端点与集成
 - [ ] 移动端 App 认证接口
@@ -284,8 +338,8 @@ element-skin/
 ### 测试
 - [x] 分层自动化测试框架 (Pytest + Asyncio)
 - [x] 数据库层 (Database Layer) 全接口覆盖
-- [ ] 业务逻辑层 (Backend Logic Layer) 完整覆盖
-- [ ] API 接口层 (Integration Layer) 核心流程覆盖
+- [x] 业务逻辑层 (Backend Logic Layer) 完整覆盖
+- [x] API 接口层 (Integration Layer) 核心流程覆盖
 
 ---
 
