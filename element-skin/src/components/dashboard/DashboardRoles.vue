@@ -162,7 +162,8 @@ function authHeaders() {
 
 function texturesUrl(hash) {
   if (!hash) return ''
-  return (import.meta.env.VITE_API_BASE || '') + '/static/textures/' + hash + '.png'
+  const base = import.meta.env.BASE_URL
+  return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
 }
 
 async function createRole() {

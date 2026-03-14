@@ -22,11 +22,17 @@ export default defineConfig({
       name: 'serve-static-assets',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          // 处理静态材质和轮播图
-          const staticMatch = req.url?.match(/^\/static\/(textures|carousel)\/(.+)$/)
+          // 获取不带 base 前缀的路径
+          const base = process.env.VITE_BASE_PATH || '/'
+          const url = req.url || ''
+          if (!url.startsWith(base)) return next()
+          
+          const relativeUrl = url.slice(base.length - 1) // 保持以 / 开头
+          const staticMatch = relativeUrl.match(/^\/static\/(textures|carousel)\/(.+)$/)
+          
           if (staticMatch) {
             const [, type, filename] = staticMatch
-            // 映射到后端目录（假设开发环境下后端在同级目录）
+            // 映射到后端目录
             const filePath = path.resolve(__dirname, `../skin-backend/${type}/${filename.split('?')[0]}`)
             
             if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
