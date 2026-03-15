@@ -18,7 +18,13 @@
     </div>
 
     <div class="auto-grid">
-      <div v-for="(profile, index) in user?.profiles || []" :key="profile.id" class="surface-card hoverable animate-card-slide" :style="{ '--delay-index': index }">
+      <div 
+        v-for="(profile, index) in user?.profiles || []" 
+        :key="profile.id" 
+        class="surface-card hoverable animate-card-slide clickable-card" 
+        :style="{ '--delay-index': index }"
+        @click="openPreviewDialog(profile)"
+      >
         <div
           class="role-preview"
           :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }"
@@ -30,6 +36,7 @@
             :model="profile.model || 'default'"
             :width="200"
             :height="280"
+            is-static
           />
           <el-empty v-else description="未设置皮肤" :image-size="120" />
         </div>
@@ -37,7 +44,7 @@
           <div class="role-name">{{ profile.name }}</div>
           <div class="role-model">模型: {{ profile.model || 'default' }}</div>
         </div>
-        <div class="role-actions">
+        <div class="role-actions" @click.stop>
           <el-button
             class="btn-gradient btn-gradient-danger btn-icon-swap"
             @click="deleteRole(profile.id)"
@@ -69,6 +76,81 @@
         </div>
       </div>
     </div>
+
+    <!-- 预览对话框 -->
+    <el-dialog
+      v-model="showPreviewDialog"
+      width="800px"
+      destroy-on-close
+      class="dialog-viewer"
+      append-to-body
+    >
+      <div class="viewer-layout" v-if="selectedProfile">
+        <div class="viewer-stage">
+          <SkinViewer
+            v-if="selectedProfile.skin_hash"
+            :skinUrl="texturesUrl(selectedProfile.skin_hash)"
+            :capeUrl="selectedProfile.cape_hash ? texturesUrl(selectedProfile.cape_hash) : null"
+            :model="selectedProfile.model || 'default'"
+            :width="320"
+            :height="430"
+          />
+          <el-empty v-else description="未设置皮肤" />
+        </div>
+
+        <div class="viewer-info-panel">
+          <section class="viewer-section title-section">
+            <div class="viewer-title-row">
+              <h2 class="viewer-display-title">{{ selectedProfile.name }}</h2>
+            </div>
+          </section>
+
+          <section class="viewer-section meta-section">
+            <div class="viewer-section-label">角色信息</div>
+            <div class="viewer-title-row">
+              <span class="meta-chip">模型: {{ selectedProfile.model || 'default' }}</span>
+            </div>
+            <div class="hash-label" v-if="selectedProfile.skin_hash">皮肤 HASH: {{ selectedProfile.skin_hash }}</div>
+            <div class="hash-label" v-if="selectedProfile.cape_hash">披风 HASH: {{ selectedProfile.cape_hash }}</div>
+          </section>
+
+          <section class="viewer-section" v-if="selectedProfile.skin_hash || selectedProfile.cape_hash">
+            <div class="viewer-section-label">快捷操作</div>
+            <div class="apply-row" style="display: flex; gap: 8px;">
+              <el-button 
+                v-if="selectedProfile.skin_hash"
+                type="warning" 
+                plain 
+                style="flex: 1; border-radius: 8px;"
+                @click="clearRoleSkin(selectedProfile.id)"
+              >
+                清除皮肤
+              </el-button>
+              <el-button 
+                v-if="selectedProfile.cape_hash"
+                type="warning" 
+                plain 
+                style="flex: 1; border-radius: 8px;"
+                @click="clearRoleCape(selectedProfile.id)"
+              >
+                清除披风
+              </el-button>
+            </div>
+          </section>
+
+          <section class="viewer-section footer-section" style="margin-top: auto;">
+             <el-button 
+              type="danger" 
+              plain 
+              style="width: 100%; border-radius: 8px;"
+              @click="deleteRole(selectedProfile.id)"
+            >
+              删除此角色
+            </el-button>
+          </section>
+        </div>
+      </div>
+    </el-dialog>
 
     <!-- 新建角色对话框 -->
     <el-dialog v-model="showCreateRoleDialog" title="新建角色" width="420px" append-to-body>
@@ -156,6 +238,14 @@ const microsoftStep = ref('select-profile')
 const microsoftProfile = ref(null)
 const importing = ref(false)
 
+const showPreviewDialog = ref(false)
+const selectedProfile = ref(null)
+
+function openPreviewDialog(profile) {
+  selectedProfile.value = profile
+  showPreviewDialog.value = true
+}
+
 function authHeaders() {
   const token = localStorage.getItem('jwt')
   return token ? { Authorization: 'Bearer ' + token } : {}
@@ -185,6 +275,7 @@ async function deleteRole(pid) {
   try {
     await axios.delete(`/me/profiles/${pid}`, { headers: authHeaders() })
     ElMessage.success('已删除')
+    showPreviewDialog.value = false
     fetchMe()
   } catch (e) {
     ElMessage.error('删除失败')
@@ -200,6 +291,7 @@ async function clearRoleSkin(pid) {
     )
     await axios.delete(`/me/profiles/${pid}/skin`, { headers: authHeaders() })
     ElMessage.success('皮肤已清除')
+    showPreviewDialog.value = false
     fetchMe()
   } catch (e) {
     if (e !== 'cancel') {
@@ -217,6 +309,7 @@ async function clearRoleCape(pid) {
     )
     await axios.delete(`/me/profiles/${pid}/cape`, { headers: authHeaders() })
     ElMessage.success('披风已清除')
+    showPreviewDialog.value = false
     fetchMe()
   } catch (e) {
     if (e !== 'cancel') {
@@ -332,6 +425,12 @@ onMounted(async () => {
 })
 </script>
 
+<style>
+/* Global Styles for Teleported Elements */
+@import "@/assets/styles/dialogs.css";
+@import "@/assets/styles/item-viewer.css";
+</style>
+
 <style scoped>
 @import "@/assets/styles/animations.css";
 @import "@/assets/styles/layout.css";
@@ -381,6 +480,10 @@ onMounted(async () => {
 .role-actions .el-button {
   flex: 1;
   min-width: 0;
+}
+
+.clickable-card {
+  cursor: pointer;
 }
 
 /* Microsoft Login Specific Styles */
