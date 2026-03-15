@@ -1,6 +1,6 @@
 <template>
   <div class="skin-viewer-wrapper" :style="{ width: width + 'px', height: height + 'px' }">
-    <!-- Static Image Mode -->
+    <!-- 静态模式：显示快照 -->
     <img 
       v-if="isStatic && snapshotUrl" 
       :src="snapshotUrl" 
@@ -8,7 +8,12 @@
       :style="{ width: width + 'px', height: height + 'px' }" 
     />
     
-    <!-- Interactive Canvas Mode: Only render if not static or snapshot not ready -->
+    <!-- 加载中占位 (可选) -->
+    <div v-if="isStatic && !snapshotUrl" class="skin-loader">
+      <el-icon class="is-loading"><Loading /></el-icon>
+    </div>
+
+    <!-- 交互模式：显示 Canvas -->
     <div 
       v-if="!isStatic"
       ref="container" 
@@ -18,9 +23,15 @@
   </div>
 </template>
 
+<script>
+// 全局渲染锁：确保全站同一时间只有一个静态渲染任务
+let globalRenderLock = Promise.resolve();
+</script>
+
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as skinview3d from 'skinview3d'
+import { Loading } from '@element-plus/icons-vue'
 
 const props = defineProps({
   skinUrl: { type: String, required: true },
@@ -36,7 +47,6 @@ const snapshotUrl = ref(null)
 let viewer = null
 
 async function initViewer() {
-  // Dispose existing viewer
   if (viewer) {
     viewer.dispose()
     viewer = null
@@ -52,18 +62,25 @@ async function initViewer() {
   }
 
   if (props.isStatic) {
-    // 1. Create a temporary off-screen canvas for snapshot
-    const tempCanvas = document.createElement('canvas')
-    const staticViewer = new skinview3d.SkinViewer({
-      canvas: tempCanvas,
-      ...config
-    })
+    // 使用全局锁排队执行，防止 WebGL 上下文溢出
+    globalRenderLock = globalRenderLock.then(async () => {
+      // 再次检查快照是否已存在（防止重复渲染）
+      if (snapshotUrl.value) return;
 
-    try {
-      staticViewer.autoRotate = false
-      staticViewer.animation = null
-      staticViewer.camera.position.set(0, 10, 500)
-      staticViewer.camera.lookAt(0, 15, 0)
+      const tempCanvas = document.createElement('canvas')
+      let staticViewer = null;
+
+      try {
+        staticViewer = new skinview3d.SkinViewer({
+          canvas: tempCanvas,
+          ...config
+        })
+
+        // 静态视角设置
+        staticViewer.autoRotate = false
+        staticViewer.animation = null
+        staticViewer.camera.position.set(0, 10, 500)
+        staticViewer.camera.lookAt(0, 15, 0)
       staticViewer.zoom = 0.8
 
       staticViewer.playerObject.skin.leftArm.rotation.z = 0.05
@@ -71,20 +88,27 @@ async function initViewer() {
       staticViewer.playerObject.skin.leftLeg.rotation.z = 0
       staticViewer.playerObject.skin.rightLeg.rotation.z = 0
 
-      await staticViewer.loadSkin(props.skinUrl, { model: props.model === 'slim' ? 'slim' : 'steve' })
-      if (props.capeUrl) await staticViewer.loadCape(props.capeUrl)
-      
-      staticViewer.render()
-      snapshotUrl.value = tempCanvas.toDataURL('image/png')
-    } catch (e) {
-      console.error('SkinViewer static render error:', e)
-    } finally {
-      staticViewer.dispose()
-    }
+        // 等待资源加载
+        await staticViewer.loadSkin(props.skinUrl, { model: props.model === 'slim' ? 'slim' : 'steve' })
+        if (props.capeUrl) await staticViewer.loadCape(props.capeUrl)
+        
+        staticViewer.render()
+        snapshotUrl.value = tempCanvas.toDataURL('image/png')
+      } catch (e) {
+        console.error('SkinViewer static render error:', e)
+      } finally {
+        if (staticViewer) {
+          staticViewer.dispose()
+          staticViewer = null
+        }
+      }
+    });
+    await globalRenderLock;
   } else {
-    // 2. Interactive mode
-    await nextTick() // Wait for container ref to be available via v-if
+    // 交互模式逻辑
+    await nextTick()
     if (!container.value) return
+    container.value.innerHTML = ''
     
     const canvas = document.createElement('canvas')
     viewer = new skinview3d.SkinViewer({
@@ -93,7 +117,6 @@ async function initViewer() {
     })
     
     container.value.appendChild(viewer.canvas)
-    
     viewer.autoRotate = true
     viewer.autoRotateSpeed = 0.5
     viewer.zoom = 0.8
@@ -114,6 +137,8 @@ onUnmounted(() => {
 })
 
 watch(() => [props.skinUrl, props.model, props.isStatic, props.capeUrl], () => {
+  // 如果是贴图变了，清空旧快照
+  snapshotUrl.value = null
   initViewer()
 }, { deep: true })
 </script>
@@ -127,10 +152,10 @@ watch(() => [props.skinUrl, props.model, props.isStatic, props.capeUrl], () => {
   position: relative;
 }
 
-.skin-viewer-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.skin-loader {
+  font-size: 24px;
+  color: var(--el-text-color-secondary);
+  opacity: 0.5;
 }
 
 .skin-snapshot {
