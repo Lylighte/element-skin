@@ -6,6 +6,10 @@
         <p>创建并管理您的 Minecraft 角色身份</p>
       </div>
       <div class="page-header-actions">
+        <el-button size="large" @click="showYggImportDialog = true" class="btn-gradient btn-gradient-warning">
+          <el-icon><Download /></el-icon>
+          <span style="margin-left:8px">导入皮肤站角色</span>
+        </el-button>
         <el-button size="large" @click="startMicrosoftAuth" class="btn-gradient btn-gradient-success">
           <el-icon><Connection /></el-icon>
           <span style="margin-left:8px">绑定正版角色</span>
@@ -181,12 +185,12 @@
       <div class="microsoft-login-content">
         <!-- 步骤2: 选择角色 (已找到) -->
         <div v-if="microsoftStep === 'select-profile' && microsoftProfile" class="step-content">
-          <div class="simple-profile-info">
-            <div class="info-text">
-              <h3 class="profile-name">{{ microsoftProfile?.name }}</h3>
-              <p class="profile-uuid">{{ formatUUID(microsoftProfile?.id || '') }}</p>
+          <div class="selection-item is-checked" style="cursor: default; pointer-events: none;">
+            <div class="selection-info">
+              <span class="title">{{ microsoftProfile?.name }}</span>
+              <span class="subtitle">{{ formatUUID(microsoftProfile?.id || '') }}</span>
             </div>
-            <div class="info-status">
+            <div style="margin-left: auto;">
                <el-tag v-if="microsoftProfile?.has_game" type="success" effect="dark">
                   拥有游戏
                </el-tag>
@@ -207,6 +211,71 @@
             @click="importMicrosoftProfile"
             :loading="importing"
             :disabled="!microsoftProfile?.has_game"
+          >
+            确认导入
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 外部皮肤站角色导入对话框 -->
+    <el-dialog 
+      v-model="showYggImportDialog" 
+      title="从外部皮肤站导入角色" 
+      width="450px" 
+      append-to-body
+      :before-close="handleYggDialogClose"
+    >
+      <div v-if="yggStep === 'input'">
+        <el-form label-position="top">
+          <el-form-item label="Yggdrasil API 地址">
+            <el-input v-model="yggApiUrl" placeholder="https://skin.example.com/api/yggdrasil" />
+            <div class="form-tip">通常以 /api/yggdrasil 结尾</div>
+          </el-form-item>
+          <el-form-item label="用户名/邮箱">
+            <el-input v-model="yggUsername" placeholder="外部皮肤站的登录用户名" />
+          </el-form-item>
+          <el-form-item label="密码">
+            <el-input v-model="yggPassword" type="password" show-password placeholder="外部皮肤站的登录密码" />
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <div v-else-if="yggStep === 'select'">
+        <p style="margin-bottom: 16px;">请选择要导入的角色：</p>
+        <el-radio-group v-model="selectedYggProfile" class="selection-list">
+          <el-radio 
+            v-for="p in yggProfiles" 
+            :key="p.id" 
+            :label="p.id" 
+            border 
+            class="selection-item"
+          >
+            <div class="selection-info">
+              <span class="title">{{ p.name }}</span>
+              <span class="subtitle">{{ formatUUID(p.id) }}</span>
+            </div>
+          </el-radio>
+        </el-radio-group>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="handleYggDialogClose" :disabled="yggLoading">取消</el-button>
+          <el-button 
+            v-if="yggStep === 'input'" 
+            type="primary" 
+            @click="getYggProfiles" 
+            :loading="yggLoading"
+          >
+            下一步
+          </el-button>
+          <el-button 
+            v-else 
+            type="primary" 
+            @click="importYggProfile" 
+            :loading="yggLoading"
+            :disabled="!selectedYggProfile"
           >
             确认导入
           </el-button>
@@ -240,6 +309,15 @@ const importing = ref(false)
 
 const showPreviewDialog = ref(false)
 const selectedProfile = ref(null)
+
+const showYggImportDialog = ref(false)
+const yggStep = ref('input')
+const yggApiUrl = ref('')
+const yggUsername = ref('')
+const yggPassword = ref('')
+const yggProfiles = ref([])
+const selectedYggProfile = ref(null)
+const yggLoading = ref(false)
 
 function openPreviewDialog(profile) {
   selectedProfile.value = profile
@@ -320,6 +398,7 @@ async function clearRoleCape(pid) {
 
 // 微软正版登录相关函数
 function formatUUID(uuid) {
+  if (!uuid) return ''
   if (uuid.length === 32) {
     return `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`
   }
@@ -393,7 +472,74 @@ function handleMicrosoftDialogClose(done) {
     return; // Prevent closing while importing
   }
   cancelMicrosoftLogin()
-  done()
+  if (done) done()
+}
+
+// Yggdrasil 相关函数
+async function getYggProfiles() {
+  if (!yggApiUrl.value || !yggUsername.value || !yggPassword.value) {
+    return ElMessage.warning('请填写完整信息')
+  }
+  try {
+    yggLoading.value = true
+    const res = await axios.post('/remote-ygg/get-profiles', {
+      api_url: yggApiUrl.value,
+      username: yggUsername.value,
+      password: yggPassword.value
+    }, { headers: authHeaders() })
+    
+    yggProfiles.value = res.data.profiles
+    if (yggProfiles.value.length === 0) {
+      ElMessage.warning('该账户下没有角色')
+    } else {
+      yggStep.value = 'select'
+      selectedYggProfile.value = yggProfiles.value[0].id
+    }
+  } catch (e) {
+    ElMessage.error('获取失败: ' + (e.response?.data?.detail || e.message))
+  } finally {
+    yggLoading.value = false
+  }
+}
+
+async function importYggProfile() {
+  if (!selectedYggProfile.value) return
+  const profile = yggProfiles.value.find(p => p.id === selectedYggProfile.value)
+  if (!profile) return
+
+  try {
+    yggLoading.value = true
+    await axios.post('/remote-ygg/import-profile', {
+      api_url: yggApiUrl.value,
+      profile_id: profile.id,
+      profile_name: profile.name
+    }, { headers: authHeaders() })
+    
+    ElMessage.success('导入成功')
+    showYggImportDialog.value = false
+    if (fetchMe) await fetchMe()
+    resetYggImport()
+  } catch (e) {
+    ElMessage.error('导入失败: ' + (e.response?.data?.detail || e.message))
+  } finally {
+    yggLoading.value = false
+  }
+}
+
+function resetYggImport() {
+  yggStep.value = 'input'
+  yggApiUrl.value = ''
+  yggUsername.value = ''
+  yggPassword.value = ''
+  yggProfiles.value = []
+  selectedYggProfile.value = null
+}
+
+function handleYggDialogClose(done) {
+  if (yggLoading.value) return
+  resetYggImport()
+  showYggImportDialog.value = false
+  if (done && typeof done === 'function') done()
 }
 
 onMounted(async () => {
@@ -496,32 +642,5 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-}
-
-.simple-profile-info {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 20px;
-  background: var(--color-background-soft);
-  border-radius: 8px;
-  width: 100%;
-}
-
-.info-text {
-  text-align: left;
-}
-
-.profile-name {
-  margin: 0 0 4px 0;
-  font-size: 20px;
-  color: var(--color-heading);
-}
-
-.profile-uuid {
-  margin: 0;
-  font-family: monospace;
-  font-size: 13px;
-  color: var(--color-text-light);
 }
 </style>
