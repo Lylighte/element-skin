@@ -43,7 +43,12 @@ class SiteBackend:
             # 1. Fetch detailed profile with textures
             profile_data = await client.get_profile_with_textures(profile_id)
             
-            # 2. Check if profile name is taken locally
+            # 2. Check for conflicts
+            # Check UUID conflict (refuse import if UUID exists)
+            if await self.db.user.get_profile_by_id(profile_id):
+                 raise HTTPException(status_code=400, detail="该角色 UUID 已在本地存在，无法导入")
+
+            # Check if profile name is taken locally
             # We try to use the original name, but if taken, append a suffix
             target_name = profile_name
             suffix = 1
@@ -83,18 +88,18 @@ class SiteBackend:
                     print(f"Failed to download/upload cape: {e}")
 
             # 4. Create local profile
-            local_profile_id = generate_random_uuid()
+            # Use the remote profile_id as the local ID
             await self.db.user.create_profile(
-                PlayerProfile(local_profile_id, user_id, target_name, skin_model)
+                PlayerProfile(profile_id, user_id, target_name, skin_model)
             )
             
             # 5. Apply textures
             if skin_hash:
-                await self.db.user.update_profile_skin(local_profile_id, skin_hash)
+                await self.db.user.update_profile_skin(profile_id, skin_hash)
             if cape_hash:
-                await self.db.user.update_profile_cape(local_profile_id, cape_hash)
+                await self.db.user.update_profile_cape(profile_id, cape_hash)
 
-            return {"id": local_profile_id, "name": target_name}
+            return {"id": profile_id, "name": target_name}
         except Exception as e:
             if isinstance(e, HTTPException):
                 raise e
