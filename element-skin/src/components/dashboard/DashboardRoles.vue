@@ -123,6 +123,7 @@
             <div class="viewer-title-row">
               <span class="meta-chip">模型: {{ selectedProfile.model || 'default' }}</span>
             </div>
+            <div class="hash-label">UUID: {{ formatUUID(selectedProfile.id) }}</div>
             <div class="hash-label" v-if="selectedProfile.skin_hash">皮肤 HASH: {{ selectedProfile.skin_hash }}</div>
             <div class="hash-label" v-if="selectedProfile.cape_hash">披风 HASH: {{ selectedProfile.cape_hash }}</div>
           </section>
