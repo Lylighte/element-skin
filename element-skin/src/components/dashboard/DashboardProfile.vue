@@ -265,9 +265,6 @@ async function confirmDeleteAccount() {
 @import "@/assets/styles/layout.css";
 @import "@/assets/styles/cards.css";
 
-.profile-section {
-}
-
 .profile-form-card {
   max-width: 600px;
   margin: 0 auto;
