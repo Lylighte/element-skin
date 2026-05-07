@@ -349,8 +349,8 @@ class UserModule:
 
     async def update_profile_admin(self, profile_id: str, name: str | None = None, texture_model: str | None = None) -> bool:
         if name is not None:
-            if not name or len(name) > 32:
-                raise ValueError("name must be non-empty and at most 32 characters")
+            if not re.match(r"^[a-zA-Z0-9_]{1,16}$", name):
+                raise ValueError("角色名只能包含字母、数字、下划线，长度1-16字符")
         if texture_model is not None:
             if texture_model not in ("default", "slim"):
                 raise ValueError("texture_model must be 'default' or 'slim'")

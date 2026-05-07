@@ -2,6 +2,7 @@ import pytest
 import time
 from utils.typing import User, PlayerProfile, Token, Session, InviteCode
 from utils.uuid_utils import generate_random_uuid
+from utils.pagination import CursorEncoder
 
 @pytest.mark.asyncio
 async def test_user_management(db_session, user_factory):
@@ -189,3 +190,115 @@ async def test_invite_management(db_session):
     
     await db_session.user.delete_invite(code_str)
     assert (await db_session.user.get_invite(code_str)) is None
+
+
+@pytest.mark.asyncio
+async def test_list_all_profiles_cursor(db_session, user_factory):
+    """测试管理端：游标分页列出所有角色（含搜索）"""
+    user1 = await user_factory(email="user1@test.com")
+    user2 = await user_factory(email="user2@test.com")
+
+    # Create 2 profiles for user1, 1 for user2
+    pid1 = generate_random_uuid()
+    pid2 = generate_random_uuid()
+    pid3 = generate_random_uuid()
+    await db_session.user.create_profile(PlayerProfile(pid1, user1.id, "Player1", "default", None, None))
+    await db_session.user.create_profile(PlayerProfile(pid2, user1.id, "Player2", "slim", None, None))
+    await db_session.user.create_profile(PlayerProfile(pid3, user2.id, "OtherPlayer", "default", None, None))
+
+    # 1. List all with ample limit
+    page = await db_session.user.list_all_profiles_cursor(limit=10)
+    assert len(page["items"]) == 3
+    assert page["has_next"] is False
+    assert page["next_cursor"] is None
+
+    # 2. Pagination: limit=1 (to get proper cursor progression)
+    page1 = await db_session.user.list_all_profiles_cursor(limit=1)
+    assert len(page1["items"]) == 1
+    assert page1["has_next"] is True
+    assert page1["next_cursor"] is not None
+
+    # Decode cursor and get next page
+    cursor_data = CursorEncoder.decode(page1["next_cursor"])
+    assert cursor_data is not None
+    page2 = await db_session.user.list_all_profiles_cursor(limit=10, after_id=cursor_data["last_id"])
+    assert len(page2["items"]) >= 1
+    assert page2["has_next"] is False
+
+    # 3. Search by profile name
+    search_page = await db_session.user.list_all_profiles_cursor(limit=10, query="Player1")
+    assert len(search_page["items"]) == 1
+    assert search_page["items"][0]["name"] == "Player1"
+
+    # 4. Search by owner email
+    search_page = await db_session.user.list_all_profiles_cursor(limit=10, query="user1@")
+    assert len(search_page["items"]) == 2
+    for item in search_page["items"]:
+        assert item["owner_email"] == "user1@test.com"
+
+
+@pytest.mark.asyncio
+async def test_update_profile_admin(db_session, user_factory):
+    """测试管理端：更新任意角色的名称和模型"""
+    user = await user_factory()
+    pid = generate_random_uuid()
+    await db_session.user.create_profile(PlayerProfile(pid, user.id, "AdminTarget", "default", None, None))
+
+    # 1. Update name
+    result = await db_session.user.update_profile_admin(pid, name="NewName")
+    assert result is True
+    profile = await db_session.user.get_profile_by_id(pid)
+    assert profile.name == "NewName"
+
+    # 2. Update model
+    result = await db_session.user.update_profile_admin(pid, texture_model="slim")
+    assert result is True
+    profile = await db_session.user.get_profile_by_id(pid)
+    assert profile.texture_model == "slim"
+
+    # 3. Duplicate name → False (unique violation)
+    pid2 = generate_random_uuid()
+    await db_session.user.create_profile(PlayerProfile(pid2, user.id, "OtherName", "default", None, None))
+    result = await db_session.user.update_profile_admin(pid, name="OtherName")
+    assert result is False
+    # Verify name not changed
+    profile = await db_session.user.get_profile_by_id(pid)
+    assert profile.name == "NewName"
+
+    # 4. Invalid name
+    with pytest.raises(ValueError):
+        await db_session.user.update_profile_admin(pid, name="")
+    with pytest.raises(ValueError):
+        await db_session.user.update_profile_admin(pid, name="A" * 33)
+
+    # 5. Invalid model
+    with pytest.raises(ValueError):
+        await db_session.user.update_profile_admin(pid, texture_model="invalid")
+
+
+@pytest.mark.asyncio
+async def test_delete_profile_admin(db_session, user_factory):
+    """测试管理端：删除角色及其关联令牌"""
+    user = await user_factory()
+    pid = generate_random_uuid()
+    await db_session.user.create_profile(PlayerProfile(pid, user.id, "ToDelete", "default", None, None))
+
+    # 1. Create a token referencing the profile
+    token = Token("test-token", "test-client", user.id, pid, int(time.time() * 1000))
+    await db_session.user.add_token(token)
+    # Verify token exists
+    assert await db_session.user.get_token("test-token") is not None
+
+    # 2. Delete profile (admin)
+    result = await db_session.user.delete_profile_admin(pid)
+    assert result is True
+
+    # 3. Verify profile gone
+    assert await db_session.user.get_profile_by_id(pid) is None
+
+    # 4. Verify token cascade deleted
+    assert await db_session.user.get_token("test-token") is None
+
+    # 5. Non-existent profile → False
+    result = await db_session.user.delete_profile_admin("non-existent-id")
+    assert result is False
