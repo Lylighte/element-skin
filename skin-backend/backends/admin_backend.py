@@ -268,6 +268,20 @@ class AdminBackend:
             raise HTTPException(status_code=404, detail="角色不存在")
         return {"ok": True}
 
+    async def update_profile_skin(self, profile_id: str, skin_hash: str | None = None) -> dict:
+        profile = await self.db.user.get_profile_by_id(profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="角色不存在")
+        await self.db.user.update_profile_skin(profile_id, skin_hash)
+        return {"ok": True}
+
+    async def update_profile_cape(self, profile_id: str, cape_hash: str | None = None) -> dict:
+        profile = await self.db.user.get_profile_by_id(profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="角色不存在")
+        await self.db.user.update_profile_cape(profile_id, cape_hash)
+        return {"ok": True}
+
     async def reset_user_password(self, user_id: str, new_password: str):
         from utils.password_utils import hash_password
         user_row = await self.db.user.get_by_id(user_id)
