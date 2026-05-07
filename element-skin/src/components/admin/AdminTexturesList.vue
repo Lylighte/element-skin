@@ -420,10 +420,15 @@ async function updateModel() {
   }
 }
 
-async function updateIsPublic() {
+async function updateIsPublic(newValue: number) {
   if (!selectedItem.value) return
   const item = selectedItem.value
-  if (item.is_public === 0 || item.is_public === false) {
+
+  // Guard: ignore if value hasn't changed (prevents render-time triggers)
+  if (item.is_public === newValue) return
+
+  // Confirmation only when turning private
+  if (newValue === 0) {
     try {
       await ElMessageBox.confirm(
         '取消公开后，该材质将不会出现在公共皮肤库中，已绑定此材质的角色不受影响。确定取消公开？',
@@ -431,19 +436,18 @@ async function updateIsPublic() {
         { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
       )
     } catch {
-      item.is_public = item.is_public ? 0 : 1
-      return
+      return  // user cancelled
     }
   }
-  const newValue = item.is_public ? 0 : 1
+
   try {
     await axios.patch(`/admin/textures/${item.hash}`,
-      { is_public: item.is_public ? 1 : 0 },
+      { is_public: newValue },
       { headers: authHeaders() }
     )
-    ElMessage.success(item.is_public ? '已设为公开' : '已取消公开')
+    item.is_public = newValue
+    ElMessage.success(newValue === 1 ? '材质已公开' : '已取消公开')
   } catch (e) {
-    item.is_public = item.is_public ? 0 : 1
     ElMessage.error('操作失败')
   }
 }
@@ -578,6 +582,7 @@ onMounted(refreshTexturesFromFirst)
 .texture-actions {
   display: flex;
   align-items: center;
+  flex-direction: row;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--color-border);
@@ -585,7 +590,9 @@ onMounted(refreshTexturesFromFirst)
 }
 
 .texture-actions .el-button {
-  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  /* font-size: 12px; */
 }
 
 .clickable-card {
