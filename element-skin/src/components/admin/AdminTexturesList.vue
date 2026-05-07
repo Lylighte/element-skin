@@ -42,83 +42,138 @@
       </div>
     </div>
 
-    <el-card class="surface-card" shadow="never">
-      <el-table :data="textures" style="width: 100%" class="modern-table" v-loading="loading">
-        <el-table-column label="预览" width="80" align="center">
-          <template #default="{ row }">
-            <img :src="textureUrl(row.hash)" class="preview-thumb" :alt="row.hash" />
-          </template>
-        </el-table-column>
-        <el-table-column label="哈希" min-width="130">
-          <template #default="{ row }">
-            <span class="mono-text">{{ row.hash.substring(0, 12) }}...</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="120">
-          <template #default="{ row }">
-            <span>{{ row.name || '未命名' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.type === 'skin' ? '' : 'success'" effect="light" size="small">
-              {{ row.type === 'skin' ? '皮肤' : '披风' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="上传者" min-width="140">
-          <template #default="{ row }">
-            <span>{{ row.uploader_display_name || row.uploader_email || '未知' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="模型" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.type === 'skin'" :type="row.model === 'slim' ? 'success' : ''" effect="light" size="small">
-              {{ row.model || 'default' }}
-            </el-tag>
-            <span v-else class="text-muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="公开" width="80" align="center">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.is_public"
-              :loading="togglingHash === row.hash"
-              @change="togglePublic(row)"
-              size="small"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="上传时间" width="160">
-          <template #default="{ row }">
-            <span class="timestamp-text">{{ formatDate(row.created_at) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="220" align="center">
-          <template #default="{ row }">
-            <div class="action-btns">
-              <el-button v-if="row.type === 'skin'" size="small" @click="showModelDialog(row)">编辑模型</el-button>
-              <el-button size="small" type="danger" @click="forceDeleteTexture(row)">强制下架</el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-empty v-if="!loading && textures.length === 0" description="暂无材质数据" :image-size="80" />
-
-      <div class="pagination-container">
-        <CursorPager
-          v-if="textures.length > 0"
-          :count="textures.length"
-          :loading="pagination.isLoading.value"
-          :disabled-prev="!pagination.canGoPrev.value"
-          :disabled-next="!pagination.canGoNext.value"
-          @prev="handlePrevPage"
-          @next="handleNextPage"
-        />
+    <!-- Skeleton loading -->
+    <div v-if="isLoading" class="auto-grid">
+      <div v-for="n in 8" :key="n" class="surface-card skeleton-card">
+        <div class="skeleton-preview"></div>
+        <div class="skeleton-info">
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line short"></div>
+        </div>
       </div>
-    </el-card>
+    </div>
 
+    <!-- Card grid -->
+    <div v-else-if="textures.length > 0" class="auto-grid">
+      <div
+        class="surface-card hoverable animate-card-slide clickable-card"
+        v-for="(item, index) in textures"
+        :key="item.hash"
+        :style="{ '--delay-index': index % limit }"
+        @click="openPreview(item)"
+      >
+        <div class="texture-preview" :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }">
+          <SkinViewer
+            v-if="item.type === 'skin'"
+            :skinUrl="texturesUrl(item.hash)"
+            :model="item.model || 'default'"
+            :width="200"
+            :height="280"
+            is-static
+          />
+          <CapeViewer
+            v-else
+            :capeUrl="texturesUrl(item.hash)"
+            :width="200"
+            :height="280"
+            is-static
+          />
+        </div>
+        <div class="texture-info">
+          <div class="type-tag" :class="item.type">{{ item.type === 'skin' ? '皮肤' : '披风' }}</div>
+          <div class="texture-title">{{ item.name || '未命名' }}</div>
+          <div class="texture-uploader" v-if="item.uploader_display_name || item.uploader_email">
+            {{ item.uploader_display_name || item.uploader_email }}
+          </div>
+        </div>
+        <div class="texture-actions" @click.stop>
+          <el-switch
+            :model-value="item.is_public"
+            :loading="togglingHash === item.hash"
+            @change="togglePublic(item)"
+            size="small"
+          />
+          <el-button v-if="item.type === 'skin'" size="small" @click="showModelDialog(item)">编辑模型</el-button>
+          <el-button size="small" type="danger" @click="forceDeleteTexture(item)">强制下架</el-button>
+        </div>
+      </div>
+    </div>
+
+    <el-empty v-else-if="!loading" description="暂无材质数据" :image-size="80" />
+
+    <div class="pagination-container">
+      <CursorPager
+        v-if="textures.length > 0"
+        :count="textures.length"
+        :loading="pagination.isLoading.value"
+        :disabled-prev="!pagination.canGoPrev.value"
+        :disabled-next="!pagination.canGoNext.value"
+        @prev="handlePrevPage"
+        @next="handleNextPage"
+      />
+    </div>
+
+    <!-- Preview dialog -->
+    <el-dialog v-model="showPreview" destroy-on-close class="dialog-viewer" append-to-body>
+      <div class="viewer-layout" v-if="selectedItem">
+        <div class="viewer-stage">
+          <SkinViewer
+            v-if="selectedItem.type === 'skin'"
+            :skinUrl="texturesUrl(selectedItem.hash)"
+            :model="selectedItem.model || 'default'"
+            :width="320"
+            :height="430"
+          />
+          <CapeViewer
+            v-else
+            :capeUrl="texturesUrl(selectedItem.hash)"
+            :width="320"
+            :height="430"
+          />
+        </div>
+        <div class="viewer-info-panel">
+          <!-- name (editable) -->
+          <section class="viewer-section title-section">
+            <el-input v-model="previewNote" placeholder="未命名纹理" @blur="updatePreviewNote" />
+          </section>
+          <!-- hash (readonly) -->
+          <section class="viewer-section meta-section">
+            <span class="meta-chip hash">{{ selectedItem.hash }}</span>
+          </section>
+          <!-- uploader -->
+          <section class="viewer-section" v-if="selectedItem.uploader_display_name || selectedItem.uploader_email">
+            <div class="viewer-section-label">上传者</div>
+            <div class="uploader-info">
+              <span>{{ selectedItem.uploader_display_name || selectedItem.uploader_email || '未知' }}</span>
+            </div>
+          </section>
+          <!-- model (skin only) -->
+          <section class="viewer-section" v-if="selectedItem.type === 'skin'">
+            <div class="viewer-section-label">模型选择</div>
+            <el-radio-group v-model="selectedItem.model" @change="updateModel" class="capsule-radio">
+              <el-radio-button value="default">Default</el-radio-button>
+              <el-radio-button value="slim">Slim</el-radio-button>
+            </el-radio-group>
+          </section>
+          <!-- public toggle -->
+          <section class="viewer-section">
+            <div class="viewer-section-label">公开状态</div>
+            <el-switch
+              v-model="selectedItem.is_public"
+              :active-value="1"
+              :inactive-value="0"
+              @change="updateIsPublic"
+            />
+          </section>
+          <!-- force delete -->
+          <section class="viewer-section footer-section">
+            <el-button type="danger" plain @click="confirmForceDelete">强制下架</el-button>
+          </section>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- Model edit dialog (kept from original) -->
     <el-dialog v-model="modelDialogVisible" title="编辑模型" width="300px" destroy-on-close align-center append-to-body>
       <el-form v-if="modelTarget">
         <el-form-item label="当前模型">
@@ -140,17 +195,22 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, inject, onMounted } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Picture, Search } from '@element-plus/icons-vue'
+import SkinViewer from '@/components/SkinViewer.vue'
+import CapeViewer from '@/components/CapeViewer.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
+
+const isDark = inject('isDark', ref(false))
 
 const textures = ref([])
 const limit = 20
 const pagination = useCursorPagination(limit)
 const loading = ref(false)
+const isLoading = ref(true)
 const searchQuery = ref('')
 const activeSearchQuery = ref('')
 const typeFilter = ref(null)
@@ -160,10 +220,17 @@ const modelTarget = ref(null)
 const selectedModel = ref('default')
 const savingModel = ref(false)
 
+// Preview dialog
+const showPreview = ref(false)
+const selectedItem = ref(null)
+const previewNote = ref('')
+
 const authHeaders = () => ({ Authorization: 'Bearer ' + localStorage.getItem('jwt') })
 
-function textureUrl(hash) {
-  return `/static/textures/${hash}.png`
+function texturesUrl(hash) {
+  if (!hash) return ''
+  const base = import.meta.env.BASE_URL
+  return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
 }
 
 function buildSearchParams(extraParams = {}) {
@@ -188,6 +255,7 @@ async function fetchTextures() {
   } finally {
     loading.value = false
     pagination.isLoading.value = false
+    isLoading.value = false
   }
 }
 
@@ -237,7 +305,6 @@ function handleTypeFilterChange() {
 }
 
 async function togglePublic(item) {
-  // Only confirm when turning FROM public TO private
   if (item.is_public === true || item.is_public === 1) {
     try {
       await ElMessageBox.confirm(
@@ -246,7 +313,7 @@ async function togglePublic(item) {
         { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
       )
     } catch {
-      return // User cancelled
+      return
     }
   }
 
@@ -324,11 +391,100 @@ function formatDate(dateStr) {
   }
 }
 
+// Preview dialog functions
+function openPreview(item) {
+  selectedItem.value = item
+  previewNote.value = item.name || ''
+  showPreview.value = true
+}
+
+async function updatePreviewNote() {
+  if (!selectedItem.value) return
+  const newName = previewNote.value.trim()
+  if (newName === selectedItem.value.name) return
+  try {
+    await axios.patch(`/admin/textures/${selectedItem.value.hash}`,
+      { name: newName },
+      { headers: authHeaders() }
+    )
+    selectedItem.value.name = newName
+    ElMessage.success('名称已更新')
+  } catch (e) {
+    ElMessage.error('更新名称失败')
+  }
+}
+
+async function updateModel() {
+  if (!selectedItem.value) return
+  try {
+    await axios.patch(`/admin/textures/${selectedItem.value.hash}`,
+      { model: selectedItem.value.model },
+      { headers: authHeaders() }
+    )
+    ElMessage.success('模型已更新')
+  } catch (e) {
+    ElMessage.error('更新模型失败')
+  }
+}
+
+async function updateIsPublic() {
+  if (!selectedItem.value) return
+  const item = selectedItem.value
+  if (item.is_public === 0 || item.is_public === false) {
+    try {
+      await ElMessageBox.confirm(
+        '取消公开后，该材质将不会出现在公共皮肤库中，已绑定此材质的角色不受影响。确定取消公开？',
+        '确认操作',
+        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      )
+    } catch {
+      item.is_public = item.is_public ? 0 : 1
+      return
+    }
+  }
+  const newValue = item.is_public ? 0 : 1
+  try {
+    await axios.patch(`/admin/textures/${item.hash}`,
+      { is_public: item.is_public ? 1 : 0 },
+      { headers: authHeaders() }
+    )
+    ElMessage.success(item.is_public ? '已设为公开' : '已取消公开')
+  } catch (e) {
+    item.is_public = item.is_public ? 0 : 1
+    ElMessage.error('操作失败')
+  }
+}
+
+async function confirmForceDelete() {
+  if (!selectedItem.value) return
+  const item = selectedItem.value
+  try {
+    await ElMessageBox.confirm(
+      '强制下架将从所有用户的衣柜中移除该材质，并从皮肤库中彻底删除。此操作不可撤销！确定继续？',
+      '危险操作',
+      { confirmButtonText: '确认强制删除', cancelButtonText: '取消', type: 'error' }
+    )
+    await axios.delete(`/admin/textures/${item.hash}`, {
+      headers: authHeaders(),
+      params: {
+        force: 'true',
+        type: item.type
+      }
+    })
+    ElMessage.success('材质已强制下架')
+    showPreview.value = false
+    await fetchTextures()
+  } catch (e) {
+    // User cancelled or error
+  }
+}
+
 onMounted(refreshTexturesFromFirst)
 </script>
 
 <style>
 @import "@/assets/styles/dialogs.css";
+@import "@/assets/styles/item-viewer.css";
 </style>
 
 <style scoped>
@@ -345,7 +501,7 @@ onMounted(refreshTexturesFromFirst)
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
   flex-wrap: wrap;
 }
 
@@ -391,43 +547,77 @@ onMounted(refreshTexturesFromFirst)
   flex-shrink: 0;
 }
 
-.preview-thumb {
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-  border-radius: 4px;
-  background: var(--color-background-hero-dark, #1a1a2e);
-}
-
-.mono-text {
-  font-family: var(--el-font-family-mono);
-  font-size: 13px;
-  color: var(--color-text);
-  background: var(--color-background-soft);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.timestamp-text {
-  font-size: 13px;
-  color: var(--color-text-light);
-}
-
-.text-muted {
-  color: var(--el-text-color-placeholder);
-}
-
-.action-btns {
+/* Card grid */
+.texture-preview {
+  width: 100%;
+  height: 280px;
   display: flex;
-  gap: 6px;
   justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
 }
 
-.modern-table :deep(.el-table__inner-wrapper::before) {
-  display: none;
+.texture-info {
+  padding: 12px 16px;
+  text-align: center;
+  background: var(--color-card-background);
 }
 
-.modern-table :deep(.el-table__row) {
-  transition: background-color 0.3s ease;
+.texture-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-heading);
+  margin: 8px 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.texture-uploader {
+  font-size: 12px;
+  color: var(--color-text-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.texture-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-background-soft);
+}
+
+.texture-actions .el-button {
+  font-size: 12px;
+}
+
+.clickable-card {
+  cursor: pointer;
+}
+
+/* Skeleton loading */
+.skeleton-card { pointer-events: none; }
+.skeleton-preview { height: 280px; background: var(--el-skeleton-color, #e0e0e0); border-radius: 8px 8px 0 0; }
+.skeleton-info { padding: 12px; }
+.skeleton-line { height: 14px; background: var(--el-skeleton-color, #e0e0e0); border-radius: 4px; margin-bottom: 8px; }
+.skeleton-line.short { width: 60%; }
+
+/* Preview dialog uploader */
+.uploader-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--color-heading);
+  font-weight: 500;
+}
+
+/* Footer section pushed to bottom */
+.viewer-section.footer-section {
+  border-bottom: none;
 }
 </style>
