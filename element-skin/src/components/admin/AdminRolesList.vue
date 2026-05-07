@@ -36,12 +36,12 @@
     <div class="roles-grid-container" v-loading="loading" element-loading-background="transparent">
       <div class="auto-grid" v-if="profiles.length > 0">
         <div
-          class="surface-card hoverable animate-card-slide clickable-card"
-          v-for="(profile, index) in profiles"
-          :key="profile.id"
-          :style="{ '--delay-index': index % limit }"
-          @click="openPreview(profile)"
-        >
+        class="surface-card hoverable animate-card-slide clickable-card"
+        v-for="(profile, index) in profiles"
+        :key="profile.id"
+        @click="openPreview(profile)"
+        :style="{ '--delay-index': index % limit }"
+      >
           <div
             class="role-preview"
             :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }"
@@ -63,8 +63,7 @@
             <div class="role-model">模型: {{ profile.texture_model || 'default' }}</div>
           </div>
           <div class="role-actions" @click.stop>
-            <el-button size="small" @click="openEditDialog(profile)">编辑</el-button>
-            <el-button size="small" type="danger" @click="confirmDelete(profile)">删除</el-button>
+            <el-button class="btn-gradient btn-gradient-primary" @click="openPreview(profile)"><el-icon><Edit /></el-icon><span>编辑</span></el-button>
           </div>
         </div>
       </div>
@@ -111,6 +110,7 @@
             />
           </section>
           <section class="viewer-section">
+            <div class="viewer-section-label">皮肤绑定</div>
             <el-input :model-value="selectedProfile.skin_hash || '未绑定'" disabled>
               <template #append>
                 <el-button :disabled="!selectedProfile.skin_hash" @click="clearProfileSkin">清除</el-button>
@@ -118,6 +118,7 @@
             </el-input>
           </section>
           <section class="viewer-section">
+            <div class="viewer-section-label">披风绑定</div>
             <el-input :model-value="selectedProfile.cape_hash || '未绑定'" disabled>
               <template #append>
                 <el-button :disabled="!selectedProfile.cape_hash" @click="clearProfileCape">清除</el-button>
@@ -188,7 +189,7 @@
 import { ref, onMounted, inject } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, UserFilled, Search } from '@element-plus/icons-vue'
+import { Refresh, UserFilled, Search, Edit } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
@@ -479,7 +480,7 @@ onMounted(refreshFromFirst)
 @import "@/assets/styles/headers.css";
 
 .roles-section {
-  max-width: 1100px;
+  width: 100%;
   margin: 0 auto;
   padding: 20px 0;
 }

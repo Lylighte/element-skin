@@ -59,8 +59,8 @@
         class="surface-card hoverable animate-card-slide clickable-card"
         v-for="(item, index) in textures"
         :key="item.hash"
-        :style="{ '--delay-index': index % limit }"
         @click="openPreview(item)"
+        :style="{ '--delay-index': index % limit }"
       >
         <div class="texture-preview" :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }">
           <SkinViewer
@@ -87,14 +87,7 @@
           </div>
         </div>
         <div class="texture-actions" @click.stop>
-          <el-switch
-            :model-value="item.is_public"
-            :loading="togglingHash === item.hash"
-            @change="togglePublic(item)"
-            size="small"
-          />
-          <el-button v-if="item.type === 'skin'" size="small" @click="showModelDialog(item)">编辑模型</el-button>
-          <el-button size="small" type="danger" @click="forceDeleteTexture(item)">强制下架</el-button>
+          <el-button class="btn-gradient btn-gradient-primary" @click="openPreview(item)"><el-icon><Edit /></el-icon><span>编辑</span></el-button>
         </div>
       </div>
     </div>
@@ -150,7 +143,7 @@
           <!-- model (skin only) -->
           <section class="viewer-section" v-if="selectedItem.type === 'skin'">
             <div class="viewer-section-label">模型选择</div>
-            <el-radio-group v-model="selectedItem.model" @change="updateModel" class="capsule-radio">
+            <el-radio-group :model-value="selectedItem.model" @change="updateModel" class="capsule-radio">
               <el-radio-button value="default">Default</el-radio-button>
               <el-radio-button value="slim">Slim</el-radio-button>
             </el-radio-group>
@@ -159,7 +152,7 @@
           <section class="viewer-section">
             <div class="viewer-section-label">公开状态</div>
             <el-switch
-              v-model="selectedItem.is_public"
+              :model-value="selectedItem.is_public"
               :active-value="1"
               :inactive-value="0"
               @change="updateIsPublic"
@@ -198,7 +191,7 @@
 import { ref, inject, onMounted } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Picture, Search } from '@element-plus/icons-vue'
+import { Refresh, Picture, Search, Edit } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CapeViewer from '@/components/CapeViewer.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
@@ -495,7 +488,7 @@ onMounted(refreshTexturesFromFirst)
 @import "@/assets/styles/buttons.css";
 @import "@/assets/styles/headers.css";
 
-.textures-section { max-width: 1200px; margin: 0 auto; padding: 20px 0; }
+.textures-section { width: 100%; margin: 0 auto; padding: 20px 0; }
 
 .filter-bar {
   display: flex;
