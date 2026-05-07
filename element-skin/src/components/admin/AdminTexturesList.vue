@@ -153,8 +153,6 @@
             <div class="viewer-section-label">公开状态</div>
             <el-switch
               :model-value="selectedItem.is_public"
-              :active-value="1"
-              :inactive-value="0"
               @change="updateIsPublic"
             />
           </section>
@@ -424,11 +422,11 @@ async function updateIsPublic(newValue) {
   if (!selectedItem.value) return
   const item = selectedItem.value
 
-  // Guard: ignore if value hasn't changed (prevents render-time triggers)
-  if (item.is_public === newValue) return
+  // Guard: ignore if unchanged (== handles true==1, false==0)
+  if (item.is_public == newValue) return
 
   // Confirmation only when turning private
-  if (newValue === 0) {
+  if (!newValue) {
     try {
       await ElMessageBox.confirm(
         '取消公开后，该材质将不会出现在公共皮肤库中，已绑定此材质的角色不受影响。确定取消公开？',
@@ -436,7 +434,7 @@ async function updateIsPublic(newValue) {
         { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
       )
     } catch {
-      return  // user cancelled
+      return
     }
   }
 
@@ -446,7 +444,7 @@ async function updateIsPublic(newValue) {
       { headers: authHeaders() }
     )
     item.is_public = newValue
-    ElMessage.success(newValue === 1 ? '材质已公开' : '已取消公开')
+    ElMessage.success(newValue ? '材质已公开' : '已取消公开')
   } catch (e) {
     ElMessage.error('操作失败')
   }
