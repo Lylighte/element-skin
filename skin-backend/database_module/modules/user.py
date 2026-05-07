@@ -325,12 +325,12 @@ class UserModule:
         )
         return val is not None
 
-    async def update_profile_skin(self, profile_id: str, skin_hash: str):
+    async def update_profile_skin(self, profile_id: str, skin_hash: str | None = None):
         await self.db.execute(
             "UPDATE profiles SET skin_hash=$1 WHERE id=$2", skin_hash, profile_id
         )
 
-    async def update_profile_cape(self, profile_id: str, cape_hash: str):
+    async def update_profile_cape(self, profile_id: str, cape_hash: str | None = None):
         await self.db.execute(
             "UPDATE profiles SET cape_hash=$1 WHERE id=$2", cape_hash, profile_id
         )
