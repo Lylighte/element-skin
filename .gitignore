@@ -64,3 +64,4 @@ node_modules/
 .gemini/
 .sisyphus/
 skills/
+.playwright-mcp/
