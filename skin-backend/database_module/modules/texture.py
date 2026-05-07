@@ -212,6 +212,33 @@ class TextureModule:
                     is_public_val, texture_hash, user_id,
                 )
 
+    async def update_texture_public_admin(self, texture_hash: str, is_public: int) -> bool:
+        """Admin: toggle a texture's is_public flag on skin_library, cascading to user_textures."""
+        async with self.db.get_conn() as conn:
+            async with conn.transaction():
+                # Step 1: check existence and get uploader
+                row = await conn.fetchrow(
+                    "SELECT uploader FROM skin_library WHERE skin_hash = $1",
+                    texture_hash,
+                )
+                if row is None:
+                    return False
+                uploader = row["uploader"]
+
+                # Step 2: update skin_library unconditionally (admin force)
+                await conn.execute(
+                    "UPDATE skin_library SET is_public = $1 WHERE skin_hash = $2",
+                    is_public, texture_hash,
+                )
+
+                # Step 3: cascade to uploader's user_textures (guard is_public != 2)
+                await conn.execute(
+                    "UPDATE user_textures SET is_public = $1 WHERE hash = $2 AND is_public != 2",
+                    is_public, texture_hash,
+                )
+
+                return True
+
     async def get_from_library_cursor(
         self,
         limit: int = 20,
@@ -277,6 +304,95 @@ class TextureModule:
             "page_size": len(items),
         }
 
+    async def list_all_textures_cursor(
+        self,
+        limit: int = 20,
+        after_cursor: str | None = None,
+        query: str | None = None,
+        type_filter: str | None = None,
+    ) -> dict:
+        """全局管理员方法：列出所有材质（公共+私有），支持游标分页、搜索和类型过滤"""
+        actual_limit = limit + 1
+
+        # 解码游标
+        last_created_at = None
+        last_skin_hash = None
+        if after_cursor:
+            cursor_data = CursorEncoder.decode(after_cursor)
+            if cursor_data:
+                last_created_at = cursor_data.get("last_created_at")
+                last_skin_hash = cursor_data.get("last_skin_hash")
+
+        conditions = []
+        params = []
+        p_idx = 1
+
+        # 类型过滤
+        if type_filter:
+            conditions.append(f"sl.texture_type = ${p_idx}")
+            params.append(type_filter)
+            p_idx += 1
+
+        # 搜索 (ILIKE on skin_hash and name)
+        if query:
+            conditions.append(f"(sl.skin_hash ILIKE ${p_idx} OR sl.name ILIKE ${p_idx})")
+            params.append(f"%{query}%")
+            p_idx += 1
+
+        # 游标条件 (created_at DESC, skin_hash DESC)
+        if last_created_at is not None and last_skin_hash:
+            conditions.append(
+                f"(sl.created_at < ${p_idx} OR (sl.created_at = ${p_idx} AND sl.skin_hash < ${p_idx + 1}))"
+            )
+            params.extend([last_created_at, last_skin_hash])
+            p_idx += 2
+
+        query_sql = """
+            SELECT sl.skin_hash, sl.texture_type, sl.is_public, sl.uploader,
+                   sl.created_at, sl.model, sl.name,
+                   u.email AS uploader_email, u.display_name AS uploader_display_name
+            FROM skin_library sl
+            LEFT JOIN users u ON sl.uploader = u.id
+        """
+        if conditions:
+            query_sql += " WHERE " + " AND ".join(conditions)
+
+        query_sql += f" ORDER BY sl.created_at DESC, sl.skin_hash DESC LIMIT ${p_idx}"
+        params.append(actual_limit)
+
+        rows = await self.db.fetch(query_sql, *params)
+
+        has_next = len(rows) > limit
+        items = [
+            {
+                "hash": r[0],
+                "type": r[1],
+                "is_public": bool(r[2]),
+                "uploader_user_id": r[3],
+                "created_at": r[4],
+                "model": r[5],
+                "name": r[6],
+                "uploader_email": r[7],
+                "uploader_display_name": r[8],
+            }
+            for r in rows[:limit]
+        ]
+
+        next_cursor = None
+        if has_next:
+            last_row = rows[limit]
+            next_cursor = CursorEncoder.encode({
+                "last_created_at": last_row[4],
+                "last_skin_hash": last_row[0],
+            })
+
+        return {
+            "items": items,
+            "has_next": has_next,
+            "next_cursor": next_cursor,
+            "page_size": len(items),
+        }
+
     async def count_library(self, texture_type: Optional[str] = None, only_public: bool = True) -> int:
         query = "SELECT COUNT(*) FROM skin_library"
         conditions = []
@@ -322,3 +438,65 @@ class TextureModule:
                     user_id, texture_hash, texture_type, name, model, is_public, created_at,
                 )
                 return True
+
+    async def delete_texture_admin(self, texture_hash: str, texture_type: str, user_id: str | None = None, force: bool = False) -> bool:
+        """Admin: delete textures from user wardrobe(s) and optionally from skin_library.
+
+        Per-user mode (default): removes from one user's wardrobe.
+        Force mode (force=True): removes from ALL users' wardrobes AND skin_library.
+        Never deletes .png files from disk.
+        """
+        async with self.db.get_conn() as conn:
+            async with conn.transaction():
+                if force:
+                    # Check if any entries exist
+                    val = await conn.fetchval(
+                        "SELECT 1 FROM user_textures WHERE hash=$1 AND texture_type=$2",
+                        texture_hash, texture_type,
+                    )
+                    if val is None:
+                        return False
+
+                    # Remove from ALL users' wardrobes
+                    await conn.execute(
+                        "DELETE FROM user_textures WHERE hash=$1 AND texture_type=$2",
+                        texture_hash, texture_type,
+                    )
+                    # Remove from skin_library
+                    await conn.execute(
+                        "DELETE FROM skin_library WHERE skin_hash=$1",
+                        texture_hash,
+                    )
+                    return True
+                else:
+                    # Per-user deletion
+                    if user_id is None:
+                        return False
+
+                    # Check if entry exists
+                    val = await conn.fetchval(
+                        "SELECT 1 FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3",
+                        user_id, texture_hash, texture_type,
+                    )
+                    if val is None:
+                        return False
+
+                    # Delete from user's wardrobe
+                    await conn.execute(
+                        "DELETE FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3",
+                        user_id, texture_hash, texture_type,
+                    )
+
+                    # Check if this was the last reference
+                    remaining = await conn.fetchval(
+                        "SELECT COUNT(*) FROM user_textures WHERE hash=$1 AND texture_type=$2",
+                        texture_hash, texture_type,
+                    )
+                    if remaining == 0:
+                        # Unpublish from skin_library (soft - just set is_public=0)
+                        await conn.execute(
+                            "UPDATE skin_library SET is_public=0 WHERE skin_hash=$1",
+                            texture_hash,
+                        )
+
+                    return True

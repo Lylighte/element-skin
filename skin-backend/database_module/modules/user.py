@@ -4,6 +4,7 @@ import time
 import uuid
 import re
 from utils.pagination import CursorEncoder
+import asyncpg
 
 class UserModule:
     def __init__(self, db: BaseDB):
@@ -239,6 +240,75 @@ class UserModule:
             "page_size": len(items),
         }
 
+    async def list_all_profiles_cursor(self, limit: int = 20, after_id: str | None = None, query: str | None = None) -> dict:
+        """按ID游标分页获取所有游戏角色（含所属用户信息），支持按角色名/邮箱搜索"""
+        actual_limit = limit + 1
+
+        if query:
+            like_pattern = f"%{query}%"
+            if after_id:
+                rows = await self.db.fetch(
+                    """SELECT p.id, p.user_id, p.name, p.texture_model, p.skin_hash, p.cape_hash,
+                              u.email AS owner_email, u.display_name AS owner_display_name
+                       FROM profiles p JOIN users u ON p.user_id = u.id
+                       WHERE (p.name ILIKE $1 OR u.email ILIKE $1) AND p.id > $2
+                       ORDER BY p.id LIMIT $3""",
+                    like_pattern, after_id, actual_limit
+                )
+            else:
+                rows = await self.db.fetch(
+                    """SELECT p.id, p.user_id, p.name, p.texture_model, p.skin_hash, p.cape_hash,
+                              u.email AS owner_email, u.display_name AS owner_display_name
+                       FROM profiles p JOIN users u ON p.user_id = u.id
+                       WHERE (p.name ILIKE $1 OR u.email ILIKE $1)
+                       ORDER BY p.id LIMIT $2""",
+                    like_pattern, actual_limit
+                )
+        else:
+            if after_id:
+                rows = await self.db.fetch(
+                    """SELECT p.id, p.user_id, p.name, p.texture_model, p.skin_hash, p.cape_hash,
+                              u.email AS owner_email, u.display_name AS owner_display_name
+                       FROM profiles p JOIN users u ON p.user_id = u.id
+                       WHERE p.id > $1
+                       ORDER BY p.id LIMIT $2""",
+                    after_id, actual_limit
+                )
+            else:
+                rows = await self.db.fetch(
+                    """SELECT p.id, p.user_id, p.name, p.texture_model, p.skin_hash, p.cape_hash,
+                              u.email AS owner_email, u.display_name AS owner_display_name
+                       FROM profiles p JOIN users u ON p.user_id = u.id
+                       ORDER BY p.id LIMIT $1""",
+                    actual_limit
+                )
+
+        has_next = len(rows) > limit
+        items = [
+            {
+                "id": r[0],
+                "user_id": r[1],
+                "name": r[2],
+                "texture_model": r[3],
+                "skin_hash": r[4],
+                "cape_hash": r[5],
+                "owner_email": r[6],
+                "owner_display_name": r[7],
+            }
+            for r in rows[:limit]
+        ]
+
+        next_cursor = None
+        if has_next:
+            next_cursor = CursorEncoder.encode({"last_id": rows[limit][0]})
+
+        return {
+            "items": items,
+            "has_next": has_next,
+            "next_cursor": next_cursor,
+            "page_size": len(items),
+        }
+
     async def create_profile(self, profile: PlayerProfile):
         await self.db.execute(
             "INSERT INTO profiles (id, user_id, name, texture_model) VALUES ($1, $2, $3, $4)",
@@ -276,7 +346,45 @@ class UserModule:
             "UPDATE profiles SET name=$1 WHERE id=$2",
             name, profile_id,
         )
-            
+
+    async def update_profile_admin(self, profile_id: str, name: str | None = None, texture_model: str | None = None) -> bool:
+        if name is not None:
+            if not name or len(name) > 32:
+                raise ValueError("name must be non-empty and at most 32 characters")
+        if texture_model is not None:
+            if texture_model not in ("default", "slim"):
+                raise ValueError("texture_model must be 'default' or 'slim'")
+
+        if name is not None and texture_model is not None:
+            query = "UPDATE profiles SET name=$1, texture_model=$2 WHERE id=$3"
+            params = (name, texture_model, profile_id)
+        elif name is not None:
+            query = "UPDATE profiles SET name=$1 WHERE id=$2"
+            params = (name, profile_id)
+        elif texture_model is not None:
+            query = "UPDATE profiles SET texture_model=$1 WHERE id=$2"
+            params = (texture_model, profile_id)
+        else:
+            return True
+
+        async with self.db.get_conn() as conn:
+            async with conn.transaction():
+                try:
+                    await conn.execute(query, *params)
+                except asyncpg.exceptions.UniqueViolationError:
+                    return False
+        return True
+
+    async def delete_profile_admin(self, profile_id: str) -> bool:
+        async with self.db.get_conn() as conn:
+            async with conn.transaction():
+                val = await conn.fetchval("SELECT 1 FROM profiles WHERE id=$1", profile_id)
+                if val is None:
+                    return False
+                await conn.execute("DELETE FROM tokens WHERE profile_id=$1", profile_id)
+                await conn.execute("DELETE FROM profiles WHERE id=$1", profile_id)
+        return True
+
     async def search_profiles_by_names(self, names: list[str], limit: int = 20) -> list[PlayerProfile]:
         # asyncpg handle array nicely with ANY
         rows = await self.db.fetch(
