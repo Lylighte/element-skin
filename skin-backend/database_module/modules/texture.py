@@ -212,33 +212,6 @@ class TextureModule:
                     is_public_val, texture_hash, user_id,
                 )
 
-    async def update_texture_public_admin(self, texture_hash: str, is_public: int) -> bool:
-        """Admin: toggle a texture's is_public flag on skin_library, cascading to user_textures."""
-        async with self.db.get_conn() as conn:
-            async with conn.transaction():
-                # Step 1: check existence and get uploader
-                row = await conn.fetchrow(
-                    "SELECT uploader FROM skin_library WHERE skin_hash = $1",
-                    texture_hash,
-                )
-                if row is None:
-                    return False
-                uploader = row["uploader"]
-
-                # Step 2: update skin_library unconditionally (admin force)
-                await conn.execute(
-                    "UPDATE skin_library SET is_public = $1 WHERE skin_hash = $2",
-                    is_public, texture_hash,
-                )
-
-                # Step 3: cascade to uploader's user_textures (guard is_public != 2)
-                await conn.execute(
-                    "UPDATE user_textures SET is_public = $1 WHERE hash = $2 AND is_public != 2",
-                    is_public, texture_hash,
-                )
-
-                return True
-
     async def get_from_library_cursor(
         self,
         limit: int = 20,
@@ -439,64 +412,51 @@ class TextureModule:
                 )
                 return True
 
-    async def delete_texture_admin(self, texture_hash: str, texture_type: str, user_id: str | None = None, force: bool = False) -> bool:
-        """Admin: delete textures from user wardrobe(s) and optionally from skin_library.
+    # ========== Admin-facing Base Methods (pure CRUD) ==========
 
-        Per-user mode (default): removes from one user's wardrobe.
-        Force mode (force=True): removes from ALL users' wardrobes AND skin_library.
-        Never deletes .png files from disk.
-        """
-        async with self.db.get_conn() as conn:
-            async with conn.transaction():
-                if force:
-                    # Check if any entries exist
-                    val = await conn.fetchval(
-                        "SELECT 1 FROM user_textures WHERE hash=$1 AND texture_type=$2",
-                        texture_hash, texture_type,
-                    )
-                    if val is None:
-                        return False
+    async def get_texture_from_library(self, texture_hash: str) -> dict | None:
+        """获取皮肤库中的材质记录"""
+        row = await self.db.fetchrow(
+            "SELECT skin_hash, uploader FROM skin_library WHERE skin_hash=$1", texture_hash
+        )
+        return dict(row) if row else None
 
-                    # Remove from ALL users' wardrobes
-                    await conn.execute(
-                        "DELETE FROM user_textures WHERE hash=$1 AND texture_type=$2",
-                        texture_hash, texture_type,
-                    )
-                    # Remove from skin_library
-                    await conn.execute(
-                        "DELETE FROM skin_library WHERE skin_hash=$1",
-                        texture_hash,
-                    )
-                    return True
-                else:
-                    # Per-user deletion
-                    if user_id is None:
-                        return False
+    async def update_skin_library_public(self, texture_hash: str, is_public: int) -> bool:
+        """更新 skin_library 的 is_public（单表操作）"""
+        await self.db.execute(
+            "UPDATE skin_library SET is_public=$1 WHERE skin_hash=$2", is_public, texture_hash
+        )
+        return True
 
-                    # Check if entry exists
-                    val = await conn.fetchval(
-                        "SELECT 1 FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3",
-                        user_id, texture_hash, texture_type,
-                    )
-                    if val is None:
-                        return False
+    async def update_user_textures_public(self, uploader_id: str, texture_hash: str, is_public: int) -> bool:
+        """级联更新 uploader 的 user_textures（guard is_public!=2）"""
+        await self.db.execute(
+            "UPDATE user_textures SET is_public=$1 WHERE hash=$2 AND user_id=$3 AND is_public != 2",
+            is_public, texture_hash, uploader_id
+        )
+        return True
 
-                    # Delete from user's wardrobe
-                    await conn.execute(
-                        "DELETE FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3",
-                        user_id, texture_hash, texture_type,
-                    )
+    async def count_texture_references(self, texture_hash: str, texture_type: str) -> int:
+        """统计材质被多少用户收藏"""
+        return await self.db.fetchval(
+            "SELECT COUNT(*) FROM user_textures WHERE hash=$1 AND texture_type=$2",
+            texture_hash, texture_type
+        )
 
-                    # Check if this was the last reference
-                    remaining = await conn.fetchval(
-                        "SELECT COUNT(*) FROM user_textures WHERE hash=$1 AND texture_type=$2",
-                        texture_hash, texture_type,
-                    )
-                    if remaining == 0:
-                        # Unpublish from skin_library (soft - just set is_public=0)
-                        await conn.execute(
-                            "UPDATE skin_library SET is_public=0 WHERE skin_hash=$1",
-                            texture_hash,
-                        )
+    async def delete_user_textures_all(self, texture_hash: str, texture_type: str):
+        """删除所有用户的该材质（force mode 用）"""
+        await self.db.execute(
+            "DELETE FROM user_textures WHERE hash=$1 AND texture_type=$2",
+            texture_hash, texture_type
+        )
 
-                    return True
+    async def delete_user_texture_by_user(self, user_id: str, texture_hash: str, texture_type: str):
+        """删除单个用户的材质"""
+        await self.db.execute(
+            "DELETE FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3",
+            user_id, texture_hash, texture_type
+        )
+
+    async def delete_from_skin_library(self, texture_hash: str):
+        """从皮肤库删除"""
+        await self.db.execute("DELETE FROM skin_library WHERE skin_hash=$1", texture_hash)

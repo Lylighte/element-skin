@@ -315,8 +315,14 @@ class UserModule:
             profile.id, profile.user_id, profile.name, profile.texture_model, profile.skin_hash, profile.cape_hash,
         )
             
-    async def delete_profile(self, profile_id: str):
-        await self.db.execute("DELETE FROM profiles WHERE id=$1", profile_id)
+    async def delete_profile(self, profile_id: str) -> bool:
+        """删除角色（单表操作），返回是否成功"""
+        result = await self.db.execute("DELETE FROM profiles WHERE id=$1", profile_id)
+        return result is not None
+
+    async def delete_tokens_by_profile(self, profile_id: str):
+        """删除与角色关联的所有 tokens（单表操作）"""
+        await self.db.execute("DELETE FROM tokens WHERE profile_id=$1", profile_id)
 
     async def verify_profile_ownership(self, user_id: str, profile_id: str) -> bool:
         val = await self.db.fetchval(
@@ -341,48 +347,17 @@ class UserModule:
             texture_model, profile_id,
         )
 
-    async def update_profile_name(self, profile_id: str, name: str):
-        await self.db.execute(
-            "UPDATE profiles SET name=$1 WHERE id=$2",
-            name, profile_id,
-        )
-
-    async def update_profile_admin(self, profile_id: str, name: str | None = None, texture_model: str | None = None) -> bool:
-        if name is not None:
-            if not re.match(r"^[a-zA-Z0-9_]{1,16}$", name):
-                raise ValueError("角色名只能包含字母、数字、下划线，长度1-16字符")
-        if texture_model is not None:
-            if texture_model not in ("default", "slim"):
-                raise ValueError("texture_model must be 'default' or 'slim'")
-
-        if name is not None and texture_model is not None:
-            query = "UPDATE profiles SET name=$1, texture_model=$2 WHERE id=$3"
-            params = (name, texture_model, profile_id)
-        elif name is not None:
-            query = "UPDATE profiles SET name=$1 WHERE id=$2"
-            params = (name, profile_id)
-        elif texture_model is not None:
-            query = "UPDATE profiles SET texture_model=$1 WHERE id=$2"
-            params = (texture_model, profile_id)
-        else:
+    async def update_profile_name(self, profile_id: str, name: str) -> bool:
+        """更新角色名，返回是否成功（不处理验证）"""
+        try:
+            await self.db.execute("UPDATE profiles SET name=$1 WHERE id=$2", name, profile_id)
             return True
+        except asyncpg.exceptions.UniqueViolationError:
+            return False
 
-        async with self.db.get_conn() as conn:
-            async with conn.transaction():
-                try:
-                    await conn.execute(query, *params)
-                except asyncpg.exceptions.UniqueViolationError:
-                    return False
-        return True
-
-    async def delete_profile_admin(self, profile_id: str) -> bool:
-        async with self.db.get_conn() as conn:
-            async with conn.transaction():
-                val = await conn.fetchval("SELECT 1 FROM profiles WHERE id=$1", profile_id)
-                if val is None:
-                    return False
-                await conn.execute("DELETE FROM tokens WHERE profile_id=$1", profile_id)
-                await conn.execute("DELETE FROM profiles WHERE id=$1", profile_id)
+    async def update_profile_model(self, profile_id: str, model: str) -> bool:
+        """更新模型类型，返回是否成功（不处理验证）"""
+        await self.db.execute("UPDATE profiles SET texture_model=$1 WHERE id=$2", model, profile_id)
         return True
 
     async def search_profiles_by_names(self, names: list[str], limit: int = 20) -> list[PlayerProfile]:

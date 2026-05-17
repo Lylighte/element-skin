@@ -250,22 +250,34 @@ class AdminBackend:
         return await self.db.user.list_all_profiles_cursor(limit, after_id, query)
 
     async def update_profile(self, profile_id: str, name: str | None = None, texture_model: str | None = None) -> dict:
+        # 业务验证
         if name is not None:
             if not (1 <= len(name) <= 16) or not re.match(r"^[a-zA-Z0-9_]+$", name):
-                raise HTTPException(status_code=400, detail="角色名只能包含字母、数字、下划线，长度1-16字符")
+                raise HTTPException(status_code=400, detail="角色名只能包含字母、数字、下划线，长度 1-16 字符")
         if texture_model is not None:
             if texture_model not in ("default", "slim"):
                 raise HTTPException(status_code=400, detail="texture_model must be 'default' or 'slim'")
 
-        ok = await self.db.user.update_profile_admin(profile_id, name, texture_model)
-        if ok is False:
-            raise HTTPException(status_code=409, detail="角色名已被占用")
+        # 编排 DB 操作
+        if name is not None:
+            ok = await self.db.user.update_profile_name(profile_id, name)
+            if not ok:
+                raise HTTPException(status_code=409, detail="角色名已被占用")
+        if texture_model is not None:
+            await self.db.user.update_profile_model(profile_id, texture_model)
+        
         return {"ok": True}
 
     async def delete_profile(self, profile_id: str) -> dict:
-        ok = await self.db.user.delete_profile_admin(profile_id)
-        if not ok:
+        # 检查存在性
+        profile = await self.db.user.get_profile_by_id(profile_id)
+        if not profile:
             raise HTTPException(status_code=404, detail="角色不存在")
+        
+        # 编排级联删除
+        await self.db.user.delete_tokens_by_profile(profile_id)
+        await self.db.user.delete_profile(profile_id)
+        
         return {"ok": True}
 
     async def update_profile_skin(self, profile_id: str, skin_hash: str | None = None) -> dict:
@@ -342,18 +354,41 @@ class AdminBackend:
     async def get_all_textures(self, limit=20, after_cursor=None, query=None, type_filter=None) -> dict:
         return await self.db.texture.list_all_textures_cursor(limit, after_cursor, query, type_filter)
 
-    async def update_texture_public(self, texture_hash, is_public):
+    async def update_texture_public(self, texture_hash: str, is_public: int) -> dict:
+        # 业务验证
         if is_public not in (0, 1):
             raise HTTPException(status_code=400, detail="is_public must be 0 or 1")
-        result = await self.db.texture.update_texture_public_admin(texture_hash, is_public)
-        if not result:
+        
+        # 获取 uploader 信息
+        texture = await self.db.texture.get_texture_from_library(texture_hash)
+        if not texture:
             raise HTTPException(status_code=404, detail="材质不存在")
+        
+        uploader = texture["uploader"]
+        
+        # 编排两阶段更新
+        await self.db.texture.update_skin_library_public(texture_hash, is_public)
+        await self.db.texture.update_user_textures_public(uploader, texture_hash, is_public)
+        
         return {"success": True}
 
-    async def delete_texture(self, texture_hash, texture_type, user_id=None, force=False):
+    async def delete_texture(self, texture_hash: str, texture_type: str, user_id: str | None = None, force: bool = False) -> dict:
+        # 业务验证
         if not force and not user_id:
             raise HTTPException(status_code=400, detail="per-user deletion requires user_id")
-        result = await self.db.texture.delete_texture_admin(texture_hash, texture_type, user_id, force)
-        if not result:
-            raise HTTPException(status_code=404, detail="材质不存在")
+        
+        if force:
+            # Force mode: 删除所有引用 + 皮肤库
+            await self.db.texture.delete_user_textures_all(texture_hash, texture_type)
+            await self.db.texture.delete_from_skin_library(texture_hash)
+        else:
+            # Per-user mode: 删除单个用户引用
+            await self.db.texture.delete_user_texture_by_user(user_id, texture_hash, texture_type)
+            
+            # 检查是否为最后一个引用
+            remaining = await self.db.texture.count_texture_references(texture_hash, texture_type)
+            if remaining == 0:
+                # 软删除：只取消公开
+                await self.db.texture.update_skin_library_public(texture_hash, 0)
+        
         return {"success": True}
