@@ -395,7 +395,7 @@ async function updatePreviewNote() {
   if (newName === selectedItem.value.name) return
   try {
     await axios.patch(`/admin/textures/${selectedItem.value.hash}`,
-      { name: newName },
+      { note: newName },
       { headers: authHeaders() }
     )
     selectedItem.value.name = newName
