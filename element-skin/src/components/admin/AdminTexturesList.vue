@@ -405,13 +405,14 @@ async function updatePreviewNote() {
   }
 }
 
-async function updateModel() {
+async function updateModel(newModel) {
   if (!selectedItem.value) return
   try {
     await axios.patch(`/admin/textures/${selectedItem.value.hash}`,
-      { model: selectedItem.value.model },
+      { model: newModel },
       { headers: authHeaders() }
     )
+    selectedItem.value.model = newModel
     ElMessage.success('模型已更新')
   } catch (e) {
     ElMessage.error('更新模型失败')

@@ -296,8 +296,8 @@ def setup_routes(db: Database, admin_backend, rate_limiter, config: Config):
         if "model" in body:
             await admin_backend.update_texture_model(hash, body["model"])
             updated = True
-        if "note" in body:
-            await admin_backend.update_texture_note(hash, body["note"])
+        if "note" in body or "name" in body:
+            await admin_backend.update_texture_note(hash, body.get("note", body.get("name")))
             updated = True
         if "is_public" in body:
             await admin_backend.update_texture_public(hash, body["is_public"])
