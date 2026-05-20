@@ -287,15 +287,26 @@ def setup_routes(db: Database, admin_backend, rate_limiter, config: Config):
         )
 
     @router.patch("/admin/textures/{hash}")
-    async def update_admin_texture_public(
+    async def update_admin_texture(
         hash: str,
         payload: dict = Depends(admin_required),
         body: dict = Body(...)
     ):
-        is_public = body.get("is_public")
-        if is_public is None:
-            raise HTTPException(status_code=400, detail="is_public is required")
-        return await admin_backend.update_texture_public(hash, is_public)
+        updated = False
+        if "model" in body:
+            await admin_backend.update_texture_model(hash, body["model"])
+            updated = True
+        if "note" in body:
+            await admin_backend.update_texture_note(hash, body["note"])
+            updated = True
+        if "is_public" in body:
+            await admin_backend.update_texture_public(hash, body["is_public"])
+            updated = True
+
+        if not updated:
+            raise HTTPException(status_code=400, detail="至少需要一个更新字段: model, note, is_public")
+
+        return {"ok": True}
 
     @router.delete("/admin/textures/{hash}")
     async def delete_admin_texture(

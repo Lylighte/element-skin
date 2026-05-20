@@ -365,6 +365,36 @@ class AdminBackend:
         
         return {"success": True}
 
+    async def update_texture_model(self, texture_hash: str, model: str) -> dict:
+        # 业务验证
+        if model not in ("default", "slim"):
+            raise HTTPException(status_code=400, detail="model must be 'default' or 'slim'")
+
+        # 获取 uploader 信息
+        texture = await self.db.texture.get_texture_from_library(texture_hash)
+        if not texture:
+            raise HTTPException(status_code=404, detail="材质不存在")
+
+        uploader = texture["uploader"]
+
+        # 复用现有 DB 方法
+        await self.db.texture.update_model(uploader, texture_hash, "skin", model)
+
+        return {"success": True}
+
+    async def update_texture_note(self, texture_hash: str, note: str) -> dict:
+        # 获取 uploader 信息
+        texture = await self.db.texture.get_texture_from_library(texture_hash)
+        if not texture:
+            raise HTTPException(status_code=404, detail="材质不存在")
+
+        uploader = texture["uploader"]
+
+        # 复用现有 DB 方法
+        await self.db.texture.update_note(uploader, texture_hash, "skin", note)
+
+        return {"success": True}
+
     async def delete_texture(self, texture_hash: str, texture_type: str, user_id: str | None = None, force: bool = False) -> dict:
         if not force and not user_id:
             raise HTTPException(status_code=400, detail="per-user deletion requires user_id")

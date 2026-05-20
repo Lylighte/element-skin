@@ -57,6 +57,47 @@ async def test_update_texture_public_success(admin_backend_fixture, db_session, 
 
 
 @pytest.mark.asyncio
+async def test_update_texture_model_invalid_value(admin_backend_fixture):
+    """验证 model 枚举校验：无效值应返回 400"""
+    with pytest.raises(HTTPException) as exc:
+        await admin_backend_fixture.update_texture_model("somehash", model="invalid")
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_texture_model_not_found(admin_backend_fixture):
+    """验证不存在的材质返回 404"""
+    with pytest.raises(HTTPException) as exc:
+        await admin_backend_fixture.update_texture_model("nonexistent-hash", model="slim")
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_texture_model_success(admin_backend_fixture, db_session, user_factory):
+    """验证成功更新材质模型（三表同步）"""
+    user = await user_factory()
+    image_bytes = _create_test_image(64, 64)
+    tex_hash, _ = await db_session.texture.upload(
+        user.id, image_bytes, "skin", note="TestTexture", is_public=True, model="default"
+    )
+
+    # Update model from default to slim
+    result = await admin_backend_fixture.update_texture_model(tex_hash, model="slim")
+    assert result["success"] is True
+
+    # Verify skin_library updated
+    async with db_session.get_conn() as conn:
+        lib_model = await conn.fetchval(
+            "SELECT model FROM skin_library WHERE skin_hash = $1", tex_hash
+        )
+        assert lib_model == "slim"
+
+    # Verify user_textures updated
+    info = await db_session.texture.get_texture_info(user.id, tex_hash, "skin")
+    assert info["model"] == "slim"
+
+
+@pytest.mark.asyncio
 async def test_delete_texture_missing_user_id(admin_backend_fixture):
     """验证 per-user mode 需要 user_id（force=False 且无 user_id 应返回 400）"""
     with pytest.raises(HTTPException) as exc:
