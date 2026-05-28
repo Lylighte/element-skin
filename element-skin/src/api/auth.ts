@@ -22,3 +22,7 @@ export function sendVerificationCode(data: { email: string; type: 'register' | '
 export function resetPassword(data: { email: string; password: string; code: string }): Promise<{ data: { ok: boolean } }> {
   return client.post('/reset-password', data)
 }
+
+export function siteLogout(): Promise<{ data: { ok: boolean } }> {
+  return client.post('/site-logout')
+}

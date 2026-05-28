@@ -35,17 +35,11 @@ onMounted(async () => {
     console.warn('Failed to load carousel images:', e)
   }
 
-  // 检查登录状态
-  const jwt = localStorage.getItem('jwt')
-  if (jwt) {
-    try {
-      await getMe()
-      isLogged.value = true
-    } catch (e) {
-      localStorage.removeItem('jwt')
-      localStorage.removeItem('accessToken')
-    }
-  }
+  // 检查登录状态（cookie 自动携带）
+  try {
+    await getMe()
+    isLogged.value = true
+  } catch {}
 })
 
 function goDashboard() { router.push('/dashboard') }

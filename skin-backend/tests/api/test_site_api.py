@@ -16,13 +16,15 @@ async def test_api_site_login_success(client, user_factory):
     
     assert resp.status_code == 200
     data = resp.json()
-    assert "token" in data
     assert "user_id" in data
+    # token 现在通过 Set-Cookie header 返回
+    assert "set-cookie" in resp.headers
+    assert "jwt=" in resp.headers["set-cookie"]
 
 @pytest.mark.asyncio
 async def test_api_get_me_info(client, auth_headers):
     """测试获取当前用户信息接口"""
-    resp = await client.get("/me", headers={"Authorization": auth_headers["Authorization"]})
+    resp = await client.get("/me", cookies=auth_headers["cookies"])
     
     assert resp.status_code == 200
     data = resp.json()
@@ -41,7 +43,7 @@ async def test_api_get_me_profiles_paginated(client, auth_headers, db_session):
     
     resp = await client.get("/me/profiles", 
         params={"limit": 2},
-        headers={"Authorization": auth_headers["Authorization"]}
+        cookies=auth_headers["cookies"]
     )
     
     assert resp.status_code == 200
@@ -58,7 +60,7 @@ async def test_api_get_me_textures_paginated(client, auth_headers, db_session):
     
     resp = await client.get("/me/textures", 
         params={"limit": 2},
-        headers={"Authorization": auth_headers["Authorization"]}
+        cookies=auth_headers["cookies"]
     )
     
     assert resp.status_code == 200
@@ -74,13 +76,13 @@ async def test_api_update_me_info(client, auth_headers):
     new_avatar = "fake_avatar_hash_123"
     resp = await client.patch("/me", 
         json={"display_name": new_name, "avatar_hash": new_avatar},
-        headers={"Authorization": auth_headers["Authorization"]}
+        cookies=auth_headers["cookies"]
     )
     
     assert resp.status_code == 200
     
     # 验证是否生效
-    me_resp = await client.get("/me", headers={"Authorization": auth_headers["Authorization"]})
+    me_resp = await client.get("/me", cookies=auth_headers["cookies"])
     assert me_resp.json()["display_name"] == new_name
     assert me_resp.json()["avatar_hash"] == new_avatar
 
@@ -107,7 +109,7 @@ async def test_api_texture_upload_multipart(client, auth_headers):
     resp = await client.post("/me/textures", 
         data=data, 
         files=files,
-        headers={"Authorization": auth_headers["Authorization"]}
+        cookies=auth_headers["cookies"]
     )
     
     assert resp.status_code == 200
@@ -118,7 +120,7 @@ async def test_api_create_profile(client, auth_headers):
     """测试创建角色接口"""
     resp = await client.post("/me/profiles",
         json={"name": "ApiPlayer", "model": "default"},
-        headers={"Authorization": auth_headers["Authorization"]}
+        cookies=auth_headers["cookies"]
     )
     
     assert resp.status_code == 200
@@ -138,7 +140,7 @@ async def test_api_create_profile_uuid_conflict(client, auth_headers, db_session
         resp = await client.post(
             "/me/profiles",
             json={"name": "ApiRoleC1", "model": "default"},
-            headers={"Authorization": auth_headers["Authorization"]},
+            cookies=auth_headers["cookies"],
         )
 
     assert resp.status_code == 400
@@ -154,7 +156,7 @@ async def test_api_rename_profile(client, auth_headers, db_session):
     
     resp = await client.patch(f"/me/profiles/{pid}",
         json={"name": "NewFancyName"},
-        headers={"Authorization": auth_headers["Authorization"]}
+        cookies=auth_headers["cookies"]
     )
     
     assert resp.status_code == 200
@@ -177,7 +179,7 @@ async def test_api_remote_ygg_import_flow(client, auth_headers, db_session):
         
         resp = await client.post("/remote-ygg/get-profiles",
             json={"api_url": "https://remote.com", "username": "u", "password": "p"},
-            headers={"Authorization": auth_headers["Authorization"]}
+            cookies=auth_headers["cookies"]
         )
         assert resp.status_code == 200
         assert resp.json()["profiles"] == mock_profiles
@@ -208,7 +210,7 @@ async def test_api_remote_ygg_import_flow(client, auth_headers, db_session):
                         {"profile_id": "remote_pid_2", "profile_name": "RemotePlayer2"},
                     ]
                 },
-                headers={"Authorization": auth_headers["Authorization"]}
+                cookies=auth_headers["cookies"]
             )
             
             assert resp.status_code == 200
@@ -238,12 +240,12 @@ async def test_api_add_texture_from_library_preserves_name(client, auth_headers,
     
     # 2. 调用添加接口 (POST /me/textures/{hash}/add)
     resp = await client.post(f"/me/textures/{tex_hash}/add", 
-        headers={"Authorization": auth_headers["Authorization"]}
+        cookies=auth_headers["cookies"]
     )
     assert resp.status_code == 200
     
     # 3. 验证个人材质列表中是否有该材质，且 note 正确 (user_textures.note 应该等于 skin_library.name)
-    me_tex_resp = await client.get("/me/textures", headers={"Authorization": auth_headers["Authorization"]})
+    me_tex_resp = await client.get("/me/textures", cookies=auth_headers["cookies"])
     items = me_tex_resp.json()["items"]
     assert any(item["hash"] == tex_hash and item["note"] == tex_name for item in items)
 

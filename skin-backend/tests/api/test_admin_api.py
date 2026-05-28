@@ -3,7 +3,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_api_admin_get_users(client, admin_headers):
     """测试管理员获取用户列表接口"""
-    resp = await client.get("/admin/users", headers={"Authorization": admin_headers["Authorization"]})
+    resp = await client.get("/admin/users", cookies=admin_headers["cookies"])
     
     assert resp.status_code == 200
     data = resp.json()
@@ -23,7 +23,7 @@ async def test_api_admin_get_user_profiles(client, admin_headers, user_factory, 
     
     resp = await client.get(f"/admin/users/{user.id}/profiles", 
         params={"limit": 10},
-        headers={"Authorization": admin_headers["Authorization"]}
+        cookies=admin_headers["cookies"]
     )
     
     assert resp.status_code == 200
@@ -42,20 +42,20 @@ async def test_api_admin_settings_site(client, admin_headers):
     }
     resp = await client.post("/admin/settings/site", 
         json=payload,
-        headers={"Authorization": admin_headers["Authorization"]}
+        cookies=admin_headers["cookies"]
     )
     
     assert resp.status_code == 200
     
     # 验证是否生效
-    get_resp = await client.get("/admin/settings/site", headers={"Authorization": admin_headers["Authorization"]})
+    get_resp = await client.get("/admin/settings/site", cookies=admin_headers["cookies"])
     assert get_resp.json()["site_name"] == "API Test Site"
     assert get_resp.json()["profile_uuid_mode"] == "offline"
 
 @pytest.mark.asyncio
 async def test_api_admin_forbidden_for_normal_user(client, auth_headers):
     """测试普通用户访问管理接口被拒绝"""
-    resp = await client.get("/admin/users", headers={"Authorization": auth_headers["Authorization"]})
+    resp = await client.get("/admin/users", cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
 @pytest.mark.asyncio
@@ -68,7 +68,7 @@ async def test_api_admin_ban_user(client, admin_headers, user_factory):
     
     resp = await client.post(f"/admin/users/{user.id}/ban",
         json={"banned_until": banned_until},
-        headers={"Authorization": admin_headers["Authorization"]}
+        cookies=admin_headers["cookies"]
     )
     
     assert resp.status_code == 200
@@ -80,17 +80,17 @@ async def test_api_admin_invite_codes(client, admin_headers):
     # 1. 创建邀请码
     resp_create = await client.post("/admin/invites",
         json={"total_uses": 5, "note": "API Code"},
-        headers={"Authorization": admin_headers["Authorization"]}
+        cookies=admin_headers["cookies"]
     )
     assert resp_create.status_code == 200
     code = resp_create.json()["code"]
     
     # 2. 获取邀请码列表
-    resp_list = await client.get("/admin/invites", headers={"Authorization": admin_headers["Authorization"]})
+    resp_list = await client.get("/admin/invites", cookies=admin_headers["cookies"])
     assert any(item["code"] == code for item in resp_list.json()["items"])
     
     # 3. 删除邀请码
-    resp_del = await client.delete(f"/admin/invites/{code}", headers={"Authorization": admin_headers["Authorization"]})
+    resp_del = await client.delete(f"/admin/invites/{code}", cookies=admin_headers["cookies"])
     assert resp_del.status_code == 200
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_api_admin_search_users(client, admin_headers, user_factory, db_se
     # 1. 按用户名搜索
     resp = await client.get("/admin/users", 
         params={"q": "SearchUser1"},
-        headers={"Authorization": admin_headers["Authorization"]}
+        cookies=admin_headers["cookies"]
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -117,7 +117,7 @@ async def test_api_admin_search_users(client, admin_headers, user_factory, db_se
     # 2. 按角色名搜索
     resp = await client.get("/admin/users", 
         params={"q": "Knight"},
-        headers={"Authorization": admin_headers["Authorization"]}
+        cookies=admin_headers["cookies"]
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -127,7 +127,7 @@ async def test_api_admin_search_users(client, admin_headers, user_factory, db_se
     # 3. 搜索不存在的内容
     resp = await client.get("/admin/users", 
         params={"q": "NonExistentUserXYZ"},
-        headers={"Authorization": admin_headers["Authorization"]}
+        cookies=admin_headers["cookies"]
     )
     assert resp.status_code == 200
     assert len(resp.json()["items"]) == 0
@@ -143,18 +143,18 @@ async def test_admin_profiles_list(client, admin_headers, auth_headers, db_sessi
     await db_session.user.create_profile(PlayerProfile(pid, user.id, "SearchTest", "default", None, None))
 
     # Non-admin → 403
-    resp = await client.get("/admin/profiles", headers=auth_headers)
+    resp = await client.get("/admin/profiles", cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
     # Admin → 200
-    resp = await client.get("/admin/profiles", headers=admin_headers)
+    resp = await client.get("/admin/profiles", cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     data = resp.json()
     assert "items" in data
     assert len(data["items"]) >= 1
 
     # Search
-    resp = await client.get("/admin/profiles?q=SearchTest", headers=admin_headers)
+    resp = await client.get("/admin/profiles?q=SearchTest", cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     assert len(resp.json()["items"]) >= 1
 
@@ -171,15 +171,15 @@ async def test_admin_profile_update(client, admin_headers, auth_headers, db_sess
     await db_session.user.create_profile(PlayerProfile(pid2, user.id, "OtherName", "default", None, None))
 
     # Non-admin → 403
-    resp = await client.patch(f"/admin/profiles/{pid}", json={"name": "NewName"}, headers=auth_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}", json={"name": "NewName"}, cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
     # Admin success
-    resp = await client.patch(f"/admin/profiles/{pid}", json={"name": "Renamed"}, headers=admin_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}", json={"name": "Renamed"}, cookies=admin_headers["cookies"])
     assert resp.status_code == 200
 
     # Duplicate name → 409
-    resp = await client.patch(f"/admin/profiles/{pid}", json={"name": "OtherName"}, headers=admin_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}", json={"name": "OtherName"}, cookies=admin_headers["cookies"])
     assert resp.status_code == 409
 
 
@@ -196,18 +196,18 @@ async def test_admin_profile_delete(client, admin_headers, auth_headers, db_sess
     await db_session.user.add_token(Token("test-del-token", "client", user.id, pid, int(time.time() * 1000)))
 
     # Non-admin → 403
-    resp = await client.delete(f"/admin/profiles/{pid}", headers=auth_headers)
+    resp = await client.delete(f"/admin/profiles/{pid}", cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
     # Admin success
-    resp = await client.delete(f"/admin/profiles/{pid}", headers=admin_headers)
+    resp = await client.delete(f"/admin/profiles/{pid}", cookies=admin_headers["cookies"])
     assert resp.status_code == 200
 
     # Verify cascade: token gone
     assert await db_session.user.get_token("test-del-token") is None
 
     # Non-existent → 404
-    resp = await client.delete(f"/admin/profiles/{pid}", headers=admin_headers)
+    resp = await client.delete(f"/admin/profiles/{pid}", cookies=admin_headers["cookies"])
     assert resp.status_code == 404
 
 
@@ -227,28 +227,28 @@ async def test_admin_textures_endpoints(client, admin_headers, auth_headers, db_
     tex_hash, tex_type = await db_session.texture.upload(user.id, make_img((255, 0, 0)), "skin", note="APITest", is_public=True)
 
     # GET — 403 for non-admin
-    resp = await client.get("/admin/textures", headers=auth_headers)
+    resp = await client.get("/admin/textures", cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
     # GET — 200 for admin
-    resp = await client.get("/admin/textures", headers=admin_headers)
+    resp = await client.get("/admin/textures", cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     assert len(resp.json()["items"]) >= 1
 
     # PATCH — 403
-    resp = await client.patch(f"/admin/textures/{tex_hash}", json={"is_public": 0}, headers=auth_headers)
+    resp = await client.patch(f"/admin/textures/{tex_hash}", json={"is_public": 0}, cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
     # PATCH — 200 (toggle to private)
-    resp = await client.patch(f"/admin/textures/{tex_hash}", json={"is_public": 0}, headers=admin_headers)
+    resp = await client.patch(f"/admin/textures/{tex_hash}", json={"is_public": 0}, cookies=admin_headers["cookies"])
     assert resp.status_code == 200
 
     # DELETE — 403
-    resp = await client.delete(f"/admin/textures/{tex_hash}?user_id={user.id}&type=skin", headers=auth_headers)
+    resp = await client.delete(f"/admin/textures/{tex_hash}?user_id={user.id}&type=skin", cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
     # DELETE — 200
-    resp = await client.delete(f"/admin/textures/{tex_hash}?user_id={user.id}&type=skin", headers=admin_headers)
+    resp = await client.delete(f"/admin/textures/{tex_hash}?user_id={user.id}&type=skin", cookies=admin_headers["cookies"])
     assert resp.status_code == 200
 
 @pytest.mark.asyncio
@@ -261,17 +261,17 @@ async def test_admin_profile_clear_skin_endpoint(client, admin_headers, auth_hea
     await db_session.user.create_profile(PlayerProfile(pid, user.id, "APISkinClear", "default", "hashxyz", None))
 
     # 403
-    resp = await client.patch(f"/admin/profiles/{pid}/skin", json={"hash": None}, headers=auth_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}/skin", json={"hash": None}, cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
     # 200
-    resp = await client.patch(f"/admin/profiles/{pid}/skin", json={"hash": None}, headers=admin_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}/skin", json={"hash": None}, cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     profile = await db_session.user.get_profile_by_id(pid)
     assert profile.skin_hash is None
 
     # 404
-    resp = await client.patch(f"/admin/profiles/non-existent/skin", json={"hash": None}, headers=admin_headers)
+    resp = await client.patch(f"/admin/profiles/non-existent/skin", json={"hash": None}, cookies=admin_headers["cookies"])
     assert resp.status_code == 404
 
 @pytest.mark.asyncio
@@ -284,17 +284,17 @@ async def test_admin_profile_clear_cape_endpoint(client, admin_headers, auth_hea
     await db_session.user.create_profile(PlayerProfile(pid, user.id, "APICapeClear", "default", None, "capehash"))
 
     # 403
-    resp = await client.patch(f"/admin/profiles/{pid}/cape", json={"hash": None}, headers=auth_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}/cape", json={"hash": None}, cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
     # 200
-    resp = await client.patch(f"/admin/profiles/{pid}/cape", json={"hash": None}, headers=admin_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}/cape", json={"hash": None}, cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     profile = await db_session.user.get_profile_by_id(pid)
     assert profile.cape_hash is None
 
     # 404
-    resp = await client.patch(f"/admin/profiles/non-existent/cape", json={"hash": None}, headers=admin_headers)
+    resp = await client.patch(f"/admin/profiles/non-existent/cape", json={"hash": None}, cookies=admin_headers["cookies"])
     assert resp.status_code == 404
 
 @pytest.mark.asyncio
@@ -307,13 +307,13 @@ async def test_admin_skin_cape_independence(client, admin_headers, db_session, u
     await db_session.user.create_profile(PlayerProfile(pid, user.id, "Indep", "default", "skinhash", "capehash"))
 
     # Clear skin
-    resp = await client.patch(f"/admin/profiles/{pid}/skin", json={"hash": None}, headers=admin_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}/skin", json={"hash": None}, cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     profile = await db_session.user.get_profile_by_id(pid)
     assert profile.cape_hash == "capehash"
 
     # Clear cape
-    resp = await client.patch(f"/admin/profiles/{pid}/cape", json={"hash": None}, headers=admin_headers)
+    resp = await client.patch(f"/admin/profiles/{pid}/cape", json={"hash": None}, cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     profile = await db_session.user.get_profile_by_id(pid)
     assert profile.skin_hash is None

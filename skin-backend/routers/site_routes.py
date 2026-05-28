@@ -10,22 +10,23 @@ from fastapi import (
     File,
     Form,
 )
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from typing import Optional
 
-from utils.jwt_utils import decode_jwt_token
+from utils.jwt_utils import decode_jwt_token, get_cookie_settings
 from database_module import Database
 from config_loader import Config
 
 router = APIRouter()
-security = HTTPBearer()
 
 
 def setup_routes(db: Database, site_backend, rate_limiter, config: Config):
     """设置路由（注入依赖）"""
 
-    async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
-        token = creds.credentials
+    async def get_current_user(request: Request):
+        token = request.cookies.get("jwt")
+        if not token:
+            raise HTTPException(status_code=401, detail="not authenticated")
         payload = decode_jwt_token(token)
         if not payload:
             raise HTTPException(status_code=401, detail="invalid or expired token")
@@ -36,7 +37,18 @@ def setup_routes(db: Database, site_backend, rate_limiter, config: Config):
         await rate_limiter.check(request, is_auth_endpoint=True)
         result = await site_backend.login(req.get("email"), req.get("password"))
         rate_limiter.reset(request.client.host, request.url.path)
-        return result
+
+        cookie = get_cookie_settings()
+        cookie["value"] = result["token"]
+        response = JSONResponse(content={"user_id": result["user_id"]})
+        response.set_cookie(**cookie)
+        return response
+
+    @router.post("/site-logout")
+    async def site_logout():
+        response = JSONResponse(content={"ok": True})
+        response.delete_cookie("jwt", path="/")
+        return response
 
     @router.post("/register")
     async def register(req: dict, request: Request):
@@ -81,7 +93,12 @@ def setup_routes(db: Database, site_backend, rate_limiter, config: Config):
 
     @router.post("/me/refresh-token")
     async def refresh_jwt(payload: dict = Depends(get_current_user)):
-        return await site_backend.refresh_token(payload.get("sub"))
+        result = await site_backend.refresh_token(payload.get("sub"))
+        cookie = get_cookie_settings()
+        cookie["value"] = result["token"]
+        response = JSONResponse(content={"is_admin": result["is_admin"]})
+        response.set_cookie(**cookie)
+        return response
 
     @router.patch("/me")
     async def me_update(

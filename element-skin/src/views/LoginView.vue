@@ -100,15 +100,11 @@ async function login() {
     await formRef.value.validate()
     loading.value = true
 
-    // 使用站点登录接口（不受封禁影响）
-    const res = await siteLogin({
+    // 使用站点登录接口（不受封禁影响，token 自动存入 HttpOnly Cookie）
+    await siteLogin({
       email: form.email,
       password: form.password,
     })
-
-    if (res.data.token) {
-      localStorage.setItem('jwt', res.data.token)
-    }
 
     ElMessage.success('登录成功！')
 

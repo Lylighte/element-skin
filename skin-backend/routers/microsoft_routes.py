@@ -1,7 +1,6 @@
 """Microsoft 正版验证模块路由"""
 
 from fastapi import APIRouter, Request, HTTPException, Depends, Body
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 import time
 import secrets
@@ -14,7 +13,6 @@ from utils.uuid_utils import generate_random_uuid
 from database_module import Database
 
 router = APIRouter(prefix="/microsoft")
-security = HTTPBearer()
 
 
 def setup_routes(db: Database, config):
@@ -23,9 +21,11 @@ def setup_routes(db: Database, config):
     # OAuth state 存储（生产环境应使用 Redis）
     oauth_states = {}
 
-    async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
+    async def get_current_user(request: Request):
         """获取当前用户"""
-        token = creds.credentials
+        token = request.cookies.get("jwt")
+        if not token:
+            raise HTTPException(status_code=401, detail="not authenticated")
         payload = decode_jwt_token(token)
         if not payload:
             raise HTTPException(status_code=401, detail="invalid or expired token")

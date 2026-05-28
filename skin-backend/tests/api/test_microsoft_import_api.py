@@ -23,7 +23,7 @@ async def test_microsoft_import_profile_success(client, auth_headers, db_session
         
         response = await client.post(
             "/microsoft/import-profile",
-            headers=auth_headers,
+            cookies=auth_headers["cookies"],
             json=payload
         )
         
@@ -60,7 +60,7 @@ async def test_microsoft_import_profile_uuid_conflict(client, auth_headers, db_s
     with patch("routers.microsoft_routes.download_texture", new_callable=AsyncMock):
         response = await client.post(
             "/microsoft/import-profile",
-            headers=auth_headers,
+            cookies=auth_headers["cookies"],
             json=payload
         )
         
@@ -91,7 +91,7 @@ async def test_microsoft_import_profile_name_conflict(client, auth_headers, db_s
         
         response = await client.post(
             "/microsoft/import-profile",
-            headers=auth_headers,
+            cookies=auth_headers["cookies"],
             json=payload
         )
         

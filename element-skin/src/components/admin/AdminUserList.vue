@@ -268,7 +268,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Refresh, UserFilled, Warning, CircleCheck, Search
@@ -488,13 +488,8 @@ async function unbanUser(user) {
 
 // Helpers
 const getUserBanStatus = (user) => user.banned_until && Date.now() < user.banned_until
-const isCurrentUserSelf = (user) => {
-  try {
-    const token = localStorage.getItem('jwt')
-    if (!token) return false
-    return JSON.parse(atob(token.split('.')[1])).sub === user.id
-  } catch (e) { return false }
-}
+const loggedInUser = inject('user')
+const isCurrentUserSelf = (user) => loggedInUser?.value?.id === user.id
 const formatBanRemaining = (ts) => {
   const m = Math.ceil((ts - Date.now()) / 60000)
   if (m > 1440) return Math.floor(m / 1440) + ' 天'

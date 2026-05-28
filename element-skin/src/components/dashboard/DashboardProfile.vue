@@ -244,8 +244,6 @@ async function confirmDeleteAccount() {
   try {
     await deleteMe()
     ElMessage.success('账号已注销')
-    localStorage.removeItem('jwt')
-    localStorage.removeItem('accessToken')
     setTimeout(() => {
       router.push('/')
     }, 1000)

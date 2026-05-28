@@ -207,18 +207,15 @@ onMounted(async () => {
     apiUrl.value = getApiUrl()
   }
 
-  // Load User Stats (from /me)
-  const token = localStorage.getItem('jwt')
-  if (token) {
-      try {
-          const res = await getMe()
-          if (res.data) {
-              profileCount.value = res.data.profile_count || 0
-              textureCount.value = res.data.texture_count || 0
-          }
-      } catch (e) {
-          console.error('Failed to load user stats', e)
+  // Load User Stats (from /me, cookie 自动携带)
+  try {
+      const res = await getMe()
+      if (res.data) {
+          profileCount.value = res.data.profile_count || 0
+          textureCount.value = res.data.texture_count || 0
       }
+  } catch (e) {
+      console.error('Failed to load user stats', e)
   }
 })
 </script>

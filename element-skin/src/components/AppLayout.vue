@@ -142,6 +142,7 @@ import { computed, ref, onMounted, onUnmounted, provide, watch, nextTick } from 
 import { useRoute, useRouter } from 'vue-router'
 import { getPublicSettings } from '@/api/public'
 import { getMe } from '@/api/me'
+import { siteLogout } from '@/api/auth'
 import {
   Menu as MenuIcon, Box, User, Setting, Tools, Back, Odometer, Link, Picture, Message, Moon, Sunny
 } from '@element-plus/icons-vue'
@@ -156,7 +157,6 @@ const isHome = computed(() => route.path === '/')
 const isAuthPage = computed(() => ['/login', '/register', '/reset-password'].includes(route.path))
 const siteName = ref(localStorage.getItem('site_name_cache') || '皮肤站')
 const enableSkinLibrary = ref(localStorage.getItem('enable_skin_library_cache') === 'true' || localStorage.getItem('enable_skin_library_cache') === null)
-const jwtToken = ref(localStorage.getItem('jwt') || '')
 const user = ref(null)
 const drawer = ref(false)
 const footerText = ref('')
@@ -278,49 +278,31 @@ const repoUrl = 'https://github.com/water2004/element-skin'
 // REPAIRED: Correct version number display
 const repoLabel = `Element Skin ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v1.3.0'}`
 
-function parseJwt(token) {
-  if (!token) return null
-  try {
-    const payload = token.split('.')[1]
-    const json = decodeURIComponent(atob(payload.replace(/-/g, '+').replace(/_/g, '/')).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''))
-    return JSON.parse(json)
-  } catch (e) { return null }
-}
-
-const isLogged = computed(() => !!jwtToken.value)
+const isLogged = computed(() => !!user.value)
 const isAdmin = computed(() => user.value?.is_admin || false)
 const accountName = computed(() => user.value?.display_name || user.value?.email || '用户')
 const avatarInitial = computed(() => (accountName.value || 'U').slice(0, 1).toUpperCase())
 
 
-let authTimer = null
 let resizeObserver = null
 
 function go(path) { push(path); drawer.value = false; }
-function logout() {
-  localStorage.removeItem('jwt'); localStorage.removeItem('accessToken');
-  jwtToken.value = ''; user.value = null; push('/');
+async function logout() {
+  try { await siteLogout() } catch {}
+  user.value = null; push('/');
   setTimeout(() => window.location.reload(), 100)
 }
 
 async function fetchMe() {
-  if (!isLogged.value) { user.value = null; return; }
   try {
     const res = await getMe()
     user.value = res.data
-    // Initialize avatar from backend hash
     if (res.data.avatar_hash) {
       initializeAvatar(res.data.avatar_hash)
     }
   } catch (e) {
     user.value = null
-    console.error('Failed to fetch user data in AppLayout:', e)
   }
-}
-
-function checkAuth() {
-  const newToken = localStorage.getItem('jwt') || ''
-  if (newToken !== jwtToken.value) { jwtToken.value = newToken; fetchMe(); }
 }
 
 onMounted(async () => {
@@ -344,8 +326,6 @@ onMounted(async () => {
   } catch (e) { console.warn('Failed to load site settings:', e) }
 
   await fetchMe()
-  window.addEventListener('storage', checkAuth)
-  authTimer = setInterval(checkAuth, 1000)
 
   if (window.ResizeObserver) {
     resizeObserver = new ResizeObserver(() => updateFooterHeight())
@@ -355,8 +335,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (authTimer) clearInterval(authTimer)
-  window.removeEventListener('storage', checkAuth)
   window.removeEventListener('resize', updateFooterHeight)
   if (resizeObserver) resizeObserver.disconnect()
 })

@@ -2,13 +2,13 @@
 
 from fastapi import (
     APIRouter,
+    Request,
     HTTPException,
     Depends,
     Body,
     UploadFile,
     File,
 )
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 import uuid
 
@@ -17,14 +17,15 @@ from database_module import Database
 from config_loader import Config
 
 router = APIRouter()
-security = HTTPBearer()
 
 
 def setup_routes(db: Database, admin_backend, rate_limiter, config: Config):
     """设置路由（注入依赖）"""
 
-    async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
-        token = creds.credentials
+    async def get_current_user(request: Request):
+        token = request.cookies.get("jwt")
+        if not token:
+            raise HTTPException(status_code=401, detail="not authenticated")
         payload = decode_jwt_token(token)
         if not payload:
             raise HTTPException(status_code=401, detail="invalid or expired token")
