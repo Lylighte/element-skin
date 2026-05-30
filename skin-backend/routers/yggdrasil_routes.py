@@ -129,7 +129,7 @@ def setup_routes(backend: YggdrasilBackend, db: Database, crypto, rate_limiter):
                         "properties": [
                             {
                                 "name": "preferredLanguage",
-                                "value": user_obj.preferredLanguage,
+                                "value": user_obj.preferred_language,
                             }
                         ],
                     }

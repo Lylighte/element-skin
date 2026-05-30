@@ -29,7 +29,7 @@ async def test_user_management(db_session, user_factory):
     assert (await db_session.user.get_by_id(user.id)).display_name == "NewTester"
     
     await db_session.user.update_preferred_language(user.id, "en_US")
-    assert (await db_session.user.get_by_id(user.id)).preferredLanguage == "en_US"
+    assert (await db_session.user.get_by_id(user.id)).preferred_language == "en_US"
     
     # Display Name Taken Check
     assert await db_session.user.is_display_name_taken("NewTester") is True
@@ -153,6 +153,34 @@ async def test_token_and_session(db_session, user_factory):
     
     await db_session.user.delete_session("server_id")
     assert (await db_session.user.get_session("server_id")) is None
+
+@pytest.mark.asyncio
+async def test_list_and_search_users_cursor_field_mapping(db_session, user_factory):
+    """游标列表/搜索的 User 字段映射必须精确：每字段取独立值，错位即变红"""
+    user = await user_factory(email="mapper@test.com", username="MapName", is_admin=True)
+    await db_session.user.update_preferred_language(user.id, "en_US")
+    banned_until = int((time.time() + 3600) * 1000)
+    await db_session.user.ban(user.id, banned_until)
+
+    def _find(items):
+        return next(u for u in items if u.id == user.id)
+
+    listed = _find((await db_session.user.list_users_cursor(limit=50))["items"])
+    assert listed.email == "mapper@test.com"
+    assert listed.display_name == "MapName"
+    assert listed.is_admin is True
+    assert listed.preferred_language == "en_US"
+    assert listed.banned_until == banned_until
+    assert listed.password == ""
+
+    searched = _find((await db_session.user.search_users_cursor(query="MapName", limit=50))["items"])
+    assert searched.email == "mapper@test.com"
+    assert searched.display_name == "MapName"
+    assert searched.is_admin is True
+    assert searched.preferred_language == "en_US"
+    assert searched.banned_until == banned_until
+    assert searched.password == ""
+
 
 @pytest.mark.asyncio
 async def test_user_edge_cases(db_session):

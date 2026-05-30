@@ -226,7 +226,7 @@ class SiteBackend:
         return {
             "id": user_row.id,
             "email": user_row.email,
-            "lang": user_row.preferredLanguage,
+            "lang": user_row.preferred_language,
             "display_name": user_row.display_name,
             "is_admin": bool(user_row.is_admin),
             "banned_until": user_row.banned_until,

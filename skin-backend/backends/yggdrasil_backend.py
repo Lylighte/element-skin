@@ -152,7 +152,7 @@ class YggdrasilBackend:
                 resp["user"] = {
                     "id": user.id,
                     "properties": [
-                        {"name": "preferredLanguage", "value": user.preferredLanguage}
+                        {"name": "preferredLanguage", "value": user.preferred_language}
                     ],
                 }
         return resp

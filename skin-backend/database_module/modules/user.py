@@ -1,5 +1,5 @@
 from ..core import BaseDB
-from utils.typing import User, PlayerProfile, InviteCode, Token, Session, Texture
+from utils.typing import User, PlayerProfile, InviteCode, Token, Session
 import time
 import uuid
 import re
@@ -99,12 +99,24 @@ class UserModule:
             )
         
         has_next = len(rows) > limit
-        items = [User(r[0], r[1], "", r[3], r[5], r[2], r[4], r[6]) for r in rows[:limit]]
-        
+        items = [
+            User(
+                id=r[0],
+                email=r[1],
+                password="",
+                is_admin=r[3],
+                preferred_language=r[5],
+                display_name=r[2],
+                banned_until=r[4],
+                avatar_hash=r[6],
+            )
+            for r in rows[:limit]
+        ]
+
         next_key = None
         if has_next:
             next_key = {"last_id": rows[limit - 1][0]}
-        
+
         return {
             "items": items,
             "has_next": has_next,
@@ -144,12 +156,24 @@ class UserModule:
             rows = await self.db.fetch(sql, like_pattern, actual_limit)
         
         has_next = len(rows) > limit
-        items = [User(r[0], r[1], "", r[3], r[5], r[2], r[4], r[6]) for r in rows[:limit]]
-        
+        items = [
+            User(
+                id=r[0],
+                email=r[1],
+                password="",
+                is_admin=r[3],
+                preferred_language=r[5],
+                display_name=r[2],
+                banned_until=r[4],
+                avatar_hash=r[6],
+            )
+            for r in rows[:limit]
+        ]
+
         next_key = None
         if has_next:
             next_key = {"last_id": rows[limit - 1][0]}
-        
+
         return {
             "items": items,
             "has_next": has_next,
