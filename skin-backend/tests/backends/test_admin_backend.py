@@ -5,35 +5,6 @@ from utils.typing import PlayerProfile
 from utils.uuid_utils import generate_random_uuid
 
 @pytest.mark.asyncio
-async def test_admin_settings_management(db_session, test_config):
-    """测试管理员对设置的分组管理逻辑"""
-    backend = AdminBackend(db_session, test_config)
-    
-    # 1. 保存站点设置
-    site_settings = {
-        "site_name": "New Test Site",
-        "allow_register": False,
-        "max_texture_size": 2048,
-        "profile_uuid_mode": "offline",
-    }
-    await backend.save_settings_group("site", site_settings)
-    
-    # 验证保存结果
-    fetched = await backend.get_site_settings()
-    assert fetched["site_name"] == "New Test Site"
-    assert fetched["allow_register"] is False
-    assert fetched["max_texture_size"] == 2048
-    assert fetched["profile_uuid_mode"] == "offline"
-    
-    # 2. 保存安全设置
-    security_settings = {
-        "rate_limit_enabled": True,
-        "rate_limit_auth_attempts": 10
-    }
-    await backend.save_settings_group("security", security_settings)
-    assert (await backend.get_security_settings())["rate_limit_auth_attempts"] == 10
-
-@pytest.mark.asyncio
 async def test_admin_user_controls(db_session, test_config, user_factory):
     """测试管理员对用户的管控逻辑：列表、封禁、删除、权限切换"""
     backend = AdminBackend(db_session, test_config)

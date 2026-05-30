@@ -20,7 +20,7 @@ from config_loader import Config
 router = APIRouter()
 
 
-def setup_routes(db: Database, admin_backend, rate_limiter, config: Config):
+def setup_routes(db: Database, admin_backend, settings_backend, rate_limiter, config: Config):
     """设置路由（注入依赖）"""
 
     async def get_current_user(request: Request):
@@ -41,72 +41,59 @@ def setup_routes(db: Database, admin_backend, rate_limiter, config: Config):
 
     @router.get("/admin/settings/site")
     async def get_site_settings(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_site_settings()
+        return await settings_backend.get_site_settings()
 
     @router.post("/admin/settings/site")
     async def save_site_settings(payload: dict = Depends(admin_required), body: dict = Body(...)):
-        await admin_backend.save_settings_group("site", body)
+        await settings_backend.save_settings_group("site", body)
         return {"ok": True}
 
     @router.get("/admin/settings/security")
     async def get_security_settings(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_security_settings()
+        return await settings_backend.get_security_settings()
 
     @router.post("/admin/settings/security")
     async def save_security_settings(payload: dict = Depends(admin_required), body: dict = Body(...)):
-        await admin_backend.save_settings_group("security", body)
+        await settings_backend.save_settings_group("security", body)
         return {"ok": True}
 
     @router.get("/admin/settings/auth")
     async def get_auth_settings(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_auth_settings()
+        return await settings_backend.get_auth_settings()
 
     @router.post("/admin/settings/auth")
     async def save_auth_settings(payload: dict = Depends(admin_required), body: dict = Body(...)):
-        await admin_backend.save_settings_group("auth", body)
+        await settings_backend.save_settings_group("auth", body)
         return {"ok": True}
 
     @router.get("/admin/settings/microsoft")
     async def get_microsoft_settings(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_microsoft_settings()
+        return await settings_backend.get_microsoft_settings()
 
     @router.post("/admin/settings/microsoft")
     async def save_microsoft_settings(payload: dict = Depends(admin_required), body: dict = Body(...)):
-        await admin_backend.save_settings_group("microsoft", body)
+        await settings_backend.save_settings_group("microsoft", body)
         return {"ok": True}
 
     @router.get("/admin/settings/email")
     async def get_email_settings(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_email_settings()
+        return await settings_backend.get_email_settings()
 
     @router.post("/admin/settings/email")
     async def save_email_settings(payload: dict = Depends(admin_required), body: dict = Body(...)):
-        await admin_backend.save_settings_group("email", body)
+        await settings_backend.save_settings_group("email", body)
         return {"ok": True}
 
     @router.get("/admin/settings/fallback")
     async def get_fallback_settings(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_fallback_settings()
+        return await settings_backend.get_fallback_settings()
 
     @router.post("/admin/settings/fallback")
     async def save_fallback_settings(payload: dict = Depends(admin_required), body: dict = Body(...)):
         # This handles both the strategy and the endpoints
-        await admin_backend.save_settings_group("fallback", body)
+        await settings_backend.save_settings_group("fallback", body)
         if "fallbacks" in body:
-            await admin_backend.save_settings_group("fallback_endpoints", body)
-        return {"ok": True}
-
-    # ========== Legacy compatibility ==========
-
-    @router.get("/admin/settings")
-    async def get_admin_settings(payload: dict = Depends(admin_required)):
-        return await admin_backend.get_admin_settings()
-
-    @router.post("/admin/settings")
-    async def save_admin_settings(
-        payload: dict = Depends(admin_required), body: dict = Body(...)
-    ):
-        await admin_backend.save_admin_settings(body)
+            await settings_backend.save_settings_group("fallback_endpoints", body)
         return {"ok": True}
 
     # ========== Users ==========

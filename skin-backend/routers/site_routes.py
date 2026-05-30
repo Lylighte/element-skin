@@ -21,7 +21,7 @@ from config_loader import Config
 router = APIRouter()
 
 
-def setup_routes(db: Database, site_backend, profile_import_backend, rate_limiter, config: Config):
+def setup_routes(db: Database, site_backend, profile_import_backend, settings_backend, rate_limiter, config: Config):
     """设置路由（注入依赖）"""
 
     async def get_current_user(request: Request):
@@ -409,33 +409,7 @@ def setup_routes(db: Database, site_backend, profile_import_backend, rate_limite
 
     @router.get("/public/settings")
     async def get_public_settings():
-        settings = await db.setting.get_all()
-        fallbacks = await site_backend.get_fallback_services()
-        primary = fallbacks[0] if fallbacks else None
-
-        return {
-            "site_name": settings.get("site_name", "皮肤站"),
-            "site_subtitle": settings.get("site_subtitle", "简洁、高效、现代的 Minecraft 皮肤管理站"),
-            "allow_register": settings.get("allow_register", "true") == "true",
-            "enable_skin_library": settings.get("enable_skin_library", "true") == "true",
-            "email_verify_enabled": settings.get("email_verify_enabled", "false") == "true",
-            "footer_text": settings.get("footer_text", ""),
-            "filing_icp": settings.get("filing_icp", ""),
-            "filing_icp_link": settings.get("filing_icp_link", ""),
-            "filing_mps": settings.get("filing_mps", ""),
-            "filing_mps_link": settings.get("filing_mps_link", ""),
-            "mojang_status_urls": {
-                "session": (primary or {}).get(
-                    "session_url", "https://sessionserver.mojang.com"
-                ),
-                "account": (primary or {}).get(
-                    "account_url", "https://api.mojang.com"
-                ),
-                "services": (primary or {}).get(
-                    "services_url", "https://api.minecraftservices.com"
-                ),
-            },
-        }
+        return await settings_backend.get_public_settings()
 
     @router.get("/public/carousel")
     async def get_carousel():
