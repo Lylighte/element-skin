@@ -56,17 +56,17 @@
   </div>
 </template>
 
-<script setup>
-import { reactive, ref, inject } from 'vue'
+<script setup lang="ts">
+import { reactive, ref, inject, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Message, Lock, Right } from '@element-plus/icons-vue'
 import { getPublicSettings } from '@/api/public'
 import { siteLogin } from '@/api/auth'
 
 const router = useRouter()
-const fetchMe = inject('fetchMe')
-const formRef = ref(null)
+const fetchMe = inject<() => Promise<void>>('fetchMe')
+const formRef = ref<FormInstance | null>(null)
 const loading = ref(false)
 
 const form = reactive({
@@ -75,18 +75,17 @@ const form = reactive({
 })
 
 const emailVerifyEnabled = ref(false)
-import { onMounted } from 'vue'
 
 onMounted(async () => {
   try {
     const res = await getPublicSettings()
-    emailVerifyEnabled.value = res.data.email_verify_enabled
+    emailVerifyEnabled.value = res.data.email_verify_enabled ?? false
   } catch (e) {
     console.error('Failed to fetch settings', e)
   }
 })
 
-const rules = {
+const rules: FormRules = {
   email: [
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
     { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' }
@@ -98,6 +97,7 @@ const rules = {
 
 async function login() {
   try {
+    if (!formRef.value) return
     await formRef.value.validate()
     loading.value = true
 
@@ -112,7 +112,7 @@ async function login() {
 
     ElMessage.success('登录成功！')
     router.push('/dashboard')
-  } catch (e) {
+  } catch (e: any) {
     if (e.response?.data?.detail) {
       ElMessage.error('登录失败: ' + e.response.data.detail)
     } else if (e.message && !e.message.includes('validate')) {

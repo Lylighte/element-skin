@@ -168,8 +168,8 @@
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted, inject, computed } from 'vue'
+<script setup lang="ts">
+import { ref, onMounted, inject, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, User } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
@@ -178,33 +178,34 @@ import CursorPager from '@/components/common/CursorPager.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getPublicSkinLibrary } from '@/api/public'
 import { addToWardrobe as apiAddToWardrobe } from '@/api/textures'
+import type { Texture, User as UserType } from '@/api/types'
 
-const isDark = inject('isDark')
-const user = inject('user')
+const isDark = inject<Ref<boolean>>('isDark', ref(false))
+const user = inject<Ref<UserType | null>>('user', ref(null))
 const isLogged = computed(() => !!user.value)
 
-const items = ref([])
+const items = ref<Texture[]>([])
 const limit = 20
-const pagination = useCursorPagination(limit)
+const pagination = useCursorPagination<Texture>(limit)
 const loading = ref(false)
 const isDisabled = ref(false)
 const filterType = ref('')
-const textureResolutions = ref(new Map())
+const textureResolutions = ref(new Map<string, number>())
 const showPreviewDialog = ref(false)
-const selectedItem = ref(null)
+const selectedItem = ref<Texture | null>(null)
 
-function openPreviewDialog(item) {
+function openPreviewDialog(item: Texture) {
   selectedItem.value = item
   showPreviewDialog.value = true
 }
 
-function texturesUrl(hash) {
+function texturesUrl(hash: string | null | undefined) {
   if (!hash) return ''
   const base = import.meta.env.BASE_URL
   return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
 }
 
-function formatDate(ts) {
+function formatDate(ts: number | undefined) {
   if (!ts) return ''
   const date = new Date(ts)
   return date.toLocaleDateString()
@@ -222,13 +223,13 @@ async function fetchLibrary() {
     const res = await getPublicSkinLibrary(params)
     items.value = res.data.items
     pagination.setPageData(res.data)
-    
+
     items.value.forEach(item => {
       if (item.type === 'skin') {
         loadTextureResolution(item.hash)
       }
     })
-  } catch (e) {
+  } catch (e: any) {
     console.error('Fetch library error:', e)
     if (e.response?.status === 403) {
       isDisabled.value = true
@@ -241,7 +242,7 @@ async function fetchLibrary() {
   }
 }
 
-function loadTextureResolution(hash) {
+function loadTextureResolution(hash: string) {
   if (textureResolutions.value.has(hash)) return
   const img = new Image()
   img.crossOrigin = 'anonymous'
@@ -251,7 +252,8 @@ function loadTextureResolution(hash) {
   img.src = texturesUrl(hash)
 }
 
-function getResolutionBadgeStyle(resolution) {
+function getResolutionBadgeStyle(resolution: number | undefined) {
+  if (!resolution) return {}
   let hue = 0
   if (resolution <= 64) hue = 120
   else if (resolution <= 128) hue = 120 - ((resolution - 64) / 64) * 60
@@ -308,11 +310,11 @@ async function handleFilterChange() {
   await fetchLibrary()
 }
 
-async function addToWardrobe(hash) {
+async function addToWardrobe(hash: string) {
   try {
     await apiAddToWardrobe(hash)
     ElMessage.success('已成功添加到我的衣柜')
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error('添加失败: ' + (e.response?.data?.detail || e.message))
   }
 }

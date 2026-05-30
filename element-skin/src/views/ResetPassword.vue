@@ -76,20 +76,20 @@
   </div>
 </template>
 
-<script setup>
-import { reactive, ref } from 'vue'
+<script setup lang="ts">
+import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Message, Lock, Ticket } from '@element-plus/icons-vue'
 import { getPublicSettings } from '@/api/public'
 import { sendVerificationCode, resetPassword as apiResetPassword } from '@/api/auth'
 
 const router = useRouter()
-const formRef = ref(null)
+const formRef = ref<FormInstance | null>(null)
 const loading = ref(false)
 const codeLoading = ref(false)
 const countdown = ref(0)
-let timer = null
+let timer: ReturnType<typeof setInterval> | null = null
 
 const form = reactive({
   email: '',
@@ -98,7 +98,7 @@ const form = reactive({
   confirmPassword: ''
 })
 
-const rules = {
+const rules: FormRules = {
   email: [
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
     { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' }
@@ -113,7 +113,7 @@ const rules = {
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
     {
-      validator: (rule, value, callback) => {
+      validator: (_rule, value, callback) => {
         if (value !== form.password) {
           callback(new Error('两次输入的密码不一致'))
         } else {
@@ -124,8 +124,6 @@ const rules = {
     }
   ]
 }
-
-import { onMounted } from 'vue'
 
 onMounted(async () => {
   try {
@@ -141,6 +139,7 @@ onMounted(async () => {
 
 async function sendCode() {
   try {
+    if (!formRef.value) return
     await formRef.value.validateField('email')
   } catch (e) {
     ElMessage.warning('请先输入有效的邮箱地址')
@@ -154,15 +153,15 @@ async function sendCode() {
       type: 'reset'
     })
     ElMessage.success('验证码已发送到您的邮箱')
-    
+
     countdown.value = 60
     timer = setInterval(() => {
       countdown.value--
-      if (countdown.value <= 0) {
+      if (countdown.value <= 0 && timer) {
         clearInterval(timer)
       }
     }, 1000)
-  } catch (e) {
+  } catch (e: any) {
     if (e.response?.data?.detail) {
       ElMessage.error('发送失败: ' + e.response.data.detail)
     } else {
@@ -175,6 +174,7 @@ async function sendCode() {
 
 async function resetPassword() {
   try {
+    if (!formRef.value) return
     await formRef.value.validate()
     loading.value = true
 
@@ -188,7 +188,7 @@ async function resetPassword() {
     setTimeout(() => {
       router.push('/login')
     }, 1500)
-  } catch (e) {
+  } catch (e: any) {
     if (e.response?.data?.detail) {
       ElMessage.error('重置失败: ' + e.response.data.detail)
     } else if (e.message && !e.message.includes('validate')) {

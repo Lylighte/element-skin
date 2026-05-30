@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { User } from '@element-plus/icons-vue'
@@ -9,7 +9,7 @@ const router = useRouter()
 const siteName = ref(localStorage.getItem('site_name_cache') || '皮肤站')
 const siteSubtitle = ref(localStorage.getItem('site_subtitle_cache') || '简洁、高效、现代的 Minecraft 皮肤 management 站')
 const isLogged = ref(false)
-const carouselImages = ref([])
+const carouselImages = ref<string[]>([])
 
 onMounted(async () => {
   // 加载站点配置
@@ -46,7 +46,7 @@ function goDashboard() { router.push('/dashboard') }
 function goLogin() { router.push('/login') }
 function goRegister() { router.push('/register') }
 
-function getCarouselUrl(filename) {
+function getCarouselUrl(filename: string) {
   const base = import.meta.env.BASE_URL
   return `${base}static/carousel/${filename}`.replace(/\/+/g, '/')
 }
