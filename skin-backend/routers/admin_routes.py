@@ -9,9 +9,9 @@ from fastapi import (
     File,
 )
 import os
-import uuid
 
 from routers.deps import admin_required
+from utils.uuid_utils import generate_random_uuid
 
 router = APIRouter()
 
@@ -72,10 +72,8 @@ def setup_routes(admin_backend, settings_backend):
 
     @router.post("/admin/settings/fallback")
     async def save_fallback_settings(payload: dict = Depends(admin_required), body: dict = Body(...)):
-        # This handles both the strategy and the endpoints
+        # save_settings_group("fallback") persists both the strategy and endpoints
         await settings_backend.save_settings_group("fallback", body)
-        if "fallbacks" in body:
-            await settings_backend.save_settings_group("fallback_endpoints", body)
         return {"ok": True}
 
     # ========== Users ==========
@@ -298,7 +296,7 @@ def setup_routes(admin_backend, settings_backend):
         if ext not in [".png", ".jpg", ".jpeg", ".webp"]:
             raise HTTPException(status_code=400, detail="Unsupported file format")
         
-        filename = f"{uuid.uuid4().hex}{ext}"
+        filename = f"{generate_random_uuid()}{ext}"
         content = await file.read()
         return await admin_backend.upload_carousel_image(filename, content)
 

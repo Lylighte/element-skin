@@ -324,6 +324,14 @@ class YggdrasilBackend:
         profiles = await self.db.user.search_profiles_by_names(names[:100], limit=100)
         return [{"id": p.id, "name": p.name} for p in profiles]
 
+    async def _authorize_profile_owner(self, access_token: str, uuid: str) -> Token:
+        token_data = await self.db.user.get_token(access_token)
+        if not token_data:
+            raise ForbiddenOperationException("Unauthorized")
+        if not await self.db.user.verify_profile_ownership(token_data.user_id, uuid):
+            raise ForbiddenOperationException("Unauthorized")
+        return token_data
+
     async def upload_texture(
         self,
         access_token: str,
@@ -333,11 +341,7 @@ class YggdrasilBackend:
         model: str = "",
     ):
         uuid = uuid.replace("-", "")
-        token_data = await self.db.user.get_token(access_token)
-        if not token_data:
-            raise ForbiddenOperationException("Unauthorized")
-        if not await self.db.user.verify_profile_ownership(token_data.user_id, uuid):
-            raise ForbiddenOperationException("Unauthorized")
+        token_data = await self._authorize_profile_owner(access_token, uuid)
 
         max_size_kb_str = await self.db.setting.get("max_texture_size", "1024")
         if len(file_bytes) > int(max_size_kb_str) * 1024:
@@ -362,11 +366,7 @@ class YggdrasilBackend:
 
     async def delete_texture(self, access_token: str, uuid: str, texture_type: str):
         uuid = uuid.replace("-", "")
-        token_data = await self.db.user.get_token(access_token)
-        if not token_data:
-            raise ForbiddenOperationException("Unauthorized")
-        if not await self.db.user.verify_profile_ownership(token_data.user_id, uuid):
-            raise ForbiddenOperationException("Unauthorized")
+        await self._authorize_profile_owner(access_token, uuid)
 
         if texture_type.lower() == "skin":
             await self.db.user.update_profile_skin(uuid, None)

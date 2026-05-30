@@ -159,14 +159,8 @@ class SettingsBackend:
             "fallback": ["fallback_strategy"],
         }
 
-        if group not in allowed_keys and group != "fallback_endpoints":
+        if group not in allowed_keys:
             raise HTTPException(status_code=400, detail="Invalid settings group")
-
-        if group == "fallback_endpoints":
-            if "fallbacks" in body:
-                fallbacks = self._validate_fallback_services(body.get("fallbacks"))
-                await self.db.fallback.save_endpoints(fallbacks)
-            return
 
         for key in allowed_keys[group]:
             if key in body:

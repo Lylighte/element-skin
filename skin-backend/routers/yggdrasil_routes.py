@@ -18,6 +18,14 @@ from database_module import Database
 router = APIRouter()
 
 
+def _require_bearer_token(authorization: str | None) -> str:
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+        if token:
+            return token
+    raise HTTPException(status_code=401, detail="access token required")
+
+
 def setup_routes(backend: YggdrasilBackend, db: Database, rate_limiter):
     """设置路由（注入依赖）"""
 
@@ -117,22 +125,23 @@ def setup_routes(backend: YggdrasilBackend, db: Database, rate_limiter):
 
         return Response(status_code=204)
 
+    async def _local_or_fallback_lookup(player_name: str, fallback_fn):
+        local = await backend.lookup_profile_by_name(player_name)
+        if local:
+            return local
+        fallback_resp = await fallback_fn(player_name)
+        if fallback_resp:
+            return fallback_resp
+        return Response(status_code=204)
+
     @router.get("/api/users/profiles/minecraft/{playerName}")
     @router.get("/users/profiles/minecraft/{playerName}")
     @router.get("/api/profiles/minecraft/{playerName}")
     async def get_profile_by_name_mojang(playerName: str):
         """单个玩家名转 UUID (Proxy to Mojang Account API)"""
-        # 先查本地
-        local = await backend.lookup_profile_by_name(playerName)
-        if local:
-            return local
-
-        # Fallback to configured services
-        fallback_resp = await fallback_backend.get_profile_by_name(playerName)
-        if fallback_resp:
-            return fallback_resp
-
-        return Response(status_code=204)
+        return await _local_or_fallback_lookup(
+            playerName, fallback_backend.get_profile_by_name
+        )
 
     @router.post("/api/profiles/minecraft")
     async def get_profiles_by_names(req: list[str], request: Request):
@@ -162,17 +171,9 @@ def setup_routes(backend: YggdrasilBackend, db: Database, rate_limiter):
     @router.get("/minecraft/profile/lookup/name/{playerName}")
     async def lookup_profile_by_name(playerName: str):
         """[Proxy] Minecraft Services Profile Lookup"""
-        # 1. Local Lookup
-        local = await backend.lookup_profile_by_name(playerName)
-        if local:
-            return local
-
-        # 2. Fallback
-        fallback_resp = await fallback_backend.services_lookup(playerName)
-        if fallback_resp:
-            return fallback_resp
-
-        return Response(status_code=204)
+        return await _local_or_fallback_lookup(
+            playerName, fallback_backend.services_lookup
+        )
 
     @router.put("/api/user/profile/{uuid}/{textureType}")
     async def api_put_profile(
@@ -183,11 +184,7 @@ def setup_routes(backend: YggdrasilBackend, db: Database, rate_limiter):
         authorization: str = Header(None),
     ):
         """材质上传（PUT 方法）"""
-        token = None
-        if authorization and authorization.startswith("Bearer "):
-            token = authorization.split(" ", 1)[1]
-        if not token:
-            raise HTTPException(status_code=401, detail="access token required")
+        token = _require_bearer_token(authorization)
         content = await file.read()
         await backend.upload_texture(token, uuid, textureType, content, model)
         return Response(status_code=204)
@@ -197,11 +194,7 @@ def setup_routes(backend: YggdrasilBackend, db: Database, rate_limiter):
         uuid: str, textureType: str, authorization: str = Header(None)
     ):
         """删除材质"""
-        token = None
-        if authorization and authorization.startswith("Bearer "):
-            token = authorization.split(" ", 1)[1]
-        if not token:
-            raise HTTPException(status_code=401, detail="access token required")
+        token = _require_bearer_token(authorization)
         await backend.delete_texture(token, uuid, textureType)
         return Response(status_code=204)
 
