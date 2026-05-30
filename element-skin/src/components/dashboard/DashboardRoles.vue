@@ -320,45 +320,47 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Connection, Plus, Delete, Close, Check, Select, Warning, Download, Edit } from '@element-plus/icons-vue'
+import type { InputInstance } from 'element-plus'
+import type { Ref } from 'vue'
+import { Connection, Plus, Delete, Close, Check, Download, Edit } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
-import * as skinview3d from 'skinview3d'
 import { useAvatar } from '@/composables/useAvatar'
 import { getProfiles, createProfile, patchProfile, deleteProfile, clearProfileSkin, clearProfileCape } from '@/api/profiles'
 import { getMicrosoftAuthUrl, getMicrosoftProfile, importMicrosoftProfile as apiImportMicrosoftProfile } from '@/api/microsoft'
 import { getRemoteYggProfiles, importRemoteYggProfiles } from '@/api/remote-ygg'
+import type { Profile } from '@/api/types'
 
 const { setAvatar } = useAvatar()
 
 // Inject shared state from AppLayout
-const fetchMe = inject('fetchMe')
-const isDark = inject('isDark')
+const fetchMe = inject<() => Promise<void>>('fetchMe')
+const isDark = inject<Ref<boolean>>('isDark', ref(false))
 
 const router = useRouter()
 
-const profiles = ref([])
+const profiles = ref<Profile[]>([])
 const limit = 12
 const loading = ref(false)
 
 // 游标分页 composable
-const pagination = useCursorPagination(limit)
+const pagination = useCursorPagination<Profile>(limit)
 
 const showCreateRoleDialog = ref(false)
 const newRoleName = ref('')
 const showMicrosoftLoginDialog = ref(false)
 const microsoftStep = ref('select-profile')
-const microsoftProfile = ref(null)
+const microsoftProfile = ref<any>(null)
 const importing = ref(false)
 
 const showPreviewDialog = ref(false)
-const selectedProfile = ref(null)
-const nameInputRef = ref(null)
+const selectedProfile = ref<Profile | null>(null)
+const nameInputRef = ref<InputInstance | null>(null)
 
 function focusNameInput() {
   nameInputRef.value?.focus()
@@ -369,16 +371,16 @@ const yggStep = ref('input')
 const yggApiUrl = ref('')
 const yggUsername = ref('')
 const yggPassword = ref('')
-const yggProfiles = ref([])
-const selectedYggProfiles = ref([])
+const yggProfiles = ref<Array<{ id: string; name: string }>>([])
+const selectedYggProfiles = ref<string[]>([])
 const yggLoading = ref(false)
 
-function openPreviewDialog(profile) {
+function openPreviewDialog(profile: Profile) {
   selectedProfile.value = profile
   showPreviewDialog.value = true
 }
 
-function texturesUrl(hash) {
+function texturesUrl(hash: string | null | undefined) {
   if (!hash) return ''
   const base = import.meta.env.BASE_URL
   return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
@@ -402,8 +404,8 @@ async function fetchProfiles() {
 }
 
 async function handleNextPage() {
-  await pagination.goToNextPage(async (cursor, limit) => {
-    const params = { cursor, limit }
+  await pagination.goToNextPage(async (cursor, pageLimit) => {
+    const params = { cursor, limit: pageLimit }
     const res = await getProfiles(params)
     profiles.value = res.data.items
     return res.data
@@ -412,8 +414,8 @@ async function handleNextPage() {
 }
 
 async function handlePrevPage() {
-  await pagination.goToPrevPage(async (cursor, limit) => {
-    const params = { cursor, limit }
+  await pagination.goToPrevPage(async (cursor, pageLimit) => {
+    const params = { cursor, limit: pageLimit }
     const res = await getProfiles(params)
     profiles.value = res.data.items
     return res.data
@@ -436,12 +438,12 @@ async function createRole() {
     ElMessage.success('创建成功')
     await refreshFirstPage()
     if (fetchMe) fetchMe()
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error('创建失败: ' + (e.response?.data?.detail || e.message))
   }
 }
 
-async function deleteRole(pid) {
+async function deleteRole(pid: string) {
   try {
     await deleteProfile(pid)
     ElMessage.success('已删除')
@@ -468,12 +470,12 @@ async function updateRoleName() {
     ElMessage.success('名称已修改')
     await fetchProfiles()
     if (fetchMe) fetchMe()
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error('修改失败: ' + (e.response?.data?.detail || e.message))
   }
 }
 
-async function clearRoleSkin(pid) {
+async function clearRoleSkin(pid: string) {
   try {
     await ElMessageBox.confirm(
       '确定要清除该角色的皮肤吗？',
@@ -485,14 +487,14 @@ async function clearRoleSkin(pid) {
     showPreviewDialog.value = false
     await fetchProfiles()
     if (fetchMe) fetchMe()
-  } catch (e) {
+  } catch (e: any) {
     if (e !== 'cancel') {
       ElMessage.error('清除失败: ' + (e.response?.data?.detail || e.message))
     }
   }
 }
 
-async function clearRoleCape(pid) {
+async function clearRoleCape(pid: string) {
   try {
     await ElMessageBox.confirm(
       '确定要清除该角色的披风吗？',
@@ -504,35 +506,35 @@ async function clearRoleCape(pid) {
     showPreviewDialog.value = false
     await fetchProfiles()
     if (fetchMe) fetchMe()
-  } catch (e) {
+  } catch (e: any) {
     if (e !== 'cancel') {
       ElMessage.error('清除失败: ' + (e.response?.data?.detail || e.message))
     }
   }
 }
 
-async function setAsAvatar(profile) {
-  if (!profile.skin_hash) return;
-  
+async function setAsAvatar(profile: Profile) {
+  if (!profile.skin_hash) return
+
   const loadingMsg = ElMessage({
     message: '正在设置头像...',
     type: 'info',
     duration: 0
-  });
+  })
 
   try {
-    await setAvatar(profile.skin_hash, profile.model || 'default');
-    loadingMsg.close();
-    ElMessage.success('已设为头像');
+    await setAvatar(profile.skin_hash, profile.model === 'slim' ? 'slim' : 'default')
+    loadingMsg.close()
+    ElMessage.success('已设为头像')
   } catch (error) {
-    loadingMsg.close();
-    ElMessage.error('设置头像失败');
-    console.error('Failed to set avatar:', error);
+    loadingMsg.close()
+    ElMessage.error('设置头像失败')
+    console.error('Failed to set avatar:', error)
   }
 }
 
 // 微软正版登录相关函数
-function formatUUID(uuid) {
+function formatUUID(uuid: string) {
   if (!uuid) return ''
   if (uuid.length === 32) {
     return `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`
@@ -546,7 +548,7 @@ async function startMicrosoftAuth() {
     const authUrl = response.data.auth_url
     sessionStorage.setItem('ms_auth_state', response.data.state)
     window.location.href = authUrl
-  } catch (error) {
+  } catch (error: any) {
     ElMessage.error('启动微软登录失败: ' + (error.response?.data?.detail || error.message))
   }
 }
@@ -589,7 +591,7 @@ async function importMicrosoftProfile() {
       console.warn('Failed to refresh user profile:', e)
     }
 
-  } catch (error) {
+  } catch (error: any) {
     ElMessage.error('导入失败: ' + (error.response?.data?.detail || error.message))
   } finally {
     importing.value = false
@@ -603,9 +605,9 @@ function cancelMicrosoftLogin() {
   importing.value = false
 }
 
-function handleMicrosoftDialogClose(done) {
+function handleMicrosoftDialogClose(done?: () => void) {
   if (importing.value) {
-    return; // Prevent closing while importing
+    return // Prevent closing while importing
   }
   cancelMicrosoftLogin()
   if (done) done()
@@ -623,7 +625,7 @@ async function getYggProfiles() {
       username: yggUsername.value,
       password: yggPassword.value
     })
-    
+
     yggProfiles.value = res.data.profiles
     if (yggProfiles.value.length === 0) {
       ElMessage.warning('该账户下没有角色')
@@ -631,7 +633,7 @@ async function getYggProfiles() {
       yggStep.value = 'select'
       selectedYggProfiles.value = yggProfiles.value.map(profile => profile.id)
     }
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error('获取失败: ' + (e.response?.data?.detail || e.message))
   } finally {
     yggLoading.value = false
@@ -651,7 +653,7 @@ async function importYggProfile() {
         profile_name: profile.name,
       }))
     })
-    
+
     const successCount = res.data?.success_count ?? 0
     const failureCount = res.data?.failure_count ?? 0
     if (failureCount > 0) {
@@ -663,7 +665,7 @@ async function importYggProfile() {
     await refreshFirstPage()
     if (fetchMe) fetchMe()
     resetYggImport()
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error('导入失败: ' + (e.response?.data?.detail || e.message))
   } finally {
     yggLoading.value = false
@@ -679,7 +681,7 @@ function resetYggImport() {
   selectedYggProfiles.value = []
 }
 
-function handleYggDialogClose(done) {
+function handleYggDialogClose(done?: () => void) {
   if (yggLoading.value) return
   resetYggImport()
   showYggImportDialog.value = false
@@ -705,7 +707,7 @@ onMounted(async () => {
       showMicrosoftLoginDialog.value = true
 
       ElMessage.success('授权成功！')
-    } catch (e) {
+    } catch (e: any) {
       ElMessage.error('获取角色信息失败: ' + (e.response?.data?.detail || e.message))
     }
     router.replace({ query: {} })

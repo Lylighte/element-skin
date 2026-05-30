@@ -101,13 +101,13 @@
   </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted } from 'vue'
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { getPublicSettings } from '@/api/public'
 import { getMe } from '@/api/me'
 import {
-  Box, User, CopyDocument, Pointer, 
-  Check, Loading, Warning, Refresh 
+  Box, User, CopyDocument, Pointer,
+  Check, Loading, Warning, Refresh
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -121,7 +121,7 @@ function getApiUrl() {
     if (base.startsWith('http')) {
         return base
     }
-    // Remove trailing slash from origin if base starts with slash to avoid double slash, 
+    // Remove trailing slash from origin if base starts with slash to avoid double slash,
     // actually window.location.origin usually has no trailing slash.
     // But VITE_API_BASE might not have leading slash?
     // Let's safe join.
@@ -146,8 +146,8 @@ function copyApiUrl() {
 }
 
 // --- Mojang Status ---
-const mojangStatusUrls = ref(null)
-const mojangHealth = ref({})
+const mojangStatusUrls = ref<Record<string, string> | null>(null)
+const mojangHealth = ref<Record<string, string>>({})
 const isChecking = ref(false)
 
 async function checkMojangStatus() {
@@ -161,10 +161,10 @@ async function checkMojangStatus() {
       const timeoutId = setTimeout(() => controller.abort(), 3000)
 
       // Use a standard fetch but be ready for it to fail due to CORS or 403
-      await fetch(url, { 
+      await fetch(url, {
         mode: 'no-cors', // Many Mojang APIs don't have CORS, so we can only check if they are reachable
         cache: 'no-cache',
-        signal: controller.signal 
+        signal: controller.signal
       })
       clearTimeout(timeoutId)
       mojangHealth.value[key] = 'online'
@@ -175,11 +175,11 @@ async function checkMojangStatus() {
   isChecking.value = false
 }
 
-function getMojangStatus(key) {
+function getMojangStatus(key: string) {
   return mojangHealth.value[key] || 'checking'
 }
 
-function formatStatusText(status) {
+function formatStatusText(status: string) {
   if (status === 'online') return '在线'
   if (status === 'checking') return '检查中...'
   return '连接超时'
@@ -190,7 +190,7 @@ onMounted(async () => {
   // Load Settings for Mojang Status and API URL
   try {
     const res = await getPublicSettings()
-    
+
     // Set API URL from backend settings, fallback to calculated one if empty
     if (res.data.site_url) {
       apiUrl.value = res.data.site_url.endsWith('/') ? res.data.site_url.slice(0, -1) : res.data.site_url

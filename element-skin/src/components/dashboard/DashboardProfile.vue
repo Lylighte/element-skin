@@ -127,19 +127,20 @@
   </div>
 </template>
 
-<script setup>
-import { ref, computed, watch, inject } from 'vue'
+<script setup lang="ts">
+import { ref, computed, watch, inject, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Clock, Check, Delete } from '@element-plus/icons-vue'
 import { useAvatar } from '@/composables/useAvatar'
 import { changePassword, patchMe, deleteMe } from '@/api/me'
+import type { User } from '@/api/types'
 
 const { currentAvatarImg: customAvatar } = useAvatar()
 
 // Inject shared state from AppLayout
-const user = inject('user')
-const fetchMe = inject('fetchMe')
+const user = inject<Ref<User | null>>('user', ref(null))
+const fetchMe = inject<() => Promise<void>>('fetchMe')
 
 const router = useRouter()
 const form = ref({ email: '', display_name: '', old_password: '', new_password: '', confirm_password: '' })
@@ -234,8 +235,8 @@ async function updateProfile() {
     }
     await patchMe(payload)
     ElMessage.success('信息修改成功')
-    fetchMe()
-  } catch (e) {
+    if (fetchMe) fetchMe()
+  } catch (e: any) {
     ElMessage.error('保存失败: ' + (e.response?.data?.detail || e.message))
   }
 }
@@ -247,7 +248,7 @@ async function confirmDeleteAccount() {
     setTimeout(() => {
       router.push('/')
     }, 1000)
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error('注销失败: ' + (e.response?.data?.detail || e.message))
   }
 }

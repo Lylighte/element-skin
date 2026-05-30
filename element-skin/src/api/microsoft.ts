@@ -5,7 +5,7 @@ export function getMicrosoftAuthUrl(): Promise<{ data: MicrosoftAuthUrlResponse 
   return client.get('/microsoft/auth-url')
 }
 
-export function getMicrosoftProfile(data: { code?: string; state?: string }): Promise<{ data: any }> {
+export function getMicrosoftProfile(data: { ms_token: string }): Promise<{ data: any }> {
   return client.post('/microsoft/get-profile', data)
 }
 

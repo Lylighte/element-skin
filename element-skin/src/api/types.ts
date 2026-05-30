@@ -53,6 +53,7 @@ export interface Texture {
 export interface SiteSettings {
   site_name?: string
   site_subtitle?: string
+  site_url?: string
   allow_register?: boolean
   enable_skin_library?: boolean
   email_verify_enabled?: boolean
