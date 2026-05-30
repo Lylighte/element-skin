@@ -13,6 +13,7 @@ from config_loader import config
 from database_module import Database
 from backends.yggdrasil_backend import YggdrasilBackend, YggdrasilError
 from backends.site_backend import SiteBackend
+from backends.profile_import_backend import ProfileImportBackend
 from backends.admin_backend import AdminBackend
 from services import TextureStorage
 from utils.crypto import CryptoUtils
@@ -30,6 +31,7 @@ rate_limiter = RateLimiter(db)  # New dependency-injected rate limiter
 texture_storage = TextureStorage(config.get("textures.directory", "textures"))
 ygg_backend = YggdrasilBackend(db, crypto, texture_storage)
 site_backend = SiteBackend(db, config, texture_storage)
+profile_import_backend = ProfileImportBackend(db, texture_storage)
 admin_backend = AdminBackend(db, config)
 
 
@@ -98,7 +100,7 @@ async def ygg_exception_handler(request: Request, exc: YggdrasilError):
 yggdrasil_router = yggdrasil_routes.setup_routes(ygg_backend, db, crypto, rate_limiter)
 app.include_router(yggdrasil_router)
 
-site_router = site_routes.setup_routes(db, site_backend, rate_limiter, config)
+site_router = site_routes.setup_routes(db, site_backend, profile_import_backend, rate_limiter, config)
 app.include_router(site_router)
 
 admin_router = admin_routes.setup_routes(db, admin_backend, rate_limiter, config)

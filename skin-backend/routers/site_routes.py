@@ -21,7 +21,7 @@ from config_loader import Config
 router = APIRouter()
 
 
-def setup_routes(db: Database, site_backend, rate_limiter, config: Config):
+def setup_routes(db: Database, site_backend, profile_import_backend, rate_limiter, config: Config):
     """设置路由（注入依赖）"""
 
     async def get_current_user(request: Request):
@@ -126,7 +126,7 @@ def setup_routes(db: Database, site_backend, rate_limiter, config: Config):
     async def get_ygg_profiles(
         payload: dict = Depends(get_current_user), body: dict = Body(...)
     ):
-        return await site_backend.get_ygg_profiles(
+        return await profile_import_backend.get_ygg_profiles(
             body.get("api_url"), body.get("username"), body.get("password")
         )
 
@@ -134,7 +134,7 @@ def setup_routes(db: Database, site_backend, rate_limiter, config: Config):
     async def import_ygg_profile(
         payload: dict = Depends(get_current_user), body: dict = Body(...)
     ):
-        return await site_backend.import_ygg_profile(
+        return await profile_import_backend.import_ygg_profile(
             payload.get("sub"),
             body.get("api_url"),
             body.get("profile_id"),
@@ -145,7 +145,7 @@ def setup_routes(db: Database, site_backend, rate_limiter, config: Config):
     async def import_ygg_profiles(
         payload: dict = Depends(get_current_user), body: dict = Body(...)
     ):
-        return await site_backend.import_ygg_profiles(
+        return await profile_import_backend.import_ygg_profiles(
             payload.get("sub"),
             body.get("api_url"),
             body.get("profiles", []),
