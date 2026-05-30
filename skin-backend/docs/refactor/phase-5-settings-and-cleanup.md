@@ -55,6 +55,8 @@ class SettingsBackend:
 
 `admin_backend` 改为持有/委托 `SettingsBackend`（组合而非继承），或直接在组装根把设置端点指向 `SettingsBackend`。legacy 的 `get_admin_settings` / `save_admin_settings` 标注 `# deprecated`，确认前端无引用后可删（见下）。
 
+> **实现备注（与文档差异）**：执行时核查确认前端与 router 均无 `get_admin_settings` / `save_admin_settings` 引用，因此**直接删除**这两个方法，未走"标注 `# deprecated`"中间态——按全局约束（无兼容性代码），无引用的方法即死代码，应删不应留。
+
 ### 前端引用核查
 
 删 legacy 方法前，确认 `element-skin/src/api/admin/settings.ts` 调用的是分组端点还是整体端点：

@@ -30,6 +30,8 @@ routers/microsoft_routes.py:13
 - 响应 DTO 的塑形（对象 → dict）移入 backend，router 直接返回 backend 给的 dict。
 - `microsoft_routes.py`（13 处 `db.*`）和 `yggdrasil_routes.py`（5 处）也在范围内，逐一评估：Yggdrasil 协议端点有些是极薄转发，可保留对 `db` 的只读查询，但写操作和多步逻辑须下沉。
 
+> **实现备注（与文档差异）**：最终未保留任何 router 层 `db.*` 只读转发。`microsoft_routes` 的全部编排下沉到新建的 `MicrosoftBackend`，`yggdrasil_routes` 的展示逻辑（`build_profile_json` / `build_authenticate_response` / `lookup_profile_by_name` / `build_metadata`）下沉到 `YggdrasilBackend`。验收 grep `db\.(texture|user|setting|fallback|verification)\.` 在 `routers/` 下零匹配——比文档"显著下降"更彻底。router 仅保留 Cookie / `Response` 重定向 / fallback 组合（local-then-fallback）等纯 HTTP 机制。
+
 ## 改造清单（site_routes 为主）
 
 | 端点 | 现状 | 目标 backend 方法 |
