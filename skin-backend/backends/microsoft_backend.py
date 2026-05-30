@@ -10,7 +10,7 @@ from typing import Optional, Dict, Tuple
 from fastapi import HTTPException
 
 from utils.profile_naming import generate_unique_profile_name
-from utils.typing import PlayerProfile
+from utils.typing import PlayerProfile, normalize_texture_model
 from utils.http import download_texture as download_texture
 
 
@@ -314,7 +314,7 @@ class MicrosoftBackend:
             user_id, cape_url, "cape", f"From Microsoft account - {profile_name}"
         )
 
-        texture_model = "slim" if skin_variant == "slim" else "default"
+        texture_model = normalize_texture_model(skin_variant)
         await self.db.user.create_profile(
             PlayerProfile(profile_id, user_id, profile_name, texture_model)
         )

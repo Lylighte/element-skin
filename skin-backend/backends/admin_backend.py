@@ -5,7 +5,7 @@ import os
 import re
 from fastapi import HTTPException
 
-from utils.typing import InviteCode
+from utils.typing import InviteCode, serialize_profile_summary
 from utils.pagination import decode_cursor, encode_next
 from utils.profile_naming import is_valid_profile_name
 from database_module import Database
@@ -88,16 +88,7 @@ class AdminBackend:
             user_id, limit=limit, last_id=(key or {}).get("last_id")
         )
         return {
-            "items": [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "model": p.texture_model,
-                    "skin_hash": p.skin_hash,
-                    "cape_hash": p.cape_hash,
-                }
-                for p in result["items"]
-            ],
+            "items": [serialize_profile_summary(p) for p in result["items"]],
             "has_next": result["has_next"],
             "next_cursor": encode_next(result["next_key"]),
             "page_size": result["page_size"],

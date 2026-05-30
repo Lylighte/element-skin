@@ -53,6 +53,23 @@ class PlayerProfile:
         self.cape_hash = cape_hash
 
 
+def normalize_texture_model(value: str) -> str:
+    """把皮肤模型/变体归一化为 'slim' 或 'default'。"""
+    return "slim" if value == "slim" else "default"
+
+
+def serialize_profile_summary(profile: PlayerProfile) -> dict:
+    """角色列表项的统一序列化。"""
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "model": profile.texture_model,
+        "skin_hash": profile.skin_hash,
+        "cape_hash": profile.cape_hash,
+    }
+
+
+
 class InviteCode:
     code: str
     created_at: int

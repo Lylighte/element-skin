@@ -4,7 +4,7 @@ import base64
 from typing import Dict, Optional, Tuple
 
 from utils.crypto import CryptoUtils
-from utils.typing import User, PlayerProfile, Token, Session
+from utils.typing import User, PlayerProfile, Token, Session, normalize_texture_model
 from utils.uuid_utils import generate_random_uuid
 from utils.password_utils import hash_password, verify_password
 from database_module import Database
@@ -347,7 +347,7 @@ class YggdrasilBackend:
             texture_hash = self.texture_storage.process_and_save(file_bytes, texture_type)
             await self.db.texture.add_to_library(token_data.user_id, texture_hash, texture_type)
             if texture_type.lower() == "skin":
-                m_val = "slim" if model == "slim" else "default"
+                m_val = normalize_texture_model(model)
                 await self.db.user.update_profile_skin(uuid, texture_hash)
                 await self.db.user.update_profile_texture_model(uuid, m_val)
             else:

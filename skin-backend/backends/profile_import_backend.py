@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from backends.yggdrasil_client import YggdrasilClient, download_texture
 from utils.profile_naming import generate_unique_profile_name
-from utils.typing import PlayerProfile
+from utils.typing import PlayerProfile, normalize_texture_model
 from database_module import Database
 from services import TextureStorage
 
@@ -57,7 +57,7 @@ class ProfileImportBackend:
         if profile_data.get("skins"):
             skin_url = profile_data["skins"][0]["url"]
             skin_variant = profile_data["skins"][0].get("variant", "classic")
-            skin_model = "slim" if skin_variant == "slim" else "default"
+            skin_model = normalize_texture_model(skin_variant)
             try:
                 skin_bytes = await download_texture(skin_url)
                 skin_hash = await self._import_texture(

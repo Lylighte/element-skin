@@ -13,7 +13,7 @@ from utils.email_utils import EmailSender
 from utils.uuid_utils import generate_random_uuid, get_offline_uuid
 from utils.profile_naming import is_valid_profile_name, generate_unique_profile_name
 from utils.pagination import decode_cursor, encode_next
-from utils.typing import User, PlayerProfile
+from utils.typing import User, PlayerProfile, normalize_texture_model, serialize_profile_summary
 from database_module import Database
 from config_loader import Config
 from services import TextureStorage
@@ -65,7 +65,7 @@ class SiteBackend:
             user_id, profile_id, texture_hash, texture_type
         )
         if texture_type.lower() == "skin":
-            m_val = "slim" if model == "slim" else "default"
+            m_val = normalize_texture_model(model)
             await self.db.user.update_profile_texture_model(profile_id, m_val)
         return {"ok": True}
 
@@ -99,16 +99,7 @@ class SiteBackend:
             user_id, limit=limit, last_id=(key or {}).get("last_id")
         )
         return {
-            "items": [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "model": p.texture_model,
-                    "skin_hash": p.skin_hash,
-                    "cape_hash": p.cape_hash,
-                }
-                for p in result["items"]
-            ],
+            "items": [serialize_profile_summary(p) for p in result["items"]],
             "has_next": result["has_next"],
             "next_cursor": encode_next(result["next_key"]),
             "page_size": result["page_size"],
