@@ -12,6 +12,7 @@ from utils.jwt_utils import create_jwt_token
 from utils.email_utils import EmailSender
 from utils.uuid_utils import generate_random_uuid, get_offline_uuid
 from utils.profile_naming import is_valid_profile_name, generate_unique_profile_name
+from utils.pagination import decode_cursor, encode_next
 from utils.typing import User, PlayerProfile
 from database_module import Database
 from config_loader import Config
@@ -42,6 +43,135 @@ class SiteBackend:
             user_id, texture_hash, texture_type, note, is_public, model
         )
         return texture_hash, texture_type
+
+    async def upload_and_apply_texture(
+        self,
+        user_id: str,
+        profile_id: str,
+        file_bytes: bytes,
+        texture_type: str,
+        model: str = "",
+        is_public: bool = False,
+    ):
+        """上传材质到用户库 → 应用到角色 →（皮肤时）更新模型。校验失败抛 ValueError。"""
+        texture_hash, _ = await self.upload_texture_to_library(
+            user_id,
+            file_bytes,
+            texture_type,
+            f"Direct upload to profile {profile_id}",
+            is_public=is_public,
+        )
+        await self.apply_texture_to_profile(
+            user_id, profile_id, texture_hash, texture_type
+        )
+        if texture_type.lower() == "skin":
+            m_val = "slim" if model == "slim" else "default"
+            await self.db.user.update_profile_texture_model(profile_id, m_val)
+        return {"ok": True}
+
+    async def list_my_textures(
+        self,
+        user_id: str,
+        cursor: str | None,
+        limit: int,
+        texture_type: str | None,
+    ) -> dict:
+        try:
+            key = decode_cursor(cursor, ("last_created_at", "last_hash"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+        result = await self.db.texture.get_for_user_cursor(
+            user_id,
+            texture_type=texture_type,
+            limit=limit,
+            last_created_at=(key or {}).get("last_created_at"),
+            last_hash=(key or {}).get("last_hash"),
+        )
+        result["next_cursor"] = encode_next(result.pop("next_key"))
+        return result
+
+    async def list_my_profiles(self, user_id: str, cursor: str | None, limit: int) -> dict:
+        try:
+            key = decode_cursor(cursor, ("last_id",))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+        result = await self.db.user.get_profiles_by_user_cursor(
+            user_id, limit=limit, last_id=(key or {}).get("last_id")
+        )
+        return {
+            "items": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "model": p.texture_model,
+                    "skin_hash": p.skin_hash,
+                    "cape_hash": p.cape_hash,
+                }
+                for p in result["items"]
+            ],
+            "has_next": result["has_next"],
+            "next_cursor": encode_next(result["next_key"]),
+            "page_size": result["page_size"],
+        }
+
+    async def get_my_texture_detail(self, user_id: str, texture_hash: str, texture_type: str) -> dict:
+        info = await self.db.texture.get_texture_info(user_id, texture_hash, texture_type)
+        if not info:
+            raise HTTPException(status_code=404, detail="Texture not found")
+        return info
+
+    async def update_my_texture(
+        self, user_id: str, texture_hash: str, texture_type: str, data: Dict[str, Any]
+    ) -> dict:
+        if "note" in data:
+            await self.db.texture.update_note(user_id, texture_hash, texture_type, data["note"])
+        if "model" in data:
+            await self.db.texture.update_model(user_id, texture_hash, texture_type, data["model"])
+        if "is_public" in data:
+            await self.db.texture.update_is_public(user_id, texture_hash, texture_type, data["is_public"])
+
+        info = await self.db.texture.get_texture_info(user_id, texture_hash, texture_type)
+        return {"ok": True, **info}
+
+    async def remove_my_texture(self, user_id: str, texture_hash: str, texture_type: str):
+        await self.db.texture.delete_from_library(user_id, texture_hash, texture_type)
+
+    async def add_texture_to_wardrobe(self, user_id: str, texture_hash: str):
+        success = await self.db.texture.add_to_user_wardrobe(user_id, texture_hash)
+        if not success:
+            raise HTTPException(status_code=404, detail="Texture not found in library")
+
+    async def get_public_skin_library(
+        self, cursor: str | None, limit: int, texture_type: str | None
+    ) -> dict:
+        enabled = await self.db.setting.get("enable_skin_library", "true")
+        if enabled != "true":
+            raise HTTPException(status_code=403, detail="Skin library is disabled by administrator")
+
+        try:
+            key = decode_cursor(cursor, ("last_created_at", "last_skin_hash"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+        result = await self.db.texture.get_from_library_cursor(
+            limit=limit,
+            texture_type=texture_type,
+            only_public=True,
+            last_created_at=(key or {}).get("last_created_at"),
+            last_skin_hash=(key or {}).get("last_skin_hash"),
+        )
+        items_list = result["items"]
+        uploader_ids = list({item.get("uploader") for item in items_list if item.get("uploader")})
+        uploader_names = await self.db.user.get_display_names_by_ids(uploader_ids)
+
+        return {
+            "items": [
+                {**item, "uploader_name": uploader_names.get(item.get("uploader"), "")}
+                for item in items_list
+            ],
+            "has_next": result["has_next"],
+            "next_cursor": encode_next(result["next_key"]),
+            "page_size": result["page_size"],
+        }
 
     async def _generate_profile_uuid(self, profile_name: str) -> str:
         mode = (await self.db.setting.get("profile_uuid_mode", "random") or "random").strip().lower()

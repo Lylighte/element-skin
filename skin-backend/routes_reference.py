@@ -102,7 +102,7 @@ async def ygg_exception_handler(request: Request, exc: YggdrasilError):
 yggdrasil_router = yggdrasil_routes.setup_routes(ygg_backend, db, crypto, rate_limiter)
 app.include_router(yggdrasil_router)
 
-site_router = site_routes.setup_routes(db, site_backend, profile_import_backend, settings_backend, rate_limiter, config)
+site_router = site_routes.setup_routes(site_backend, profile_import_backend, settings_backend, rate_limiter, config)
 app.include_router(site_router)
 
 admin_router = admin_routes.setup_routes(db, admin_backend, settings_backend, rate_limiter, config)
