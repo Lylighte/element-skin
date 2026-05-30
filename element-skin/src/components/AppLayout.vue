@@ -147,7 +147,7 @@ import {
   Menu as MenuIcon, Box, User, Setting, Tools, Back, Odometer, Link, Picture, Message, Moon, Sunny
 } from '@element-plus/icons-vue'
 
-import '@/assets/scripts/meow.js'
+import '@/assets/scripts/meow.ts'
 import { useAvatar } from '@/composables/useAvatar'
 
 const { currentAvatarImg: customAvatar, initializeAvatar } = useAvatar()
