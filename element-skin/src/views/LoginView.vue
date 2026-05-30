@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive, ref, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Message, Lock, Right } from '@element-plus/icons-vue'
@@ -65,6 +65,7 @@ import { getPublicSettings } from '@/api/public'
 import { siteLogin } from '@/api/auth'
 
 const router = useRouter()
+const fetchMe = inject('fetchMe')
 const formRef = ref(null)
 const loading = ref(false)
 
@@ -100,18 +101,17 @@ async function login() {
     await formRef.value.validate()
     loading.value = true
 
-    // 使用站点登录接口（不受封禁影响，token 自动存入 HttpOnly Cookie）
+    // 使用站点登录接口（token 自动存入 HttpOnly Cookie）
     await siteLogin({
       email: form.email,
       password: form.password,
     })
 
-    ElMessage.success('登录成功！')
+    // Cookie 已设置，刷新顶栏共享的登录状态，避免必须整页刷新
+    if (fetchMe) await fetchMe()
 
-    // 等待一下再跳转，确保 localStorage 保存完成
-    setTimeout(() => {
-      router.push('/dashboard')
-    }, 300)
+    ElMessage.success('登录成功！')
+    router.push('/dashboard')
   } catch (e) {
     if (e.response?.data?.detail) {
       ElMessage.error('登录失败: ' + e.response.data.detail)
