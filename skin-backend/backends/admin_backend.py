@@ -249,51 +249,29 @@ class AdminBackend:
         result["next_cursor"] = encode_next(result.pop("next_key"))
         return result
 
-    async def update_texture_public(self, texture_hash: str, is_public: int) -> dict:
-        # 业务验证
-        if is_public not in (0, 1):
-            raise HTTPException(status_code=400, detail="is_public must be 0 or 1")
-        
-        # 获取 uploader 信息
+    async def _get_uploader_or_404(self, texture_hash: str) -> str:
         texture = await self.db.texture.get_texture_from_library(texture_hash)
         if not texture:
             raise HTTPException(status_code=404, detail="材质不存在")
-        
-        uploader = texture["uploader"]
-        
-        # 统一调用 update_is_public
+        return texture["uploader"]
+
+    async def update_texture_public(self, texture_hash: str, is_public: int) -> dict:
+        if is_public not in (0, 1):
+            raise HTTPException(status_code=400, detail="is_public must be 0 or 1")
+        uploader = await self._get_uploader_or_404(texture_hash)
         await self.db.texture.update_is_public(uploader, texture_hash, "skin", bool(is_public))
-        
         return {"success": True}
 
     async def update_texture_model(self, texture_hash: str, model: str) -> dict:
-        # 业务验证
         if model not in ("default", "slim"):
             raise HTTPException(status_code=400, detail="model must be 'default' or 'slim'")
-
-        # 获取 uploader 信息
-        texture = await self.db.texture.get_texture_from_library(texture_hash)
-        if not texture:
-            raise HTTPException(status_code=404, detail="材质不存在")
-
-        uploader = texture["uploader"]
-
-        # 复用现有 DB 方法
+        uploader = await self._get_uploader_or_404(texture_hash)
         await self.db.texture.update_model(uploader, texture_hash, "skin", model)
-
         return {"success": True}
 
     async def update_texture_note(self, texture_hash: str, note: str) -> dict:
-        # 获取 uploader 信息
-        texture = await self.db.texture.get_texture_from_library(texture_hash)
-        if not texture:
-            raise HTTPException(status_code=404, detail="材质不存在")
-
-        uploader = texture["uploader"]
-
-        # 复用现有 DB 方法
+        uploader = await self._get_uploader_or_404(texture_hash)
         await self.db.texture.update_note(uploader, texture_hash, "skin", note)
-
         return {"success": True}
 
     async def delete_texture(self, texture_hash: str, texture_type: str, user_id: str | None = None, force: bool = False) -> dict:
