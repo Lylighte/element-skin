@@ -7,7 +7,7 @@ export function getAdminInvites(params: { cursor?: string | null; limit?: number
   return client.get('/admin/invites', { params })
 }
 
-export function createAdminInvite(data: { code?: string; total_uses?: number; note?: string }): Promise<{
+export function createAdminInvite(data: { code?: string; total_uses?: number | null; note?: string }): Promise<{
   data: { code: string; total_uses: number; note: string }
 }> {
   return client.post('/admin/invites', data)

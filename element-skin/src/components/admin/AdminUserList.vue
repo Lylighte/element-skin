@@ -36,7 +36,7 @@
                 :size="32" 
                 :shape="row.avatar_hash ? 'square' : 'circle'" 
                 :class="[row.avatar_hash ? 'has-custom' : 'avatar-fallback', 'mr-2']"
-                :src="userAvatars[row.avatar_hash] || ''"
+                :src="userAvatars[row.avatar_hash || ''] || ''"
               >
                 {{ !row.avatar_hash ? (row.display_name?.charAt(0).toUpperCase() || row.email.charAt(0).toUpperCase()) : '' }}
               </el-avatar>
@@ -95,7 +95,7 @@
             :size="80" 
             :shape="currentUser.avatar_hash ? 'square' : 'circle'" 
             :class="currentUser.avatar_hash ? 'has-custom' : 'avatar-fallback panel-avatar-base'"
-            :src="userAvatars[currentUser.avatar_hash] || ''"
+            :src="userAvatars[currentUser.avatar_hash || ''] || ''"
           >
             {{ !currentUser.avatar_hash ? currentUser.email.charAt(0).toUpperCase() : '' }}
           </el-avatar>
@@ -186,7 +186,7 @@
                   <div class="a-title">强制重置密码</div>
                   <div class="a-desc">系统管理员手动为该用户设置新密码。</div>
                 </div>
-                <el-button @click="showResetPasswordDialog(currentUser)" class="hover-lift">
+                <el-button @click="showResetPasswordDialog" class="hover-lift">
                   重置密码
                 </el-button>
               </div>
@@ -261,8 +261,8 @@
   </div>
 </template>
 
-<script setup>
-import { ref, reactive, onMounted, watch, inject } from 'vue'
+<script setup lang="ts">
+import { ref, reactive, onMounted, watch, inject, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Refresh, UserFilled, Warning, CircleCheck, Search
@@ -271,19 +271,22 @@ import CursorPager from '@/components/common/CursorPager.vue'
 import { getAvatarForHash } from '@/composables/useAvatar'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getUsers, getUser, getUserProfiles, toggleAdmin as apiToggleAdmin, deleteUser as apiDeleteUser, banUser as apiBanUser, unbanUser as apiUnbanUser, resetUserPassword } from '@/api/admin/users'
+import type { User, Profile } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 
-const users = ref([])
+type UserQueryParams = { cursor?: string | null; limit?: number; q?: string }
+
+const users = ref<User[]>([])
 const limit = 15
-const usersPagination = useCursorPagination(limit)
+const usersPagination = useCursorPagination<User>(limit)
 const loading = ref(false)
 const searchQuery = ref('')
 const activeSearchQuery = ref('')  // 当前生效的搜索词（点击搜索按钮后才同步）
-const userAvatars = reactive({})   // hash -> base64 avatar image cache
-const currentUser = ref(null)
-const userProfiles = ref([])
+const userAvatars = reactive<Record<string, string>>({})   // hash -> base64 avatar image cache
+const currentUser = ref<User | null>(null)
+const userProfiles = ref<Profile[]>([])
 const profileLimit = 10
-const profilesPagination = useCursorPagination(profileLimit)
+const profilesPagination = useCursorPagination<Profile>(profileLimit)
 const userDetailDialogVisible = ref(false)
 const resetPasswordDialogVisible = ref(false)
 const resetPasswordForm = ref({ new_password: '', confirm_password: '' })
@@ -295,12 +298,12 @@ const banCustomHours = ref(24)
 const banning = ref(false)
 
 const presetDurations = [
-  { label: '1小时', value: 1 }, { label: '1天', value: 24 }, 
+  { label: '1小时', value: 1 }, { label: '1天', value: 24 },
   { label: '3天', value: 72 }, { label: '7天', value: 168 }, { label: '30天', value: 720 }
 ]
 
-function buildSearchParams(extraParams = {}) {
-  const params = { limit, ...extraParams }
+function buildSearchParams(extraParams: UserQueryParams = {}): UserQueryParams {
+  const params: UserQueryParams = { limit, ...extraParams }
   if (activeSearchQuery.value) params.q = activeSearchQuery.value
   return params
 }
@@ -326,7 +329,7 @@ async function refreshUsersFromFirst() {
 }
 
 /** Load avatars for all users on the current page (sequentially, one WebGL at a time) */
-async function loadAvatarsForUsers(userList) {
+async function loadAvatarsForUsers(userList: User[]) {
   for (const u of userList) {
     if (u.avatar_hash && !userAvatars[u.avatar_hash]) {
       const img = await getAvatarForHash(u.avatar_hash)
@@ -364,7 +367,7 @@ function handleClearSearch() {
   refreshUsers()
 }
 
-async function showUserDetailDialog(user) {
+async function showUserDetailDialog(user: User) {
   try {
     const res = await getUser(user.id)
     currentUser.value = res.data
@@ -388,24 +391,26 @@ async function fetchUserProfilesAdmin() {
 }
 
 async function handleProfilesNextPage() {
-  if (!currentUser.value) return
+  const u = currentUser.value
+  if (!u) return
   await profilesPagination.goToNextPage(async (cursor, pageLimit) => {
-    const res = await getUserProfiles(currentUser.value.id, { cursor, limit: pageLimit })
+    const res = await getUserProfiles(u.id, { cursor, limit: pageLimit })
     userProfiles.value = res.data.items
     return res.data
   })
 }
 
 async function handleProfilesPrevPage() {
-  if (!currentUser.value) return
+  const u = currentUser.value
+  if (!u) return
   await profilesPagination.goToPrevPage(async (cursor, pageLimit) => {
-    const res = await getUserProfiles(currentUser.value.id, { cursor, limit: pageLimit })
+    const res = await getUserProfiles(u.id, { cursor, limit: pageLimit })
     userProfiles.value = res.data.items
     return res.data
   })
 }
 
-async function toggleAdmin(user) {
+async function toggleAdmin(user: User) {
   try {
     await ElMessageBox.confirm(`确定要切换 ${user.email} 的管理员状态吗？`, '确认', { type: 'warning' })
     await apiToggleAdmin(user.id)
@@ -415,7 +420,7 @@ async function toggleAdmin(user) {
   } catch (e) {}
 }
 
-async function deleteUser(user) {
+async function deleteUser(user: User) {
   try {
     await ElMessageBox.confirm('永久删除该用户？此操作不可逆！', '极端警告', { type: 'error' })
     await apiDeleteUser(user.id)
@@ -425,7 +430,7 @@ async function deleteUser(user) {
   } catch (e) {}
 }
 
-function showResetPasswordDialog(user) {
+function showResetPasswordDialog() {
   resetPasswordForm.value = { new_password: '', confirm_password: '' }
   resetPasswordDialogVisible.value = true
 }
@@ -434,7 +439,8 @@ async function confirmResetPassword() {
   const f = resetPasswordForm.value
   if (!f.new_password || f.new_password.length < 6) return ElMessage.error('密码长度不足')
   if (f.new_password !== f.confirm_password) return ElMessage.error('两次密码不一致')
-  
+  if (!currentUser.value) return
+
   resetting.value = true
   try {
     await resetUserPassword({
@@ -455,9 +461,10 @@ function showBanDialog() {
 }
 
 async function confirmBanUser() {
+  if (!currentUser.value) return
   const hours = banDurationType.value === 'preset' ? banPresetDuration.value : banCustomHours.value
   const bannedUntil = Date.now() + hours * 60 * 60 * 1000
-  
+
   banning.value = true
   try {
     await apiBanUser(currentUser.value.id, { banned_until: bannedUntil })
@@ -472,7 +479,7 @@ async function confirmBanUser() {
   }
 }
 
-async function unbanUser(user) {
+async function unbanUser(user: User) {
   try {
     await apiUnbanUser(user.id)
     ElMessage.success('封禁已解除')
@@ -482,10 +489,11 @@ async function unbanUser(user) {
 }
 
 // Helpers
-const getUserBanStatus = (user) => user.banned_until && Date.now() < user.banned_until
-const loggedInUser = inject('user')
-const isCurrentUserSelf = (user) => loggedInUser?.value?.id === user.id
-const formatBanRemaining = (ts) => {
+const getUserBanStatus = (user: User) => user.banned_until != null && Date.now() < user.banned_until
+const loggedInUser = inject<Ref<User | null>>('user', ref(null))
+const isCurrentUserSelf = (user: User) => loggedInUser?.value?.id === user.id
+const formatBanRemaining = (ts: number | null | undefined) => {
+  if (ts == null) return ''
   const m = Math.ceil((ts - Date.now()) / 60000)
   if (m > 1440) return Math.floor(m / 1440) + ' 天'
   if (m > 60) return Math.floor(m / 60) + ' 小时'

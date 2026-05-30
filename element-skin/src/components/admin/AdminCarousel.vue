@@ -45,18 +45,19 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, PictureFilled, Upload } from '@element-plus/icons-vue'
+import type { UploadRequestOptions } from 'element-plus'
+import { Delete, PictureFilled, Upload } from '@element-plus/icons-vue'
 import { getPublicCarousel } from '@/api/public'
 import { uploadCarousel as apiUploadCarousel, deleteCarousel as apiDeleteCarousel } from '@/api/admin/carousel'
 import PageHeader from '@/components/common/PageHeader.vue'
 
-const carouselImages = ref([])
+const carouselImages = ref<{ filename: string }[]>([])
 const loading = ref(false)
 
-function getCarouselUrl(filename) {
+function getCarouselUrl(filename: string) {
   const base = import.meta.env.BASE_URL
   return `${base}static/carousel/${filename}`.replace(/\/+/g, '/')
 }
@@ -73,19 +74,19 @@ async function fetchCarousel() {
   }
 }
 
-async function uploadCarousel({ file }) {
+async function uploadCarousel({ file }: UploadRequestOptions) {
   const formData = new FormData()
   formData.append('file', file)
   try {
     await apiUploadCarousel(formData)
     ElMessage.success('上传成功')
     fetchCarousel()
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '上传失败')
   }
 }
 
-async function deleteCarousel(row) {
+async function deleteCarousel(row: { filename: string }) {
   try {
     await ElMessageBox.confirm('确定要永久删除这张图片吗？', '确认删除', {
       type: 'warning',

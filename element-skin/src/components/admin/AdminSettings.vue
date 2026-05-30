@@ -187,7 +187,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
@@ -234,9 +234,11 @@ const saving = reactive({
   microsoft: false
 })
 
-const regulatoryCollapse = ref([])
+const regulatoryCollapse = ref<string[]>([])
 
-async function loadGroup(group) {
+type SettingsGroup = 'site' | 'security' | 'auth' | 'microsoft'
+
+async function loadGroup(group: SettingsGroup) {
   try {
     const res = await getAdminSettingsGroup(group)
     Object.assign(settings[group], res.data)
@@ -254,7 +256,7 @@ async function loadAllSettings() {
   ])
 }
 
-async function saveGroup(group) {
+async function saveGroup(group: SettingsGroup) {
   saving[group] = true
   try {
     await saveAdminSettingsGroup(group, settings[group])

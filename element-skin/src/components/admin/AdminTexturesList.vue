@@ -157,30 +157,11 @@
         </div>
       </div>
     </el-dialog>
-
-    <!-- Model edit dialog (kept from original) -->
-    <el-dialog v-model="modelDialogVisible" title="编辑模型" width="300px" destroy-on-close align-center append-to-body>
-      <el-form v-if="modelTarget">
-        <el-form-item label="当前模型">
-          <el-tag :type="modelTarget.model === 'slim' ? 'success' : ''">{{ modelTarget.model || 'default' }}</el-tag>
-        </el-form-item>
-        <el-form-item label="新模型">
-          <el-select v-model="selectedModel" style="width: 100%">
-            <el-option label="default (Steve)" value="default" />
-            <el-option label="slim (Alex)" value="slim" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="modelDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmModelChange" :loading="savingModel">确定</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
-<script setup>
-import { ref, inject, onMounted } from 'vue'
+<script setup lang="ts">
+import { ref, inject, onMounted, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Picture, Search, Edit } from '@element-plus/icons-vue'
 import SkinViewer from '@/components/SkinViewer.vue'
@@ -188,37 +169,35 @@ import CapeViewer from '@/components/CapeViewer.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getAdminTextures, patchAdminTexture, deleteAdminTexture } from '@/api/admin/textures'
+import type { Texture } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 
-const isDark = inject('isDark', ref(false))
+type TextureQueryParams = { cursor?: string | null; limit?: number; q?: string; type?: string }
 
-const textures = ref([])
+const isDark = inject<Ref<boolean>>('isDark', ref(false))
+
+const textures = ref<Texture[]>([])
 const limit = 20
-const pagination = useCursorPagination(limit)
+const pagination = useCursorPagination<Texture>(limit)
 const loading = ref(false)
 const isLoading = ref(true)
 const searchQuery = ref('')
 const activeSearchQuery = ref('')
-const typeFilter = ref(null)
-const togglingHash = ref(null)
-const modelDialogVisible = ref(false)
-const modelTarget = ref(null)
-const selectedModel = ref('default')
-const savingModel = ref(false)
+const typeFilter = ref<string | null>(null)
 
 // Preview dialog
 const showPreview = ref(false)
-const selectedItem = ref(null)
+const selectedItem = ref<Texture | null>(null)
 const previewNote = ref('')
 
-function texturesUrl(hash) {
+function texturesUrl(hash: string | null | undefined) {
   if (!hash) return ''
   const base = import.meta.env.BASE_URL
   return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
 }
 
-function buildSearchParams(extraParams = {}) {
-  const params = { limit, ...extraParams }
+function buildSearchParams(extraParams: TextureQueryParams = {}): TextureQueryParams {
+  const params: TextureQueryParams = { limit, ...extraParams }
   if (activeSearchQuery.value) params.q = activeSearchQuery.value
   if (typeFilter.value) params.type = typeFilter.value
   return params
@@ -279,86 +258,8 @@ function handleTypeFilterChange() {
   fetchTextures()
 }
 
-async function togglePublic(item) {
-  if (item.is_public === true || item.is_public === 1) {
-    try {
-      await ElMessageBox.confirm(
-        '取消公开后，该材质将不会出现在公共皮肤库中，已绑定此材质的角色不受影响。确定取消公开？',
-        '确认操作',
-        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
-      )
-    } catch {
-      return
-    }
-  }
-
-  const newValue = item.is_public ? 0 : 1
-  togglingHash.value = item.hash
-  try {
-    await patchAdminTexture(item.hash, { is_public: newValue })
-    item.is_public = !item.is_public
-    ElMessage.success(newValue === 0 ? '已取消公开' : '已设为公开')
-  } catch (e) {
-    ElMessage.error('操作失败')
-  } finally {
-    togglingHash.value = null
-  }
-}
-
-async function forceDeleteTexture(item) {
-  try {
-    await ElMessageBox.confirm(
-      '强制下架将从所有用户的衣柜中移除该材质，并从皮肤库中彻底删除。此操作不可撤销！确定继续？',
-      '危险操作',
-      { confirmButtonText: '确认强制删除', cancelButtonText: '取消', type: 'error' }
-    )
-    await deleteAdminTexture(item.hash, { force: true, type: item.type })
-    ElMessage.success('材质已强制下架')
-    await fetchTextures()
-  } catch (e) {
-    // User cancelled or error
-  }
-}
-
-function showModelDialog(row) {
-  modelTarget.value = row
-  selectedModel.value = row.model || 'default'
-  modelDialogVisible.value = true
-}
-
-async function confirmModelChange() {
-  if (!modelTarget.value) return
-  savingModel.value = true
-  try {
-    await patchAdminTexture(modelTarget.value.hash, { model: selectedModel.value })
-    modelTarget.value.model = selectedModel.value
-    ElMessage.success('模型已更新')
-    modelDialogVisible.value = false
-  } catch (e) {
-    ElMessage.error('更新失败')
-  } finally {
-    savingModel.value = false
-  }
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '-'
-  try {
-    const d = new Date(dateStr)
-    return d.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  } catch {
-    return dateStr
-  }
-}
-
 // Preview dialog functions
-function openPreview(item) {
+function openPreview(item: Texture) {
   selectedItem.value = item
   previewNote.value = item.name || ''
   showPreview.value = true
@@ -377,18 +278,18 @@ async function updatePreviewNote() {
   }
 }
 
-async function updateModel(newModel) {
+async function updateModel(newModel: string | number | boolean | undefined) {
   if (!selectedItem.value) return
   try {
-    await patchAdminTexture(selectedItem.value.hash, { model: newModel })
-    selectedItem.value.model = newModel
+    await patchAdminTexture(selectedItem.value.hash, { model: String(newModel) })
+    selectedItem.value.model = String(newModel)
     ElMessage.success('模型已更新')
   } catch (e) {
     ElMessage.error('更新模型失败')
   }
 }
 
-async function updateIsPublic(newValue) {
+async function updateIsPublic(newValue: string | number | boolean) {
   if (!selectedItem.value) return
   const item = selectedItem.value
 
@@ -409,8 +310,8 @@ async function updateIsPublic(newValue) {
   }
 
   try {
-    await patchAdminTexture(item.hash, { is_public: newValue })
-    item.is_public = newValue
+    await patchAdminTexture(item.hash, { is_public: Boolean(newValue) })
+    item.is_public = Boolean(newValue)
     ElMessage.success(newValue ? '材质已公开' : '已取消公开')
   } catch (e) {
     ElMessage.error('操作失败')

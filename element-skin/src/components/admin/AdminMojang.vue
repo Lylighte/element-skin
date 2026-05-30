@@ -115,7 +115,7 @@
                   </div>
                   <div class="feature-card-item" :class="{ active: row.enable_whitelist }">
                     <div class="feature-main-box">
-                      <el-switch v-model="row.enable_whitelist" @change="(val) => onWhitelistToggle(row, val)" />
+                      <el-switch v-model="row.enable_whitelist" @change="(val: string | number | boolean) => onWhitelistToggle(row, val)" />
                       <div class="feature-info-box">
                         <span class="f-name">开启白名单</span>
                         <span class="f-desc">仅允许特定玩家使用此端点进行验证</span>
@@ -210,46 +210,66 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
-import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
+import { ElMessage, ElLoading } from 'element-plus'
 import {
   Plus, Delete, ArrowUp, ArrowDown, Connection, Check, Setting,
   Sort, Operation, List, User, Lock, Ticket as ShieldCheck
 } from '@element-plus/icons-vue'
 import { getAdminSettingsGroup, saveAdminSettingsGroup } from '@/api/admin/settings'
 import { getWhitelist, addWhitelistUser, removeWhitelistUser } from '@/api/admin/whitelist'
+import type { WhitelistEntry } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 
-const settings = ref({
+interface FallbackRow {
+  id: number | null
+  rowKey: string | number
+  priority: number
+  session_url: string
+  account_url: string
+  services_url: string
+  cache_ttl: number
+  enable_profile: boolean
+  enable_hasjoined: boolean
+  enable_whitelist: boolean
+  note: string
+  skin_domains_text: string
+  _whitelist: WhitelistEntry[]
+  _initialWhitelist: WhitelistEntry[]
+  _new_user: string
+  _loaded: boolean
+}
+
+const settings = ref<{ fallback_strategy: string }>({
   fallback_strategy: 'serial'
 })
-const fallbacks = ref([])
+const fallbacks = ref<FallbackRow[]>([])
 const saving = ref(false)
 
 async function fetchSettings() {
   try {
     const res = await getAdminSettingsGroup('fallback')
-    settings.value.fallback_strategy = res.data.fallback_strategy || 'serial'
-    
-    const raw = Array.isArray(res.data.fallbacks) ? res.data.fallbacks : []
-    
+    settings.value.fallback_strategy = (res.data.fallback_strategy as string) || 'serial'
+
+    const raw = Array.isArray(res.data.fallbacks) ? (res.data.fallbacks as any[]) : []
+
     const newFallbacks = raw.map((item, index) => {
       const existing = fallbacks.value.find(f => (f.id && f.id === item.id) || (f.session_url === item.session_url && f.note === item.note))
-      
-      const row = reactive({
+
+      const row = reactive<FallbackRow>({
         ...item,
         rowKey: item.id || (existing ? existing.rowKey : `new_${Date.now()}_${index}`),
         note: item.note || '',
         skin_domains_text: Array.isArray(item.skin_domains) ? item.skin_domains.join(',') : String(item.skin_domains || ''),
-        _whitelist: existing ? existing._whitelist : [], 
+        _whitelist: existing ? existing._whitelist : [],
         _initialWhitelist: existing ? existing._initialWhitelist : [],
         _new_user: existing ? existing._new_user : '',
         _loaded: existing ? existing._loaded : false
       })
       return row
     })
-    
+
     fallbacks.value = newFallbacks
     fallbacks.value.sort((a, b) => a.priority - b.priority)
   } catch (e) {
@@ -280,15 +300,15 @@ async function saveSettings() {
     await saveAdminSettingsGroup('fallback', payload)
 
     const res = await getAdminSettingsGroup('fallback')
-    const updatedFallbacksFromDB = res.data.fallbacks || []
-    
+    const updatedFallbacksFromDB = (res.data.fallbacks as any[]) || []
+
     for (const localRow of fallbacks.value) {
       const dbEndpoint = updatedFallbacksFromDB.find(f => f.session_url === localRow.session_url && f.note === localRow.note)
       if (!dbEndpoint || !dbEndpoint.id) continue
 
       const endpointId = dbEndpoint.id
-      localRow.id = endpointId 
-      
+      localRow.id = endpointId
+
       if (localRow._loaded && hasWhitelistChanges(localRow)) {
         const initialNames = localRow._initialWhitelist.map(u => u.username.toLowerCase())
         const currentNames = localRow._whitelist.map(u => u.username.toLowerCase())
@@ -307,7 +327,7 @@ async function saveSettings() {
 
     ElMessage.success('所有配置及白名单已成功同步')
     await fetchSettings()
-  } catch (e) {
+  } catch (e: any) {
     console.error(e)
     ElMessage.error('保存失败: ' + (e.response?.data?.detail || e.message))
   } finally {
@@ -316,7 +336,7 @@ async function saveSettings() {
   }
 }
 
-function hasWhitelistChanges(row) {
+function hasWhitelistChanges(row: FallbackRow) {
   if (!row._loaded) return false
   const initial = row._initialWhitelist.map(u => u.username.toLowerCase()).sort().join(',')
   const current = row._whitelist.map(u => u.username.toLowerCase()).sort().join(',')
@@ -324,7 +344,7 @@ function hasWhitelistChanges(row) {
 }
 
 function addFallback() {
-  fallbacks.value.push(reactive({
+  fallbacks.value.push(reactive<FallbackRow>({
     id: null,
     rowKey: `new_${Date.now()}_${fallbacks.value.length}`,
     priority: fallbacks.value.length + 1,
@@ -340,30 +360,30 @@ function addFallback() {
     _whitelist: [],
     _initialWhitelist: [],
     _new_user: '',
-    _loaded: true 
+    _loaded: true
   }))
 }
 
-function removeFallback(index) {
+function removeFallback(index: number) {
   fallbacks.value.splice(index, 1)
   syncPriority()
 }
 
-function moveUp(index) {
+function moveUp(index: number) {
   if (index === 0) return
   const list = [...fallbacks.value]
-  const temp = list[index]
-  list[index] = list[index - 1]
+  const temp = list[index]!
+  list[index] = list[index - 1]!
   list[index - 1] = temp
   fallbacks.value = list
   syncPriority()
 }
 
-function moveDown(index) {
+function moveDown(index: number) {
   if (index === fallbacks.value.length - 1) return
   const list = [...fallbacks.value]
-  const temp = list[index]
-  list[index] = list[index + 1]
+  const temp = list[index]!
+  list[index] = list[index + 1]!
   list[index + 1] = temp
   fallbacks.value = list
   syncPriority()
@@ -375,20 +395,20 @@ function syncPriority() {
   })
 }
 
-function handleExpandChange(row, expandedRows) {
+function handleExpandChange(row: FallbackRow, expandedRows: FallbackRow[]) {
   const isExpanded = expandedRows.find(r => r.rowKey === row.rowKey)
   if (isExpanded && row.enable_whitelist && row.id && !row._loaded) {
     fetchWhitelist(row)
   }
 }
 
-function onWhitelistToggle(row, val) {
+function onWhitelistToggle(row: FallbackRow, val: string | number | boolean) {
   if (val && row.id && !row._loaded) {
     fetchWhitelist(row)
   }
 }
 
-async function fetchWhitelist(row) {
+async function fetchWhitelist(row: FallbackRow) {
   if (!row.id) return
   try {
     const res = await getWhitelist(row.id)
@@ -400,7 +420,7 @@ async function fetchWhitelist(row) {
   }
 }
 
-function addUser(row) {
+function addUser(row: FallbackRow) {
   if (!row._new_user) return
   const username = row._new_user.trim()
   if (row._whitelist.some(u => u.username.toLowerCase() === username.toLowerCase())) {
@@ -414,7 +434,7 @@ function addUser(row) {
   row._new_user = ''
 }
 
-function removeUser(row, username) {
+function removeUser(row: FallbackRow, username: string) {
   row._whitelist = row._whitelist.filter(u => u.username !== username)
 }
 

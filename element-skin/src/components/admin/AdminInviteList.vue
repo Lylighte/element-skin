@@ -122,18 +122,19 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Plus, Check, Delete, Ticket } from '@element-plus/icons-vue'
+import { Refresh, Plus, Delete, Ticket } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getAdminInvites, createAdminInvite, deleteAdminInvite } from '@/api/admin/invites'
+import type { Invite } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 
-const invites = ref([])
+const invites = ref<Invite[]>([])
 const limit = 15
-const pagination = useCursorPagination(limit)
+const pagination = useCursorPagination<Invite>(limit)
 const inviteDialogVisible = ref(false)
 const inviteMode = ref('auto')
 const customInviteCode = ref('')
@@ -143,7 +144,7 @@ const inviteUsesMode = ref('limited')
 const inviteUses = ref(1)
 const inviteNote = ref('')
 
-function formatDate(ts) {
+function formatDate(ts: number | undefined) {
   return ts ? new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'
 }
 
@@ -199,17 +200,17 @@ function refreshPreview() {
   previewInviteCode.value = generateRandomCode()
 }
 
-const getRemainingBg = (row) => {
+const getRemainingBg = (row: Invite) => {
   if (!row.total_uses) return 'rgba(103, 194, 58, 0.1)'
-  const rem = row.total_uses - row.used_count
+  const rem = row.total_uses - (row.used_count || 0)
   if (rem <= 0) return 'rgba(245, 108, 108, 0.1)'
   if (rem <= row.total_uses * 0.2) return 'rgba(230, 162, 60, 0.1)'
   return 'rgba(64, 158, 255, 0.1)'
 }
 
-const getRemainingColor = (row) => {
+const getRemainingColor = (row: Invite) => {
   if (!row.total_uses) return 'var(--el-color-success)'
-  const rem = row.total_uses - row.used_count
+  const rem = row.total_uses - (row.used_count || 0)
   if (rem <= 0) return 'var(--el-color-danger)'
   if (rem <= row.total_uses * 0.2) return 'var(--el-color-warning)'
   return 'var(--el-color-primary)'
@@ -218,11 +219,11 @@ const getRemainingColor = (row) => {
 async function confirmCreateInvite() {
   const code = inviteMode.value === 'auto' ? previewInviteCode.value : customInviteCode.value.trim()
   if (!code || code.length < 6) return ElMessage.warning('邀请码长度不足')
-  
+
   creating.value = true
   try {
-    const payload = { 
-      code, 
+    const payload = {
+      code,
       note: inviteNote.value,
       total_uses: inviteUsesMode.value === 'unlimited' ? null : inviteUses.value
     }
@@ -230,14 +231,14 @@ async function confirmCreateInvite() {
     ElMessage.success('创建成功')
     inviteDialogVisible.value = false
     await refreshFirstPage()
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '创建失败')
   } finally {
     creating.value = false
   }
 }
 
-async function deleteInvite(invite) {
+async function deleteInvite(invite: Invite) {
   try {
     await ElMessageBox.confirm('确定删除该邀请码吗？', '确认', { type: 'warning' })
     await deleteAdminInvite(invite.code)
