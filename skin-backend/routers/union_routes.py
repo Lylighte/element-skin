@@ -14,32 +14,18 @@ from fastapi import (
     Query,
 )
 from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 
-from utils.jwt_utils import decode_jwt_token
 from config_loader import Config
+from routers.deps import get_current_user as deps_get_current_user, admin_required as deps_admin_required
 
 logger = logging.getLogger("union")
 
 router = APIRouter()
-security = HTTPBearer()
 
 
 def setup_routes(union_backend, rate_limiter, config: Config):
     """设置 Union 路由（注入依赖）"""
-
-    async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
-        token = creds.credentials
-        payload = decode_jwt_token(token)
-        if not payload:
-            raise HTTPException(status_code=401, detail="invalid or expired token")
-        return payload
-
-    def admin_required(payload: dict = Depends(get_current_user)):
-        if not payload.get("is_admin"):
-            raise HTTPException(status_code=403, detail="admin required")
-        return payload
 
     async def verify_union_request(request: Request):
         """UnionHostVerify: delegate to backend."""
@@ -160,7 +146,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     @router.get("/api/union/member/oauth2/grant")
     async def union_oauth2_grant(
         request: Request,
-        payload: dict = Depends(get_current_user),
+        payload: dict = Depends(deps_get_current_user),
     ):
         """OAuth2 grant: build encrypted user info token and redirect to Union."""
         if not await union_backend.is_oauth2_enabled():
@@ -192,7 +178,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     # ========================================================================
 
     @router.get("/union/profiles")
-    async def union_profiles_render(payload: dict = Depends(get_current_user)):
+    async def union_profiles_render(payload: dict = Depends(deps_get_current_user)):
         """Get profile binding info for all user's profiles.
 
         Matches reference project (UnionProfileController@render) exactly:
@@ -272,7 +258,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"items": results}
 
     @router.post("/union/bind")
-    async def union_bind(payload: dict = Depends(get_current_user), body: dict = Body(...)):
+    async def union_bind(payload: dict = Depends(deps_get_current_user), body: dict = Body(...)):
         """Request a bind token from Union."""
         uuid = body.get("uuid")
         if not uuid:
@@ -290,7 +276,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"token": result["token"]}
 
     @router.post("/union/unbind")
-    async def union_unbind(payload: dict = Depends(get_current_user), body: dict = Body(...)):
+    async def union_unbind(payload: dict = Depends(deps_get_current_user), body: dict = Body(...)):
         """Unbind a profile from Union."""
         uuid = body.get("uuid")
         if not uuid:
@@ -307,7 +293,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/union/bindto")
-    async def union_bind_to(payload: dict = Depends(get_current_user), body: dict = Body(...)):
+    async def union_bind_to(payload: dict = Depends(deps_get_current_user), body: dict = Body(...)):
         """Bind a profile to another profile using a token."""
         uuid = body.get("uuid")
         token = body.get("token")
@@ -325,7 +311,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/union/remapuuid")
-    async def union_remap_uuid_request(payload: dict = Depends(get_current_user), body: dict = Body(...)):
+    async def union_remap_uuid_request(payload: dict = Depends(deps_get_current_user), body: dict = Body(...)):
         """Request UUID remapping across the federation."""
         me = body.get("me")
         target = body.get("target")
@@ -343,7 +329,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.get("/union/security/level")
-    async def union_security_level(payload: dict = Depends(get_current_user)):
+    async def union_security_level(payload: dict = Depends(deps_get_current_user)):
         """Get this server's security level from Union.
 
         Note: Union API returns a bare integer for security level.
@@ -360,7 +346,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     # ========================================================================
 
     @router.get("/admin/union/settings")
-    async def admin_get_union_settings(payload: dict = Depends(admin_required)):
+    async def admin_get_union_settings(payload: dict = Depends(deps_admin_required)):
         """Get all Union configuration settings."""
         settings = await union_backend.get_settings()
         return {
@@ -378,7 +364,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         }
 
     @router.post("/admin/union/settings")
-    async def admin_save_union_settings(payload: dict = Depends(admin_required), body: dict = Body(...)):
+    async def admin_save_union_settings(payload: dict = Depends(deps_admin_required), body: dict = Body(...)):
         """Save Union configuration settings."""
         allowed_keys = {
             "union_api_root", "union_member_key", "union_enable_update",
@@ -396,7 +382,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/admin/union/update-list")
-    async def admin_update_list(payload: dict = Depends(admin_required)):
+    async def admin_update_list(payload: dict = Depends(deps_admin_required)):
         """Admin: manually trigger server list update."""
         success = await union_backend.fetch_server_list()
         if not success:
@@ -404,7 +390,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/admin/union/update-key")
-    async def admin_update_key(payload: dict = Depends(admin_required)):
+    async def admin_update_key(payload: dict = Depends(deps_admin_required)):
         """Admin: manually trigger private key update."""
         success = await union_backend.fetch_private_key()
         if not success:
@@ -412,7 +398,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/admin/union/sync")
-    async def admin_sync(payload: dict = Depends(admin_required)):
+    async def admin_sync(payload: dict = Depends(deps_admin_required)):
         """Admin: manually trigger profile sync."""
         success = await union_backend.sync_profiles()
         if not success:
@@ -420,7 +406,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/admin/union/diagnose")
-    async def admin_diagnose(payload: dict = Depends(admin_required)):
+    async def admin_diagnose(payload: dict = Depends(deps_admin_required)):
         """Admin: run connectivity diagnostic."""
         result = await union_backend.trigger_diagnose()
         return result
@@ -429,7 +415,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     async def admin_blacklist_list(
         q: Optional[str] = Query(None),
         page: int = Query(1),
-        payload: dict = Depends(admin_required),
+        payload: dict = Depends(deps_admin_required),
     ):
         """Admin: query Union blacklist entries."""
         params = {}
@@ -444,7 +430,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return result
 
     @router.post("/admin/union/blacklist")
-    async def admin_blacklist_create(payload: dict = Depends(admin_required), body: dict = Body(...)):
+    async def admin_blacklist_create(payload: dict = Depends(deps_admin_required), body: dict = Body(...)):
         """Admin: create a new blacklist entry on Union."""
         email = body.get("email")
         reason = body.get("reason", "")
@@ -456,7 +442,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return result
 
     @router.post("/admin/union/blacklist/{entry_id}/invalidate")
-    async def admin_blacklist_invalidate(entry_id: str, payload: dict = Depends(admin_required)):
+    async def admin_blacklist_invalidate(entry_id: str, payload: dict = Depends(deps_admin_required)):
         """Admin: invalidate/unban a blacklist entry."""
         success = await union_backend.invalidate_blacklist(entry_id)
         if not success:
@@ -464,7 +450,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.delete("/admin/union/blacklist/{entry_id}")
-    async def admin_blacklist_delete(entry_id: str, payload: dict = Depends(admin_required)):
+    async def admin_blacklist_delete(entry_id: str, payload: dict = Depends(deps_admin_required)):
         """Admin: delete a blacklist entry."""
         success = await union_backend.delete_blacklist(entry_id)
         if not success:
@@ -472,7 +458,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/admin/union/generate-keypair")
-    async def admin_generate_keypair(payload: dict = Depends(admin_required)):
+    async def admin_generate_keypair(payload: dict = Depends(deps_admin_required)):
         """Admin: generate a new RSA keypair for OAuth2 signing."""
         keypair = union_backend.generate_rsa_keypair()
         return {"privateKey": keypair["private"], "publicKey": keypair["public"]}

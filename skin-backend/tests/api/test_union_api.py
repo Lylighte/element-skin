@@ -109,7 +109,7 @@ async def test_union_inbound_timestamp_out_of_window(client):
 @pytest.mark.asyncio
 async def test_admin_union_settings_get(client, admin_headers):
     """Test admin can get Union settings."""
-    resp = await client.get("/admin/union/settings", headers={"Authorization": f"Bearer {admin_headers['cookies']['jwt']}"})
+    resp = await client.get("/admin/union/settings", cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     data = resp.json()
     assert "union_api_root" in data
@@ -120,16 +120,15 @@ async def test_admin_union_settings_get(client, admin_headers):
 @pytest.mark.asyncio
 async def test_admin_union_settings_save(client, admin_headers):
     """Test admin can save Union settings."""
-    admin_auth = {"Authorization": f"Bearer {admin_headers['cookies']['jwt']}"}
     resp = await client.post(
         "/admin/union/settings",
         json={"union_api_root": "https://test.union.example.com/api/union"},
-        headers=admin_auth,
+        cookies=admin_headers["cookies"],
     )
     assert resp.status_code == 200
 
     # Verify saved
-    resp = await client.get("/admin/union/settings", headers=admin_auth)
+    resp = await client.get("/admin/union/settings", cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     data = resp.json()
     assert data["union_api_root"] == "https://test.union.example.com/api/union"
@@ -138,14 +137,14 @@ async def test_admin_union_settings_save(client, admin_headers):
 @pytest.mark.asyncio
 async def test_admin_union_requires_admin(client, auth_headers):
     """Test non-admin user cannot access admin Union endpoints."""
-    resp = await client.get("/admin/union/settings", headers={"Authorization": f"Bearer {auth_headers['cookies']['jwt']}"})
+    resp = await client.get("/admin/union/settings", cookies=auth_headers["cookies"])
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_admin_generate_keypair(client, admin_headers):
     """Test admin can generate RSA keypair."""
-    resp = await client.post("/admin/union/generate-keypair", headers={"Authorization": f"Bearer {admin_headers['cookies']['jwt']}"})
+    resp = await client.post("/admin/union/generate-keypair", cookies=admin_headers["cookies"])
     assert resp.status_code == 200
     data = resp.json()
     assert "privateKey" in data
@@ -181,7 +180,7 @@ async def test_union_oauth2_pubkey_not_configured(client):
 async def test_union_user_profiles_not_authenticated(client):
     """Test union profiles endpoint requires auth."""
     resp = await client.get("/union/profiles")
-    # Union routes use HTTPBearer; missing token returns 401 (not 403)
+    # Union routes use cookie-based auth; missing cookie returns 401
     assert resp.status_code == 401
 
 
@@ -189,5 +188,5 @@ async def test_union_user_profiles_not_authenticated(client):
 async def test_union_security_level_not_authenticated(client):
     """Test union security level endpoint requires auth."""
     resp = await client.get("/union/security/level")
-    # Union routes use HTTPBearer; missing token returns 401 (not 403)
+    # Union routes use cookie-based auth; missing cookie returns 401
     assert resp.status_code == 401
