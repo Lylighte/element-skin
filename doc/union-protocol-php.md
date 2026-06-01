@@ -286,30 +286,25 @@ UPDATE uuid SET uuid = 'new_uuid' WHERE uuid = 'old_uuid'
 
 #### `POST /api/union/member/updateplugin`
 
-Union 主站通知成员站更新插件。
+Union 主站通知成员站更新插件。此端点是 Blessing Skin Server 的插件自动更新机制。
 
 **认证：** UnionHostVerify
-
-**前提：** 成员站 `union_enable_update` 选项必须为 `true`
 
 **请求体：**
 
 ```json
-{
-  "url": "https://example.com/plugin.zip",
-  "plugin": "yggdrasil-connect"
-}
+{ "url": "插件zip下载地址", "plugin": "插件id（可选，默认yggdrasil-connect）" }
 ```
 
-`plugin` 字段可选，默认值为 `yggdrasil-connect`。
+**处理逻辑：** 成员站从给定 URL 下载 ZIP 包并解压到插件目录，然后禁用再启用插件（触发热加载）。
 
-**处理逻辑：** 成员站下载 ZIP 包并解压到插件目录，然后禁用再启用插件（触发热加载）。
+> **注意：** 如果成员站 `union_enable_update` 选项为 `false`，该请求将被忽略。这是 Blessing Skin Server 的 PHP 插件架构特有的自动更新机制。
 
 ---
 
 #### `GET /api/union/member/queryemail?username=xxx`
 
-Union 主站查询指定角色名对应的用户邮箱（用于黑名单验证）。
+Union 主站查询指定角色名对应的用户邮箱（用于黑名单验证）。如果指定的用户名不存在，返回 **204 No Content**。
 
 **认证：** UnionHostVerify
 
@@ -496,7 +491,7 @@ final = RSA_public_encrypt(JSON(inner_token), Union主站的OAuth2公钥)
 
 ### `GET /union`
 
-角色绑定管理页面。
+角色绑定管理页面。此接口返回服务端渲染的 HTML 页面（Blade 模板），非 JSON API。
 
 **流程：** 获取当前登录用户的所有角色，通过并发请求查询 Union 主站：
 - `GET {union_api_root}/profile/unmapped/byname/{角色名}` — 查询该角色在其他站点的绑定情况
@@ -572,13 +567,12 @@ final = RSA_public_encrypt(JSON(inner_token), Union主站的OAuth2公钥)
 
 ### `GET /union/security/level`
 
-获取安全等级。
+获取 Union 安全等级。实际执行两步验证：
 
-**流程：**
-1. 向 Union 主站发起 `POST {union_api_root}/code`（带 `union_member_key` 作为 token），获取一次性 code
-2. 使用 code 向 Union 主站发起 `GET {union_api_root}/backend/{code}/security/level`
+1. `POST {union_api_root}/code` body: `{"token": union_member_key}` — 换取临时授权码 code
+2. `GET {union_api_root}/backend/{code}/security/level` — 用临时授权码获取安全等级
 
-**响应：** Union 主站 `/backend/{code}/security/level` 返回的 JSON 数据。
+如果任一步失败，返回 HTTP 500。
 
 ---
 
@@ -823,3 +817,22 @@ Union 主站通过以下链路实现 member key 的自动下发：
 - 成员站通过 `hello` 端点暴露当前版本号
 - Union 主站可以据此判断是否需要推送更新
 - 版本号仅在同步时更新，不参与缓存验证逻辑
+
+---
+
+### 11.6 Yggdrasil Metadata 与 Union 的关联
+
+在 `ConfigController@hello` 中，Yggdrasil 服务发现接口会将 Union 服务器列表中的域名自动注入到 `skinDomains` 字段中：
+
+```php
+$unionServers = array_column(json_decode(option('union_server_list'), true), 'bs_root');
+foreach ($unionServers as &$server) {
+    $server = parse_url($server, PHP_URL_HOST);
+}
+$skinDomains = array_merge($extra, $unionServers, [
+    parse_url(option('site_url'), PHP_URL_HOST),
+    $request->getHost(),
+]);
+```
+
+这意味着：客户端的 authlib-injector 会自动信任所有 Union 成员站的材质域名，无需手动逐个添加。
