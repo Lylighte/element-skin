@@ -72,7 +72,10 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     async def union_sync(body: dict = Body(...), _verified=Depends(verify_union_request)):
         """Union triggers profile sync."""
         profile_list = body.get("profileList", {})
-        logger.info(f"Received sync from Union with {len(profile_list)} profiles")
+        logger.info(f"Received sync trigger from Union with {len(profile_list)} profiles")
+        success = await union_backend.sync_profiles()
+        if not success:
+            raise HTTPException(status_code=502, detail="Failed to sync profiles to Union")
         return {"ok": True}
 
     @router.post("/api/union/member/remapuuid")
