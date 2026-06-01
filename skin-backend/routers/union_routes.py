@@ -18,7 +18,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 
 from utils.jwt_utils import decode_jwt_token
-from database_module import Database
 from config_loader import Config
 
 logger = logging.getLogger("union")
@@ -27,7 +26,7 @@ router = APIRouter()
 security = HTTPBearer()
 
 
-def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
+def setup_routes(union_backend, rate_limiter, config: Config):
     """设置 Union 路由（注入依赖）"""
 
     async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
@@ -43,50 +42,8 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
         return payload
 
     async def verify_union_request(request: Request):
-        """UnionHostVerify: Verify RSA-SHA256 signature from Union main server.
-
-        Headers:
-        - X-Message-Signature: base64 RSA-SHA256 signature
-        - X-Message-Timestamp: Unix timestamp
-        - X-Message-Nonce: unique nonce to prevent replay
-
-        The signature covers: request_body + timestamp + nonce
-        """
-        signature = request.headers.get("X-Message-Signature")
-        timestamp_str = request.headers.get("X-Message-Timestamp")
-        nonce = request.headers.get("X-Message-Nonce")
-
-        if not signature or not timestamp_str or not nonce:
-            raise HTTPException(status_code=401, detail="Missing Union signature headers")
-
-        # Check nonce not already used (replay protection)
-        if await db.union.is_nonce_used(nonce):
-            raise HTTPException(status_code=401, detail="Nonce already used (replay detected)")
-
-        # Validate timestamp window: [-10, +30] seconds
-        try:
-            ts = int(timestamp_str)
-            now = int(time.time())
-            if ts < now - 10 or ts > now + 30:
-                raise HTTPException(status_code=401, detail="Timestamp out of acceptable window")
-        except ValueError:
-            raise HTTPException(status_code=401, detail="Invalid timestamp")
-
-        # Fetch Union's public key
-        union_pub_key = await union_backend.get_union_public_key()
-        if not union_pub_key:
-            raise HTTPException(status_code=503, detail="Could not fetch Union public key")
-
-        # Read request body
-        body_bytes = await request.body()
-        body_str = body_bytes.decode("utf-8") if body_bytes else ""
-
-        # Verify signature
-        if not union_backend.verify_union_signature(body_str, signature, timestamp_str, nonce, union_pub_key):
-            raise HTTPException(status_code=401, detail="Invalid Union signature")
-
-        # Log nonce to prevent reuse (60s TTL)
-        await db.union.log_nonce(nonce)
+        """UnionHostVerify: delegate to backend."""
+        await union_backend.verify_union_request_inbound(request)
         return True
 
     # ========================================================================
@@ -96,7 +53,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
     @router.post("/api/union/member/updatelist")
     async def union_update_list(_verified=Depends(verify_union_request)):
         """Union pushes updated server list."""
-        if (await db.union.get("union_enable_update", "true")).lower() != "true":
+        if not await union_backend.is_update_enabled():
             return {"ok": True, "message": "Updates from Union are disabled"}
         success = await union_backend.fetch_server_list()
         if not success:
@@ -106,7 +63,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
     @router.post("/api/union/member/updateprivatekey")
     async def union_update_private_key(_verified=Depends(verify_union_request)):
         """Union pushes updated private key."""
-        if (await db.union.get("union_enable_update", "true")).lower() != "true":
+        if not await union_backend.is_update_enabled():
             return {"ok": True, "message": "Updates from Union are disabled"}
         success = await union_backend.fetch_private_key()
         if not success:
@@ -116,12 +73,12 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
     @router.post("/api/union/member/updatebackendkey")
     async def union_update_backend_key(body: dict = Body(...), _verified=Depends(verify_union_request)):
         """Union updates this member's authentication key."""
-        if (await db.union.get("union_enable_update", "true")).lower() != "true":
+        if not await union_backend.is_update_enabled():
             return {"ok": True, "message": "Updates from Union are disabled"}
         new_key = body.get("key")
         if not new_key:
             raise HTTPException(status_code=400, detail="key is required")
-        await db.union.set("union_member_key", new_key)
+        await union_backend.update_settings({"union_member_key": new_key})
         logger.info("Union member key updated by Union server")
         return {"ok": True}
 
@@ -138,7 +95,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
         remapped = body.get("remapped_uuid", {})
         if not remapped:
             raise HTTPException(status_code=400, detail="remapped_uuid is required")
-        await db.union.remap_uuids(remapped)
+        await union_backend.remap_uuids(remapped)
         logger.info(f"Applied {len(remapped)} UUID remappings from Union")
         return {"ok": True}
 
@@ -154,7 +111,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
         _verified=Depends(verify_union_request),
     ):
         """Union queries user email by player name (for blacklist)."""
-        email = await db.union.get_email_by_username(username)
+        email = await union_backend.get_email_by_username(username)
         if email:
             return {"email": email}
         return JSONResponse(status_code=204)
@@ -167,15 +124,16 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
     @router.get("/api/union/member")
     async def union_hello():
         """Public endpoint exposing this server's Union capabilities."""
-        server_list_version = int(await db.union.get("union_server_list_version", "0"))
-        private_key_version = int(await db.union.get("union_private_key_version", "0"))
+        settings = await union_backend.get_settings()
+        server_list_version = int(settings.get("union_server_list_version", "0"))
+        private_key_version = int(settings.get("union_private_key_version", "0"))
 
         enabled_features = ["unionBlacklist"]
-        if await db.setting.get("email_verify_enabled", "false") == "true":
+        if await union_backend.is_email_verify_enabled():
             enabled_features.append("emailVerification")
-        if await db.setting.get("invitation_codes_for_union_enabled", "false") == "true":
+        if await union_backend.is_invitation_codes_for_union_enabled():
             enabled_features.append("invitationCodesForUnion")
-        if (await db.union.get("union_enable_oauth2", "true")).lower() == "true":
+        if await union_backend.is_oauth2_enabled():
             enabled_features.append("unionOAuth2")
 
         return {
@@ -193,7 +151,8 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
     @router.get("/api/union/member/oauth2")
     async def union_oauth2_pubkey():
         """Expose this server's OAuth2 signature public key."""
-        sig_pub_key = await db.union.get("union_oauth2_sig_public_key", "")
+        settings = await union_backend.get_settings()
+        sig_pub_key = settings.get("union_oauth2_sig_public_key", "")
         if not sig_pub_key:
             raise HTTPException(status_code=503, detail="OAuth2 signature public key not configured")
         return {"signaturePublicKey": sig_pub_key}
@@ -204,10 +163,10 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
         payload: dict = Depends(get_current_user),
     ):
         """OAuth2 grant: build encrypted user info token and redirect to Union."""
-        if (await db.union.get("union_enable_oauth2", "true")).lower() != "true":
+        if not await union_backend.is_oauth2_enabled():
             raise HTTPException(status_code=403, detail="Union OAuth2 is not enabled")
         user_id = payload.get("sub")
-        user = await db.user.get_by_id(user_id)
+        user = await union_backend.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
@@ -215,7 +174,8 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
         if not token:
             raise HTTPException(status_code=500, detail="Failed to build OAuth2 token")
 
-        api_root = await db.union.get("union_api_root", "")
+        settings = await union_backend.get_settings()
+        api_root = settings.get("union_api_root", "")
         if not api_root:
             raise HTTPException(status_code=503, detail="Union API root not configured")
 
@@ -241,7 +201,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
         3. Second pass: populate self, then filter dup_name (exclude own + already-bound)
         """
         user_id = payload.get("sub")
-        local_profiles = await db.user.get_profiles_by_user(user_id)
+        local_profiles = await union_backend.get_user_profiles(user_id)
 
         import asyncio
 
@@ -320,7 +280,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
 
         # Verify profile ownership
         user_id = payload.get("sub")
-        if not await db.user.verify_profile_ownership(user_id, uuid):
+        if not await union_backend.verify_profile_ownership(user_id, uuid):
             raise HTTPException(status_code=403, detail="Profile not owned by user")
 
         result = await union_backend.request_bind_token(uuid)
@@ -337,7 +297,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
             raise HTTPException(status_code=400, detail="uuid is required")
 
         user_id = payload.get("sub")
-        if not await db.user.verify_profile_ownership(user_id, uuid):
+        if not await union_backend.verify_profile_ownership(user_id, uuid):
             raise HTTPException(status_code=403, detail="Profile not owned by user")
 
         success = await union_backend.request_unbind(uuid)
@@ -355,7 +315,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
             raise HTTPException(status_code=400, detail="uuid and token are required")
 
         user_id = payload.get("sub")
-        if not await db.user.verify_profile_ownership(user_id, uuid):
+        if not await union_backend.verify_profile_ownership(user_id, uuid):
             raise HTTPException(status_code=403, detail="Profile not owned by user")
 
         success = await union_backend.request_bind_to(uuid, token)
@@ -373,7 +333,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
             raise HTTPException(status_code=400, detail="me and target are required")
 
         user_id = payload.get("sub")
-        if not await db.user.verify_profile_ownership(user_id, me):
+        if not await union_backend.verify_profile_ownership(user_id, me):
             raise HTTPException(status_code=403, detail="Profile not owned by user")
 
         success = await union_backend.request_remap_uuid(me, target)
@@ -402,7 +362,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
     @router.get("/admin/union/settings")
     async def admin_get_union_settings(payload: dict = Depends(admin_required)):
         """Get all Union configuration settings."""
-        settings = await db.union.get_all_settings()
+        settings = await union_backend.get_settings()
         return {
             "union_api_root": settings.get("union_api_root", ""),
             "union_member_key": settings.get("union_member_key", ""),
@@ -426,10 +386,12 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
             "union_oauth2_sig_public_key", "ygg_restore_api",
         }
         bool_keys = {"union_enable_update", "union_enable_oauth2", "ygg_restore_api"}
+        kv = {}
         for key, value in body.items():
             if key in allowed_keys:
                 v = str(value).lower() if key in bool_keys else str(value)
-                await db.union.set(key, v)
+                kv[key] = v
+        await union_backend.update_settings(kv)
 
         return {"ok": True}
 
@@ -527,8 +489,7 @@ def setup_routes(db: Database, union_backend, rate_limiter, config: Config):
     @router.post("/restore")
     async def restore_sign(body: dict = Body(...)):
         """Sign profile properties with Yggdrasil private key for multi-backend."""
-        restore_enabled = (await db.union.get("ygg_restore_api", "false")).lower()
-        if restore_enabled != "true":
+        if not await union_backend.is_restore_api_enabled():
             raise HTTPException(status_code=403, detail="Restore API is disabled")
 
         profile = await union_backend.sign_profile_properties(body)

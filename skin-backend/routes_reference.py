@@ -112,7 +112,7 @@ app.include_router(admin_router)
 microsoft_router = microsoft_routes.setup_routes(db, config, texture_storage)
 app.include_router(microsoft_router)
 
-union_router = union_routes.setup_routes(db, union_backend, rate_limiter, config)
+union_router = union_routes.setup_routes(union_backend, rate_limiter, config)
 app.include_router(union_router)
 
 # ========== 应用启动 ==========
