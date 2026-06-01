@@ -120,12 +120,9 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Connection, Ticket as ShieldCheck } from '@element-plus/icons-vue'
-
-const jwt = localStorage.getItem('jwt')
-const headers = { Authorization: 'Bearer ' + jwt }
+import { getUnionProfiles, bindUnionProfile, unbindUnionProfile, bindToUnionProfile, remapUnionUUID, getUnionSecurityLevel } from '@/api/union'
 
 const loading = ref(false)
 const profiles = ref([])
@@ -143,7 +140,7 @@ const securityLevelTagType = ref('')
 async function fetchProfiles() {
   loading.value = true
   try {
-    const res = await axios.get('/union/profiles', { headers })
+    const res = await getUnionProfiles()
     profiles.value = (res.data.items || []).map(p => ({
       ...p,
       _token_input: '',
@@ -158,7 +155,7 @@ async function fetchProfiles() {
 
 async function fetchSecurityLevel() {
   try {
-    const res = await axios.get('/union/security/level', { headers })
+    const res = await getUnionSecurityLevel()
     const level = res.data.security_level
     securityLevel.value = level
     if (level >= 3) securityLevelTagType.value = 'success'
@@ -177,7 +174,7 @@ function getServerName(backendId) {
 async function getToken(uuid) {
   loadingToken.value = uuid
   try {
-    const res = await axios.post('/union/bind', { uuid }, { headers })
+    const res = await bindUnionProfile(uuid)
     await navigator.clipboard.writeText(res.data.token)
     ElMessage.success('Token 已复制到剪贴板（有效期2分钟）')
   } catch (e) {
@@ -191,7 +188,7 @@ async function bindTo(uuid, token) {
   if (!token) return
   loadingBindTo.value = uuid
   try {
-    await axios.post('/union/bindto', { uuid, token }, { headers })
+    await bindToUnionProfile(uuid, token)
     ElMessage.success('绑定成功')
     const p = profiles.value.find(p => p.id === uuid)
     if (p) p._token_input = ''
@@ -206,7 +203,7 @@ async function bindTo(uuid, token) {
 async function unbind(uuid) {
   loadingUnbind.value = uuid
   try {
-    await axios.post('/union/unbind', { uuid }, { headers })
+    await unbindUnionProfile(uuid)
     ElMessage.success('解绑成功')
     await fetchProfiles()
   } catch (e) {
@@ -227,7 +224,7 @@ function confirmUnbind(uuid) {
 async function remapUUID(me, target) {
   loadingRemap.value = me
   try {
-    await axios.post('/union/remapuuid', { me, target }, { headers })
+    await remapUnionUUID(me, target)
     ElMessage.success('UUID 同步请求已发送')
   } catch (e) {
     ElMessage.error('UUID 同步失败: ' + (e.response?.data?.detail || e.message))

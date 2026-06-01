@@ -293,15 +293,17 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
-import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import {
   Connection, Check, Setting, Lock, Refresh, Collection,
   Key, Upload, Search, List, Plus, Warning, Delete, Loading
 } from '@element-plus/icons-vue'
-
-const jwt = localStorage.getItem('jwt')
-const headers = { Authorization: 'Bearer ' + jwt }
+import {
+  getAdminUnionSettings, saveAdminUnionSettings, generateUnionKeypair,
+  updateUnionServerList, updateUnionPrivateKey, syncUnionProfiles,
+  diagnoseUnion, getUnionBlacklist, createUnionBlacklist,
+  invalidateUnionBlacklist, deleteUnionBlacklist
+} from '@/api/union'
 
 const settings = reactive({
   union_api_root: '',
@@ -347,7 +349,7 @@ const dataStatus = computed(() => {
 
 async function fetchSettings() {
   try {
-    const res = await axios.get('/admin/union/settings', { headers })
+    const res = await getAdminUnionSettings()
     Object.assign(settings, {
       union_api_root: res.data.union_api_root || '',
       union_member_key: res.data.union_member_key || '',
@@ -402,7 +404,7 @@ async function fetchServerNames() {
 async function saveSettings() {
   saving.value = true
   try {
-    await axios.post('/admin/union/settings', settings, { headers })
+    await saveAdminUnionSettings(settings)
     ElMessage.success('配置已保存')
     checkKeyValidity()
   } catch (e) {
@@ -415,7 +417,7 @@ async function saveSettings() {
 async function generateKeypair() {
   generating.value = true
   try {
-    const res = await axios.post('/admin/union/generate-keypair', {}, { headers })
+    const res = await generateUnionKeypair()
     settings.union_oauth2_sig_private_key = res.data.privateKey
     settings.union_oauth2_sig_public_key = res.data.publicKey
     await saveSettings()
@@ -430,7 +432,7 @@ async function generateKeypair() {
 async function updateList() {
   loadingList.value = true
   try {
-    await axios.post('/admin/union/update-list', {}, { headers })
+    await updateUnionServerList()
     ElMessage.success('服务器列表已更新')
     await fetchSettings()
   } catch (e) {
@@ -443,7 +445,7 @@ async function updateList() {
 async function updateKey() {
   loadingKey.value = true
   try {
-    await axios.post('/admin/union/update-key', {}, { headers })
+    await updateUnionPrivateKey()
     ElMessage.success('密钥已更新')
     await fetchSettings()
   } catch (e) {
@@ -456,7 +458,7 @@ async function updateKey() {
 async function syncProfiles() {
   loadingSync.value = true
   try {
-    await axios.post('/admin/union/sync', {}, { headers })
+    await syncUnionProfiles()
     ElMessage.success('角色数据已同步')
   } catch (e) {
     ElMessage.error('同步失败: ' + (e.response?.data?.detail || e.message))
@@ -473,7 +475,7 @@ function openDiagnose() {
 async function runDiagnose() {
   loadingDiagnose.value = true
   try {
-    const res = await axios.post('/admin/union/diagnose', {}, { headers })
+    const res = await diagnoseUnion()
     diagnoseResult.value = res.data
   } catch (e) {
     diagnoseResult.value = { status: 'error', data: { exception: e.response?.data?.detail || e.message } }
@@ -499,7 +501,7 @@ async function fetchBlacklist(page) {
   try {
     const params = { page: currentPage.value }
     if (blacklistQuery.value) params.q = blacklistQuery.value
-    const res = await axios.get('/admin/union/blacklist', { headers, params })
+    const res = await getUnionBlacklist(params)
     blacklistItems.value = res.data.data || []
     totalItems.value = res.data.total || 0
   } catch (e) {
@@ -520,10 +522,7 @@ async function createBlacklist() {
   }
   addingBlacklist.value = true
   try {
-    await axios.post('/admin/union/blacklist', {
-      email: blacklistForm.email,
-      reason: blacklistForm.reason,
-    }, { headers })
+    await createUnionBlacklist(blacklistForm.email, blacklistForm.reason)
     ElMessage.success('黑名单已添加')
     blacklistForm.email = ''
     blacklistForm.reason = ''
@@ -538,7 +537,7 @@ async function createBlacklist() {
 async function invalidateBlacklist(id) {
   operatingId.value = id
   try {
-    await axios.post(`/admin/union/blacklist/${id}/invalidate`, {}, { headers })
+    await invalidateUnionBlacklist(id)
     ElMessage.success('已解封')
     await fetchBlacklist(currentPage.value)
   } catch (e) {
@@ -551,7 +550,7 @@ async function invalidateBlacklist(id) {
 async function deleteBlacklist(id) {
   operatingId.value = id
   try {
-    await axios.delete(`/admin/union/blacklist/${id}`, { headers })
+    await deleteUnionBlacklist(id)
     ElMessage.success('已删除')
     await fetchBlacklist(currentPage.value)
   } catch (e) {
