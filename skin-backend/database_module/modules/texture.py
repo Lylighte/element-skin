@@ -344,7 +344,7 @@ class TextureModule:
             async with conn.transaction():
                 # 获取材质信息
                 row = await conn.fetchrow(
-                    "SELECT texture_type, model, uploader, name FROM skin_library WHERE skin_hash = $1", texture_hash
+                    "SELECT texture_type, model, uploader, name, is_public FROM skin_library WHERE skin_hash = $1", texture_hash
                 )
                 if not row:
                     return False
@@ -352,9 +352,15 @@ class TextureModule:
                 model = row[1]
                 uploader = row[2]
                 name = row[3] or ""
-            
+                src_is_public = row[4]
+
+                # 仅允许：公开材质（任何人可收藏）或自己上传的材质（可找回）。
+                # 拒绝他人的私有材质，避免越权读取。
+                if src_is_public != 1 and uploader != user_id:
+                    return False
+
                 created_at = int(time.time() * 1000)
-                
+
                 # 如果用户是上传者，则恢复为公开状态(1)，否则为收藏状态(2)
                 is_public = 1 if uploader == user_id else 2
                 
