@@ -11,14 +11,14 @@
 按严重程度归类：
 
 - **严重**：`config.yaml`（含 DB 密码与 JWT 默认密钥）被提交进 git 且打入镜像；Web 上传无大小限制；逐像素哈希在事件循环上同步执行且无尺寸上限 → 单请求可打挂全服；`CORS allow_origins:["*"] + allow_credentials:true`。
-- **高**：用户可控 URL 导致 SSRF；封禁/降权对站点 API 不生效（JWT 无状态）；缺关键索引；反向代理下 `request.client.host` 取到代理 IP 致限流失效。
+- **高**：用户可控 URL 导致 SSRF；删号/降权对站点 API 不生效（JWT 无状态）；缺关键索引；反向代理下 `request.client.host` 取到代理 IP 致限流失效。
 - **中/低**：改邮箱无校验易触发未捕获 500；DB 初始化失败被吞；OAuth state 用模块级 dict；弱口令策略形同虚设；异常细节回显；`print` 当日志；依赖未锁定。
 
 > 关于 JWT 密钥：按业主决策，**继续只从配置文件读取**，不引入环境变量覆盖。因此本计划不改读取机制，只解决「默认密钥被提交进仓库/镜像」和「启动时未校验」这两点。
 
 ## 修复原则
 
-- **行为不变优先**：除明确的安全收紧（如 CORS、封禁拦截），不改变对外 API 形状。每阶段以「现有测试全绿 + 新增针对性用例通过」为准。
+- **行为不变优先**：除明确的安全收紧（如 CORS、删号/降权即时失效），不改变对外 API 形状。每阶段以「现有测试全绿 + 新增针对性用例通过」为准。
 - **小步提交**：一个阶段一个（或几个）PR，便于 review 和回滚。
 - **失败要响亮**：能在启动期暴露的配置/环境问题，就 fail-fast，不要拖到运行期变成神秘 500。
 - **默认安全**：新加的限制项给出安全的默认值，运营可在合理范围内放宽。
@@ -30,7 +30,7 @@
 | 1 | [phase-1-config-and-secrets.md](./phase-1-config-and-secrets.md) | 配置/密钥脱离仓库、启动校验、CORS 收紧、修 favicon | 严重 | 低 |
 | 2 | [phase-2-upload-and-image-dos.md](./phase-2-upload-and-image-dos.md) | 统一上传大小限制、像素上限、哈希向量化、线程池下放 | 严重 | 中 |
 | 3 | [phase-3-ssrf-outbound-http.md](./phase-3-ssrf-outbound-http.md) | 出站 URL 白名单/内网封禁、收敛异常回显 | 高 | 中 |
-| 4 | [phase-4-auth-and-account.md](./phase-4-auth-and-account.md) | 站点侧封禁/降权拦截、弱口令策略、改邮箱校验、降低枚举 | 高 | 中 |
+| 4 | [phase-4-auth-and-account.md](./phase-4-auth-and-account.md) | 站点侧删号/降权拦截、弱口令策略、改邮箱校验、降低枚举 | 高 | 中 |
 | 5 | [phase-5-db-index-proxy-init.md](./phase-5-db-index-proxy-init.md) | 补索引、开启 proxy headers、DB 初始化 fail-fast | 高 | 低 |
 | 6 | [phase-6-operational-hardening.md](./phase-6-operational-hardening.md) | OAuth state 存储、日志化、依赖锁定、单实例约束文档 | 中/低 | 低 |
 

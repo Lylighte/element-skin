@@ -35,17 +35,17 @@ async def test_api_get_me_info(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_banned_user_is_rejected_on_site_api(client, auth_headers, db_session):
-    """封禁后，即使持有有效 JWT，站点 API 也应立即拒绝（403）。"""
+async def test_banned_user_can_still_access_site_api(client, auth_headers, db_session):
+    """封禁仅限制通过 Yggdrasil 登录游戏，被封禁用户仍可正常访问主站。"""
     user_id = auth_headers["X-User-ID"]
-    # 未封禁时可访问
     assert (await client.get("/me", cookies=auth_headers["cookies"])).status_code == 200
 
     import time
     await db_session.user.ban(user_id, int((time.time() + 3600) * 1000))
 
+    # 封禁后主站访问不受影响
     resp = await client.get("/me", cookies=auth_headers["cookies"])
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 @pytest.mark.asyncio

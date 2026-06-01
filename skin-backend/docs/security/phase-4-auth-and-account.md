@@ -1,18 +1,19 @@
-# 阶段 4：站点侧封禁/降权拦截 + 弱口令策略 + 改邮箱校验 + 降低枚举
+# 阶段 4：站点侧删号/降权拦截 + 弱口令策略 + 改邮箱校验 + 降低枚举
 
 ## 目标
 
 修复无状态 JWT 与账号状态之间的脱节，并补齐若干账号安全细节：
 
-1. **封禁用户能被站点 API 拦截**（当前只有游戏端 `has_joined` 检查封禁）。
-2. **降权/封禁尽量及时生效**，缩小 JWT 过期前的「权限滞后」窗口。
-3. 弱口令策略真正有效（当前 6 位、复杂度判断易绕过）。
-4. 改邮箱做格式与唯一性预检，避免未捕获 500。
-5. 降低注册/登录的用户枚举差异。
+1. **删号/降权尽量及时生效**，缩小 JWT 过期前的「权限滞后」窗口。
+2. 弱口令策略真正有效（当前 6 位、复杂度判断易绕过）。
+3. 改邮箱做格式与唯一性预检，避免未捕获 500。
+4. 降低注册/登录的用户枚举差异。
+
+> **关于封禁的范围说明**：封禁（`banned_until`）的语义是**禁止该账号通过 Yggdrasil 登录游戏**，而**不是**锁定其主站访问。被封禁用户仍可正常登录主站、管理资料。封禁检查因此只保留在 `backends/yggdrasil_backend.py`（`has_joined`），**不**在站点鉴权 `get_current_user` 中拦截。
 
 ## 问题证据
 
-- `routers/deps.py`：`get_current_user` / `admin_required` 仅解析 JWT，**不查用户当前 `banned_until` / `is_admin`**。被封用户、被降权的前管理员在 token 过期（默认 7 天）前畅通无阻。封禁检查只在 `backends/yggdrasil_backend.py:307`（`has_joined`）。
+- `routers/deps.py`：`get_current_user` / `admin_required` 仅解析 JWT，**不查用户是否仍存在 / 当前 `is_admin`**。被删号用户、被降权的前管理员在 token 过期（默认 7 天）前畅通无阻。（封禁不在此列——封禁只影响游戏端 `has_joined`，见上方范围说明。）
 - `utils/password_utils.py:52` `validate_strong_password`：最低 6 位；复杂度判断 `(has_upper+has_lower+has_digit)==1 and not has_special` —— 如 `aaa111`（两类）直接判定为「不弱」。且默认 `enable_strong_password_check=false`。bcrypt 对 >72 字节静默截断，未预处理。
 - `backends/site_backend.py:372-373` `update_user_info`：`update_email` 不校验格式、不预检唯一性。撞 `users.email UNIQUE` → asyncpg 抛异常 → **未捕获 500**（不像 `register` 那样 try/except）。
 - 枚举差异：
@@ -22,13 +23,13 @@
 
 ## 设计决策
 
-- **封禁/降权及时性**：在 `get_current_user` 中增加一次用户查询，校验 `banned_until` 并以 DB 的 `is_admin` 为准（覆盖 JWT 里的旧值）。代价是每个鉴权请求多一次 `get_by_id`。考虑到 `db.setting` 已用内存缓存模式，可接受；若担心热路径开销，可加一个短 TTL 的用户状态缓存（本阶段先用直查，简单可靠，缓存留作后续优化）。
+- **删号/降权及时性**：在 `get_current_user` 中增加一次用户查询，校验用户仍存在并以 DB 的 `is_admin` 为准（覆盖 JWT 里的旧值）。**不**在此校验 `banned_until`（封禁仅限制游戏端登录，不锁主站）。代价是每个鉴权请求多一次 `get_by_id`。考虑到 `db.setting` 已用内存缓存模式，可接受；若担心热路径开销，可加一个短 TTL 的用户状态缓存（本阶段先用直查，简单可靠，缓存留作后续优化）。
 - **密码策略**：提高下限、修正复杂度逻辑、限制最大长度（防 bcrypt 截断歧义）。是否默认开启交由业主决定；本阶段先把策略本身改对。
 - **枚举**：登录路径无论邮箱是否存在都执行一次 bcrypt（对齐时序），统一返回相同错误文案。注册的存在性提示较难完全消除（需要明确告知用户邮箱已注册以保证体验），保持现状但记录权衡；可选改为「发邮件提示」式的弱化，超出本阶段范围。
 
 ## 改造清单
 
-### 4.1 站点鉴权拦截封禁 + 以 DB 为准的 admin
+### 4.1 站点鉴权拦截删号 + 以 DB 为准的 admin
 
 `routers/deps.py` 改为 async 查询用户状态。注意 `get_current_user` 已是 async，可直接注入 `db`（通过闭包/依赖）。由于 `deps.py` 当前无 `db` 句柄，方案二选一：
 
@@ -40,7 +41,6 @@
 ```python
 # routers/deps.py
 from fastapi import Request, HTTPException, Depends
-import time
 from utils.jwt_utils import decode_jwt_token
 
 _db = None
@@ -59,9 +59,7 @@ async def get_current_user(request: Request) -> dict:
     user = await _db.user.get_by_id(payload.get("sub"))
     if not user:
         raise HTTPException(status_code=401, detail="user not found")
-    # 封禁拦截（banned_until 为毫秒时间戳）
-    if user.banned_until and int(time.time() * 1000) < user.banned_until:
-        raise HTTPException(status_code=403, detail="account is banned")
+    # 注意：不在此拦截封禁。封禁只影响游戏端 has_joined，被封用户仍可访问主站。
     # 以 DB 的 is_admin 为准，修正可能过期的 JWT 声明
     payload["is_admin"] = bool(user.is_admin)
     return payload
@@ -71,7 +69,7 @@ async def get_current_user(request: Request) -> dict:
 
 `routes_reference.py` 初始化段调用 `deps.bind_db(db)`（在 include_router 之前）。
 
-> 行为变化：被封用户调用任意需要登录的接口将得 403；被降权管理员立即失去后台权限。这是预期的安全收紧。
+> 行为变化：删号后旧 token 立即失效（401）；被降权管理员立即失去后台权限（403）。**封禁不改变主站访问**——这是有意为之，封禁仅作用于 Yggdrasil 游戏登录。
 
 ### 4.2 密码策略
 
@@ -137,14 +135,15 @@ async def login(self, email, password):
 
 ## 影响文件
 
-- 修改：`routers/deps.py`（封禁拦截 + DB admin）、`routes_reference.py`（`deps.bind_db(db)`）
+- 修改：`routers/deps.py`（删号失效 + DB admin）、`routes_reference.py`（`deps.bind_db(db)`）
 - 修改：`utils/password_utils.py`（策略重写）
 - 修改：`backends/site_backend.py`（改邮箱校验、登录时序）
 - 修改：`database_module/modules/user.py`（可选：`update_email` 捕获 UniqueViolation）
 
 ## 测试与验证
 
-- 封禁：给用户设 `banned_until` 为未来 → 其 `/me`、上传等返回 403；解封后恢复。
+- 删号：删除用户后用其旧 cookie 访问 `/me` → 401。
+- 封禁不影响主站：给用户设 `banned_until` 为未来 → 其 `/me`、上传等**仍可正常访问**（封禁只在游戏端 `has_joined` 生效）。
 - 降权：管理员 A 降权管理员 B 后，B 用旧 cookie 访问 `/admin/*` 立即得 403（无需等 JWT 过期）。
 - 密码策略：`abc`（短）、`aaaaaaaa`（单一类）→ 报错；`Abc12345` → 通过；72 字节以上 → 报错。
 - 改邮箱：非法格式 → 400；改成他人已用邮箱 → 400（非 500）；并发撞约束 → 400。

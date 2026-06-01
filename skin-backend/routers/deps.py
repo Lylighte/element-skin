@@ -1,14 +1,12 @@
 """路由共享依赖：JWT 鉴权 + 账号状态校验"""
 
-import time
-
 from fastapi import Request, HTTPException, Depends
 
 from utils.jwt_utils import decode_jwt_token
 
 
 # 由 routes_reference 在应用初始化时通过 bind_db(db) 注入。
-# get_current_user 需要查库以使封禁/降权对站点 API 即时生效（JWT 本身无状态）。
+# get_current_user 需要查库以使删号/降权对站点 API 即时生效（JWT 本身无状态）。
 _db = None
 
 
@@ -23,8 +21,10 @@ async def get_current_user(request: Request) -> dict:
 
     在解析 token 之外，额外查库校验：
     - 用户仍存在（删号后旧 token 立即失效）；
-    - 未处于封禁期（封禁立即生效，而非等 token 过期）；
     - 以数据库的 is_admin 覆盖 token 中的旧值（降权/提权立即生效）。
+
+    注意：封禁（banned_until）**不**在此拦截——封禁仅限制通过 Yggdrasil
+    登录游戏（见 yggdrasil_backend），被封禁用户仍可正常访问主站。
     """
     token = request.cookies.get("jwt")
     if not token:
@@ -44,9 +44,6 @@ async def get_current_user(request: Request) -> dict:
     user = await _db.user.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="user not found")
-
-    if user.banned_until and int(time.time() * 1000) < user.banned_until:
-        raise HTTPException(status_code=403, detail="account is banned")
 
     # 以库内实时 is_admin 为准，避免旧 token 携带过期权限
     payload["is_admin"] = bool(user.is_admin)
