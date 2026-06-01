@@ -2,6 +2,7 @@ import time
 import json
 import base64
 from typing import Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 from utils.crypto import CryptoUtils
 from utils.typing import User, PlayerProfile, Token, Session, normalize_texture_model
@@ -120,6 +121,20 @@ class YggdrasilBackend:
             if site_url
             else "localhost"
         )
+        # Collect union skin domains from union_server_list
+        union_skin_domains = []
+        try:
+            union_list_json = await self.db.union.get("union_server_list", "[]")
+            union_list = json.loads(union_list_json) if union_list_json else []
+            for server in union_list:
+                bs_root = server.get("bs_root", "")
+                if bs_root:
+                    domain = urlparse(bs_root).hostname
+                    if domain:
+                        union_skin_domains.append(domain)
+        except Exception:
+            pass
+
         return {
             "meta": {
                 "serverName": site_name,
@@ -131,7 +146,7 @@ class YggdrasilBackend:
                 },
                 "feature.non_email_login": True,
             },
-            "skinDomains": await self.db.fallback.collect_skin_domains() + [host],
+            "skinDomains": await self.db.fallback.collect_skin_domains() + [host] + union_skin_domains,
             "signaturePublickey": self.crypto.get_public_key_pem(),
         }
 

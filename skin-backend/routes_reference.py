@@ -15,10 +15,11 @@ from backends.site_backend import SiteBackend
 from backends.profile_import_backend import ProfileImportBackend
 from backends.admin_backend import AdminBackend
 from backends.settings_backend import SettingsBackend
+from backends.union_backend import UnionBackend
 from services import TextureStorage
 from utils.crypto import CryptoUtils
 from utils.rate_limiter import RateLimiter
-from routers import yggdrasil_routes, site_routes, microsoft_routes, admin_routes
+from routers import yggdrasil_routes, site_routes, microsoft_routes, admin_routes, union_routes
 
 # ========== 初始化核心组件 ==========
 db_dsn = config.get("database.dsn", "postgresql://elementskin:password@localhost:5432/elementskin")
@@ -33,6 +34,8 @@ site_backend = SiteBackend(db, config, texture_storage)
 profile_import_backend = ProfileImportBackend(db, texture_storage)
 admin_backend = AdminBackend(db, config)
 settings_backend = SettingsBackend(db)
+union_backend = UnionBackend(db, config)
+site_backend.set_union_backend(union_backend)
 
 
 @asynccontextmanager
@@ -108,6 +111,9 @@ app.include_router(admin_router)
 
 microsoft_router = microsoft_routes.setup_routes(db, config, texture_storage)
 app.include_router(microsoft_router)
+
+union_router = union_routes.setup_routes(db, union_backend, rate_limiter, config)
+app.include_router(union_router)
 
 # ========== 应用启动 ==========
 

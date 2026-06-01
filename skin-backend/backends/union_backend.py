@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from cryptography.hazmat.backends import default_backend
 
+from fastapi import HTTPException
 from database_module import Database
 from config_loader import Config
 from utils.typing import User
@@ -26,6 +27,92 @@ class UnionBackend:
         self.db = db
         self.config = config
         self._union_public_key_cache: tuple[str, float] | None = None  # (key, fetch_time)
+
+    # ========== Facade Methods (thin DB delegation for T5 router boundary fix) ==========
+
+    # Feature flags (thin wrappers around db.union settings)
+    async def is_update_enabled(self) -> bool:
+        return (await self.db.union.get("union_enable_update", "true")).lower() == "true"
+
+    async def is_oauth2_enabled(self) -> bool:
+        return (await self.db.union.get("union_enable_oauth2", "true")).lower() == "true"
+
+    async def is_restore_api_enabled(self) -> bool:
+        return (await self.db.union.get("ygg_restore_api", "false")).lower() == "true"
+
+    # Settings management
+    async def get_settings(self) -> dict:
+        return await self.db.union.get_all_settings()
+
+    async def update_settings(self, kv: dict):
+        """Save multiple union settings. Keys must be allowed keys."""
+        allowed = {"union_api_root", "union_member_key", "union_enable_update",
+                   "union_enable_oauth2", "union_oauth2_sig_private_key",
+                   "union_oauth2_sig_public_key", "ygg_restore_api"}
+        for key, value in kv.items():
+            if key in allowed:
+                await self.db.union.set(key, str(value))
+
+    # User / profile helpers
+    async def get_user(self, user_id: str):
+        return await self.db.user.get_by_id(user_id)
+
+    async def get_user_profiles(self, user_id: str) -> list:
+        return await self.db.user.get_profiles_by_user(user_id)
+
+    async def verify_profile_ownership(self, user_id: str, profile_id: str) -> bool:
+        return await self.db.user.verify_profile_ownership(user_id, profile_id)
+
+    # Email for blacklist
+    async def get_email_by_username(self, username: str) -> str | None:
+        return await self.db.union.get_email_by_username(username)
+
+    # UUID remap delegation
+    async def remap_uuids(self, remapped: dict):
+        await self.db.union.remap_uuids(remapped)
+
+    # UnionHostVerify: wraps nonce check + signature verification in one method
+    async def verify_union_request_inbound(self, request) -> bool:
+        """Complete UnionHostVerify: check nonce, verify RSA signature, log nonce."""
+        signature = request.headers.get("X-Message-Signature")
+        timestamp_str = request.headers.get("X-Message-Timestamp")
+        nonce = request.headers.get("X-Message-Nonce")
+
+        if not signature or not timestamp_str or not nonce:
+            raise HTTPException(status_code=401, detail="Missing Union signature headers")
+
+        if await self.db.union.is_nonce_used(nonce):
+            raise HTTPException(status_code=401, detail="Nonce already used (replay detected)")
+
+        try:
+            ts = int(timestamp_str)
+            now = int(time.time())
+            if ts < now - 10 or ts > now + 30:
+                raise HTTPException(status_code=401, detail="Timestamp out of acceptable window")
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid timestamp")
+
+        union_pub_key = await self.get_union_public_key()
+        if not union_pub_key:
+            raise HTTPException(status_code=503, detail="Could not fetch Union public key")
+
+        body_bytes = await request.body()
+        body_str = body_bytes.decode("utf-8") if body_bytes else ""
+
+        if not self.verify_union_signature(body_str, signature, timestamp_str, nonce, union_pub_key):
+            raise HTTPException(status_code=401, detail="Invalid Union signature")
+
+        await self.db.union.log_nonce(nonce)
+        return True
+
+    # Email verification / invitation codes feature flag
+    async def is_email_verify_enabled(self) -> bool:
+        val = await self.db.setting.get("email_verify_enabled", "false")
+        return val == "true"
+
+    async def is_invitation_codes_for_union_enabled(self) -> bool:
+        val = await self.db.setting.get("invitation_codes_for_union_enabled", "false")
+        return val == "true"
 
     # ========== Outbound HTTP helpers ==========
 

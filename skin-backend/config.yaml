@@ -38,3 +38,9 @@ cors:
   # 开发环境允许所有来源
   allow_origins: ["*"]
   allow_credentials: true
+
+# Union 联合认证配置
+union:
+  api_root: "https://skin.mualliance.ltd/api/union"
+  enable_update: true
+  enable_oauth2: true
