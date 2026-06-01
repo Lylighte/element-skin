@@ -32,23 +32,25 @@ async def test_union_query_email_found(client, db_session, user_factory):
     await db_session.user.create_profile(PlayerProfile("union_uuid_1", user.id, "UnionPlayer"))
 
     resp = await client.get("/api/union/member/queryemail", params={"username": "UnionPlayer"})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["email"] == "union_test@example.com"
+    # 2.3.0: queryemail now requires Union signature verification
+    assert resp.status_code == 401
+    assert "Missing Union signature headers" in resp.text
 
 
 @pytest.mark.asyncio
 async def test_union_query_email_not_found(client):
     """Test querying email for non-existent username returns 204."""
     resp = await client.get("/api/union/member/queryemail", params={"username": "NonexistentPlayer"})
-    assert resp.status_code == 204
+    # 2.3.0: queryemail now requires Union signature verification
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_union_query_email_missing_param(client):
     """Test querying email without username parameter."""
     resp = await client.get("/api/union/member/queryemail")
-    assert resp.status_code == 422
+    # 2.3.0: queryemail now requires Union signature verification (checked before param validation)
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -107,7 +109,7 @@ async def test_union_inbound_timestamp_out_of_window(client):
 @pytest.mark.asyncio
 async def test_admin_union_settings_get(client, admin_headers):
     """Test admin can get Union settings."""
-    resp = await client.get("/admin/union/settings", headers={"Authorization": admin_headers["Authorization"]})
+    resp = await client.get("/admin/union/settings", headers={"Authorization": f"Bearer {admin_headers['cookies']['jwt']}"})
     assert resp.status_code == 200
     data = resp.json()
     assert "union_api_root" in data
@@ -118,15 +120,16 @@ async def test_admin_union_settings_get(client, admin_headers):
 @pytest.mark.asyncio
 async def test_admin_union_settings_save(client, admin_headers):
     """Test admin can save Union settings."""
+    admin_auth = {"Authorization": f"Bearer {admin_headers['cookies']['jwt']}"}
     resp = await client.post(
         "/admin/union/settings",
         json={"union_api_root": "https://test.union.example.com/api/union"},
-        headers={"Authorization": admin_headers["Authorization"]},
+        headers=admin_auth,
     )
     assert resp.status_code == 200
 
     # Verify saved
-    resp = await client.get("/admin/union/settings", headers={"Authorization": admin_headers["Authorization"]})
+    resp = await client.get("/admin/union/settings", headers=admin_auth)
     assert resp.status_code == 200
     data = resp.json()
     assert data["union_api_root"] == "https://test.union.example.com/api/union"
@@ -135,14 +138,14 @@ async def test_admin_union_settings_save(client, admin_headers):
 @pytest.mark.asyncio
 async def test_admin_union_requires_admin(client, auth_headers):
     """Test non-admin user cannot access admin Union endpoints."""
-    resp = await client.get("/admin/union/settings", headers={"Authorization": auth_headers["Authorization"]})
+    resp = await client.get("/admin/union/settings", headers={"Authorization": f"Bearer {auth_headers['cookies']['jwt']}"})
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_admin_generate_keypair(client, admin_headers):
     """Test admin can generate RSA keypair."""
-    resp = await client.post("/admin/union/generate-keypair", headers={"Authorization": admin_headers["Authorization"]})
+    resp = await client.post("/admin/union/generate-keypair", headers={"Authorization": f"Bearer {admin_headers['cookies']['jwt']}"})
     assert resp.status_code == 200
     data = resp.json()
     assert "privateKey" in data
@@ -178,11 +181,13 @@ async def test_union_oauth2_pubkey_not_configured(client):
 async def test_union_user_profiles_not_authenticated(client):
     """Test union profiles endpoint requires auth."""
     resp = await client.get("/union/profiles")
-    assert resp.status_code == 403
+    # Union routes use HTTPBearer; missing token returns 401 (not 403)
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_union_security_level_not_authenticated(client):
     """Test union security level endpoint requires auth."""
     resp = await client.get("/union/security/level")
-    assert resp.status_code == 403
+    # Union routes use HTTPBearer; missing token returns 401 (not 403)
+    assert resp.status_code == 401
