@@ -31,7 +31,7 @@
           <el-form-item label="Union Member Key">
             <el-input v-model="settings.union_member_key" type="password" placeholder="成员服务器认证令牌" show-password />
           </el-form-item>
-          <el-form-item label="允许插件自动更新">
+          <el-form-item label="允许 Union 推送更新">
             <el-switch v-model="settings.union_enable_update" />
           </el-form-item>
           <el-form-item label="启用 Union OAuth2">
@@ -386,18 +386,24 @@ function checkKeyValidity() {
 
 async function fetchServerNames() {
   await Promise.all(serverList.value.map(async (server) => {
-    try {
-      const apiUrl = server.bs_root.replace(/\/+$/, '') + '/api/yggdrasil'
-      const res = await fetch(apiUrl, { mode: 'cors' })
-      if (res.ok) {
-        const data = await res.json()
-        server.displayName = data.meta?.serverName || server.code
-      } else {
-        server.displayName = server.code
-      }
-    } catch {
-      server.displayName = server.code
+    const base = server.bs_root.replace(/\/+$/, '')
+    // element-skin: Yggdrasil at root /
+    // Blessing Skin: Yggdrasil at /api/yggdrasil
+    const candidates = [base + '/', base + '/api/yggdrasil']
+    for (const apiUrl of candidates) {
+      try {
+        const res = await fetch(apiUrl, { mode: 'cors' })
+        if (res.ok) {
+          const data = await res.json()
+          const name = data.meta?.serverName || data.serverName
+          if (name) {
+            server.displayName = name
+            return
+          }
+        }
+      } catch { /* try next candidate */ }
     }
+    server.displayName = server.code
   }))
 }
 
