@@ -37,3 +37,8 @@ mojang:
   skin_domains:
     - "textures.minecraft.net"
   cache_ttl: 3600
+
+# Union 联合认证配置
+union:
+  api_root: "https://skin.mualliance.ltd/api/union"
+  member_key: ""

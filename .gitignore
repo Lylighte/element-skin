@@ -65,3 +65,6 @@ node_modules/
 .sisyphus/
 skills/
 .playwright-mcp/
+refer
+.claude
+CLAUDE.md
