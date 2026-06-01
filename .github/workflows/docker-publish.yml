@@ -6,6 +6,7 @@ on:
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -33,7 +34,9 @@ jobs:
         run: |
           should_build=false
 
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            should_build=true
+          elif [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             should_build=true
           elif [ "${GITHUB_REF}" = "refs/heads/dev" ]; then
             should_build=true
