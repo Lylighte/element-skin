@@ -102,11 +102,11 @@ carousel:
 server:
   host: "0.0.0.0"
   port: 8000
-  # ⚠️ 如果前端部署在子目录, 这里也需要修改 (如 /skin/)
-  root_path: "/skinapi" 
+  # ⚠️ 后端 API 根路径，保持为空字符串
+  root_path: ""
   # ⚠️ 站点的外部访问地址
   site_url: "http://yourdomain.com" 
-  # ⚠️ 后端 API 外部访问地址
+  # ⚠️ 后端 API 外部访问地址（前端通过此路径调用后端）
   api_url: "http://yourdomain.com/skinapi" 
 
 # CORS 跨域配置
@@ -116,7 +116,7 @@ cors:
 ```
 
 **Nginx 主机配置**
-只需将 Nginx 的 `root` 指向宿主机的 `./frontend` 目录。
+仅需将 Nginx 的 `root` 指向宿主机的 `./frontend` 目录。
 
 ```nginx
 server {
@@ -132,18 +132,23 @@ server {
     }
 
     # 2. 后端 API 转发
+    # 转发规则：/skinapi/authserver/authenticate → localhost:8000/authserver/authenticate
+    # proxy_pass 尾部的 / 会去掉 /skinapi 前缀
     location /skinapi/ {
-        proxy_pass http://localhost:8000;
+        proxy_pass http://localhost:8000/;
         proxy_set_header Host $host;
     }
     
-    # 直接转发不带斜杠的 API 请求
     location = /skinapi {
-        proxy_pass http://localhost:8000/skinapi/;
+        proxy_pass http://localhost:8000/;
         proxy_set_header Host $host;
     }
 }
 ```
+
+> ⚠️ 后端 localhost:8000 直接以根 `/` 暴露 Yggdrasil 协议端点。
+> /skinapi 前缀仅用于前端调用，Nginx 转发时去掉此前缀。
+> authlib-injector 客户端应配置 `yggdrasil.url` 为 `https://yourdomain.com/skinapi`。
 最后，启动 Docker：
 
 ```bash
@@ -178,11 +183,11 @@ location = /skin {
 
 # 2. 后端 API 转发
 location /skinapi/ {
-    proxy_pass http://localhost:8000;
+    proxy_pass http://localhost:8000/;
     proxy_set_header Host $host;
 }
 location = /skinapi {
-    proxy_pass http://localhost:8000/skinapi/;
+    proxy_pass http://localhost:8000/;
     proxy_set_header Host $host;
 }
 ```
@@ -202,11 +207,11 @@ location = /skin {
 
 # 2. 后端 API 转发 (嵌套路径)
 location /skin/api/ {
-    proxy_pass http://localhost:8000;
+    proxy_pass http://localhost:8000/;
     proxy_set_header Host $host;
 }
 location = /skin/api {
-    proxy_pass http://localhost:8000/skin/api/;
+    proxy_pass http://localhost:8000/;
     proxy_set_header Host $host;
 }
 ```
