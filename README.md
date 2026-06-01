@@ -102,11 +102,11 @@ carousel:
 server:
   host: "0.0.0.0"
   port: 8000
-  # ⚠️ 后端 API 根路径，保持为空字符串
-  root_path: ""
+  # ⚠️ 后端 API 根路径前缀（Nginx 代理时去掉此前缀，后端生成 URL 时加回）
+  root_path: "/skinapi"
   # ⚠️ 站点的外部访问地址
   site_url: "http://yourdomain.com" 
-  # ⚠️ 后端 API 外部访问地址（前端通过此路径调用后端）
+  # ⚠️ 后端 API 外部访问地址（前端 + authlib-injector 通过此路径调用后端）
   api_url: "http://yourdomain.com/skinapi" 
 
 # CORS 跨域配置
