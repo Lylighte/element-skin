@@ -12,6 +12,7 @@ import DashboardWardrobe from '@/components/dashboard/DashboardWardrobe.vue'
 import DashboardRoles from '@/components/dashboard/DashboardRoles.vue'
 import DashboardProfile from '@/components/dashboard/DashboardProfile.vue'
 import DashboardHome from '@/components/dashboard/DashboardHome.vue'
+import DashboardUnion from '@/components/dashboard/DashboardUnion.vue'
 
 // Admin Components
 import AdminSettings from '@/components/admin/AdminSettings.vue'
@@ -22,6 +23,7 @@ import AdminCarousel from '@/components/admin/AdminCarousel.vue'
 import AdminEmail from '@/components/admin/AdminEmail.vue'
 import AdminTexturesList from '@/components/admin/AdminTexturesList.vue'
 import AdminRolesList from '@/components/admin/AdminRolesList.vue'
+import AdminUnion from '@/components/admin/AdminUnion.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -91,6 +93,11 @@ const router = createRouter({
           name: 'admin-roles',
           component: AdminRolesList,
         },
+        {
+          path: 'union',
+          name: 'admin-union',
+          component: AdminUnion,
+        },
       ],
     },
     {
@@ -117,6 +124,11 @@ const router = createRouter({
           path: 'profile',
           name: 'dashboard-profile',
           component: DashboardProfile,
+        },
+        {
+          path: 'union',
+          name: 'dashboard-union',
+          component: DashboardUnion,
         },
       ],
     },

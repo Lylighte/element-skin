@@ -145,7 +145,7 @@ import { getMe } from '@/api/me'
 import { siteLogout } from '@/api/auth'
 import type { User as UserType } from '@/api/types'
 import {
-  Menu as MenuIcon, Box, User, Setting, Tools, Back, Odometer, Link, Picture, Message, Moon, Sunny
+  Menu as MenuIcon, Box, User, Setting, Tools, Back, Odometer, Link, Picture, Message, Moon, Sunny, Connection
 } from '@element-plus/icons-vue'
 
 import '@/assets/scripts/meow.ts'
@@ -228,6 +228,7 @@ const dashboardLinks: NavLink[] = [
   { path: '/dashboard/wardrobe', title: '我的衣柜', icon: Box },
   { path: '/dashboard/roles', title: '角色管理', icon: User },
   { path: '/dashboard/profile', title: '个人资料', icon: Setting },
+  { path: '/dashboard/union', title: '角色绑定', icon: Connection },
 ]
 const adminNavLinks: NavLink[] = [
   { path: '/dashboard', title: '返回面板', icon: Back },
@@ -239,6 +240,7 @@ const adminNavLinks: NavLink[] = [
   { path: '/admin/email', title: '邮件服务', icon: Message },
   { path: '/admin/mojang', title: 'Fallback 服务', icon: Link },
   { path: '/admin/carousel', title: '首页图片', icon: Picture },
+  { path: '/admin/union', title: 'Union', icon: Connection },
 ]
 
 const adminNavItems = computed<NavLink[]>(() => [
