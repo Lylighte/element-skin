@@ -4,6 +4,7 @@ from .modules.setting import SettingModule
 from .modules.texture import TextureModule
 from .modules.verification import VerificationModule
 from .modules.fallback import FallbackModule
+from .modules.union import UnionModule
 
 from .initsql import INIT_SQL
 
@@ -15,6 +16,7 @@ class Database(BaseDB):
         self.texture = TextureModule(self)
         self.verification = VerificationModule(self)
         self.fallback = FallbackModule(self)
+        self.union = UnionModule(self)
 
     async def init(self):
         """同步数据库结构并初始化模块缓存"""
@@ -28,3 +30,4 @@ class Database(BaseDB):
         # 2. 触发各模块内部逻辑 (加载缓存等)
         await self.setting.init()
         await self.fallback.init()
+        await self.union.init()

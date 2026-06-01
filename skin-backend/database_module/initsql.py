@@ -131,6 +131,13 @@ CREATE TABLE IF NOT EXISTS verification_codes (
     PRIMARY KEY(email, type)
 );
 
+-- 创建 Union nonce 表（重放攻击防护）
+CREATE TABLE IF NOT EXISTS union_nonces (
+    nonce TEXT PRIMARY KEY,
+    created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_union_nonces_created_at ON union_nonces (created_at);
+
 -- 初始化默认设置
 INSERT INTO settings (key, value) VALUES 
 ('microsoft_client_id', ''),
@@ -147,6 +154,16 @@ INSERT INTO settings (key, value) VALUES
 ('smtp_user', 'user@example.com'),
 ('smtp_password', 'password'),
 ('smtp_ssl', 'true'),
-('smtp_sender', 'SkinServer <no-reply@example.com>')
+('smtp_sender', 'SkinServer <no-reply@example.com>'),
+('union_api_root', 'https://skin.mualliance.ltd/api/union'),
+('union_member_key', ''),
+('union_server_list', '[]'),
+('union_server_list_version', '0'),
+('union_private_key_version', '0'),
+('union_enable_update', 'true'),
+('union_enable_oauth2', 'true'),
+('union_oauth2_sig_private_key', ''),
+('union_oauth2_sig_public_key', ''),
+('ygg_restore_api', 'false')
 ON CONFLICT (key) DO NOTHING;
 """
