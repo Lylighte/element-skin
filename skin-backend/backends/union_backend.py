@@ -3,11 +3,14 @@
 import aiohttp
 import asyncio
 import json
+import os
 import time
 import base64
 import hashlib
 import hmac
 import logging
+
+from typing import TYPE_CHECKING
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -19,13 +22,17 @@ from database_module import Database
 from config_loader import Config
 from utils.typing import User
 
+if TYPE_CHECKING:
+    from utils.crypto import CryptoUtils
+
 logger = logging.getLogger("union")
 
 
 class UnionBackend:
-    def __init__(self, db: Database, config: Config):
+    def __init__(self, db: Database, config: Config, crypto: "CryptoUtils | None" = None):
         self.db = db
         self.config = config
+        self.crypto = crypto
         self._union_public_key_cache: tuple[str, float] | None = None  # (key, fetch_time)
 
     # ========== Facade Methods (thin DB delegation for T5 router boundary fix) ==========
@@ -234,11 +241,34 @@ class UnionBackend:
         return False
 
     async def fetch_private_key(self) -> bool:
-        """Fetch shared private key from Union and store locally."""
+        """Fetch shared private key from Union and store to file (not DB)."""
         result = await self._api_get("privatekey", raw=False)
         if result and "privateKey" in result and "privateKeyVersion" in result:
+            union_key_path = "/app/data/union-ygg-private.pem"
+            try:
+                os.makedirs(os.path.dirname(union_key_path), exist_ok=True)
+                with open(union_key_path, "w") as f:
+                    f.write(result["privateKey"])
+                os.chmod(union_key_path, 0o600)
+            except OSError as e:
+                logger.error(f"Failed to write Union private key to {union_key_path}: {e}")
+                return False
+
+            # Store version in DB for tracking
             await self.db.union.set("union_private_key_version", str(result["privateKeyVersion"]))
-            await self.db.union.set("ygg_private_key", result["privateKey"])
+
+            # Delete old DB-stored key (now replaced by file)
+            await self.db.union.set("ygg_private_key", "")
+
+            # Conditionally reload crypto if Union key is in use
+            if self.config.get("keys.use_union_key", False) and self.crypto:
+                try:
+                    self.crypto.reload_from_pem(result["privateKey"])
+                    logger.info("Reloaded crypto with Union private key")
+                except ValueError as e:
+                    logger.error(f"Failed to reload crypto with Union key: {e}")
+                    return False
+
             logger.info(f"Updated private key (version {result['privateKeyVersion']})")
             return True
         return False

@@ -34,7 +34,7 @@ site_backend = SiteBackend(db, config, texture_storage)
 profile_import_backend = ProfileImportBackend(db, texture_storage)
 admin_backend = AdminBackend(db, config)
 settings_backend = SettingsBackend(db)
-union_backend = UnionBackend(db, config)
+union_backend = UnionBackend(db, config, crypto)
 site_backend.set_union_backend(union_backend)
 
 
