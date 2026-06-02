@@ -1,9 +1,10 @@
 import pytest
+import asyncio
 import time
 import jwt
 from datetime import datetime, timedelta, timezone
 
-from utils.jwt_utils import JWT_SECRET, JWT_ALGO
+from utils.jwt_utils import JWT_SECRET, JWT_ALGO, hash_refresh_token
 
 
 async def _login(client, email: str, password: str) -> dict:
@@ -128,3 +129,47 @@ async def test_deleted_user_refresh_rejected(client, user_factory, db_session):
 
     resp = await client.post("/me/refresh-token", cookies={"refresh_token": session["refresh_token"]})
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_concurrent_refresh_single_winner(client, user_factory, db_session):
+    """阶段3：同一 refresh 并发轮换，恰一个成功、另一个 401，且旧 hash 已不存在。
+
+    DELETE...RETURNING 让 Postgres 串行化同一行的并发 DELETE，只有一个事务
+    RETURNING 出该行（赢家），另一方拿到 None → 401，杜绝一条 refresh 裂变两条会话链。
+    """
+    email, password = "race@test.com", "Password123!"
+    await user_factory(email=email, password=password)
+    session = await _login(client, email, password)
+    old_refresh = session["refresh_token"]
+
+    r1, r2 = await asyncio.gather(
+        client.post("/me/refresh-token", cookies={"refresh_token": old_refresh}),
+        client.post("/me/refresh-token", cookies={"refresh_token": old_refresh}),
+        return_exceptions=True,
+    )
+    codes = sorted(
+        r.status_code for r in (r1, r2) if not isinstance(r, Exception)
+    )
+    # 恰好一个 200、一个 401
+    assert codes == [200, 401], f"unexpected codes: {codes}"
+
+    # 旧 refresh 的 hash 已从库中删除
+    old_hash = hash_refresh_token(old_refresh)
+    row = await db_session.user.get_refresh_token(old_hash)
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_replayed_refresh_after_use_rejected(client, user_factory):
+    """阶段3：已消费的 refresh 重放 → 401（一次性）。"""
+    email, password = "replay@test.com", "Password123!"
+    await user_factory(email=email, password=password)
+    session = await _login(client, email, password)
+    old_refresh = session["refresh_token"]
+
+    first = await client.post("/me/refresh-token", cookies={"refresh_token": old_refresh})
+    assert first.status_code == 200
+
+    replay = await client.post("/me/refresh-token", cookies={"refresh_token": old_refresh})
+    assert replay.status_code == 401

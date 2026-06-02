@@ -1,11 +1,14 @@
 import pytest
+import asyncio
+import string
+import time
 from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
-from backends.site_backend import SiteBackend
+from backends.site_backend import SiteBackend, is_valid_email
 from routes_reference import texture_storage
-from utils.password_utils import verify_password
-from utils.typing import PlayerProfile
-from utils.uuid_utils import get_offline_uuid
+from utils.password_utils import verify_password, hash_password
+from utils.typing import PlayerProfile, InviteCode, User
+from utils.uuid_utils import get_offline_uuid, generate_random_uuid
 
 @pytest.mark.asyncio
 async def test_site_auth_flow(db_session, test_config):
@@ -260,3 +263,101 @@ async def test_get_my_texture_detail_missing(db_session, test_config, user_facto
     with pytest.raises(HTTPException) as exc:
         await backend.get_my_texture_detail(user.id, "nope", "skin")
     assert exc.value.status_code == 404
+
+
+# ========== Phase 3: 邮箱校验 / 随机码 / 注册原子化 / 邀请超额 ==========
+
+
+def test_is_valid_email_rejects_crlf_and_malformed():
+    """阶段3：邮箱校验用 fullmatch + 拒绝 CRLF，挡住头注入与畸形地址。"""
+    from backends.site_backend import is_valid_email
+
+    # 合法
+    assert is_valid_email("a@b.com") is True
+    assert is_valid_email("user.name+tag@example.co.uk") is True
+
+    # 头注入载荷（CRLF）
+    assert is_valid_email("a@x.com\r\nBcc: x@y.com") is False
+    assert is_valid_email("a@x.com\n") is False
+    assert is_valid_email("a@x.com\r") is False
+
+    # 畸形
+    assert is_valid_email("a@@b") is False
+    assert is_valid_email("a@b") is False  # 无顶级域
+    assert is_valid_email("plainstring") is False
+    assert is_valid_email("") is False
+
+
+@pytest.mark.asyncio
+async def test_register_rejects_invalid_email(db_session, test_config):
+    """阶段3：注册入口拒绝畸形/CRLF 邮箱，返回 400。"""
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    for bad in ("a@b", "a@x.com\r\nBcc: x@y.com", "notanemail"):
+        with pytest.raises(HTTPException) as exc:
+            await backend.register(bad, "Password123!", "SomeUser")
+        assert exc.value.status_code == 400
+        assert "Invalid email format" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_verification_code_uses_secure_charset(db_session, test_config):
+    """阶段3：验证码长度为 8、字符集为大写字母+数字（密码学安全源 secrets）。"""
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    await db_session.setting.set("email_verify_enabled", "true")
+
+    import string as _string
+    allowed = set(_string.ascii_uppercase + _string.digits)
+
+    with patch.object(backend.email_sender, "send_verification_code", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = True
+        await backend.send_verification_code("codeuser@test.com", "register")
+
+    record = await db_session.verification.get_code("codeuser@test.com", "register")
+    code = record[0]
+    assert len(code) == 8
+    assert set(code).issubset(allowed)
+
+
+@pytest.mark.asyncio
+async def test_register_atomic_no_orphan_user_on_profile_conflict(db_session, test_config):
+    """阶段3：注册建号过程中角色名冲突 → 整笔回滚，无孤儿 user，邮箱仍可注册。"""
+    backend = SiteBackend(db_session, test_config, texture_storage)
+
+    email = "atomic@test.com"
+
+    # 让 create_user_with_profile 内部的 profile 插入冲突：预占该用户将生成的角色名。
+    # base_name 取邮箱 @ 前缀清洗后的串；这里直接 patch 生成的角色名为一个已占用名。
+    taken_name = "TakenProfileName"
+    owner = User(generate_random_uuid(), "owner@test.com", hash_password("x"), False, "zh_CN", "Owner")
+    await db_session.user.create(owner)
+    await db_session.user.create_profile(PlayerProfile(generate_random_uuid(), owner.id, taken_name, "default"))
+
+    with patch("backends.site_backend.generate_unique_profile_name", new_callable=AsyncMock) as mock_gen:
+        mock_gen.return_value = taken_name
+        with pytest.raises(HTTPException):
+            await backend.register(email, "Password123!", "AtomicUser")
+
+    # 无孤儿 user：该邮箱不应残留
+    assert await db_session.user.get_by_email(email) is None
+
+
+@pytest.mark.asyncio
+async def test_register_invite_overuse_blocked(db_session, test_config):
+    """阶段3：total_uses=1 的邀请码，第二次注册被拒（条件 UPDATE + 行数判定兜底）。"""
+    from utils.typing import InviteCode
+    import time as _time
+
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    await db_session.setting.set("require_invite", "true")
+    await db_session.user.create_invite(
+        InviteCode("ONCE_ONLY", int(_time.time() * 1000), total_uses=1)
+    )
+
+    uid1 = await backend.register("first@test.com", "Password123!", "FirstUser", invite_code="ONCE_ONLY")
+    assert uid1 is not None
+
+    with pytest.raises(HTTPException) as exc:
+        await backend.register("second@test.com", "Password123!", "SecondUser", invite_code="ONCE_ONLY")
+    assert exc.value.status_code == 400
+    # 第二个用户不应被创建
+    assert await db_session.user.get_by_email("second@test.com") is None

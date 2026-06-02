@@ -2,8 +2,9 @@ from typing import Dict, List, Any
 import re
 import time
 import os
-import random
+import secrets
 import string
+import asyncpg
 from fastapi import HTTPException
 
 from utils.password_utils import hash_password, verify_password, needs_rehash
@@ -15,6 +16,7 @@ from utils.profile_naming import is_valid_profile_name, generate_unique_profile_
 from utils.pagination import decode_cursor, encode_next
 from utils.typing import User, PlayerProfile, normalize_texture_model, serialize_profile_summary
 from database_module import Database
+from database_module.modules.user import InviteExhaustedError
 from config_loader import Config
 from services import TextureStorage, assert_texture_size
 
@@ -25,6 +27,16 @@ _DUMMY_PASSWORD_HASH = hash_password("dummy-password-for-timing-equalization")
 
 # 邮箱格式校验：基础但足够实用的正则（非严格 RFC 5322）
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def is_valid_email(email: str) -> bool:
+    """校验邮箱格式：fullmatch + 显式拒绝 CRLF，防头注入与未捕获 500。
+
+    re.match 的 `$` 会匹配末尾换行前位置，单独 `.match` 仍可放行 `a@b.com\\n`，
+    故用 fullmatch；再显式排除 \\r/\\n 双保险，杜绝 `a@x.com\\r\\nBcc: ...` 这类
+    头注入载荷进入邮件发送链路。
+    """
+    return bool(_EMAIL_RE.fullmatch(email)) and "\r" not in email and "\n" not in email
 
 
 class SiteBackend:
@@ -193,8 +205,8 @@ class SiteBackend:
         if enabled != "true":
             raise HTTPException(status_code=400, detail="Email verification is disabled")
 
-        # Validate email format
-        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        # Validate email format（fullmatch + 拒绝 CRLF，防头注入）
+        if not is_valid_email(email):
             raise HTTPException(status_code=400, detail="Invalid email format")
 
         # For reset password, check if user exists
@@ -209,8 +221,8 @@ class SiteBackend:
             if user:
                 raise HTTPException(status_code=400, detail="Email already registered")
 
-        # 8 chars uppercase letters + digits
-        code = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        # 8 chars uppercase letters + digits（密码学安全随机源，把守密码重置）
+        code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
         ttl = int(await self.db.setting.get("email_verify_ttl", "300"))
         
         await self.db.verification.create_code(email, code, type, ttl)
@@ -284,6 +296,11 @@ class SiteBackend:
 
         username = username.strip()
 
+        # 校验邮箱格式（fullmatch + 拒绝 CRLF），防头注入与未捕获 500
+        if not email or not is_valid_email(email.strip()):
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        email = email.strip()
+
         # Check if username (display_name) is taken
         if await self.db.user.is_display_name_taken(username):
             raise HTTPException(status_code=400, detail="Username already exists")
@@ -347,19 +364,21 @@ class SiteBackend:
         is_first_user = user_count == 0
         password_hash = hash_password(password)
         user_id = generate_random_uuid()
+
+        new_user = User(user_id, email, password_hash, is_first_user)
+        new_user.display_name = username
+        profile = PlayerProfile(profile_id, user_id, profile_name, "default")
         try:
-            new_user = User(user_id, email, password_hash, is_first_user)
-            new_user.display_name = username
-            await self.db.user.create(new_user)
-        except Exception:
+            await self.db.user.create_user_with_profile(
+                new_user,
+                profile,
+                invite_code=(invite_code if require_invite == "true" else None),
+                used_by=email,
+            )
+        except asyncpg.UniqueViolationError:
             raise HTTPException(status_code=400, detail="Email already registered")
-
-        await self.db.user.create_profile(
-            PlayerProfile(profile_id, user_id, profile_name, "default")
-        )
-
-        if require_invite == "true" and invite_code:
-            await self.db.user.use_invite(invite_code, email)
+        except InviteExhaustedError:
+            raise HTTPException(status_code=400, detail="invite code has no remaining uses")
 
         return user_id
 
@@ -384,28 +403,29 @@ class SiteBackend:
         }
 
     async def rotate_refresh_token(self, raw_refresh: str) -> Dict[str, Any]:
-        """用 refresh token 换发新一对令牌，并轮换 refresh（旧的一次性作废）。
+        """原子轮换 refresh：DELETE...RETURNING 取出旧行（单赢者），校验后签发新对。
 
+        Postgres 对同一行的并发 DELETE 串行化，只有一个事务能 RETURNING 出该行——
+        「拿到行」即「唯一赢家」。并发的另一方/已消费 token 的重放方均拿到 None，
+        统一 401，杜绝一条 refresh 裂变成两条会话链。
         校验失败（缺失/未知/过期/用户已删）一律抛 401。
         """
         token_hash = hash_refresh_token(raw_refresh)
-        row = await self.db.user.get_refresh_token(token_hash)
+
+        # 原子删并取：只有真正删到行的请求继续，并发/重放的另一方拿到 None。
+        row = await self.db.user.consume_refresh_token(token_hash)
         if not row:
             raise HTTPException(status_code=401, detail="invalid refresh token")
 
         user_id = row["user_id"]
-        expires_at = row["expires_at"]
-        if int(time.time() * 1000) >= expires_at:
-            await self.db.user.delete_refresh_token(token_hash)
+        if int(time.time() * 1000) >= row["expires_at"]:
             raise HTTPException(status_code=401, detail="refresh token expired")
 
         user_row = await self.db.user.get_by_id(user_id)
         if not user_row:
-            await self.db.user.delete_refresh_token(token_hash)
             raise HTTPException(status_code=401, detail="invalid refresh token")
 
-        # 轮换：作废旧 refresh，再签发新的一对
-        await self.db.user.delete_refresh_token(token_hash)
+        # 旧 refresh 已被原子取出（删除），直接签发新的一对。
         return await self._issue_session(user_id, bool(user_row.is_admin))
 
     async def revoke_refresh_token(self, raw_refresh: str):
@@ -415,8 +435,8 @@ class SiteBackend:
     async def update_user_info(self, user_id: str, data: Dict[str, Any]):
         if "email" in data and data["email"]:
             new_email = data["email"].strip()
-            # 基本邮箱格式校验
-            if not _EMAIL_RE.match(new_email):
+            # 基本邮箱格式校验（fullmatch + 拒绝 CRLF，防头注入）
+            if not is_valid_email(new_email):
                 raise HTTPException(status_code=400, detail="Invalid email format")
             # 唯一性预检：直接写入会撞 DB 的 UNIQUE 约束抛出未处理异常(500)，
             # 这里先查重并返回明确的 400。
