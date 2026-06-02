@@ -20,6 +20,10 @@
           <el-icon><Plus /></el-icon>
           <span style="margin-left:8px">新建角色</span>
         </el-button>
+        <el-button size="large" @click="goUnionBind" class="btn-gradient btn-gradient-pink">
+          <el-icon><Connection /></el-icon>
+          <span style="margin-left:8px">Union 角色</span>
+        </el-button>
       </div>
     </div>
 
@@ -343,6 +347,10 @@ const fetchMe = inject<() => Promise<void>>('fetchMe')
 const isDark = inject<Ref<boolean>>('isDark', ref(false))
 
 const router = useRouter()
+
+function goUnionBind() {
+  router.push('/dashboard/union')
+}
 
 const profiles = ref<Profile[]>([])
 const limit = 12

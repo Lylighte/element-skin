@@ -228,7 +228,6 @@ const dashboardLinks: NavLink[] = [
   { path: '/dashboard/wardrobe', title: '我的衣柜', icon: Box },
   { path: '/dashboard/roles', title: '角色管理', icon: User },
   { path: '/dashboard/profile', title: '个人资料', icon: Setting },
-  { path: '/dashboard/union', title: '角色绑定', icon: Connection },
 ]
 const adminNavLinks: NavLink[] = [
   { path: '/dashboard', title: '返回面板', icon: Back },
@@ -256,6 +255,7 @@ const adminNavItems = computed<NavLink[]>(() => [
     { path: '/admin/email', title: '邮件服务', icon: Message },
     { path: '/admin/mojang', title: 'Fallback 服务', icon: Link },
     { path: '/admin/carousel', title: '首页图片', icon: Picture },
+    { path: '/admin/union', title: 'Union', icon: Connection },
   ]},
 ])
 
@@ -265,7 +265,7 @@ const defaultOpeneds = computed(() => {
   if (['/admin/users', '/admin/roles', '/admin/textures'].some(p => path.startsWith(p))) {
     opened.push('admin-content-group')
   }
-  if (['/admin/email', '/admin/mojang', '/admin/carousel'].some(p => path.startsWith(p))) {
+  if (['/admin/email', '/admin/mojang', '/admin/carousel', '/admin/union'].some(p => path.startsWith(p))) {
     opened.push('admin-config-group')
   }
   return opened

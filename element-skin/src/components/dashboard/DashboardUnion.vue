@@ -257,9 +257,7 @@ onMounted(() => {
 @import "@/assets/styles/buttons.css";
 
 .union-section {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 20px 0;
+  /* uses shared layout styles, no explicit width/centering needed */
 }
 
 .card-header-flex {

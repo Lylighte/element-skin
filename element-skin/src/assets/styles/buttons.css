@@ -33,6 +33,9 @@
 .btn-gradient-danger { background: linear-gradient(135deg, #f56c6c 0%, #f78989 100%) !important; }
 .btn-gradient-danger:hover:not(:disabled) { box-shadow: 0 6px 16px rgba(245, 108, 108, 0.25); }
 
+.btn-gradient-pink { background: linear-gradient(135deg, #e85085 0%, #f08aab 100%) !important; }
+.btn-gradient-pink:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(232, 80, 133, 0.4); }
+
 .btn-soft-warning {
   color: var(--color-text);
   border: 1px solid rgba(230, 162, 60, 0.3) !important;
