@@ -267,7 +267,24 @@ element-skin **没有**这个路由（这是主站端点）。Admin 诊断的正
 
 ## 10. 版本历史
 
-| 版本 | 关键变更 |
-|------|---------|
-| v2.3.0-union-b1 | 初始 Union 实现（路由、签名验证、key 管理） |
-| v2.3.0-union-b2 | 安全密钥管理（文件存储、SHA-256 指纹、use_union_key 开关、启动时密钥选择、admin 指纹 UI）、集成测试(union key)、重命名 ygg_private_key→union_ygg_private_key（7 文件 +30/−30）；修复 body 双重消费 422、nginx 路由过宽、前端 nav 优化、sync body 格式兼容 |
+### v2.3.0-union-b2（2026-06-02）
+
+**密钥管理重构**：Yggdrasil 私钥从数据库迁移到文件存储（`/app/data/union-ygg-private.pem`），新增 SHA-256 指纹计算与展示，`use_union_key` 配置开关支持启动时自动选用 Union 密钥，Admin 面板展示密钥指纹而非完整 PEM。重命名 `ygg_private_key` → `union_ygg_private_key`（7 文件 +30/−30）。新增 Union key 管理集成测试与 fallback 测试。
+
+**关键 Bug 修复**：修复 `verify_union_request_inbound` 消费 `request.body()` 后下游 handler `Body()` 读到空流的 422 错误（影响 `updatebackendkey`、`sync`、`remapuuid`、`diagnose`）；修复 Nginx `location /api/union/` 过宽导致劫持主站 `/diagnose`、`/serverlist` 端点，改为仅代理 `/api/union/member/`；兼容主站 sync body 的数组 `[]` 与对象 `{"profileList":{}}` 两种格式。
+
+**前端优化**：从 Dashboard 导航菜单移除「角色绑定」，改为仅通过「角色管理」页面的「Union 角色」按钮访问；补全 Admin 桌面导航「更多设置」组中缺失的 Union 入口；修复 DashboardUnion 页面布局与其他 Dashboard 页面不一致的问题；新增 `btn-gradient-pink` 按钮样式。
+
+---
+
+### v2.3.0-union-b1（2026-06-01）
+
+**初始 Union 实现**：完整的 Union 联邦协议成员站功能，包括 UnionModule 与数据库 schema、5 组 28 个路由端点（入站 UnionHostVerify、公开元数据、OAuth2、用户端 JWT、管理端 Admin）、UnionBackend 业务逻辑层、签名验证（RSA-SHA256 + PKCS1v15）、出站 HTTP 调用（`X-Union-Member-Key` 认证）。
+
+**前端实现**：Admin Union 管理页面（API 根地址、成员密钥、OAuth2 密钥、server list、私钥指纹、黑名单管理）、Dashboard Union 角色绑定页面（绑定/解绑/UUID 同步/安全等级）、Vue Router 路由定义、`@/api/union.ts` API 层。
+
+**Profile 同步**：角色增删改操作自动向主站同步（`profile/add`、`profile/{uuid}` PUT、`profile/{uuid}` DELETE），UUID 重新映射支持。
+
+**协议文档**：新增 PHP Union 联邦协议规范文档（`doc/union-protocol-php.md`），修复 5 处不准确描述，补充 Nginx 生产配置（Union + Yggdrasil 规则）。
+
+**其他**：Union 路由改用 Cookie-based JWT 认证（非 Bearer header），支持双 Yggdrasil discovery 路径，CI 手动触发构建。
