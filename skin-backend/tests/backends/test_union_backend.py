@@ -33,7 +33,7 @@ async def test_fetch_private_key_writes_file(db_session, test_config):
 
 @pytest.mark.asyncio
 async def test_fetch_private_key_no_db_write(db_session, test_config):
-    """fetch_private_key does NOT store ygg_private_key to DB as PEM value."""
+    """fetch_private_key does NOT store union_ygg_private_key to DB as PEM value."""
     backend = UnionBackend(db_session, test_config)
     backend._api_get = AsyncMock(return_value={
         "privateKey": TEST_PEM,
@@ -45,8 +45,8 @@ async def test_fetch_private_key_no_db_write(db_session, test_config):
          patch("os.makedirs"):
         await backend.fetch_private_key()
 
-    # ygg_private_key should be cleared (set to ""), NOT stored with the PEM value
-    ygg_val = await db_session.union.get("ygg_private_key")
+    # union_ygg_private_key should be cleared (set to ""), NOT stored with the PEM value
+    ygg_val = await db_session.union.get("union_ygg_private_key")
     assert ygg_val == "" or ygg_val is None, f"Expected empty, got: {ygg_val!r}"
 
     # Version should still be stored
@@ -56,12 +56,12 @@ async def test_fetch_private_key_no_db_write(db_session, test_config):
 
 @pytest.mark.asyncio
 async def test_fetch_private_key_cleans_db(db_session, test_config):
-    """fetch_private_key deletes old ygg_private_key from DB after file write."""
+    """fetch_private_key deletes old union_ygg_private_key from DB after file write."""
     backend = UnionBackend(db_session, test_config)
 
-    # Pre-seed DB with old ygg_private_key value
-    await db_session.union.set("ygg_private_key", "old-key-value")
-    assert await db_session.union.get("ygg_private_key") == "old-key-value"
+    # Pre-seed DB with old union_ygg_private_key value
+    await db_session.union.set("union_ygg_private_key", "old-key-value")
+    assert await db_session.union.get("union_ygg_private_key") == "old-key-value"
 
     backend._api_get = AsyncMock(return_value={
         "privateKey": TEST_PEM,
@@ -76,5 +76,5 @@ async def test_fetch_private_key_cleans_db(db_session, test_config):
     assert result is True
 
     # Old DB value should be cleared
-    ygg_val = await db_session.union.get("ygg_private_key")
+    ygg_val = await db_session.union.get("union_ygg_private_key")
     assert ygg_val == "" or ygg_val is None, f"Expected empty after cleanup, got: {ygg_val!r}"

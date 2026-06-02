@@ -116,10 +116,10 @@ async def test_admin_union_settings_get(client, admin_headers):
     assert "union_member_key" in data
     assert "union_enable_oauth2" in data
     assert "ygg_private_key" not in data
-    assert "ygg_private_key_fingerprint" in data
-    assert isinstance(data["ygg_private_key_fingerprint"], str)
-    assert "ygg_private_key_present" in data
-    assert isinstance(data["ygg_private_key_present"], bool)
+    assert "union_ygg_private_key_fingerprint" in data
+    assert isinstance(data["union_ygg_private_key_fingerprint"], str)
+    assert "union_ygg_private_key_present" in data
+    assert isinstance(data["union_ygg_private_key_present"], bool)
 
 
 @pytest.mark.asyncio

@@ -127,7 +127,7 @@ async def test_fetch_private_key_stores_file_without_reload(
     assert version_val == "99"
 
     # ── old DB value cleared ──────────────────────────────────────────
-    ygg_val = await db_session.union.get("ygg_private_key")
+    ygg_val = await db_session.union.get("union_ygg_private_key")
     assert ygg_val == "" or ygg_val is None, (
         f"Expected empty, got: {ygg_val!r}"
     )

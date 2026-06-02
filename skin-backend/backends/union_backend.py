@@ -258,7 +258,7 @@ class UnionBackend:
             await self.db.union.set("union_private_key_version", str(result["privateKeyVersion"]))
 
             # Delete old DB-stored key (now replaced by file)
-            await self.db.union.set("ygg_private_key", "")
+            await self.db.union.set("union_ygg_private_key", "")
 
             # Conditionally reload crypto if Union key is in use
             if self.config.get("keys.use_union_key", False) and self.crypto:

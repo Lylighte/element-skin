@@ -356,16 +356,16 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         settings = await union_backend.get_settings()
 
         # Prefer file content if file exists, fallback to DB (migration phase)
-        ygg_private_key = settings.get("ygg_private_key", "")
+        union_ygg_private_key = settings.get("union_ygg_private_key", "")
         union_key_path = "/app/data/union-ygg-private.pem"
         if os.path.exists(union_key_path):
             with open(union_key_path, "r") as f:
-                ygg_private_key = f.read().strip()
-        elif ygg_private_key:
+                union_ygg_private_key = f.read().strip()
+        elif union_ygg_private_key:
             pass
 
-        present = bool(ygg_private_key and "BEGIN" in ygg_private_key)
-        fingerprint = compute_key_fingerprint(ygg_private_key) if present else ""
+        present = bool(union_ygg_private_key and "BEGIN" in union_ygg_private_key)
+        fingerprint = compute_key_fingerprint(union_ygg_private_key) if present else ""
 
         return {
             "union_api_root": settings.get("union_api_root", ""),
@@ -376,8 +376,8 @@ def setup_routes(union_backend, rate_limiter, config: Config):
             "union_enable_oauth2": settings.get("union_enable_oauth2", "true"),
             "union_oauth2_sig_private_key": settings.get("union_oauth2_sig_private_key", ""),
             "union_oauth2_sig_public_key": settings.get("union_oauth2_sig_public_key", ""),
-            "ygg_private_key_fingerprint": fingerprint,
-            "ygg_private_key_present": present,
+            "union_ygg_private_key_fingerprint": fingerprint,
+            "union_ygg_private_key_present": present,
             "union_server_list": json.loads(settings.get("union_server_list", "[]")),
         }
 
