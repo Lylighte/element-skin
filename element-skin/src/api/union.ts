@@ -19,6 +19,7 @@ export interface UnionSettings {
   union_oauth2_sig_public_key: string
   union_server_list_version: number
   union_private_key_version: number
+  ygg_private_key?: string
   union_server_list: any[]
 }
 

@@ -361,6 +361,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
             "union_enable_oauth2": settings.get("union_enable_oauth2", "true"),
             "union_oauth2_sig_private_key": settings.get("union_oauth2_sig_private_key", ""),
             "union_oauth2_sig_public_key": settings.get("union_oauth2_sig_public_key", ""),
+            "ygg_private_key": settings.get("ygg_private_key", ""),
             "union_server_list": json.loads(settings.get("union_server_list", "[]")),
         }
 

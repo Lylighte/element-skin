@@ -238,6 +238,7 @@ class UnionBackend:
         result = await self._api_get("privatekey", raw=False)
         if result and "privateKey" in result and "privateKeyVersion" in result:
             await self.db.union.set("union_private_key_version", str(result["privateKeyVersion"]))
+            await self.db.union.set("ygg_private_key", result["privateKey"])
             logger.info(f"Updated private key (version {result['privateKeyVersion']})")
             return True
         return False
