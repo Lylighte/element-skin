@@ -161,6 +161,13 @@ CREATE INDEX IF NOT EXISTS idx_site_refresh_expires ON site_refresh_tokens (expi
 -- user_textures：用户衣柜按 (created_at, hash) 游标分页（get_for_user_cursor）
 -- 排序为 created_at DESC, hash DESC，全 DESC 可由升序复合索引反向扫描满足
 CREATE INDEX IF NOT EXISTS idx_user_textures_user_created_hash ON user_textures (user_id, created_at, hash);
+-- user_textures：按 hash + 类型的强删/剩余计数（delete_texture、剩余引用计数）
+-- 这些查询不带前导 user_id，PK 与上面的复合索引均以 user_id 打头无法服务 → 顺序扫
+CREATE INDEX IF NOT EXISTS idx_user_textures_hash_type ON user_textures (hash, texture_type);
+
+-- users.display_name：注册/改名时的唯一性校验热路径（is_display_name_taken）
+-- display_name 既非唯一也无索引，每次校验全表扫
+CREATE INDEX IF NOT EXISTS idx_users_display_name ON users (display_name);
 
 -- skin_library：公共皮肤库浏览（is_public 过滤 + 时序游标，get_from_library_cursor）
 CREATE INDEX IF NOT EXISTS idx_skin_library_public_created_hash ON skin_library (is_public, created_at, skin_hash);
