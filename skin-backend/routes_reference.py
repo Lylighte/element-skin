@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
+import logging
 
 from config_loader import config
 from database_module import Database
@@ -21,12 +22,24 @@ from utils.crypto import CryptoUtils
 from utils.rate_limiter import RateLimiter
 from routers import yggdrasil_routes, site_routes, microsoft_routes, admin_routes, union_routes
 
+logger = logging.getLogger("routes_reference")
+
 # ========== 初始化核心组件 ==========
 db_dsn = config.get("database.dsn", "postgresql://elementskin:password@localhost:5432/elementskin")
 max_conns = config.get("database.max_connections", 10)
 db = Database(db_dsn, max_connections=max_conns)
 private_key_path = config.get("keys.private_key", "private.pem")
 crypto = CryptoUtils(private_key_path)
+
+# If Union key mode is enabled, use the Union-distributed Yggdrasil key
+if config.get("keys.use_union_key", False):
+    union_key_path = "/app/data/union-ygg-private.pem"
+    if os.path.exists(union_key_path):
+        crypto = CryptoUtils(union_key_path)
+        logger.info(f"Using Union Yggdrasil key from {union_key_path}")
+    else:
+        logger.warning("keys.use_union_key=true but union-ygg-private.pem not found; falling back to default key")
+
 rate_limiter = RateLimiter(db)  # New dependency-injected rate limiter
 texture_storage = TextureStorage(config.get("textures.directory", "textures"))
 ygg_backend = YggdrasilBackend(db, crypto, texture_storage, config)

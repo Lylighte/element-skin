@@ -53,12 +53,19 @@ echo "前端文件释放及路径配置完成。"
 # --- 3. 密钥生成逻辑 ---
 KEY_DIR="/app/data"
 mkdir -p "$KEY_DIR"
-if [ ! -f "$KEY_DIR/private.pem" ] || [ ! -f "$KEY_DIR/public.pem" ]; then
-    echo "密钥文件不存在，正在生成到 $KEY_DIR..."
-    python3 gen_key.py "$KEY_DIR"
-    echo "密钥已生成。"
+
+# Check if Union key mode is enabled
+USE_UNION_CFG=$(python3 -c "from utils.config_loader import config; print(config.get('keys.use_union_key', False))" 2>/dev/null || echo "False")
+if [ "$USE_UNION_CFG" = "True" ]; then
+    echo "Union key mode enabled. Skipping default key generation."
 else
-    echo "密钥文件已存在，跳过生成。"
+    if [ ! -f "$KEY_DIR/private.pem" ] || [ ! -f "$KEY_DIR/public.pem" ]; then
+        echo "密钥文件不存在，正在生成到 $KEY_DIR..."
+        python3 gen_key.py "$KEY_DIR"
+        echo "密钥已生成。"
+    else
+        echo "密钥文件已存在，跳过生成。"
+    fi
 fi
 
 # 启动应用
