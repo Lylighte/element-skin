@@ -59,10 +59,11 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/api/union/member/updatebackendkey")
-    async def union_update_backend_key(body: dict = Body(...), _verified=Depends(verify_union_request)):
+    async def union_update_backend_key(request: Request, _verified=Depends(verify_union_request)):
         """Union updates this member's authentication key."""
         if not await union_backend.is_update_enabled():
             return {"ok": True, "message": "Updates from Union are disabled"}
+        body = json.loads(getattr(request.state, "union_body", "{}"))
         new_key = body.get("key")
         if not new_key:
             raise HTTPException(status_code=400, detail="key is required")
@@ -71,8 +72,9 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/api/union/member/sync")
-    async def union_sync(body: dict = Body(...), _verified=Depends(verify_union_request)):
+    async def union_sync(request: Request, _verified=Depends(verify_union_request)):
         """Union triggers profile sync."""
+        body = json.loads(getattr(request.state, "union_body", "{}"))
         profile_list = body.get("profileList", {})
         logger.info(f"Received sync trigger from Union with {len(profile_list)} profiles")
         success = await union_backend.sync_profiles()
@@ -81,8 +83,9 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/api/union/member/remapuuid")
-    async def union_remap_uuid(body: dict = Body(...), _verified=Depends(verify_union_request)):
+    async def union_remap_uuid(request: Request, _verified=Depends(verify_union_request)):
         """Union pushes UUID remappings."""
+        body = json.loads(getattr(request.state, "union_body", "{}"))
         remapped = body.get("remapped_uuid", {})
         if not remapped:
             raise HTTPException(status_code=400, detail="remapped_uuid is required")
@@ -91,8 +94,9 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         return {"ok": True}
 
     @router.post("/api/union/member/diagnose")
-    async def union_diagnose(body: dict = Body(...), _verified=Depends(verify_union_request)):
+    async def union_diagnose(request: Request, _verified=Depends(verify_union_request)):
         """Diagnostic echo."""
+        body = json.loads(getattr(request.state, "union_body", "{}"))
         nonce = body.get("nonce", "")
         return {"nonce": nonce, "timestamp": time.time()}
 

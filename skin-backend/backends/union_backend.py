@@ -102,6 +102,7 @@ class UnionBackend:
 
         body_bytes = await request.body()
         body_str = body_bytes.decode("utf-8") if body_bytes else ""
+        request.state.union_body = body_str  # cache so downstream handlers don't re-read empty stream
 
         if not self.verify_union_signature(body_str, signature, timestamp_str, nonce, union_pub_key):
             raise HTTPException(status_code=401, detail="Invalid Union signature")
