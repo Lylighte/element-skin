@@ -89,30 +89,22 @@ async def test_profile_management(db_session, user_factory):
     assert updated.texture_model == "slim"
     assert updated.name == "NewName"
     
-    # Search & Bulk display name
+    # Search & Bulk display name：首个角色已改名 NewName，再建一个 Player2，共 2 条
     await db_session.user.create_profile(PlayerProfile(generate_random_uuid(), user.id, "Player2", "default", None, None))
-    results = await db_session.user.search_profiles_by_names(["Player1", "Player2"])
-    # The count should be 2 because we created Player1 and Player2.
-    # Wait, did we delete it earlier? Yes, `await db_session.user.delete_profile(pid)`
-    # So we should create a new one to be sure.
-    # Ah, I see: `assert await db_session.user.count_profiles_by_user(user.id) == 1`
-    # That was the count after deleting Player1.
-    # So currently we have 1 profile (Player1 was deleted).
-    # Creating Player2 makes it 2.
     assert await db_session.user.count_profiles_by_user(user.id) == 2
-    
-    results = await db_session.user.search_profiles_by_names(["Player1", "Player2"])
-    # Player1 was deleted. So only Player2 exists.
-    assert len(results) == 1
-    
+
+    # 按当前真实名检索（Player1 已被改名为 NewName，故用 NewName 而非 Player1）
+    results = await db_session.user.search_profiles_by_names(["NewName", "Player2"])
+    assert len(results) == 2
+
     names = await db_session.user.get_display_names_by_ids([user.id])
     assert names[user.id] == user.display_name
-    
+
     # Ownership
     assert await db_session.user.verify_profile_ownership(user.id, pid) is True
-    
-    # Delete
-    await db_session.user.delete_profile(pid)
+
+    # Delete（级联删 profile 及其 token）
+    await db_session.user.delete_profile_cascade(pid)
     assert await db_session.user.count_profiles_by_user(user.id) == 1
 
 @pytest.mark.asyncio
@@ -254,12 +246,18 @@ async def test_invite_management(db_session):
     
     fetched = await db_session.user.get_invite(code_str)
     assert fetched.total_uses == 5
-    
-    await db_session.user.use_invite(code_str, "used@test.com")
+
+    # 核销走线上唯一路径 create_user_with_profile（事务内条件自增 + 落 used_by）
+    uid = generate_random_uuid()
+    user = User(uid, "used@test.com", "hash", False, "zh_CN", "InviteUser")
+    profile = PlayerProfile(generate_random_uuid(), uid, "InvitePlayer", "default", None, None)
+    await db_session.user.create_user_with_profile(
+        user, profile, invite_code=code_str, used_by="used@test.com"
+    )
     updated = await db_session.user.get_invite(code_str)
     assert updated.used_count == 1
     assert updated.used_by == "used@test.com"
-    
+
     invites_page = await db_session.user.list_invites_cursor()
     assert len(invites_page["items"]) == 1
     
@@ -370,18 +368,6 @@ async def test_delete_profile_cascade(db_session, user_factory):
 
 
 @pytest.mark.asyncio
-async def test_delete_profile_returns_real_rowcount(db_session, user_factory):
-    """delete_profile：存在返回 True，不存在返回 False（按真实行数）。"""
-    user = await user_factory()
-    pid = generate_random_uuid()
-    await db_session.user.create_profile(PlayerProfile(pid, user.id, "DelP", "default", None, None))
-
-    assert (await db_session.user.delete_profile(pid)) is True
-    assert (await db_session.user.delete_profile(pid)) is False
-    assert (await db_session.user.delete_profile("never")) is False
-
-
-@pytest.mark.asyncio
 async def test_update_profile_name_returns_real_rowcount(db_session, user_factory):
     """update_profile_name：更新到行返回 True，0 行返回 False，唯一冲突返回 False。"""
     user = await user_factory()
@@ -398,32 +384,30 @@ async def test_update_profile_name_returns_real_rowcount(db_session, user_factor
 
 
 @pytest.mark.asyncio
-async def test_use_invite_atomic_no_overuse(db_session):
-    """use_invite：total_uses=1 仅可核销一次，再次返回 False，used_count 不越界。"""
-    code = "ONCE_ONLY"
-    await db_session.user.create_invite(
-        InviteCode(code, int(time.time() * 1000), used_by=None, total_uses=1, used_count=0)
-    )
+async def test_invite_consumption_concurrent_single_winner(db_session):
+    """并发用同一 total_uses=1 邀请建号：只成功一次，used_count 不超额。
 
-    assert (await db_session.user.use_invite(code, "first@test.com")) is True
-    assert (await db_session.user.use_invite(code, "second@test.com")) is False
-
-    inv = await db_session.user.get_invite(code)
-    assert inv.used_count == 1
-    assert inv.used_by == "first@test.com"
-
-
-@pytest.mark.asyncio
-async def test_use_invite_concurrent_single_winner(db_session):
-    """并发核销 total_uses=1 的邀请：只成功一次，used_count 不超额。"""
+    邀请核销已并入 create_user_with_profile 的同一事务（条件自增 used_count），
+    此处经真实建号路径并发施压，验证「单赢者」语义与不越界。
+    """
     code = "RACE_INVITE"
     await db_session.user.create_invite(
         InviteCode(code, int(time.time() * 1000), used_by=None, total_uses=1, used_count=0)
     )
 
-    results = await asyncio.gather(
-        *[db_session.user.use_invite(code, f"u{i}@test.com") for i in range(8)]
-    )
+    async def _register(i: int) -> bool:
+        uid = generate_random_uuid()
+        user = User(uid, f"u{i}@test.com", "hash", False, "zh_CN", f"User{i}")
+        profile = PlayerProfile(generate_random_uuid(), uid, f"RaceProfile{i}", "default", None, None)
+        try:
+            await db_session.user.create_user_with_profile(
+                user, profile, invite_code=code, used_by=f"u{i}@test.com"
+            )
+            return True
+        except InviteExhaustedError:
+            return False
+
+    results = await asyncio.gather(*[_register(i) for i in range(8)])
     assert sum(1 for r in results if r) == 1
     inv = await db_session.user.get_invite(code)
     assert inv.used_count == 1
@@ -467,11 +451,16 @@ async def test_create_user_with_profile_rolls_back_on_profile_conflict(db_sessio
 async def test_create_user_with_profile_invite_exhausted_rolls_back(db_session):
     """邀请已耗尽时建号事务整体回滚：抛 InviteExhaustedError，无孤儿 user。"""
     code = "FULL_INVITE"
-    # create_invite 固定以 used_count=0 入库，故先核销一次把 total_uses=1 的码耗尽
+    # create_invite 固定以 used_count=0 入库，故先用一次真实注册把 total_uses=1 的码耗尽
     await db_session.user.create_invite(
         InviteCode(code, int(time.time() * 1000), used_by=None, total_uses=1, used_count=0)
     )
-    assert (await db_session.user.use_invite(code, "first@test.com")) is True
+    first_uid = generate_random_uuid()
+    first_user = User(first_uid, "first@test.com", "hash", False, "zh_CN", "FirstUser")
+    first_profile = PlayerProfile(generate_random_uuid(), first_uid, "FirstProfile", "default", None, None)
+    assert (await db_session.user.create_user_with_profile(
+        first_user, first_profile, invite_code=code, used_by="first@test.com"
+    )) is True
 
     uid = generate_random_uuid()
     user = User(uid, "noinvite@test.com", "hash", False, "zh_CN", "NoInviteUser")

@@ -151,7 +151,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles (user_id, id);
 -- tokens：按用户清理 / 按时间裁剪 / 保留最近 N 个（delete_expired_tokens、delete_surplus_tokens、
 -- delete_tokens_by_user 均以 user_id 为前缀，单个复合索引即可覆盖）
 CREATE INDEX IF NOT EXISTS idx_tokens_user_created ON tokens (user_id, created_at);
--- tokens：按角色删除（delete_tokens_by_profile）
+-- tokens：按角色删除（delete_profile_cascade 事务内清 profile 的游戏 token）
 CREATE INDEX IF NOT EXISTS idx_tokens_profile_id ON tokens (profile_id);
 
 -- site_refresh_tokens：按用户批量撤销（改密/重置/删号）+ 按过期时间清理

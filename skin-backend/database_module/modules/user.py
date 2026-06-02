@@ -381,15 +381,6 @@ class UserModule:
                             used_by, invite_code,
                         )
         return True
-            
-    async def delete_profile(self, profile_id: str) -> bool:
-        """删除角色（单表操作），返回是否真的删到行。
-
-        asyncpg 的 execute 返回 command tag（如 "DELETE 1" / "DELETE 0"），
-        即使 0 行也非 None，故须解析尾部行数判定成功，不能用 `is not None`。
-        """
-        result = await self.db.execute("DELETE FROM profiles WHERE id=$1", profile_id)
-        return result.split()[-1] != "0"
 
     async def delete_profile_cascade(self, profile_id: str) -> bool:
         """事务内删除角色及其 Yggdrasil 游戏 token，避免孤儿 token。
@@ -401,10 +392,6 @@ class UserModule:
                 await conn.execute("DELETE FROM tokens WHERE profile_id=$1", profile_id)
                 result = await conn.execute("DELETE FROM profiles WHERE id=$1", profile_id)
         return result.split()[-1] != "0"
-
-    async def delete_tokens_by_profile(self, profile_id: str):
-        """删除与角色关联的所有 tokens（单表操作）"""
-        await self.db.execute("DELETE FROM tokens WHERE profile_id=$1", profile_id)
 
     async def verify_profile_ownership(self, user_id: str, profile_id: str) -> bool:
         val = await self.db.fetchval(
@@ -580,28 +567,6 @@ class UserModule:
             "INSERT INTO invites (code, created_at, total_uses, used_count, note) VALUES ($1, $2, $3, 0, $4)",
             code.code, code.created_at, code.total_uses, code.note,
         )
-
-    async def use_invite(self, code: str, used_by: str = None) -> bool:
-        """原子核销邀请码：条件自增 used_count，按真实影响行数判定成败。
-
-        条件 `used_count < total_uses`（total_uses 为 NULL 视为无限）使「判额」与
-        「核销」合一，杜绝 TOCTOU 超额核销。返回是否核销成功（无剩余次数返回 False）。
-        """
-        async with self.db.get_conn() as conn:
-            async with conn.transaction():
-                updated = await conn.execute(
-                    "UPDATE invites SET used_count = used_count + 1 "
-                    "WHERE code=$1 AND (total_uses IS NULL OR used_count < total_uses)",
-                    code,
-                )
-                if updated.split()[-1] == "0":
-                    return False
-                if used_by:
-                    await conn.execute(
-                        "UPDATE invites SET used_by=$1 WHERE code=$2 AND used_by IS NULL",
-                        used_by, code,
-                    )
-        return True
 
     async def list_invites_cursor(self, limit: int = 15, last_created_at: int | None = None, last_code: str | None = None) -> dict:
         """按created_at+code游标分页获取邀请码列表（时序复合游标）"""
