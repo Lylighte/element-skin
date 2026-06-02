@@ -31,15 +31,15 @@ element-skin 在 Union 联邦协议中扮演**成员站（Member Station）**角
 | POST | `/api/union/member/updateprivatekey` | 主站推送：触发拉取共享私钥 | `union_routes.py:51` |
 | POST | `/api/union/member/updatebackendkey` | **主站下发成员密钥** | `union_routes.py:61` |
 | POST | `/api/union/member/sync` | 主站推送：触发角色同步 | `union_routes.py:74` |
-| POST | `/api/union/member/remapuuid` | 主站推送：UUID 重新映射 | `union_routes.py:85` |
-| POST | `/api/union/member/diagnose` | 诊断 Echo | `union_routes.py:96` |
-| GET  | `/api/union/member/queryemail` | 主站查询用户邮箱（黑名单） | `union_routes.py:103` |
+| POST | `/api/union/member/remapuuid` | 主站推送：UUID 重新映射 | `union_routes.py:90` |
+| POST | `/api/union/member/diagnose` | 诊断 Echo | `union_routes.py:101` |
+| GET  | `/api/union/member/queryemail` | 主站查询用户邮箱（黑名单） | `union_routes.py:108` |
 
 ### 2.2 公开路由（无需认证）
 
 | 方法 | 路径 | 功能 |
 |------|------|------|
-| GET | `/api/union/member` | 成员站元数据（Gello） |
+| GET | `/api/union/member` | 成员站元数据（Hello） |
 
 ### 2.3 用户端路由（JWT Cookie 认证）
 
@@ -89,8 +89,8 @@ element-skin 在 Union 联邦协议中扮演**成员站（Member Station）**角
 | 组件 | 文件 | 行号 |
 |------|------|------|
 | 签名验证 | `backends/union_backend.py` | `verify_union_request_inbound()` L79-112 |
-| 签名计算 | `backends/union_backend.py` | `verify_union_signature()` L490-514 |
-| 公钥获取 | `backends/union_backend.py` | `get_union_public_key()` L439-466 |
+| 签名计算 | `backends/union_backend.py` | `verify_union_signature()` L491-514 |
+| 公钥获取 | `backends/union_backend.py` | `get_union_public_key()` L440-466 |
 | 缓存 60s | `backends/union_backend.py` | `_union_public_key_cache` L36 |
 | 依赖注入 | `routers/union_routes.py` | `verify_union_request()` L32-35 |
 
@@ -270,4 +270,4 @@ element-skin **没有**这个路由（这是主站端点）。Admin 诊断的正
 | 版本 | 关键变更 |
 |------|---------|
 | v2.3.0-union-b1 | 初始 Union 实现（路由、签名验证、key 管理） |
-| v2.3.0-union-b2 | 修复 body 双重消费 422、nginx 路由过宽、前端 nav 优化、sync body 格式兼容 |
+| v2.3.0-union-b2 | 安全密钥管理（文件存储、SHA-256 指纹、use_union_key 开关、启动时密钥选择、admin 指纹 UI）、集成测试(union key)、重命名 ygg_private_key→union_ygg_private_key（7 文件 +30/−30）；修复 body 双重消费 422、nginx 路由过宽、前端 nav 优化、sync body 格式兼容 |
