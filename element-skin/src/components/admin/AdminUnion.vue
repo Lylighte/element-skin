@@ -198,16 +198,22 @@
     </el-card>
 
     <!-- Private Key Display -->
-    <el-card class="surface-card mb-6" shadow="never" v-if="settings.ygg_private_key">
+    <el-card class="surface-card mb-6" shadow="never">
       <template #header>
         <div class="card-header-flex">
           <div class="title-group">
             <el-icon><Key /></el-icon>
             <span>当前 Yggdrasil 私钥</span>
           </div>
+          <el-tag type="success" v-if="settings.ygg_private_key_present">已配置</el-tag>
+          <el-tag type="info" v-else>未配置</el-tag>
         </div>
       </template>
-      <el-input :model-value="settings.ygg_private_key" type="textarea" :rows="6" readonly />
+      <div v-if="settings.ygg_private_key_present && settings.ygg_private_key_fingerprint">
+        <p class="text-sm text-gray-500 mb-2">指纹</p>
+        <el-input :model-value="settings.ygg_private_key_fingerprint" readonly />
+      </div>
+      <div v-else class="text-gray-400">未获取 Union 私钥</div>
     </el-card>
 
     <!-- Blacklist Management -->
@@ -311,7 +317,8 @@ const settings = reactive({
   union_enable_oauth2: true,
   union_oauth2_sig_private_key: '',
   union_oauth2_sig_public_key: '',
-  ygg_private_key: '',
+  ygg_private_key_fingerprint: '',
+  ygg_private_key_present: false as boolean,
 })
 const saving = ref(false)
 const generating = ref(false)
@@ -355,7 +362,8 @@ async function fetchSettings() {
       union_enable_oauth2: res.data.union_enable_oauth2 === 'true',
       union_oauth2_sig_private_key: res.data.union_oauth2_sig_private_key || '',
       union_oauth2_sig_public_key: res.data.union_oauth2_sig_public_key || '',
-      ygg_private_key: res.data.ygg_private_key || '',
+      ygg_private_key_fingerprint: res.data.ygg_private_key_fingerprint || '',
+      ygg_private_key_present: res.data.ygg_private_key_present === true,
     })
     serverList.value = (res.data.union_server_list || []).map(s => ({ ...s, displayName: '' }))
 
