@@ -75,7 +75,12 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     async def union_sync(request: Request, _verified=Depends(verify_union_request)):
         """Union triggers profile sync."""
         body = json.loads(getattr(request.state, "union_body", "{}"))
-        profile_list = body.get("profileList", {})
+        if isinstance(body, list):
+            profile_list = body
+        elif isinstance(body, dict):
+            profile_list = body.get("profileList", [])
+        else:
+            profile_list = []
         logger.info(f"Received sync trigger from Union with {len(profile_list)} profiles")
         success = await union_backend.sync_profiles()
         if not success:
