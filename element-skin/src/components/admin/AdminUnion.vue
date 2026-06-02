@@ -318,7 +318,7 @@ const settings = reactive({
   union_oauth2_sig_private_key: '',
   union_oauth2_sig_public_key: '',
   ygg_private_key_fingerprint: '',
-  ygg_private_key_present: false as boolean,
+  ygg_private_key_present: false,
 })
 const saving = ref(false)
 const generating = ref(false)
