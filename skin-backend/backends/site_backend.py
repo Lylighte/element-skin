@@ -2,21 +2,41 @@ from typing import Dict, List, Any
 import re
 import time
 import os
-import random
+import secrets
 import string
+import asyncpg
 from fastapi import HTTPException
 
 from utils.password_utils import hash_password, verify_password, needs_rehash
 from utils.password_utils import validate_strong_password
-from utils.jwt_utils import create_jwt_token
+from utils.jwt_utils import create_access_token, generate_refresh_token, hash_refresh_token
 from utils.email_utils import EmailSender
 from utils.uuid_utils import generate_random_uuid, get_offline_uuid
 from utils.profile_naming import is_valid_profile_name, generate_unique_profile_name
 from utils.pagination import decode_cursor, encode_next
 from utils.typing import User, PlayerProfile, normalize_texture_model, serialize_profile_summary
 from database_module import Database
+from database_module.modules.user import InviteExhaustedError
 from config_loader import Config
-from services import TextureStorage
+from services import TextureStorage, assert_texture_size
+
+
+# 预先计算的 bcrypt 哈希，用于登录时对"用户不存在"分支做等时校验，
+# 抹平用户枚举的计时侧信道。值本身无意义（不会有人能匹配）。
+_DUMMY_PASSWORD_HASH = hash_password("dummy-password-for-timing-equalization")
+
+# 邮箱格式校验：基础但足够实用的正则（非严格 RFC 5322）
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def is_valid_email(email: str) -> bool:
+    """校验邮箱格式：fullmatch + 显式拒绝 CRLF，防头注入与未捕获 500。
+
+    re.match 的 `$` 会匹配末尾换行前位置，单独 `.match` 仍可放行 `a@b.com\\n`，
+    故用 fullmatch；再显式排除 \\r/\\n 双保险，杜绝 `a@x.com\\r\\nBcc: ...` 这类
+    头注入载荷进入邮件发送链路。
+    """
+    return bool(_EMAIL_RE.fullmatch(email)) and "\r" not in email and "\n" not in email
 
 
 class SiteBackend:
@@ -38,7 +58,8 @@ class SiteBackend:
         model: str = "default",
     ) -> tuple[str, str]:
         """处理材质（落盘）并记录到用户库，返回 (hash, type)。校验失败抛 ValueError。"""
-        texture_hash = self.texture_storage.process_and_save(file_bytes, texture_type)
+        await assert_texture_size(self.db, file_bytes)
+        texture_hash = await self.texture_storage.process_and_save_async(file_bytes, texture_type)
         await self.db.texture.add_to_library(
             user_id, texture_hash, texture_type, note, is_public, model
         )
@@ -184,8 +205,8 @@ class SiteBackend:
         if enabled != "true":
             raise HTTPException(status_code=400, detail="Email verification is disabled")
 
-        # Validate email format
-        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        # Validate email format（fullmatch + 拒绝 CRLF，防头注入）
+        if not is_valid_email(email):
             raise HTTPException(status_code=400, detail="Invalid email format")
 
         # For reset password, check if user exists
@@ -200,8 +221,8 @@ class SiteBackend:
             if user:
                 raise HTTPException(status_code=400, detail="Email already registered")
 
-        # 8 chars uppercase letters + digits
-        code = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        # 8 chars uppercase letters + digits（密码学安全随机源，把守密码重置）
+        code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
         ttl = int(await self.db.setting.get("email_verify_ttl", "300"))
         
         await self.db.verification.create_code(email, code, type, ttl)
@@ -229,6 +250,9 @@ class SiteBackend:
     async def login(self, email, password) -> Dict[str, Any]:
         user_row = await self.db.user.get_by_email(email)
         if not user_row:
+            # 对不存在的用户也执行一次等价的 bcrypt 校验，使响应耗时与
+            # "用户存在但密码错误"相近，避免通过计时差异枚举注册邮箱。
+            verify_password(password, _DUMMY_PASSWORD_HASH)
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         user_id, email, password_hash, is_admin = (
@@ -245,17 +269,37 @@ class SiteBackend:
             new_hash = hash_password(password)
             await self.db.user.update_password(user_id, new_hash)
 
-        expire_days_str = await self.db.setting.get("jwt_expire_days", "7")
-        expire_days = int(expire_days_str)
-        token = create_jwt_token(user_id, bool(is_admin), expire_days)
+        return await self._issue_session(user_id, bool(is_admin), extra={"user_id": user_id})
 
-        return {"token": token, "user_id": user_id}
+    async def _issue_session(self, user_id: str, is_admin: bool, extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """签发一对 access + refresh：access 为无状态 JWT，refresh 入库（存哈希）。"""
+        expire_days = int(await self.db.setting.get("jwt_expire_days", "7"))
+        now_ms = int(time.time() * 1000)
+        expires_at = now_ms + expire_days * 24 * 3600 * 1000
+
+        access_token = create_access_token(user_id, is_admin)
+        raw_refresh, refresh_hash = generate_refresh_token()
+        await self.db.user.add_refresh_token(refresh_hash, user_id, expires_at, now_ms)
+
+        result = {
+            "access_token": access_token,
+            "refresh_token": raw_refresh,
+            "is_admin": is_admin,
+        }
+        if extra:
+            result.update(extra)
+        return result
 
     async def register(self, email, password, username, invite_code=None, verification_code=None) -> str:
         if not username or not username.strip():
             raise HTTPException(status_code=400, detail="Username is required")
-        
+
         username = username.strip()
+
+        # 校验邮箱格式（fullmatch + 拒绝 CRLF），防头注入与未捕获 500
+        if not email or not is_valid_email(email.strip()):
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        email = email.strip()
 
         # Check if username (display_name) is taken
         if await self.db.user.is_display_name_taken(username):
@@ -320,19 +364,21 @@ class SiteBackend:
         is_first_user = user_count == 0
         password_hash = hash_password(password)
         user_id = generate_random_uuid()
+
+        new_user = User(user_id, email, password_hash, is_first_user)
+        new_user.display_name = username
+        profile = PlayerProfile(profile_id, user_id, profile_name, "default")
         try:
-            new_user = User(user_id, email, password_hash, is_first_user)
-            new_user.display_name = username
-            await self.db.user.create(new_user)
-        except Exception:
+            await self.db.user.create_user_with_profile(
+                new_user,
+                profile,
+                invite_code=(invite_code if require_invite == "true" else None),
+                used_by=email,
+            )
+        except asyncpg.UniqueViolationError:
             raise HTTPException(status_code=400, detail="Email already registered")
-
-        await self.db.user.create_profile(
-            PlayerProfile(profile_id, user_id, profile_name, "default")
-        )
-
-        if require_invite == "true" and invite_code:
-            await self.db.user.use_invite(invite_code, email)
+        except InviteExhaustedError:
+            raise HTTPException(status_code=400, detail="invite code has no remaining uses")
 
         return user_id
 
@@ -356,21 +402,48 @@ class SiteBackend:
             "texture_count": texture_count,
         }
 
-    async def refresh_token(self, user_id: str) -> Dict[str, Any]:
+    async def rotate_refresh_token(self, raw_refresh: str) -> Dict[str, Any]:
+        """原子轮换 refresh：DELETE...RETURNING 取出旧行（单赢者），校验后签发新对。
+
+        Postgres 对同一行的并发 DELETE 串行化，只有一个事务能 RETURNING 出该行——
+        「拿到行」即「唯一赢家」。并发的另一方/已消费 token 的重放方均拿到 None，
+        统一 401，杜绝一条 refresh 裂变成两条会话链。
+        校验失败（缺失/未知/过期/用户已删）一律抛 401。
+        """
+        token_hash = hash_refresh_token(raw_refresh)
+
+        # 原子删并取：只有真正删到行的请求继续，并发/重放的另一方拿到 None。
+        row = await self.db.user.consume_refresh_token(token_hash)
+        if not row:
+            raise HTTPException(status_code=401, detail="invalid refresh token")
+
+        user_id = row["user_id"]
+        if int(time.time() * 1000) >= row["expires_at"]:
+            raise HTTPException(status_code=401, detail="refresh token expired")
+
         user_row = await self.db.user.get_by_id(user_id)
         if not user_row:
-            raise HTTPException(status_code=404, detail="user not found")
+            raise HTTPException(status_code=401, detail="invalid refresh token")
 
-        is_admin = bool(user_row.is_admin)
-        expire_days_str = await self.db.setting.get("jwt_expire_days", "7")
-        expire_days = int(expire_days_str)
-        token = create_jwt_token(user_id, is_admin, expire_days)
+        # 旧 refresh 已被原子取出（删除），直接签发新的一对。
+        return await self._issue_session(user_id, bool(user_row.is_admin))
 
-        return {"token": token, "is_admin": is_admin}
+    async def revoke_refresh_token(self, raw_refresh: str):
+        """撤销单个 refresh token（登出用）。找不到也无所谓。"""
+        await self.db.user.delete_refresh_token(hash_refresh_token(raw_refresh))
 
     async def update_user_info(self, user_id: str, data: Dict[str, Any]):
         if "email" in data and data["email"]:
-            await self.db.user.update_email(user_id, data["email"])
+            new_email = data["email"].strip()
+            # 基本邮箱格式校验（fullmatch + 拒绝 CRLF，防头注入）
+            if not is_valid_email(new_email):
+                raise HTTPException(status_code=400, detail="Invalid email format")
+            # 唯一性预检：直接写入会撞 DB 的 UNIQUE 约束抛出未处理异常(500)，
+            # 这里先查重并返回明确的 400。
+            existing = await self.db.user.get_by_email(new_email)
+            if existing and existing.id != user_id:
+                raise HTTPException(status_code=400, detail="Email already in use")
+            await self.db.user.update_email(user_id, new_email)
         
         if "display_name" in data and data["display_name"]:
             new_name = data["display_name"].strip()
@@ -435,7 +508,10 @@ class SiteBackend:
 
         new_hash = hash_password(new_password)
         await self.db.user.update_password(user.id, new_hash)
-        
+
+        # 改密使该用户其它所有会话失效（强制重新登录）
+        await self.db.user.delete_refresh_tokens_by_user(user.id)
+
         await self.db.verification.delete_code(email, "reset")
         return True
 
@@ -457,6 +533,9 @@ class SiteBackend:
 
         new_hash = hash_password(new_password)
         await self.db.user.update_password(user_id, new_hash)
+
+        # 改密使该用户其它所有会话失效（强制重新登录）
+        await self.db.user.delete_refresh_tokens_by_user(user_id)
         return True
 
     # ========== Profile ==========
@@ -512,7 +591,8 @@ class SiteBackend:
         if profile_row.user_id != user_id:
             raise HTTPException(status_code=403, detail="not allowed")
 
-        await self.db.user.delete_profile(pid)
+        # 级联删除：同时清掉该 profile 的 Yggdrasil 游戏 token，避免孤儿 token
+        await self.db.user.delete_profile_cascade(pid)
 
     async def clear_profile_texture(self, user_id, pid, texture_type):
         is_owner = await self.db.user.verify_profile_ownership(user_id, pid)

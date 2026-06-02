@@ -1,28 +1,27 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { heroSceneKey } from '@/composables/useHeroScene'
 
 const props = withDefaults(defineProps<{
-  backgroundUrl?: string
   variant?: 'primary' | 'secondary'
   blur?: number
   disabled?: boolean
-  overlayColor?: string
 }>(), {
-  backgroundUrl: '',
   variant: 'secondary',
   blur: 18,
   disabled: false,
-  overlayColor: 'rgba(0, 0, 0, 0.45)',
 })
 
 const emit = defineEmits<{
   click: [event: MouseEvent]
 }>()
 
+const scene = inject(heroSceneKey, null)
+
 const rootRef = ref<HTMLButtonElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
-const imageCache = new Map<string, HTMLImageElement>()
 let resizeObserver: ResizeObserver | null = null
+let unsubscribe: (() => void) | null = null
 let rafId = 0
 let disposed = false
 
@@ -41,25 +40,7 @@ function handleClick(event: MouseEvent) {
 function requestDraw() {
   if (disposed) return
   cancelAnimationFrame(rafId)
-  rafId = requestAnimationFrame(() => {
-    void drawGlass()
-  })
-}
-
-function loadImage(url: string) {
-  const cached = imageCache.get(url)
-  if (cached?.complete && cached.naturalWidth > 0) return Promise.resolve(cached)
-
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = cached || new Image()
-    imageCache.set(url, img)
-    img.onload = () => {
-      requestDraw()
-      resolve(img)
-    }
-    img.onerror = reject
-    if (!cached) img.src = url
-  })
+  rafId = requestAnimationFrame(drawGlass)
 }
 
 function drawFallback(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -70,7 +51,10 @@ function drawFallback(ctx: CanvasRenderingContext2D, width: number, height: numb
   ctx.fillRect(0, 0, width, height)
 }
 
-async function drawGlass() {
+// Copy a blurred crop of the shared scene canvas at this button's screen rect.
+// Because the scene is the only renderer, the crop is always the exact frame
+// shown behind the button — no second image load, no timing to match.
+function drawGlass() {
   const root = rootRef.value
   const canvas = canvasRef.value
   const ctx = canvas?.getContext('2d')
@@ -91,47 +75,31 @@ async function drawGlass() {
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, cssWidth, cssHeight)
-  ctx.save()
   ctx.filter = `blur(${props.blur}px) saturate(180%)`
 
-  const imageUrl = props.backgroundUrl
-  if (imageUrl) {
-    try {
-      const img = await loadImage(imageUrl)
-      if (disposed) return
-
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
-      const scale = Math.max(viewportWidth / img.naturalWidth, viewportHeight / img.naturalHeight)
-      const drawnWidth = img.naturalWidth * scale
-      const drawnHeight = img.naturalHeight * scale
-      const offsetX = (viewportWidth - drawnWidth) / 2
-      const offsetY = (viewportHeight - drawnHeight) / 2
-      const cropX = rect.left - pad
-      const cropY = rect.top - pad
-
-      ctx.drawImage(img, offsetX - cropX, offsetY - cropY, drawnWidth, drawnHeight)
-    } catch {
-      drawFallback(ctx, cssWidth, cssHeight)
-    }
+  const source = scene?.getCanvas()
+  if (source && source.width > 0 && source.height > 0) {
+    const sdpr = scene!.getDpr()
+    const sx = (rect.left - pad) * sdpr
+    const sy = (rect.top - pad) * sdpr
+    const sw = cssWidth * sdpr
+    const sh = cssHeight * sdpr
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, cssWidth, cssHeight)
   } else {
     drawFallback(ctx, cssWidth, cssHeight)
   }
 
-  ctx.restore()
-  ctx.fillStyle = props.overlayColor
-  ctx.fillRect(0, 0, cssWidth, cssHeight)
+  ctx.filter = 'none'
 }
 
-watch(() => props.backgroundUrl, () => {
-  nextTick(requestDraw)
-})
-
 onMounted(() => {
-  nextTick(requestDraw)
+  requestDraw()
+  // The scene notifies from inside its own rAF frame with the background
+  // already painted, so draw synchronously here for zero-frame drift…
+  unsubscribe = scene?.subscribe(drawGlass) ?? null
+  // …and debounce the button-local triggers (move / resize) via rAF.
   window.addEventListener('resize', requestDraw)
   window.addEventListener('scroll', requestDraw, { passive: true })
-
   if (window.ResizeObserver && rootRef.value) {
     resizeObserver = new ResizeObserver(requestDraw)
     resizeObserver.observe(rootRef.value)
@@ -141,6 +109,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   disposed = true
   cancelAnimationFrame(rafId)
+  unsubscribe?.()
   window.removeEventListener('resize', requestDraw)
   window.removeEventListener('scroll', requestDraw)
   resizeObserver?.disconnect()

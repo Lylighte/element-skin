@@ -126,10 +126,11 @@ class AdminBackend:
         if not profile:
             raise HTTPException(status_code=404, detail="角色不存在")
         
-        # 编排级联删除
-        await self.db.user.delete_tokens_by_profile(profile_id)
-        await self.db.user.delete_profile(profile_id)
-        
+        # 事务内级联删除角色及其 Yggdrasil token，避免孤儿 token
+        ok = await self.db.user.delete_profile_cascade(profile_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="角色不存在")
+
         return {"ok": True}
 
     async def update_profile_skin(self, profile_id: str, skin_hash: str | None = None) -> dict:
@@ -154,6 +155,8 @@ class AdminBackend:
         
         password_hash = hash_password(new_password)
         await self.db.user.update_password(user_id, password_hash)
+        # 管理员重置后强制该用户全部会话失效（与自助改密一致）
+        await self.db.user.delete_refresh_tokens_by_user(user_id)
         return {"ok": True}
 
     async def list_invites(self, cursor: str | None, limit: int) -> dict:
