@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from utils.profile_naming import generate_unique_profile_name
 from utils.typing import PlayerProfile, normalize_texture_model
 from utils.http import download_texture as download_texture
-from services import assert_texture_size
+from services import assert_texture_size, resolve_max_texture_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -344,7 +344,8 @@ class MicrosoftBackend:
         if not url:
             return None
         try:
-            data = await download_texture(url)
+            max_bytes = await resolve_max_texture_bytes(self.db)
+            data = await download_texture(url, max_bytes=max_bytes)
             await assert_texture_size(self.db, data)
             texture_hash = await self.texture_storage.process_and_save_async(data, texture_type)
             await self.db.texture.add_to_library(user_id, texture_hash, texture_type, note)

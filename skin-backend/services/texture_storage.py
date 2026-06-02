@@ -17,6 +17,21 @@ from utils.image_utils import (
 DEFAULT_MAX_TEXTURE_SIZE_KB = 1024
 
 
+async def resolve_max_texture_bytes(db) -> int:
+    """解析 max_texture_size 设置（KB）并换算为字节上限，供下载/落盘共用同一阈值。
+
+    设置缺失或非法时退化为 DEFAULT_MAX_TEXTURE_SIZE_KB。
+    """
+    max_kb_str = await db.setting.get("max_texture_size", str(DEFAULT_MAX_TEXTURE_SIZE_KB))
+    try:
+        max_kb = int(max_kb_str)
+    except (TypeError, ValueError):
+        max_kb = DEFAULT_MAX_TEXTURE_SIZE_KB
+    if max_kb <= 0:
+        max_kb = DEFAULT_MAX_TEXTURE_SIZE_KB
+    return max_kb * 1024
+
+
 async def assert_texture_size(db, file_bytes: bytes) -> None:
     """统一的上传大小校验：超过 max_texture_size 设置（KB）则抛 ValueError。
 
@@ -24,12 +39,8 @@ async def assert_texture_size(db, file_bytes: bytes) -> None:
     图像处理。max_texture_size 是数据库设置，因此放在异步层而非同步的
     process_and_save 内。
     """
-    max_kb_str = await db.setting.get("max_texture_size", str(DEFAULT_MAX_TEXTURE_SIZE_KB))
-    try:
-        max_kb = int(max_kb_str)
-    except (TypeError, ValueError):
-        max_kb = DEFAULT_MAX_TEXTURE_SIZE_KB
-    if len(file_bytes) > max_kb * 1024:
+    max_bytes = await resolve_max_texture_bytes(db)
+    if len(file_bytes) > max_bytes:
         raise ValueError("Texture file too large.")
 
 

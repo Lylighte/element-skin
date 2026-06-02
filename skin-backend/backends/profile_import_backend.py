@@ -9,7 +9,7 @@ from backends.yggdrasil_client import YggdrasilClient, download_texture
 from utils.profile_naming import generate_unique_profile_name
 from utils.typing import PlayerProfile, normalize_texture_model
 from database_module import Database
-from services import TextureStorage, assert_texture_size
+from services import TextureStorage, assert_texture_size, resolve_max_texture_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +58,13 @@ class ProfileImportBackend:
 
         skin_hash = None
         skin_model = "default"
+        max_bytes = await resolve_max_texture_bytes(self.db)
         if profile_data.get("skins"):
             skin_url = profile_data["skins"][0]["url"]
             skin_variant = profile_data["skins"][0].get("variant", "classic")
             skin_model = normalize_texture_model(skin_variant)
             try:
-                skin_bytes = await download_texture(skin_url)
+                skin_bytes = await download_texture(skin_url, max_bytes=max_bytes)
                 skin_hash = await self._import_texture(
                     user_id, skin_bytes, "skin", f"Imported from {api_url}", model=skin_model
                 )
@@ -74,7 +75,7 @@ class ProfileImportBackend:
         if profile_data.get("capes"):
             cape_url = profile_data["capes"][0]["url"]
             try:
-                cape_bytes = await download_texture(cape_url)
+                cape_bytes = await download_texture(cape_url, max_bytes=max_bytes)
                 cape_hash = await self._import_texture(
                     user_id, cape_bytes, "cape", f"Imported from {api_url}"
                 )
