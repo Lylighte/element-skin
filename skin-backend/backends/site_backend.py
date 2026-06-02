@@ -591,7 +591,8 @@ class SiteBackend:
         if profile_row.user_id != user_id:
             raise HTTPException(status_code=403, detail="not allowed")
 
-        await self.db.user.delete_profile(pid)
+        # 级联删除：同时清掉该 profile 的 Yggdrasil 游戏 token，避免孤儿 token
+        await self.db.user.delete_profile_cascade(pid)
 
     async def clear_profile_texture(self, user_id, pid, texture_type):
         is_owner = await self.db.user.verify_profile_ownership(user_id, pid)

@@ -361,3 +361,36 @@ async def test_register_invite_overuse_blocked(db_session, test_config):
     assert exc.value.status_code == 400
     # 第二个用户不应被创建
     assert await db_session.user.get_by_email("second@test.com") is None
+
+
+@pytest.mark.asyncio
+async def test_user_self_delete_profile_cascades_tokens(db_session, test_config, user_factory):
+    """阶段4：用户自助删 profile 时，其 Yggdrasil 游戏 token 一并消失（统一走级联）。"""
+    from utils.typing import Token
+
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    user = await user_factory()
+    pid = generate_random_uuid()
+    await db_session.user.create_profile(PlayerProfile(pid, user.id, "SelfDel", "default", None, None))
+    await db_session.user.add_token(Token("self-acc-tok", "self-cli-tok", user.id, pid, int(time.time() * 1000)))
+    assert await db_session.user.get_token("self-acc-tok") is not None
+
+    await backend.delete_profile(user.id, pid)
+    assert await db_session.user.get_profile_by_id(pid) is None
+    assert await db_session.user.get_token("self-acc-tok") is None
+
+
+@pytest.mark.asyncio
+async def test_user_self_delete_profile_not_owner(db_session, test_config, user_factory):
+    """阶段4：非属主删 profile 仍被拒（403），级联改动不放松鉴权。"""
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    owner = await user_factory()
+    other = await user_factory()
+    pid = generate_random_uuid()
+    await db_session.user.create_profile(PlayerProfile(pid, owner.id, "OwnedProf", "default", None, None))
+
+    with pytest.raises(HTTPException) as exc:
+        await backend.delete_profile(other.id, pid)
+    assert exc.value.status_code == 403
+    # 角色未被删除
+    assert await db_session.user.get_profile_by_id(pid) is not None

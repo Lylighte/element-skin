@@ -1,8 +1,10 @@
+import time
 import pytest
 from fastapi import HTTPException
 from backends.admin_backend import AdminBackend
 from utils.typing import PlayerProfile
 from utils.uuid_utils import generate_random_uuid
+from utils.jwt_utils import hash_refresh_token
 
 @pytest.mark.asyncio
 async def test_admin_user_controls(db_session, test_config, user_factory):
@@ -375,3 +377,38 @@ async def test_admin_delete_invite(admin_backend_fixture, db_session):
     result = await admin_backend_fixture.delete_invite(code)
     assert result["ok"] is True
     assert await db_session.user.get_invite(code) is None
+
+
+# ========== Phase 4: admin account hardening ==========
+
+
+@pytest.mark.asyncio
+async def test_admin_reset_password_revokes_refresh(admin_backend_fixture, db_session, user_factory):
+    """管理员重置密码后，该用户既有 refresh 全部失效。"""
+    user = await user_factory()
+    now = int(time.time() * 1000)
+    expires = now + 3600 * 1000
+    hashes = [hash_refresh_token(f"raw-refresh-{i}") for i in range(3)]
+    for h in hashes:
+        await db_session.user.add_refresh_token(h, user.id, expires, now)
+    # 重置前 refresh 均在
+    for h in hashes:
+        assert await db_session.user.get_refresh_token(h) is not None
+
+    result = await admin_backend_fixture.reset_user_password(user.id, "NewStr0ngPass!")
+    assert result["ok"] is True
+
+    # 重置后全部失效
+    for h in hashes:
+        assert await db_session.user.get_refresh_token(h) is None
+    # 密码确实已更新
+    from utils.password_utils import verify_password
+    user_row = await db_session.user.get_by_id(user.id)
+    assert verify_password("NewStr0ngPass!", user_row.password)
+
+
+@pytest.mark.asyncio
+async def test_admin_reset_password_user_not_found(admin_backend_fixture):
+    with pytest.raises(HTTPException) as exc:
+        await admin_backend_fixture.reset_user_password("non-existent-id", "whatever123")
+    assert exc.value.status_code == 404
