@@ -1,23 +1,27 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { provide, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { User } from '@element-plus/icons-vue'
 import { getPublicSettings, getPublicCarousel } from '@/api/public'
 import { getMe } from '@/api/me'
 import CanvasGlassButton from '@/components/common/CanvasGlassButton.vue'
+import { createHeroScene, heroSceneKey } from '@/composables/useHeroScene'
 
 const router = useRouter()
 const siteName = ref(localStorage.getItem('site_name_cache') || '皮肤站')
 const siteSubtitle = ref(localStorage.getItem('site_subtitle_cache') || '简洁、高效、现代的 Minecraft 皮肤 management 站')
 const isLogged = ref(false)
-const carouselImages = ref<string[]>([])
-const activeCarouselIndex = ref(0)
-const activeCarouselUrl = computed(() => {
-  const image = carouselImages.value[activeCarouselIndex.value]
-  return image ? getCarouselUrl(image) : ''
-})
+const bgCanvasRef = ref<HTMLCanvasElement | null>(null)
+
+// Single source-of-truth renderer for the hero background. The buttons sample
+// blurred crops from its canvas, so they stay in lockstep with the crossfade.
+const scene = createHeroScene()
+provide(heroSceneKey, scene)
 
 onMounted(async () => {
+  scene.setTarget(bgCanvasRef.value)
+  scene.start()
+
   // 加载站点配置
   try {
     const res = await getPublicSettings()
@@ -36,7 +40,7 @@ onMounted(async () => {
   // 加载轮播图
   try {
     const res = await getPublicCarousel()
-    carouselImages.value = res.data
+    scene.setImages(res.data.map(getCarouselUrl))
   } catch (e) {
     console.warn('Failed to load carousel images:', e)
   }
@@ -48,6 +52,10 @@ onMounted(async () => {
   } catch {}
 })
 
+onBeforeUnmount(() => {
+  scene.destroy()
+})
+
 function goDashboard() { router.push('/dashboard') }
 function goLogin() { router.push('/login') }
 function goRegister() { router.push('/register') }
@@ -56,26 +64,12 @@ function getCarouselUrl(filename: string) {
   const base = import.meta.env.BASE_URL
   return `${base}static/carousel/${filename}`.replace(/\/+/g, '/')
 }
-
-function handleCarouselChange(index: number) {
-  activeCarouselIndex.value = index
-}
 </script>
 
 <template>
   <div class="home-container">
     <!-- Background is FIXED and outside of main content flow -->
-    <div v-if="carouselImages.length > 0" class="hero-bg-fixed">
-      <el-carousel height="100%" indicator-position="none" arrow="never" :interval="5000" @change="handleCarouselChange">
-        <el-carousel-item v-for="img in carouselImages" :key="img">
-          <div class="carousel-img-wrap">
-            <img :src="getCarouselUrl(img)" class="carousel-img" />
-            <div class="carousel-overlay"></div>
-          </div>
-        </el-carousel-item>
-      </el-carousel>
-    </div>
-    <div v-else class="hero-bg-fixed is-gradient"></div>
+    <canvas ref="bgCanvasRef" class="hero-bg-fixed" aria-hidden="true"></canvas>
 
     <!-- Main Content -->
     <div class="hero-section">
@@ -87,17 +81,16 @@ function handleCarouselChange(index: number) {
             v-if="isLogged"
             class="hero-btn"
             variant="primary"
-            :background-url="activeCarouselUrl"
             @click="goDashboard"
           >
             <el-icon><User /></el-icon>
             <span>进入个人面板</span>
           </CanvasGlassButton>
           <template v-else>
-            <CanvasGlassButton class="hero-btn" variant="primary" :background-url="activeCarouselUrl" @click="goLogin">
+            <CanvasGlassButton class="hero-btn" variant="primary" @click="goLogin">
               登录账号
             </CanvasGlassButton>
-            <CanvasGlassButton class="hero-btn" variant="secondary" :background-url="activeCarouselUrl" @click="goRegister">
+            <CanvasGlassButton class="hero-btn" variant="secondary" @click="goRegister">
               即刻注册
             </CanvasGlassButton>
           </template>
@@ -109,30 +102,19 @@ function handleCarouselChange(index: number) {
 
 <style scoped>
 .home-container {
-  width: 100%; 
+  width: 100%;
   height: calc(100vh - var(--footer-height, 0px));
-  display: flex; 
-  flex-direction: column; 
+  display: flex;
+  flex-direction: column;
   position: relative;
 }
 
-/* FIXED Background logic */
+/* FIXED Background logic — single canvas, drawn by the hero scene */
 .hero-bg-fixed {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0;
-}
-.hero-bg-fixed.is-gradient {
-  background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
-}
-
-.hero-bg-fixed :deep(.el-carousel) {
-  height: 100%;
-}
-
-.carousel-img-wrap { width: 100%; height: 100%; position: relative; }
-.carousel-img { width: 100%; height: 100%; object-fit: cover; }
-.carousel-overlay { 
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-  background: rgba(0, 0, 0, 0.45); 
+  position: fixed; top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  z-index: 0;
+  display: block;
 }
 
 .hero-section {

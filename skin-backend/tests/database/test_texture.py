@@ -49,6 +49,9 @@ async def test_texture_upload_and_library(db_session, user_factory):
     assert updated_info["is_public"] == 0
 
     # 7. Add to wardrobe (from library)
+    # 第 6 步已把材质改为私有，非上传者收藏应被拒绝（IDOR 防护）。
+    # 先重新公开，再让 user2 收藏，验证 is_public=2 的正常路径。
+    await db_session.texture.update_is_public(user.id, tex_hash, "skin", True)
     user2 = await user_factory()
     success = await db_session.texture.add_to_user_wardrobe(user2.id, tex_hash)
     assert success is True
@@ -209,3 +212,71 @@ async def test_list_all_textures_cursor(db_session, user_factory):
     for item in only_skins["items"]:
         if item["hash"] == hash_skin_pub:
             assert item["uploader_user_id"] == user.id
+
+
+@pytest.mark.asyncio
+async def test_add_to_wardrobe_rejects_others_private(db_session, user_factory):
+    """阶段2 IDOR：他人的私有材质不可被收藏到衣柜。"""
+    owner = await user_factory()
+    other = await user_factory()
+    priv_hash = "1" * 64
+
+    # owner 上传一个私有材质（is_public=0 也会进 skin_library）
+    await db_session.texture.add_to_library(
+        owner.id, priv_hash, "skin", note="Secret", is_public=False
+    )
+
+    # other 尝试收藏 → 拒绝
+    success = await db_session.texture.add_to_user_wardrobe(other.id, priv_hash)
+    assert success is False
+
+    # other 的衣柜里没有该材质
+    assert await db_session.texture.count_for_user(other.id) == 0
+    assert await db_session.texture.get_texture_info(other.id, priv_hash, "skin") is None
+
+
+@pytest.mark.asyncio
+async def test_add_to_wardrobe_allows_public(db_session, user_factory):
+    """阶段2 IDOR：公开材质任何人可收藏，状态为 2。"""
+    owner = await user_factory()
+    other = await user_factory()
+    pub_hash = "2" * 64
+
+    await db_session.texture.add_to_library(
+        owner.id, pub_hash, "skin", note="Public", is_public=True
+    )
+
+    success = await db_session.texture.add_to_user_wardrobe(other.id, pub_hash)
+    assert success is True
+
+    info = await db_session.texture.get_texture_info(other.id, pub_hash, "skin")
+    assert info is not None
+    assert info["is_public"] == 2  # 收藏态
+
+
+@pytest.mark.asyncio
+async def test_add_to_wardrobe_owner_recovers_private(db_session, user_factory):
+    """阶段2 IDOR：上传者可找回自己的私有材质，状态恢复为 1。"""
+    owner = await user_factory()
+    priv_hash = "3" * 64
+
+    await db_session.texture.add_to_library(
+        owner.id, priv_hash, "skin", note="MinePrivate", is_public=False
+    )
+
+    # 模拟遗留场景：库中有记录但用户衣柜被清空
+    await db_session.texture.delete_from_library(owner.id, priv_hash, "skin")
+    async with db_session.get_conn() as conn:
+        await conn.execute(
+            "INSERT INTO skin_library (skin_hash, texture_type, is_public, uploader, model, name, created_at) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            priv_hash, "skin", 0, owner.id, "default", "MinePrivate", 1234567890,
+        )
+
+    # 上传者找回 → 成功，恢复为公开态 1
+    success = await db_session.texture.add_to_user_wardrobe(owner.id, priv_hash)
+    assert success is True
+
+    info = await db_session.texture.get_texture_info(owner.id, priv_hash, "skin")
+    assert info is not None
+    assert info["is_public"] == 1

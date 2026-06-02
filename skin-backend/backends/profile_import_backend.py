@@ -1,5 +1,6 @@
 """远程 Yggdrasil 角色导入后端"""
 
+import logging
 from typing import Dict, List
 
 from fastapi import HTTPException
@@ -8,7 +9,9 @@ from backends.yggdrasil_client import YggdrasilClient, download_texture
 from utils.profile_naming import generate_unique_profile_name
 from utils.typing import PlayerProfile, normalize_texture_model
 from database_module import Database
-from services import TextureStorage
+from services import TextureStorage, assert_texture_size, resolve_max_texture_bytes
+
+logger = logging.getLogger(__name__)
 
 
 class ProfileImportBackend:
@@ -19,7 +22,8 @@ class ProfileImportBackend:
     async def _import_texture(
         self, user_id: str, texture_bytes: bytes, texture_type: str, note: str, model: str = "default"
     ) -> str:
-        texture_hash = self.texture_storage.process_and_save(texture_bytes, texture_type)
+        await assert_texture_size(self.db, texture_bytes)
+        texture_hash = await self.texture_storage.process_and_save_async(texture_bytes, texture_type)
         await self.db.texture.add_to_library(
             user_id, texture_hash, texture_type, note, is_public=False, model=model
         )
@@ -31,8 +35,12 @@ class ProfileImportBackend:
             result = await client.authenticate(username, password)
             profiles = result.get("availableProfiles", [])
             return {"profiles": profiles}
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        except HTTPException:
+            raise  # 已是面向用户的业务错误，原样抛
+        except Exception:
+            # 不回显底层异常（含远端 URL/连接细节）；服务端记完整堆栈
+            logger.warning("get_ygg_profiles failed", exc_info=True)
+            raise HTTPException(status_code=400, detail="无法获取远端资料，请检查账号或稍后重试")
 
     async def _import_single_ygg_profile(
         self,
@@ -54,28 +62,29 @@ class ProfileImportBackend:
 
         skin_hash = None
         skin_model = "default"
+        max_bytes = await resolve_max_texture_bytes(self.db)
         if profile_data.get("skins"):
             skin_url = profile_data["skins"][0]["url"]
             skin_variant = profile_data["skins"][0].get("variant", "classic")
             skin_model = normalize_texture_model(skin_variant)
             try:
-                skin_bytes = await download_texture(skin_url)
+                skin_bytes = await download_texture(skin_url, max_bytes=max_bytes)
                 skin_hash = await self._import_texture(
                     user_id, skin_bytes, "skin", f"Imported from {api_url}", model=skin_model
                 )
             except Exception as e:
-                print(f"Failed to download/upload skin: {e}")
+                logger.warning("Failed to download/upload skin: %s", e)
 
         cape_hash = None
         if profile_data.get("capes"):
             cape_url = profile_data["capes"][0]["url"]
             try:
-                cape_bytes = await download_texture(cape_url)
+                cape_bytes = await download_texture(cape_url, max_bytes=max_bytes)
                 cape_hash = await self._import_texture(
                     user_id, cape_bytes, "cape", f"Imported from {api_url}"
                 )
             except Exception as e:
-                print(f"Failed to download/upload cape: {e}")
+                logger.warning("Failed to download/upload cape: %s", e)
 
         await self.db.user.create_profile(
             PlayerProfile(profile_id, user_id, target_name, skin_model)
@@ -92,10 +101,11 @@ class ProfileImportBackend:
         client = YggdrasilClient(api_url)
         try:
             return await self._import_single_ygg_profile(user_id, api_url, profile_id, profile_name, client)
-        except Exception as e:
-            if isinstance(e, HTTPException):
-                raise e
-            raise HTTPException(status_code=400, detail=str(e))
+        except HTTPException:
+            raise  # 已是面向用户的业务错误，原样抛
+        except Exception:
+            logger.warning("profile import failed for %s", profile_id, exc_info=True)
+            raise HTTPException(status_code=400, detail="导入失败，请稍后重试")
 
     async def import_ygg_profiles(self, user_id: str, api_url: str, profiles: List[Dict[str, str]]):
         if not isinstance(profiles, list):
@@ -127,11 +137,12 @@ class ProfileImportBackend:
                     "profile_name": profile_name,
                     "detail": exc.detail,
                 })
-            except Exception as exc:
+            except Exception:
+                logger.warning("batch import item failed: %s", profile_id, exc_info=True)
                 failed.append({
                     "profile_id": profile_id,
                     "profile_name": profile_name,
-                    "detail": str(exc),
+                    "detail": "导入失败",
                 })
 
         return {
