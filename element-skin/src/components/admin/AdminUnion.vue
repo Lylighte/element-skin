@@ -37,9 +37,6 @@
           <el-form-item label="启用 Union OAuth2">
             <el-switch v-model="settings.union_enable_oauth2" />
           </el-form-item>
-          <el-form-item label="启用 Restore API">
-            <el-switch v-model="settings.ygg_restore_api" />
-          </el-form-item>
         </div>
       </el-form>
     </el-card>
@@ -200,19 +197,6 @@
       </el-table>
     </el-card>
 
-    <!-- Private Key Display -->
-    <el-card class="surface-card" shadow="never" v-if="settings.ygg_private_key">
-      <template #header>
-        <div class="card-header-flex">
-          <div class="title-group">
-            <el-icon><Key /></el-icon>
-            <span>当前 Yggdrasil 私钥</span>
-          </div>
-        </div>
-      </template>
-      <el-input :model-value="settings.ygg_private_key" type="textarea" :rows="6" readonly />
-    </el-card>
-
     <!-- Blacklist Management -->
     <el-card class="surface-card mb-6" shadow="never">
       <template #header>
@@ -314,8 +298,6 @@ const settings = reactive({
   union_enable_oauth2: true,
   union_oauth2_sig_private_key: '',
   union_oauth2_sig_public_key: '',
-  ygg_restore_api: false,
-  ygg_private_key: '',
 })
 const saving = ref(false)
 const generating = ref(false)
@@ -359,8 +341,6 @@ async function fetchSettings() {
       union_enable_oauth2: res.data.union_enable_oauth2 === 'true',
       union_oauth2_sig_private_key: res.data.union_oauth2_sig_private_key || '',
       union_oauth2_sig_public_key: res.data.union_oauth2_sig_public_key || '',
-      ygg_restore_api: res.data.ygg_restore_api === 'true',
-      ygg_private_key: res.data.ygg_private_key || '',
     })
     serverList.value = (res.data.union_server_list || []).map(s => ({ ...s, displayName: '' }))
 

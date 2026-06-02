@@ -8,7 +8,7 @@ class UnionModule:
         self._cache = {}
 
     async def init(self):
-        rows = await self.db.fetch("SELECT key, value FROM settings WHERE key LIKE 'union_%' OR key = 'ygg_restore_api' OR key = 'ygg_private_key'")
+        rows = await self.db.fetch("SELECT key, value FROM settings WHERE key LIKE 'union_%'")
         self._cache = {row[0]: row[1] for row in rows}
 
     async def get(self, key: str, default: str = None) -> str:

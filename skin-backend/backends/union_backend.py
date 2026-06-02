@@ -37,9 +37,6 @@ class UnionBackend:
     async def is_oauth2_enabled(self) -> bool:
         return (await self.db.union.get("union_enable_oauth2", "true")).lower() == "true"
 
-    async def is_restore_api_enabled(self) -> bool:
-        return (await self.db.union.get("ygg_restore_api", "false")).lower() == "true"
-
     # Settings management
     async def get_settings(self) -> dict:
         return await self.db.union.get_all_settings()
@@ -48,7 +45,7 @@ class UnionBackend:
         """Save multiple union settings. Keys must be allowed keys."""
         allowed = {"union_api_root", "union_member_key", "union_enable_update",
                    "union_enable_oauth2", "union_oauth2_sig_private_key",
-                   "union_oauth2_sig_public_key", "ygg_restore_api"}
+                   "union_oauth2_sig_public_key"}
         for key, value in kv.items():
             if key in allowed:
                 await self.db.union.set(key, str(value))
@@ -240,7 +237,6 @@ class UnionBackend:
         """Fetch shared private key from Union and store locally."""
         result = await self._api_get("privatekey", raw=False)
         if result and "privateKey" in result and "privateKeyVersion" in result:
-            await self.db.union.set("ygg_private_key", result["privateKey"])
             await self.db.union.set("union_private_key_version", str(result["privateKeyVersion"]))
             logger.info(f"Updated private key (version {result['privateKeyVersion']})")
             return True
@@ -614,33 +610,6 @@ class UnionBackend:
             await self.db.union.set("union_oauth2_sig_private_key", keypair["private"])
             await self.db.union.set("union_oauth2_sig_public_key", keypair["public"])
             logger.info("Auto-generated OAuth2 signing key pair")
-
-    # ========== Restore API ==========
-
-    async def sign_profile_properties(self, profile: dict) -> dict:
-        """Sign profile properties with Yggdrasil private key for multi-backend restore."""
-        private_key_pem = await self.db.union.get("ygg_private_key", "")
-        if not private_key_pem:
-            return profile
-
-        try:
-            private_key = serialization.load_pem_private_key(
-                private_key_pem.encode("utf-8"), password=None, backend=default_backend()
-            )
-
-            for prop in profile.get("properties", []):
-                value = prop.get("value", "")
-                signature = private_key.sign(
-                    value.encode("utf-8"),
-                    padding.PKCS1v15(),
-                    hashes.SHA256(),
-                )
-                prop["signature"] = base64.b64encode(signature).decode("utf-8")
-
-            return profile
-        except Exception as e:
-            logger.error(f"Failed to sign profile properties: {e}")
-            return profile
 
     @staticmethod
     def load_pem_public_key(key_pem: str) -> RSAPublicKey | None:

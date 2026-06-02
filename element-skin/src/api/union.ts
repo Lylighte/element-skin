@@ -17,11 +17,9 @@ export interface UnionSettings {
   union_enable_oauth2: string
   union_oauth2_sig_private_key: string
   union_oauth2_sig_public_key: string
-  ygg_restore_api: string
   union_server_list_version: number
   union_private_key_version: number
   union_server_list: any[]
-  ygg_private_key?: string
 }
 
 // --- Dashboard functions ---

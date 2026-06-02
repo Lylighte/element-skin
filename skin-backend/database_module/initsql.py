@@ -163,7 +163,6 @@ INSERT INTO settings (key, value) VALUES
 ('union_enable_update', 'true'),
 ('union_enable_oauth2', 'true'),
 ('union_oauth2_sig_private_key', ''),
-('union_oauth2_sig_public_key', ''),
-('ygg_restore_api', 'false')
+('union_oauth2_sig_public_key', '')
 ON CONFLICT (key) DO NOTHING;
 """

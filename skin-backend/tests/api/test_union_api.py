@@ -154,22 +154,6 @@ async def test_admin_generate_keypair(client, admin_headers):
 
 
 @pytest.mark.asyncio
-async def test_restore_hello(client):
-    """Test restore API health check."""
-    resp = await client.get("/restore")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "success"
-
-
-@pytest.mark.asyncio
-async def test_restore_sign_disabled(client):
-    """Test restore API returns 403 when disabled."""
-    resp = await client.post("/restore", json={"properties": []})
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_union_oauth2_pubkey_not_configured(client):
     """Test OAuth2 public key endpoint returns 503 when not configured."""
     resp = await client.get("/api/union/member/oauth2/")

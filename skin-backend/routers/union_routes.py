@@ -361,8 +361,6 @@ def setup_routes(union_backend, rate_limiter, config: Config):
             "union_enable_oauth2": settings.get("union_enable_oauth2", "true"),
             "union_oauth2_sig_private_key": settings.get("union_oauth2_sig_private_key", ""),
             "union_oauth2_sig_public_key": settings.get("union_oauth2_sig_public_key", ""),
-            "ygg_restore_api": settings.get("ygg_restore_api", "false"),
-            "ygg_private_key": settings.get("ygg_private_key", ""),
             "union_server_list": json.loads(settings.get("union_server_list", "[]")),
         }
 
@@ -372,9 +370,9 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         allowed_keys = {
             "union_api_root", "union_member_key", "union_enable_update",
             "union_enable_oauth2", "union_oauth2_sig_private_key",
-            "union_oauth2_sig_public_key", "ygg_restore_api",
+            "union_oauth2_sig_public_key",
         }
-        bool_keys = {"union_enable_update", "union_enable_oauth2", "ygg_restore_api"}
+        bool_keys = {"union_enable_update", "union_enable_oauth2"}
         kv = {}
         for key, value in body.items():
             if key in allowed_keys:
@@ -465,23 +463,5 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         """Admin: generate a new RSA keypair for OAuth2 signing."""
         keypair = union_backend.generate_rsa_keypair()
         return {"privateKey": keypair["private"], "publicKey": keypair["public"]}
-
-    # ========================================================================
-    # GROUP F: Restore API (gated by ygg_restore_api setting)
-    # ========================================================================
-
-    @router.get("/restore")
-    async def restore_hello():
-        """Restore API health check."""
-        return {"status": "success"}
-
-    @router.post("/restore")
-    async def restore_sign(body: dict = Body(...)):
-        """Sign profile properties with Yggdrasil private key for multi-backend."""
-        if not await union_backend.is_restore_api_enabled():
-            raise HTTPException(status_code=403, detail="Restore API is disabled")
-
-        profile = await union_backend.sign_profile_properties(body)
-        return profile
 
     return router
