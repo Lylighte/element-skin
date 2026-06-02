@@ -7,6 +7,7 @@ jwt:
 keys:
   private_key: "/app/data/private.pem"
   public_key: "/app/data/public.pem"
+  use_union_key: false  # 为 true 时使用 Union 分配的 Yggdrasil 密钥，而非默认 private.pem
 
 database:
   dsn: "postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable"
