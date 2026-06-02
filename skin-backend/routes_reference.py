@@ -48,6 +48,9 @@ _deps.bind_db(db)
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     import time
+    from utils.jwt_utils import assert_jwt_secret_ok
+    # 启动期 fail-fast：JWT 密钥缺失/默认/过短即拒绝起服务，杜绝可伪造 token 的致命路径
+    assert_jwt_secret_ok()
     await db.connect()
     await db.init()
     # 启动时清理一次过期的站点 refresh token

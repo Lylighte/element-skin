@@ -8,8 +8,37 @@ from typing import Dict, Optional, Tuple
 from config_loader import config
 
 
-JWT_SECRET = config.get("jwt.secret", "dev-secret-default-key-at-least-32-chars-long")
+_DEFAULT_SECRET = "dev-secret-default-key-at-least-32-chars-long"
+# config.yaml 出厂占位密钥；运营若忘改即命中，与代码内 fallback 一并视为「未配置」。
+_SHIPPED_PLACEHOLDER = "dev-secret-please-change-to-a-very-long-string-in-production"
+_KNOWN_WEAK_SECRETS = frozenset({_DEFAULT_SECRET, _SHIPPED_PLACEHOLDER})
+
+JWT_SECRET = config.get("jwt.secret", _DEFAULT_SECRET)
 JWT_ALGO = "HS256"
+
+
+def _validate_jwt_secret(secret: str) -> None:
+    """校验 JWT 密钥强度，命中任一弱口令条件即抛 RuntimeError（启动期 fail-fast）。
+
+    HS256 下「知道密钥即可伪造任意 sub 的 access token → 账号/管理员接管」，
+    故启动期必须拒绝缺失、默认/占位、过短（< 32 字节）的密钥，绝不拖到运行期变神秘 500。
+    """
+    if not secret:
+        raise RuntimeError("jwt.secret 未配置：请在配置文件中设置高熵密钥后再启动")
+    if secret in _KNOWN_WEAK_SECRETS:
+        raise RuntimeError("jwt.secret 仍为默认/占位值：必须改为随机高熵密钥后再启动")
+    if len(secret.encode("utf-8")) < 32:
+        raise RuntimeError("jwt.secret 过短：至少 32 字节")
+
+
+def assert_jwt_secret_ok() -> None:
+    """应用启动期（lifespan）调用，对当前 JWT_SECRET 做 fail-fast 校验。
+
+    放启动期而非模块加载期：测试与工具脚本 import 本模块时复用 config.yaml 的出厂占位
+    密钥，若模块级抛错会令整个测试套件在收集期失败；而 ASGI lifespan 仅在真正起服务
+    （uvicorn）时触发，故能在生产启动时拦截弱密钥，又不影响 import。
+    """
+    _validate_jwt_secret(JWT_SECRET)
 
 # access token 有效期（分钟）。代码默认 30 分钟，可经配置覆盖，但 config.yaml 不预置该键。
 ACCESS_EXPIRE_MINUTES = int(config.get("jwt.access_expire_minutes", 30))
