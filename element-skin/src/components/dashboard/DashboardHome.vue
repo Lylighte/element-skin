@@ -191,9 +191,9 @@ onMounted(async () => {
   try {
     const res = await getPublicSettings()
 
-    // Set API URL from backend settings, fallback to calculated one if empty
-    if (res.data.site_url) {
-      apiUrl.value = res.data.site_url.endsWith('/') ? res.data.site_url.slice(0, -1) : res.data.site_url
+    // Keep the launcher URL in sync with the backend's public Yggdrasil API URL.
+    if (res.data.api_url) {
+      apiUrl.value = res.data.api_url.endsWith('/') ? res.data.api_url.slice(0, -1) : res.data.api_url
     } else {
       apiUrl.value = getApiUrl()
     }

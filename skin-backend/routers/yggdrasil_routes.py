@@ -165,7 +165,7 @@ def setup_routes(backend: YggdrasilBackend, db: Database, rate_limiter):
     @router.get("/")
     async def get_api_metadata(request: Request):
         """API元数据端点 (Yggdrasil服务发现)"""
-        return await backend.build_metadata(str(request.base_url))
+        return await backend.build_metadata()
 
     @router.get("/api/minecraft/profile/lookup/name/{playerName}")
     @router.get("/minecraft/profile/lookup/name/{playerName}")

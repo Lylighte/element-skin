@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from database_module import Database
+from utils.public_urls import public_api_url, public_site_url
 
 # 所有设置项默认值的单一事实来源（值统一为字符串，与 setting 表存储一致）
 SETTING_DEFAULTS = {
@@ -52,8 +53,9 @@ def _str(s: dict, key: str) -> str:
 
 
 class SettingsBackend:
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, config=None):
         self.db = db
+        self.config = config
 
     async def get_public_settings(self) -> dict:
         s = await self.db.setting.get_all()
@@ -62,6 +64,8 @@ class SettingsBackend:
         return {
             "site_name": _str(s, "site_name"),
             "site_subtitle": _str(s, "site_subtitle"),
+            "site_url": public_site_url(self.config),
+            "api_url": public_api_url(self.config),
             "allow_register": _bool(s, "allow_register"),
             "enable_skin_library": _bool(s, "enable_skin_library"),
             "email_verify_enabled": _bool(s, "email_verify_enabled"),
