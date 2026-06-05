@@ -187,7 +187,7 @@ async def test_build_authenticate_response_no_request_user(ygg_backend_fixture, 
 async def test_build_metadata_shape(ygg_backend_fixture, db_session):
     """build_metadata：含 meta/skinDomains/signaturePublickey，skinDomains 为 list"""
     await db_session.setting.set("site_name", "My Ygg Station")
-    meta = await ygg_backend_fixture.build_metadata("http://fallback.example")
+    meta = await ygg_backend_fixture.build_metadata()
     assert meta["meta"]["serverName"] == "My Ygg Station"
     assert isinstance(meta["skinDomains"], list)
     assert meta["signaturePublickey"]

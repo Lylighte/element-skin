@@ -128,6 +128,7 @@ server {
     index index.html;
 
     location / {
+        add_header X-Authlib-Injector-API-Location "http://yourdomain.com/skinapi" always;
         try_files $uri $uri/ /index.html;
     }
 
@@ -167,6 +168,7 @@ docker compose up -d
 ```nginx
 # 1. 前端静态文件
 location /skin/ {
+    add_header X-Authlib-Injector-API-Location "http://yourdomain.com/skinapi" always;
     alias /your/path/to/frontend/;
     index index.html;
     try_files $uri $uri/ /skin/index.html;
@@ -191,6 +193,7 @@ location = /skinapi {
 ```nginx
 # 1. 前端静态文件
 location /skin/ {
+    add_header X-Authlib-Injector-API-Location "http://yourdomain.com/skin/api" always;
     alias /your/path/to/frontend/;
     index index.html;
     try_files $uri $uri/ /skin/index.html;

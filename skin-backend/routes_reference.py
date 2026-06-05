@@ -29,6 +29,7 @@ from utils.crypto import CryptoUtils
 from utils.rate_limiter import RateLimiter
 from routers import yggdrasil_routes, site_routes, microsoft_routes, admin_routes
 from routers import deps as _deps
+from utils.public_urls import public_api_url
 
 # ========== 初始化核心组件 ==========
 db_dsn = config.get("database.dsn", "postgresql://elementskin:password@localhost:5432/elementskin")
@@ -42,7 +43,7 @@ ygg_backend = YggdrasilBackend(db, crypto, texture_storage, config)
 site_backend = SiteBackend(db, config, texture_storage)
 profile_import_backend = ProfileImportBackend(db, texture_storage)
 admin_backend = AdminBackend(db, config)
-settings_backend = SettingsBackend(db)
+settings_backend = SettingsBackend(db, config)
 
 # 让鉴权依赖能查库校验封禁/管理员实时状态
 _deps.bind_db(db)
@@ -113,6 +114,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def authlib_injector_api_location_middleware(request: Request, call_next):
+    response = await call_next(request)
+    api_url = public_api_url(config)
+    if api_url:
+        response.headers["X-Authlib-Injector-API-Location"] = api_url
+    return response
 
 # # 统一路径结尾斜杠中间件
 # @app.middleware("http")

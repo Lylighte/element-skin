@@ -8,6 +8,8 @@ async def test_get_public_settings(client):
     data = response.json()
     assert "site_name" in data
     assert "allow_register" in data
+    assert data["api_url"] == "http://localhost:8000"
+    assert response.headers["X-Authlib-Injector-API-Location"] == data["api_url"]
 
 @pytest.mark.asyncio
 async def test_admin_access_control(client, auth_headers, admin_headers):
