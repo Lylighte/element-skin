@@ -58,6 +58,9 @@ coverage/
 /skin-backend/carousel/
 ### Misc
 .cache/
+.gocache/
+.gomodcache/
+skin-backend-go/element-skin.exe
 node_modules/
 .history/
 

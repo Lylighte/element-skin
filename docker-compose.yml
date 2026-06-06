@@ -17,7 +17,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: skin-backend/Dockerfile
+      dockerfile: skin-backend-go/Dockerfile
     restart: always
     environment:
       - VITE_BASE_PATH=${VITE_BASE_PATH:-/}
