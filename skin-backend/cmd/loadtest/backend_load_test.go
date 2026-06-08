@@ -51,6 +51,9 @@ func TestRealBackendLoad(t *testing.T) {
 
 	db, handler := testutil.NewTestAppWithMaxConnectionsTB(t, int32(cfg.MaxDBConns))
 	cfg.MaxDBConns = int(db.Pool.Stat().MaxConns())
+	if err := db.Settings.Set(context.Background(), "rate_limit_enabled", false); err != nil {
+		t.Fatalf("disable load-test auth rate limit: %v", err)
+	}
 	seed := seedLoadTestData(t, db)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -246,7 +249,7 @@ func reportPath() string {
 	if path := os.Getenv("LOADTEST_REPORT"); path != "" {
 		return path
 	}
-	return filepath.Clean(filepath.Join("..", "..", "reports", "concurrency-load-test.md"))
+	return filepath.Clean(filepath.Join("..", "..", "..", "reports", "concurrency-load-test.md"))
 }
 
 func writeLoadTestReport(path string, cfg loadTestConfigValue, concurrency int, results []scenarioResult) error {
@@ -263,6 +266,8 @@ func writeLoadTestReport(path string, cfg loadTestConfigValue, concurrency int, 
 	fmt.Fprintf(&b, "- Duration per level: `%s`\n", cfg.Duration)
 	fmt.Fprintf(&b, "- Backend database pool used by harness: `%d` max connections\n", cfg.MaxDBConns)
 	fmt.Fprintf(&b, "- Test database: isolated `elementskin_go_test_*`, dropped by test cleanup\n\n")
+	fmt.Fprintf(&b, "- Redis: real test Redis with isolated `elementskin:test:*` key prefix, cleaned by test cleanup\n")
+	fmt.Fprintf(&b, "- Auth rate limiting: disabled for load-test login scenario to measure login throughput instead of 429 policy\n\n")
 	fmt.Fprintf(&b, "## Scenario Coverage\n\n")
 	fmt.Fprintf(&b, "| Area | Scenario | Method | Path |\n")
 	fmt.Fprintf(&b, "| --- | --- | --- | --- |\n")
