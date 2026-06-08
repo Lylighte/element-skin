@@ -52,3 +52,38 @@ func TestUserTextureLibraryCRUDAndPagination(t *testing.T) {
 		t.Fatalf("delete mismatch: deleted=%v err=%v", deleted, err)
 	}
 }
+
+func TestUserTextureDeleteOnlyRemovesOnePersonalLibraryRow(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	owner := testutil.CreateUser(t, db, "domain-texture-delete-owner@test.com", "Password123", "DeleteOwner", false)
+	other := testutil.CreateUser(t, db, "domain-texture-delete-other@test.com", "Password123", "DeleteOther", false)
+	if err := store.AddToLibrary(ctx, owner.ID, "domain_texture_delete_hash", "skin", "Delete Count", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if added, err := store.AddToWardrobe(ctx, other.ID, "domain_texture_delete_hash", "skin"); err != nil || !added {
+		t.Fatalf("wardrobe add mismatch: added=%v err=%v", added, err)
+	}
+	deleted, err := store.DeleteFromLibrary(ctx, other.ID, "domain_texture_delete_hash", "skin")
+	if err != nil || !deleted {
+		t.Fatalf("delete mismatch: deleted=%v err=%v", deleted, err)
+	}
+	if err := store.RecountUsage(ctx, "domain_texture_delete_hash", "skin"); err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListPublic(ctx, texture.PublicListOptions{Limit: 1, Sort: texture.PublicLibrarySortMostUsed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := page["items"].([]map[string]any)
+	if len(items) != 1 || items[0]["usage_count"] != int64(1) {
+		t.Fatalf("usage_count should remain owner-only after non-uploader deletion: %#v", page)
+	}
+	if ok, err := store.VerifyOwnership(ctx, owner.ID, "domain_texture_delete_hash", "skin"); err != nil || !ok {
+		t.Fatalf("owner row should remain: ok=%v err=%v", ok, err)
+	}
+	if exists, err := store.Exists(ctx, "domain_texture_delete_hash", "skin"); err != nil || !exists {
+		t.Fatalf("skin_library row should remain: exists=%v err=%v", exists, err)
+	}
+}

@@ -68,13 +68,9 @@ func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) DeleteProfile(w http.ResponseWriter, req *http.Request) {
-	ok, err := h.db.Profiles.DeleteCascade(req.Context(), req.PathValue("profile_id"))
+	err := h.site.DeleteProfileByID(req.Context(), req.PathValue("profile_id"))
 	if err != nil {
 		util.Error(w, err)
-		return
-	}
-	if !ok {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "profile not found"})
 		return
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
@@ -102,16 +98,9 @@ func (h Handler) setProfileTexture(w http.ResponseWriter, req *http.Request, typ
 		util.Error(w, util.HTTPError{Status: 404, Detail: "profile not found"})
 		return
 	}
-	if typ == "skin" {
-		if err := h.db.Profiles.UpdateSkin(req.Context(), profileID, body["hash"]); err != nil {
-			util.Error(w, err)
-			return
-		}
-	} else {
-		if err := h.db.Profiles.UpdateCape(req.Context(), profileID, body["hash"]); err != nil {
-			util.Error(w, err)
-			return
-		}
+	if err := h.site.SetProfileTexture(req.Context(), profileID, typ, body["hash"]); err != nil {
+		util.Error(w, err)
+		return
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
 }

@@ -59,13 +59,13 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if textureType == "skin" {
-		if err := h.db.Profiles.UpdateSkin(req.Context(), selectedProfile.ID, &hash); err != nil {
+		if err := h.site.SetProfileTexture(req.Context(), selectedProfile.ID, "skin", &hash); err != nil {
 			util.Error(w, err)
 			return
 		}
 		_ = h.db.Profiles.UpdateModel(req.Context(), selectedProfile.ID, profilestore.NormalizeModel(req.FormValue("model")))
 	} else if textureType == "cape" {
-		if err := h.db.Profiles.UpdateCape(req.Context(), selectedProfile.ID, &hash); err != nil {
+		if err := h.site.SetProfileTexture(req.Context(), selectedProfile.ID, "cape", &hash); err != nil {
 			util.Error(w, err)
 			return
 		}
@@ -93,9 +93,9 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 	}
 	switch strings.ToLower(req.PathValue("texture_type")) {
 	case "skin":
-		err = h.db.Profiles.UpdateSkin(req.Context(), *tok.ProfileID, nil)
+		err = h.site.SetProfileTexture(req.Context(), *tok.ProfileID, "skin", nil)
 	case "cape":
-		err = h.db.Profiles.UpdateCape(req.Context(), *tok.ProfileID, nil)
+		err = h.site.SetProfileTexture(req.Context(), *tok.ProfileID, "cape", nil)
 	default:
 		err = util.HTTPError{Status: 400, Detail: "Invalid texture_type"}
 	}

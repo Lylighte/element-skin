@@ -72,7 +72,7 @@ func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot delete yourself"})
 		return
 	}
-	ok, err := h.db.Users.Delete(req.Context(), targetID)
+	ok, err := h.site.DeleteUser(req.Context(), targetID)
 	if err != nil {
 		util.Error(w, err)
 		return

@@ -166,6 +166,10 @@ func (s Store) AdminDelete(ctx context.Context, hash, textureType, userID string
 		if _, err := tx.Exec(ctx, `DELETE FROM skin_library WHERE skin_hash=$1 AND texture_type=$2`, hash, textureType); err != nil {
 			return err
 		}
+	} else {
+		if _, err := tx.Exec(ctx, `UPDATE skin_library SET usage_count=$3 WHERE skin_hash=$1 AND texture_type=$2`, hash, textureType, remaining); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

@@ -14,7 +14,7 @@ import (
 
 func (h Handler) PublicLibrary(w http.ResponseWriter, req *http.Request) {
 	limit := util.ClampLimit(req.URL.Query().Get("limit"))
-	res, err := h.site.PublicLibrary(req.Context(), req.URL.Query().Get("cursor"), limit, req.URL.Query().Get("texture_type"), req.URL.Query().Get("q"))
+	res, err := h.site.PublicLibrary(req.Context(), req.URL.Query().Get("cursor"), limit, req.URL.Query().Get("texture_type"), req.URL.Query().Get("q"), req.URL.Query().Get("sort"))
 	if err != nil {
 		util.Error(w, err)
 		return

@@ -137,6 +137,14 @@ func TestSiteProfilesTexturesAndLibraryExactState(t *testing.T) {
 	if withTextures.SkinHash == nil || *withTextures.SkinHash != "site_skin" || withTextures.CapeHash == nil || *withTextures.CapeHash != "site_cape" || withTextures.TextureModel != "slim" {
 		t.Fatalf("ApplyTextureToProfile did not update profile exactly: %#v", withTextures)
 	}
+	publicAfterApply, err := site.PublicLibrary(ctx, "", 10, "skin", "Site", "most_used")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appliedItems := publicAfterApply["items"].([]map[string]any)
+	if len(appliedItems) != 1 || appliedItems[0]["hash"] != "site_skin" || appliedItems[0]["usage_count"] != int64(1) {
+		t.Fatalf("usage_count should count personal library rows, not profile applications: %#v", publicAfterApply)
+	}
 
 	detail, err := site.UpdateTexture(ctx, user.ID, "site_skin", "skin", map[string]any{"note": "Updated Skin", "model": "default", "is_public": false})
 	if err != nil {
@@ -166,13 +174,16 @@ func TestSiteProfilesTexturesAndLibraryExactState(t *testing.T) {
 	if otherTexture["note"] != "Updated Skin" || otherTexture["is_public"] != 2 {
 		t.Fatalf("wardrobe texture mismatch: %#v", otherTexture)
 	}
-	public, err := site.PublicLibrary(ctx, "", 10, "skin", "Updated")
+	public, err := site.PublicLibrary(ctx, "", 10, "skin", "Updated", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	publicItems := public["items"].([]map[string]any)
 	if len(publicItems) != 1 || publicItems[0]["hash"] != "site_skin" || publicItems[0]["name"] != "Updated Skin" {
 		t.Fatalf("PublicLibrary mismatch: %#v", public)
+	}
+	if publicItems[0]["usage_count"] != int64(2) {
+		t.Fatalf("AddTextureToWardrobe should increment usage_count: %#v", publicItems[0])
 	}
 	myTextures, err := site.ListMyTextures(ctx, user.ID, "", 10, "skin")
 	if err != nil {
@@ -192,6 +203,14 @@ func TestSiteProfilesTexturesAndLibraryExactState(t *testing.T) {
 	}
 	if cleared.SkinHash != nil || cleared.CapeHash == nil {
 		t.Fatalf("ClearProfileTexture should clear only skin: %#v", cleared)
+	}
+	publicAfterClear, err := site.PublicLibrary(ctx, "", 10, "skin", "Updated", "most_used")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clearedItems := publicAfterClear["items"].([]map[string]any)
+	if len(clearedItems) != 1 || clearedItems[0]["usage_count"] != int64(2) {
+		t.Fatalf("ClearProfileTexture should not affect usage_count: %#v", publicAfterClear)
 	}
 	if err := site.DeleteTexture(ctx, user.ID, "site_cape", "cape"); err != nil {
 		t.Fatal(err)

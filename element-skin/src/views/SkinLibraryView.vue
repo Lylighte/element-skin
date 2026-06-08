@@ -38,6 +38,10 @@
             <el-radio-button value="skin">皮肤</el-radio-button>
             <el-radio-button value="cape">披风</el-radio-button>
           </el-radio-group>
+          <el-select v-model="sortBy" @change="handleSortChange" size="large" class="sort-select">
+            <el-option label="最新上传" value="latest" />
+            <el-option label="最多使用" value="most_used" />
+          </el-select>
         </div>
       </div>
 
@@ -85,6 +89,8 @@
               <span class="texture-date">
                 {{ formatDate(item.created_at) }}
               </span>
+              <span class="meta-separator">·</span>
+              <span class="texture-usage">{{ item.usage_count || 0 }} 次使用</span>
             </div>
           </div>
           <div class="texture-actions" @click.stop>
@@ -207,6 +213,7 @@ const pagination = useCursorPagination<Texture>(limit)
 const loading = ref(false)
 const isDisabled = ref(false)
 const filterType = ref('')
+const sortBy = ref<'latest' | 'most_used'>('latest')
 const searchQuery = ref('')
 const activeSearchQuery = ref('')
 const textureResolutions = ref(new Map<string, number>())
@@ -239,6 +246,7 @@ async function fetchLibrary() {
       limit: limit,
       texture_type: filterType.value || undefined,
       q: activeSearchQuery.value || undefined,
+      sort: sortBy.value,
     }
     const res = await getPublicSkinLibrary(params)
     items.value = res.data.items
@@ -294,6 +302,7 @@ async function handleNextPage() {
       limit: pageLimit,
       texture_type: filterType.value || undefined,
       q: activeSearchQuery.value || undefined,
+      sort: sortBy.value,
     }
     const res = await getPublicSkinLibrary(params)
     items.value = res.data.items
@@ -314,6 +323,7 @@ async function handlePrevPage() {
       limit: pageLimit,
       texture_type: filterType.value || undefined,
       q: activeSearchQuery.value || undefined,
+      sort: sortBy.value,
     }
     const res = await getPublicSkinLibrary(params)
     items.value = res.data.items
@@ -328,6 +338,11 @@ async function handlePrevPage() {
 }
 
 async function handleFilterChange() {
+  pagination.reset()
+  await fetchLibrary()
+}
+
+async function handleSortChange() {
   pagination.reset()
   await fetchLibrary()
 }
@@ -447,6 +462,10 @@ onMounted(() => {
 .search-bar-container {
   flex: 1;
   min-width: 260px;
+}
+
+.sort-select {
+  width: 140px;
 }
 
 .search-bar-container :deep(.el-input-group) {
