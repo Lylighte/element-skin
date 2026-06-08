@@ -15,11 +15,6 @@ type Handler struct {
 }
 
 func New(cfg config.Config, db *database.DB, settings settingssvc.Settings, ygg yggpkg.Yggdrasil) Handler {
-	if settings.DB == nil {
-		settings.DB = db
-	}
-	if ygg.Settings.DB == nil {
-		ygg.Settings = settings
-	}
+	ygg.Settings = settings
 	return Handler{cfg: cfg, db: db, settings: settings, ygg: ygg}
 }

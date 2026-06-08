@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
@@ -12,7 +11,7 @@ import (
 func TestAuthRegisterCreatesFirstAdminAndOfflineProfileExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+	svc := newSiteService(db, testutil.TestConfig())
 	if err := db.Settings.Set(ctx, "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
 	}

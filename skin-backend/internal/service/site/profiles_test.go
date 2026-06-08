@@ -4,14 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestProfilesCreateListAndClearTextureExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+	svc := newSiteService(db, testutil.TestConfig())
 	user := testutil.CreateUser(t, db, "site-profiles-service@test.com", "Password123", "SiteProfilesService", false)
 	created, err := svc.CreateProfile(ctx, user.ID, "ProfileSvc", "slim")
 	if err != nil {

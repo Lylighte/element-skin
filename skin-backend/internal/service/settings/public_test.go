@@ -11,7 +11,7 @@ import (
 func TestSettingsPublicUsesSavedValuesAndPrimaryFallback(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	settings := settings.Settings{DB: db}
+	settings := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
 	if err := settings.SaveGroup(ctx, "site", map[string]any{
 		"site_name":      "Exact Skin",
 		"allow_register": false,
@@ -45,7 +45,7 @@ func TestSettingsPublicUsesSavedValuesAndPrimaryFallback(t *testing.T) {
 
 func TestSettingsPublicPropagatesDatabaseErrors(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
-	settings := settings.Settings{DB: db}
+	settings := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
 	db.Close()
 	if out, err := settings.Public(context.Background(), "http://cfg-site.local/", "http://cfg-api.local/"); err == nil || out != nil {
 		t.Fatalf("closed database should fail instead of returning partial public settings: out=%#v err=%v", out, err)

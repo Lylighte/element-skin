@@ -17,7 +17,7 @@ func TestMicrosoftRoutesAuthURLAndCallbackValidationExactResponses(t *testing.T)
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	states := util.NewInMemoryStateStore()
-	h := microsoft.New(cfg, db, settings.Settings{DB: db}, func(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc {
+	h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, func(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc {
 		return next
 	}, states)
 

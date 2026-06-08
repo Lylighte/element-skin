@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/database"
-	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
@@ -15,7 +14,7 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	site := site.Site{DB: db, Cfg: cfg, Redis: testutil.NewMemoryRedis()}
+	site := newSiteService(db, cfg)
 
 	if err := db.Settings.Set(ctx, "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
@@ -95,7 +94,7 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 func TestSiteProfilesTexturesAndLibraryExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	site := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+	site := newSiteService(db, testutil.TestConfig())
 	user := testutil.CreateUser(t, db, "profile-site@test.com", "Password123", "ProfileSite", false)
 	other := testutil.CreateUser(t, db, "other-site@test.com", "Password123", "OtherSite", false)
 
@@ -211,7 +210,7 @@ func TestSiteProfilesTexturesAndLibraryExactState(t *testing.T) {
 func TestSiteVerificationAndResetPasswordExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	site := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+	site := newSiteService(db, testutil.TestConfig())
 	user := testutil.CreateUser(t, db, "reset-site@test.com", "Password123", "ResetSite", false)
 	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
 		t.Fatal(err)

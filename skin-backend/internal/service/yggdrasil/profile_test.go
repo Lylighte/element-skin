@@ -24,7 +24,7 @@ func TestYggdrasilProfileJSONExactTexturePayload(t *testing.T) {
 	cfg := testutil.TestConfig()
 	cfg.SiteURL = "https://skin.example/root/"
 	cfg.APIURL = "https://api.example/skinapi/"
-	ygg, err := yggdrasil.New(nil, cfg, settings.Settings{})
+	ygg, err := yggdrasil.New(nil, cfg, settings.Settings{Redis: testutil.NewMemoryRedis()})
 	if err != nil {
 		t.Fatal(err)
 	}

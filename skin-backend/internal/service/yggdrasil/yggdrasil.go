@@ -19,9 +19,6 @@ func New(db *database.DB, cfg config.Config, settings settingssvc.Settings) (Ygg
 	if err != nil {
 		return Yggdrasil{}, err
 	}
-	if settings.DB == nil {
-		settings.DB = db
-	}
 	return Yggdrasil{DB: db, Cfg: cfg, Signer: signer, Settings: settings}, nil
 }
 
@@ -37,9 +34,6 @@ func (y Yggdrasil) signer() (*Signer, error) {
 }
 
 func (y Yggdrasil) settings() settingssvc.Settings {
-	if y.Settings.DB == nil {
-		y.Settings.DB = y.DB
-	}
 	return y.Settings
 }
 

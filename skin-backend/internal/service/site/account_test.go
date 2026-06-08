@@ -4,14 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestAccountMeReturnsCountsAndUpdateMePersistsExactFields(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+	svc := newSiteService(db, testutil.TestConfig())
 	user := testutil.CreateUser(t, db, "site-account-service@test.com", "Password123", "SiteAccountService", false)
 
 	if err := svc.UpdateMe(ctx, user.ID, map[string]any{"email": "updated-account@test.com", "display_name": "UpdatedAccount", "preferred_language": "en_US", "avatar_hash": "avatar_hash"}); err != nil {

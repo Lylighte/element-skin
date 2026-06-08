@@ -23,12 +23,6 @@ type Site struct {
 }
 
 func (s Site) settings() settingssvc.Settings {
-	if s.Settings.DB == nil {
-		s.Settings.DB = s.DB
-	}
-	if s.Settings.Redis == nil {
-		s.Settings.Redis = s.Redis
-	}
 	return s.Settings
 }
 

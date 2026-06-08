@@ -8,7 +8,6 @@ import (
 	"time"
 
 	dbfallback "element-skin/backend/internal/database/fallback"
-	"element-skin/backend/internal/service/fallback"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -34,7 +33,7 @@ func TestFallbackParallelReturnsFastSuccess(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	resp, err := (fallback.Fallback{DB: db, Client: fast.Client()}).GetProfile(ctx, "some-uuid", true)
+	resp, err := (newFallback(db, fast.Client())).GetProfile(ctx, "some-uuid", true)
 	if err != nil {
 		t.Fatal(err)
 	}

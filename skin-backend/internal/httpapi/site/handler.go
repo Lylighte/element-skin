@@ -22,20 +22,13 @@ type Handler struct {
 
 func New(cfg config.Config, db *database.DB, svc sitepkg.Site, auth shared.AuthFunc) Handler {
 	redis := redisstore.Store(redisstore.NewMemoryStore())
-	if svc.Redis == nil {
-		svc.Redis = redis
-	}
 	return NewWithRedis(cfg, db, redis, svc, auth)
 }
 
 func NewWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, svc sitepkg.Site, auth shared.AuthFunc) Handler {
-	if svc.Redis == nil {
-		svc.Redis = redis
-	}
 	settings := settingssvc.Settings{DB: db, Redis: redis}
-	if svc.Settings.DB == nil {
-		svc.Settings = settings
-	}
+	svc.Redis = redis
+	svc.Settings = settings
 	return Handler{cfg: cfg, db: db, redis: redis, site: svc, settings: settings, auth: auth}
 }
 

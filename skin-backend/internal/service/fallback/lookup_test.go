@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	dbfallback "element-skin/backend/internal/database/fallback"
-	"element-skin/backend/internal/service/fallback"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -32,7 +31,7 @@ func TestFallbackHasJoinedForwardsAndWhitelist(t *testing.T) {
 	}
 	eps, _ := db.Fallbacks.ListEndpoints(ctx)
 	endpointID := eps[0]["id"].(int)
-	fb := fallback.Fallback{DB: db, Client: server.Client()}
+	fb := newFallback(db, server.Client())
 
 	resp, err := fb.HasJoined(ctx, "Stranger", "sid", "")
 	if err != nil {
@@ -91,7 +90,7 @@ func TestFallbackLookupRoutesForwardExactRequests(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	fb := fallback.Fallback{DB: db, Client: server.Client()}
+	fb := newFallback(db, server.Client())
 
 	account, err := fb.GetProfileByName(ctx, "Name With Space")
 	if err != nil || account == nil || string(account.Body) != `{"id":"account-id","name":"Name With Space"}` {

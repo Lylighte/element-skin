@@ -26,23 +26,14 @@ var MicrosoftImportStates = util.NewInMemoryStateStore()
 
 func NewRouter(cfg config.Config, db *database.DB, site sitepkg.Site, ygg yggpkg.Yggdrasil) http.Handler {
 	redis := redisstore.Store(redisstore.NewMemoryStore())
-	if site.Redis == nil {
-		site.Redis = redis
-	}
 	return NewRouterWithRedis(cfg, db, redis, site, ygg)
 }
 
 func NewRouterWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, site sitepkg.Site, ygg yggpkg.Yggdrasil) http.Handler {
-	if site.Redis == nil {
-		site.Redis = redis
-	}
 	settings := settingssvc.Settings{DB: db, Redis: redis}
-	if site.Settings.DB == nil {
-		site.Settings = settings
-	}
-	if ygg.Settings.DB == nil {
-		ygg.Settings = settings
-	}
+	site.Redis = redis
+	site.Settings = settings
+	ygg.Settings = settings
 	r := &Router{cfg: cfg, db: db, redis: redis, settings: settings, site: site, ygg: ygg, mux: http.NewServeMux()}
 	r.routes()
 	return r

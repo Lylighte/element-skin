@@ -10,7 +10,7 @@ import (
 
 func TestNewLoadsSignerAndStoresDependencies(t *testing.T) {
 	cfg := testutil.TestConfig()
-	ygg, err := yggdrasil.New(nil, cfg, settings.Settings{})
+	ygg, err := yggdrasil.New(nil, cfg, settings.Settings{Redis: testutil.NewMemoryRedis()})
 	if err != nil {
 		t.Fatal(err)
 	}

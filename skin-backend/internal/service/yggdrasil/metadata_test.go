@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 )
@@ -18,7 +19,7 @@ func TestYggdrasilMetadataUsesSiteSettingsAndSigningKey(t *testing.T) {
 	if err := db.Settings.Set(ctx, "site_name", "Exact Ygg"); err != nil {
 		t.Fatal(err)
 	}
-	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: cfg}
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: cfg, Settings: settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}}
 
 	meta, err := ygg.Metadata(ctx)
 	if err != nil {
