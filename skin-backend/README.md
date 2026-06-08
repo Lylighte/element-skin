@@ -52,10 +52,9 @@ returned cookies:
 go run ./cmd/loadtest -target http://127.0.0.1:8000 -path /me -login-email user@example.com -login-password Password123 -concurrency 1,5,10,25,50 -duration 10s
 ```
 
-The final "Suggested capacity" is the highest tested concurrency whose failure
-rate is below `-fail-threshold` and, when set, whose p95 latency is below
-`-max-p95`. The detailed test harness below reports both sustainable
-concurrency and successful requests per second for each frontend-facing endpoint.
+The detailed test harness below measures every frontend-facing endpoint at the
+same fixed concurrency and reports successful requests per second, failure rate,
+and latency for that one-second window.
 
 For a cleaner real-backend test that does not touch the normal configured
 database, run the opt-in test harness. It creates an isolated PostgreSQL test
@@ -64,10 +63,8 @@ then runs the same concurrency ladder against real routes:
 
 ```powershell
 $env:LOADTEST_ENABLE='1'
-$env:LOADTEST_CONCURRENCY='1,10,50,100,200,400,800'
+$env:LOADTEST_CONCURRENCY='500'
 $env:LOADTEST_DURATION='1s'
-$env:LOADTEST_FAIL_THRESHOLD='1'
-$env:LOADTEST_MAX_P95='1s'
 go test ./cmd/loadtest -run TestRealBackendLoad -count=1 -v
 ```
 
