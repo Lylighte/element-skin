@@ -136,3 +136,32 @@ func TestYggdrasilLookupNameReturnsExactStatus(t *testing.T) {
 		t.Fatalf("unexpected lookup miss status=%d body=%#v", status, miss)
 	}
 }
+
+func TestYggdrasilProfileReturnsExactStatus(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	cfg := testutil.TestConfig()
+	user := testutil.CreateUser(t, db, "profile-service@test.com", "Password123", "ProfileService", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "profile_service_id", "ProfileServicePlayer")
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: cfg}
+
+	body, status, err := ygg.Profile(ctx, profile.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != 200 || body["id"] != profile.ID || body["name"] != profile.Name {
+		t.Fatalf("profile hit mismatch: status=%d body=%#v", status, body)
+	}
+	props := body["properties"].([]map[string]any)
+	if _, ok := props[0]["signature"]; ok {
+		t.Fatalf("unsigned profile response should not include signature: %#v", props[0])
+	}
+
+	miss, status, err := ygg.Profile(ctx, "missing_profile", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != 204 || miss != nil {
+		t.Fatalf("profile miss mismatch: status=%d body=%#v", status, miss)
+	}
+}

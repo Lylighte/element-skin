@@ -137,3 +137,27 @@ func TestYggdrasilSignoutInvalidateAndTokenLimitUseRedisOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestYggdrasilTokenReadsRedisOnly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "ygg-token@test.com", "Password123", "YggToken", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "ygg_token_profile", "YggTokenProfile")
+	redis := testutil.NewMemoryRedis()
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: redis}
+
+	token := model.Token{AccessToken: "redis_access", ClientToken: "client", UserID: user.ID, ProfileID: &profile.ID, CreatedAt: database.NowMS()}
+	if err := redis.SetYggToken(ctx, token, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ygg.Token(ctx, token.AccessToken)
+	if err != nil || got.AccessToken != token.AccessToken || got.UserID != user.ID || got.ProfileID == nil || *got.ProfileID != profile.ID {
+		t.Fatalf("Token should read redis token: %#v err=%v", got, err)
+	}
+	if dbToken, err := db.Tokens.Get(ctx, token.AccessToken); err != nil || dbToken != nil {
+		t.Fatalf("Token fixture must remain redis-only: %#v err=%v", dbToken, err)
+	}
+	if _, err := ygg.Token(ctx, "missing_access"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+		t.Fatalf("missing redis token should be unauthorized ygg error, got %v", err)
+	}
+}
