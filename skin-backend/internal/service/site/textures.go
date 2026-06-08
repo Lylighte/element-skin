@@ -4,26 +4,26 @@ import (
 	"context"
 	"strings"
 
-	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/util"
 )
 
 func (s Site) ApplyTextureToProfile(ctx context.Context, userID, profileID, hash, textureType string) error {
-	owns, err := s.DB.VerifyTextureOwnership(ctx, userID, hash, textureType)
+	owns, err := s.DB.Textures.VerifyOwnership(ctx, userID, hash, textureType)
 	if err != nil {
 		return err
 	}
 	if !owns {
 		return util.HTTPError{Status: 403, Detail: "Texture not found in your library"}
 	}
-	profileOwner, err := s.DB.VerifyProfileOwnership(ctx, userID, profileID)
+	profileOwner, err := s.DB.Profiles.VerifyOwnership(ctx, userID, profileID)
 	if err != nil {
 		return err
 	}
 	if !profileOwner {
 		return util.HTTPError{Status: 403, Detail: "Profile not yours"}
 	}
-	info, err := s.DB.GetTextureInfo(ctx, userID, hash, textureType)
+	info, err := s.DB.Textures.GetInfo(ctx, userID, hash, textureType)
 	if err != nil {
 		return err
 	}
@@ -32,20 +32,20 @@ func (s Site) ApplyTextureToProfile(ctx context.Context, userID, profileID, hash
 	}
 	switch strings.ToLower(textureType) {
 	case "skin":
-		if err := s.DB.UpdateProfileSkin(ctx, profileID, &hash); err != nil {
+		if err := s.DB.Profiles.UpdateSkin(ctx, profileID, &hash); err != nil {
 			return err
 		}
 		model, _ := info["model"].(string)
-		return s.DB.UpdateProfileModel(ctx, profileID, database.NormalizeProfileModel(model))
+		return s.DB.Profiles.UpdateModel(ctx, profileID, profile.NormalizeModel(model))
 	case "cape":
-		return s.DB.UpdateProfileCape(ctx, profileID, &hash)
+		return s.DB.Profiles.UpdateCape(ctx, profileID, &hash)
 	default:
 		return util.HTTPError{Status: 400, Detail: "Invalid texture_type"}
 	}
 }
 
 func (s Site) TextureDetail(ctx context.Context, userID, hash, textureType string) (map[string]any, error) {
-	info, err := s.DB.GetTextureInfo(ctx, userID, hash, textureType)
+	info, err := s.DB.Textures.GetInfo(ctx, userID, hash, textureType)
 	if err != nil {
 		return nil, err
 	}
@@ -57,12 +57,12 @@ func (s Site) TextureDetail(ctx context.Context, userID, hash, textureType strin
 
 func (s Site) UpdateTexture(ctx context.Context, userID, hash, textureType string, body map[string]any) (map[string]any, error) {
 	if v, ok := body["note"].(string); ok {
-		if err := s.DB.UpdateTextureNote(ctx, userID, hash, textureType, v); err != nil {
+		if err := s.DB.Textures.UpdateNote(ctx, userID, hash, textureType, v); err != nil {
 			return nil, err
 		}
 	}
 	if v, ok := body["model"].(string); ok {
-		if err := s.DB.UpdateTextureModel(ctx, userID, hash, textureType, v); err != nil {
+		if err := s.DB.Textures.UpdateModel(ctx, userID, hash, textureType, v); err != nil {
 			return nil, err
 		}
 	}
@@ -76,7 +76,7 @@ func (s Site) UpdateTexture(ctx context.Context, userID, hash, textureType strin
 		case int:
 			pub = x != 0
 		}
-		if err := s.DB.UpdateTexturePublic(ctx, userID, hash, textureType, pub); err != nil {
+		if err := s.DB.Textures.UpdatePublic(ctx, userID, hash, textureType, pub); err != nil {
 			return nil, err
 		}
 	}
@@ -89,7 +89,7 @@ func (s Site) UpdateTexture(ctx context.Context, userID, hash, textureType strin
 }
 
 func (s Site) DeleteTexture(ctx context.Context, userID, hash, textureType string) error {
-	_, err := s.DB.DeleteTextureFromLibrary(ctx, userID, hash, textureType)
+	_, err := s.DB.Textures.DeleteFromLibrary(ctx, userID, hash, textureType)
 	return err
 }
 

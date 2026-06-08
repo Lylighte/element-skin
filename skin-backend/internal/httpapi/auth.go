@@ -20,7 +20,7 @@ func (r *Router) auth(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc
 			return
 		}
 		userID, _ := claims["sub"].(string)
-		user, err := r.db.GetUserByID(req.Context(), userID)
+		user, err := r.db.Users.GetByID(req.Context(), userID)
 		if err != nil {
 			util.Error(w, err)
 			return

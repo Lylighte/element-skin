@@ -20,7 +20,7 @@ func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
 	if cursor != nil {
 		last, _ = cursor["last_id"].(string)
 	}
-	res, err := h.db.ListUsers(req.Context(), util.ClampLimit(req.URL.Query().Get("limit"), 15), last, strings.TrimSpace(req.URL.Query().Get("q")))
+	res, err := h.db.Users.List(req.Context(), util.ClampLimit(req.URL.Query().Get("limit"), 15), last, strings.TrimSpace(req.URL.Query().Get("q")))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -36,7 +36,7 @@ func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot change your own admin status"})
 		return
 	}
-	next, err := h.db.ToggleAdmin(req.Context(), targetID)
+	next, err := h.db.Users.ToggleAdmin(req.Context(), targetID)
 	if err != nil {
 		if database.IsNoRows(err) {
 			util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
@@ -54,7 +54,7 @@ func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot delete yourself"})
 		return
 	}
-	ok, err := h.db.DeleteUser(req.Context(), targetID)
+	ok, err := h.db.Users.Delete(req.Context(), targetID)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -67,7 +67,7 @@ func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UserProfiles(w http.ResponseWriter, req *http.Request) {
-	res, err := h.db.ListProfilesByUser(req.Context(), req.PathValue("user_id"), util.ClampLimit(req.URL.Query().Get("limit")), req.URL.Query().Get("cursor"))
+	res, err := h.db.Profiles.ListByUser(req.Context(), req.PathValue("user_id"), util.ClampLimit(req.URL.Query().Get("limit")), req.URL.Query().Get("cursor"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -88,7 +88,7 @@ func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "banned_until is required"})
 		return
 	}
-	if err := h.db.BanUser(req.Context(), req.PathValue("user_id"), until); err != nil {
+	if err := h.db.Users.Ban(req.Context(), req.PathValue("user_id"), until); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -96,7 +96,7 @@ func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
-	user, err := h.db.GetUserByID(req.Context(), req.PathValue("user_id"))
+	user, err := h.db.Users.GetByID(req.Context(), req.PathValue("user_id"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -105,7 +105,7 @@ func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
 		return
 	}
-	if err := h.db.UnbanUser(req.Context(), user.ID); err != nil {
+	if err := h.db.Users.Unban(req.Context(), user.ID); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -129,7 +129,7 @@ func (h Handler) ResetUserPassword(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	ok, err := h.db.UpdatePasswordAndRevokeRefresh(req.Context(), userID, hash)
+	ok, err := h.db.Users.UpdatePasswordAndRevokeRefresh(req.Context(), userID, hash)
 	if err != nil {
 		util.Error(w, err)
 		return

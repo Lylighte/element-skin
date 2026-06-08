@@ -45,10 +45,10 @@ func TestMicrosoftImportProfileTokenSemantics(t *testing.T) {
 	if profile["id"] != "verified_ms_id" || profile["name"] != "VerifiedPlayer" {
 		t.Fatalf("import should trust server-side profile only: %#v", profile)
 	}
-	if forged, _ := db.GetProfileByID(context.Background(), "forged_id"); forged != nil {
+	if forged, _ := db.Profiles.GetByID(context.Background(), "forged_id"); forged != nil {
 		t.Fatal("client-supplied forged profile id should not be persisted")
 	}
-	if verified, _ := db.GetProfileByID(context.Background(), "verified_ms_id"); verified == nil {
+	if verified, _ := db.Profiles.GetByID(context.Background(), "verified_ms_id"); verified == nil {
 		t.Fatal("verified profile should be persisted")
 	}
 
@@ -111,7 +111,7 @@ func TestMicrosoftImportProfileTokenSemantics(t *testing.T) {
 	if dedupProfile["id"] != "new_ms_id" || dedupProfile["name"] != "TakenMsName_1" {
 		t.Fatalf("name conflict should import with suffix: %#v", dedupProfile)
 	}
-	if row, _ := db.GetProfileByID(context.Background(), "new_ms_id"); row == nil || row.Name != "TakenMsName_1" {
+	if row, _ := db.Profiles.GetByID(context.Background(), "new_ms_id"); row == nil || row.Name != "TakenMsName_1" {
 		t.Fatalf("deduped microsoft profile not persisted: %#v", row)
 	}
 }

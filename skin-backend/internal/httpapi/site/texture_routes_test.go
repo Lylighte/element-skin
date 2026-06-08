@@ -9,17 +9,17 @@ import (
 
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/site"
-	"element-skin/backend/internal/service"
+	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestTextureRoutesListAndDetailExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, service.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
 	user := testutil.CreateUser(t, db, "site-texture@test.com", "Password123", "SiteTexture", false)
 
-	if err := db.AddTextureToLibrary(context.Background(), user.ID, "site_route_hash", "skin", "Site Route Texture", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), user.ID, "site_route_hash", "skin", "Site Route Texture", true, "default"); err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/me/textures?texture_type=skin", nil)

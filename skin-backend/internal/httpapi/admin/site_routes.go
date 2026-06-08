@@ -19,7 +19,7 @@ func (h Handler) Invites(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
 		return
 	}
-	res, err := h.db.ListInvites(req.Context(), util.ClampLimit(req.URL.Query().Get("limit"), 15), lastCreated, lastCode)
+	res, err := h.db.Invites.List(req.Context(), util.ClampLimit(req.URL.Query().Get("limit"), 15), lastCreated, lastCode)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -53,7 +53,7 @@ func (h Handler) CreateInvite(w http.ResponseWriter, req *http.Request) {
 		total = int(v)
 	}
 	note, _ := body["note"].(string)
-	if err := h.db.CreateInvite(req.Context(), code, total, note); err != nil {
+	if err := h.db.Invites.Create(req.Context(), code, total, note); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -61,7 +61,7 @@ func (h Handler) CreateInvite(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) DeleteInvite(w http.ResponseWriter, req *http.Request) {
-	if err := h.db.DeleteInvite(req.Context(), req.PathValue("code")); err != nil {
+	if err := h.db.Invites.Delete(req.Context(), req.PathValue("code")); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -74,7 +74,7 @@ func (h Handler) OfficialWhitelist(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "endpoint_id is required"})
 		return
 	}
-	users, err := h.db.ListWhitelistUsers(req.Context(), endpointID)
+	users, err := h.db.Fallbacks.ListWhitelistUsers(req.Context(), endpointID)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -101,7 +101,7 @@ func (h Handler) AddOfficialWhitelist(w http.ResponseWriter, req *http.Request) 
 		util.Error(w, util.HTTPError{Status: 400, Detail: "endpoint_id is required"})
 		return
 	}
-	if err := h.db.AddWhitelistUser(req.Context(), username, endpointID); err != nil {
+	if err := h.db.Fallbacks.AddWhitelistUser(req.Context(), username, endpointID); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -114,7 +114,7 @@ func (h Handler) RemoveOfficialWhitelist(w http.ResponseWriter, req *http.Reques
 		util.Error(w, util.HTTPError{Status: 400, Detail: "endpoint_id is required"})
 		return
 	}
-	if err := h.db.RemoveWhitelistUser(req.Context(), req.PathValue("username"), endpointID); err != nil {
+	if err := h.db.Fallbacks.RemoveWhitelistUser(req.Context(), req.PathValue("username"), endpointID); err != nil {
 		util.Error(w, err)
 		return
 	}

@@ -13,7 +13,7 @@ func (s Site) SendVerificationCode(ctx context.Context, email, typ string) (map[
 	if typ == "" {
 		typ = "register"
 	}
-	if enabled, _ := s.DB.GetSetting(ctx, "email_verify_enabled", "false"); enabled != "true" {
+	if enabled, _ := s.DB.Settings.Get(ctx, "email_verify_enabled", "false"); enabled != "true" {
 		return nil, util.HTTPError{Status: 400, Detail: "Email verification is disabled"}
 	}
 	if !validEmail(email) {
@@ -21,7 +21,7 @@ func (s Site) SendVerificationCode(ctx context.Context, email, typ string) (map[
 	}
 	switch typ {
 	case "register":
-		existing, err := s.DB.GetUserByEmail(ctx, email)
+		existing, err := s.DB.Users.GetByEmail(ctx, email)
 		if err != nil {
 			return nil, err
 		}
@@ -29,7 +29,7 @@ func (s Site) SendVerificationCode(ctx context.Context, email, typ string) (map[
 			return nil, util.HTTPError{Status: 400, Detail: "Email already registered"}
 		}
 	case "reset":
-		existing, err := s.DB.GetUserByEmail(ctx, email)
+		existing, err := s.DB.Users.GetByEmail(ctx, email)
 		if err != nil {
 			return nil, err
 		}
@@ -39,19 +39,19 @@ func (s Site) SendVerificationCode(ctx context.Context, email, typ string) (map[
 	default:
 		return nil, util.HTTPError{Status: 400, Detail: "invalid verification type"}
 	}
-	ttl, _ := s.DB.SettingInt(ctx, "email_verify_ttl", 300)
+	ttl, _ := s.DB.Settings.Int(ctx, "email_verify_ttl", 300)
 	code, err := randomVerificationCode(8)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.DB.CreateVerificationCode(ctx, email, code, typ, ttl); err != nil {
+	if err := s.DB.Verifications.CreateCode(ctx, email, code, typ, ttl); err != nil {
 		return nil, err
 	}
 	return map[string]any{"ok": true, "ttl": ttl}, nil
 }
 
 func (s Site) VerifyCode(ctx context.Context, email, code, typ string) (bool, error) {
-	stored, expiresAt, ok, err := s.DB.GetVerificationCode(ctx, email, typ)
+	stored, expiresAt, ok, err := s.DB.Verifications.GetCode(ctx, email, typ)
 	if err != nil || !ok {
 		return false, err
 	}
@@ -62,12 +62,12 @@ func (s Site) VerifyCode(ctx context.Context, email, code, typ string) (bool, er
 }
 
 func (s Site) ResetPassword(ctx context.Context, email, newPassword, code string) error {
-	if strong, _ := s.DB.GetSetting(ctx, "enable_strong_password_check", "false"); strong == "true" {
+	if strong, _ := s.DB.Settings.Get(ctx, "enable_strong_password_check", "false"); strong == "true" {
 		if errs := util.ValidateStrongPassword(newPassword); len(errs) > 0 {
 			return util.HTTPError{Status: 400, Detail: util.JoinPasswordErrors(errs)}
 		}
 	}
-	if enabled, _ := s.DB.GetSetting(ctx, "email_verify_enabled", "false"); enabled != "true" {
+	if enabled, _ := s.DB.Settings.Get(ctx, "email_verify_enabled", "false"); enabled != "true" {
 		return util.HTTPError{Status: 403, Detail: "Password reset via email is disabled"}
 	}
 	ok, err := s.VerifyCode(ctx, email, code, "reset")
@@ -77,7 +77,7 @@ func (s Site) ResetPassword(ctx context.Context, email, newPassword, code string
 	if !ok {
 		return util.HTTPError{Status: 400, Detail: "Invalid or expired verification code"}
 	}
-	user, err := s.DB.GetUserByEmail(ctx, email)
+	user, err := s.DB.Users.GetByEmail(ctx, email)
 	if err != nil {
 		return err
 	}
@@ -88,12 +88,12 @@ func (s Site) ResetPassword(ctx context.Context, email, newPassword, code string
 	if err != nil {
 		return err
 	}
-	updated, err := s.DB.UpdatePasswordAndRevokeRefresh(ctx, user.ID, hash)
+	updated, err := s.DB.Users.UpdatePasswordAndRevokeRefresh(ctx, user.ID, hash)
 	if err != nil {
 		return err
 	}
 	if !updated {
 		return util.HTTPError{Status: 404, Detail: "User not found"}
 	}
-	return s.DB.DeleteVerificationCode(ctx, email, "reset")
+	return s.DB.Verifications.DeleteCode(ctx, email, "reset")
 }

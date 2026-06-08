@@ -6,14 +6,29 @@ import (
 	"time"
 
 	"element-skin/backend/internal/config"
-	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/database/fallback"
+	"element-skin/backend/internal/database/invite"
+	"element-skin/backend/internal/database/profile"
+	"element-skin/backend/internal/database/setting"
+	"element-skin/backend/internal/database/texture"
+	"element-skin/backend/internal/database/token"
+	"element-skin/backend/internal/database/user"
+	"element-skin/backend/internal/database/verification"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type DB struct {
-	Pool *pgxpool.Pool
+	Pool          *pgxpool.Pool
+	Users         user.Store
+	Profiles      profile.Store
+	Textures      texture.Store
+	Tokens        token.Store
+	Settings      setting.Store
+	Invites       invite.Store
+	Fallbacks     fallback.Store
+	Verifications verification.Store
 }
 
 func Open(ctx context.Context, cfg config.Config) (*DB, error) {
@@ -26,12 +41,26 @@ func Open(ctx context.Context, cfg config.Config) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db := &DB{Pool: pool}
+	db := New(pool)
 	if err := db.Init(ctx); err != nil {
 		pool.Close()
 		return nil, err
 	}
 	return db, nil
+}
+
+func New(pool *pgxpool.Pool) *DB {
+	return &DB{
+		Pool:          pool,
+		Users:         user.Store{Pool: pool},
+		Profiles:      profile.Store{Pool: pool},
+		Textures:      texture.Store{Pool: pool},
+		Tokens:        token.Store{Pool: pool},
+		Settings:      setting.Store{Pool: pool},
+		Invites:       invite.Store{Pool: pool},
+		Fallbacks:     fallback.Store{Pool: pool},
+		Verifications: verification.Store{Pool: pool},
+	}
 }
 
 func (db *DB) Close() {
@@ -54,17 +83,5 @@ func (db *DB) ResetPublicSchema(ctx context.Context) error {
 }
 
 func NowMS() int64 { return time.Now().UnixMilli() }
-
-func scanUser(row pgx.Row) (model.User, error) {
-	var u model.User
-	err := row.Scan(&u.ID, &u.Email, &u.Password, &u.IsAdmin, &u.PreferredLanguage, &u.DisplayName, &u.BannedUntil, &u.AvatarHash)
-	return u, err
-}
-
-func scanProfile(row pgx.Row) (model.Profile, error) {
-	var p model.Profile
-	err := row.Scan(&p.ID, &p.UserID, &p.Name, &p.TextureModel, &p.SkinHash, &p.CapeHash)
-	return p, err
-}
 
 func IsNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }

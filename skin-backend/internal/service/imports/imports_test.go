@@ -37,7 +37,7 @@ func TestImportProfileSkinCapeAndNameDedup(t *testing.T) {
 	if profile["name"] != "TakenName_1" || profile["model"] != "slim" {
 		t.Fatalf("unexpected imported profile: %#v", profile)
 	}
-	row, _ := db.GetProfileByID(ctx, "ms_uuid_1")
+	row, _ := db.Profiles.GetByID(ctx, "ms_uuid_1")
 	if row == nil || row.SkinHash == nil || *row.SkinHash != "skin_h" || row.CapeHash == nil || *row.CapeHash != "cape_h" || row.TextureModel != "slim" {
 		t.Fatalf("profile not persisted correctly: %#v", row)
 	}
@@ -62,7 +62,7 @@ func TestImportProfileUUIDConflictAndDownloadTolerance(t *testing.T) {
 	if profile["skin_hash"] != (*string)(nil) {
 		t.Fatalf("failed skin download should be tolerated: %#v", profile)
 	}
-	row, _ := db.GetProfileByID(ctx, "tolerant_uuid")
+	row, _ := db.Profiles.GetByID(ctx, "tolerant_uuid")
 	if row == nil || row.SkinHash != nil {
 		t.Fatalf("unexpected tolerant profile: %#v", row)
 	}
@@ -72,7 +72,7 @@ func TestImportProfilesBatchKeepsBusinessErrorsAndConvergesInternal(t *testing.T
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	user := testutil.CreateUser(t, db, "batchimport@test.com", "Password123", "BatchImporter", false)
-	if err := db.CreateProfile(ctx, model.Profile{ID: "batch_biz_pid", UserID: user.ID, Name: "Existing", TextureModel: "default"}); err != nil {
+	if err := db.Profiles.Create(ctx, model.Profile{ID: "batch_biz_pid", UserID: user.ID, Name: "Existing", TextureModel: "default"}); err != nil {
 		t.Fatal(err)
 	}
 	importer := imports.ImportService{DB: db}

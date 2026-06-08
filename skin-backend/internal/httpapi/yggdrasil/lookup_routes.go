@@ -101,7 +101,7 @@ func (h Handler) LookupNames(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "Request body must be an array"})
 		return
 	}
-	profiles, err := h.db.SearchProfilesByNames(req.Context(), names, 100)
+	profiles, err := h.db.Profiles.SearchByNames(req.Context(), names, 100)
 	if err != nil {
 		util.Error(w, err)
 		return

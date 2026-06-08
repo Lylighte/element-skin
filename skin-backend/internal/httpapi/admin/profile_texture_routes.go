@@ -4,7 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/database/profile"
+	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/util"
 )
@@ -19,7 +20,7 @@ func (h Handler) Profiles(w http.ResponseWriter, req *http.Request) {
 	if cursor != nil {
 		last, _ = cursor["last_id"].(string)
 	}
-	res, err := h.db.ListAllProfiles(req.Context(), util.ClampLimit(req.URL.Query().Get("limit")), last, strings.TrimSpace(req.URL.Query().Get("q")))
+	res, err := h.db.Profiles.ListAll(req.Context(), util.ClampLimit(req.URL.Query().Get("limit")), last, strings.TrimSpace(req.URL.Query().Get("q")))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -36,7 +37,7 @@ func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	profileID := req.PathValue("profile_id")
-	p, err := h.db.GetProfileByID(req.Context(), profileID)
+	p, err := h.db.Profiles.GetByID(req.Context(), profileID)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -50,9 +51,9 @@ func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
 			util.Error(w, util.HTTPError{Status: 400, Detail: "invalid profile name"})
 			return
 		}
-		ok, err := h.db.UpdateProfileName(req.Context(), profileID, body["name"])
+		ok, err := h.db.Profiles.UpdateName(req.Context(), profileID, body["name"])
 		if err != nil {
-			if database.IsProfileNameConflict(err) {
+			if profile.IsNameConflict(err) {
 				util.Error(w, util.HTTPError{Status: 409, Detail: "profile name already exists"})
 				return
 			}
@@ -68,7 +69,7 @@ func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) DeleteProfile(w http.ResponseWriter, req *http.Request) {
-	ok, err := h.db.DeleteProfileCascade(req.Context(), req.PathValue("profile_id"))
+	ok, err := h.db.Profiles.DeleteCascade(req.Context(), req.PathValue("profile_id"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -95,7 +96,7 @@ func (h Handler) setProfileTexture(w http.ResponseWriter, req *http.Request, typ
 		return
 	}
 	profileID := req.PathValue("profile_id")
-	if p, err := h.db.GetProfileByID(req.Context(), profileID); err != nil {
+	if p, err := h.db.Profiles.GetByID(req.Context(), profileID); err != nil {
 		util.Error(w, err)
 		return
 	} else if p == nil {
@@ -103,12 +104,12 @@ func (h Handler) setProfileTexture(w http.ResponseWriter, req *http.Request, typ
 		return
 	}
 	if typ == "skin" {
-		if err := h.db.UpdateProfileSkin(req.Context(), profileID, body["hash"]); err != nil {
+		if err := h.db.Profiles.UpdateSkin(req.Context(), profileID, body["hash"]); err != nil {
 			util.Error(w, err)
 			return
 		}
 	} else {
-		if err := h.db.UpdateProfileCape(req.Context(), profileID, body["hash"]); err != nil {
+		if err := h.db.Profiles.UpdateCape(req.Context(), profileID, body["hash"]); err != nil {
 			util.Error(w, err)
 			return
 		}
@@ -122,7 +123,7 @@ func (h Handler) Textures(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
 		return
 	}
-	res, err := h.db.ListAllTextures(req.Context(), util.ClampLimit(req.URL.Query().Get("limit")), lastCreated, lastHash, strings.TrimSpace(req.URL.Query().Get("q")), req.URL.Query().Get("type"))
+	res, err := h.db.Textures.ListAll(req.Context(), util.ClampLimit(req.URL.Query().Get("limit")), lastCreated, lastHash, strings.TrimSpace(req.URL.Query().Get("q")), req.URL.Query().Get("type"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -141,8 +142,8 @@ func (h Handler) UpdateTexture(w http.ResponseWriter, req *http.Request) {
 	hash := req.PathValue("hash")
 	updated := false
 	if v, ok := body["note"].(string); ok {
-		if err := h.db.AdminUpdateTextureNote(req.Context(), hash, v); err != nil {
-			if err == database.ErrNotFound {
+		if err := h.db.Textures.AdminUpdateNote(req.Context(), hash, v); err != nil {
+			if err == texture.ErrNotFound {
 				util.Error(w, util.HTTPError{Status: 404, Detail: "Texture not found"})
 				return
 			}
@@ -156,8 +157,8 @@ func (h Handler) UpdateTexture(w http.ResponseWriter, req *http.Request) {
 			util.Error(w, util.HTTPError{Status: 400, Detail: "invalid model"})
 			return
 		}
-		if err := h.db.AdminUpdateTextureModel(req.Context(), hash, v); err != nil {
-			if err == database.ErrNotFound {
+		if err := h.db.Textures.AdminUpdateModel(req.Context(), hash, v); err != nil {
+			if err == texture.ErrNotFound {
 				util.Error(w, util.HTTPError{Status: 404, Detail: "Texture not found"})
 				return
 			}
@@ -172,8 +173,8 @@ func (h Handler) UpdateTexture(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		pub := shared.PublicBool(v)
-		if err := h.db.AdminUpdateTexturePublic(req.Context(), hash, pub); err != nil {
-			if err == database.ErrNotFound {
+		if err := h.db.Textures.AdminUpdatePublic(req.Context(), hash, pub); err != nil {
+			if err == texture.ErrNotFound {
 				util.Error(w, util.HTTPError{Status: 404, Detail: "Texture not found"})
 				return
 			}
@@ -195,7 +196,7 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 	if typ == "" {
 		typ = "skin"
 	}
-	if err := h.db.AdminDeleteTexture(req.Context(), req.PathValue("hash"), typ, req.URL.Query().Get("user_id"), force); err != nil {
+	if err := h.db.Textures.AdminDelete(req.Context(), req.PathValue("hash"), typ, req.URL.Query().Get("user_id"), force); err != nil {
 		if strings.Contains(err.Error(), "user_id") {
 			util.Error(w, util.HTTPError{Status: 400, Detail: err.Error()})
 			return

@@ -17,8 +17,8 @@ func (h Handler) AuthURL(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	clientID, _ := h.db.GetSetting(req.Context(), "microsoft_client_id", "")
-	redirectURI, _ := h.db.GetSetting(req.Context(), "microsoft_redirect_uri", strings.TrimRight(h.cfg.APIURL, "/")+"/microsoft/callback")
+	clientID, _ := h.db.Settings.Get(req.Context(), "microsoft_client_id", "")
+	redirectURI, _ := h.db.Settings.Get(req.Context(), "microsoft_redirect_uri", strings.TrimRight(h.cfg.APIURL, "/")+"/microsoft/callback")
 	h.states.Put(state, map[string]any{"user_id": shared.CurrentUserID(req), "kind": "oauth_state"}, 10*time.Minute)
 	util.JSON(w, 200, map[string]any{
 		"auth_url": mssvc.MicrosoftAuthorizationURL(clientID, redirectURI, state),
@@ -47,9 +47,9 @@ func (h Handler) Callback(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid or expired state parameter"})
 		return
 	}
-	clientID, _ := h.db.GetSetting(req.Context(), "microsoft_client_id", "")
-	clientSecret, _ := h.db.GetSetting(req.Context(), "microsoft_client_secret", "")
-	redirectURI, _ := h.db.GetSetting(req.Context(), "microsoft_redirect_uri", strings.TrimRight(h.cfg.APIURL, "/")+"/microsoft/callback")
+	clientID, _ := h.db.Settings.Get(req.Context(), "microsoft_client_id", "")
+	clientSecret, _ := h.db.Settings.Get(req.Context(), "microsoft_client_secret", "")
+	redirectURI, _ := h.db.Settings.Get(req.Context(), "microsoft_redirect_uri", strings.TrimRight(h.cfg.APIURL, "/")+"/microsoft/callback")
 	if clientID == "" || clientSecret == "" || redirectURI == "" {
 		http.Redirect(w, req, siteURL+"/dashboard/roles?error=auth_failed", http.StatusFound)
 		return

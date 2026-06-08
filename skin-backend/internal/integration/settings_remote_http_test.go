@@ -60,14 +60,14 @@ func TestSettingsGroupsAndRemoteYggImportHTTP(t *testing.T) {
 	if securitySaved["rate_limit_auth_attempts"] != float64(10) || securitySaved["rate_limit_enabled"] != true {
 		t.Fatalf("security settings did not roundtrip: %#v", securitySaved)
 	}
-	if err := db.SetSetting(context.Background(), "smtp_password", "secret"); err != nil {
+	if err := db.Settings.Set(context.Background(), "smtp_password", "secret"); err != nil {
 		t.Fatal(err)
 	}
 	emailSave := doJSON(t, h, "POST", "/admin/settings/email", map[string]any{"smtp_host": "mail.example.com", "smtp_password": ""}, adminCookie)
 	if emailSave.Code != 200 {
 		t.Fatalf("email save status=%d body=%s", emailSave.Code, emailSave.Body.String())
 	}
-	if savedPassword, _ := db.GetSetting(context.Background(), "smtp_password", ""); savedPassword != "secret" {
+	if savedPassword, _ := db.Settings.Get(context.Background(), "smtp_password", ""); savedPassword != "secret" {
 		t.Fatalf("empty smtp_password should not overwrite existing secret, got %q", savedPassword)
 	}
 	emailSaved := parseJSON(t, doJSON(t, h, "GET", "/admin/settings/email", nil, adminCookie))
@@ -122,7 +122,7 @@ func TestSettingsGroupsAndRemoteYggImportHTTP(t *testing.T) {
 		t.Fatalf("public settings should reflect fallback endpoint: %#v", status)
 	}
 
-	eps, err := db.ListFallbackEndpoints(context.Background())
+	eps, err := db.Fallbacks.ListEndpoints(context.Background())
 	if err != nil || len(eps) != 1 {
 		t.Fatalf("fallback endpoint not persisted: %#v err=%v", eps, err)
 	}
@@ -175,7 +175,7 @@ func TestSettingsGroupsAndRemoteYggImportHTTP(t *testing.T) {
 	if singleBody["id"] != "remote_single" || singleBody["name"] != "RemotePlayer_1" {
 		t.Fatalf("unexpected single import response: %#v", singleBody)
 	}
-	singleProfile, _ := db.GetProfileByID(context.Background(), "remote_single")
+	singleProfile, _ := db.Profiles.GetByID(context.Background(), "remote_single")
 	if singleProfile == nil || singleProfile.Name != "RemotePlayer_1" {
 		t.Fatalf("single import not persisted: %#v", singleProfile)
 	}
@@ -199,8 +199,8 @@ func TestSettingsGroupsAndRemoteYggImportHTTP(t *testing.T) {
 	if importBody["success_count"] != float64(2) || importBody["failure_count"] != float64(1) {
 		t.Fatalf("unexpected remote import result: %#v", importBody)
 	}
-	p1, _ := db.GetProfileByID(context.Background(), "remote_pid_1")
-	p2, _ := db.GetProfileByID(context.Background(), "remote_pid_2")
+	p1, _ := db.Profiles.GetByID(context.Background(), "remote_pid_1")
+	p2, _ := db.Profiles.GetByID(context.Background(), "remote_pid_2")
 	if p1 == nil || p2 == nil || p1.Name != "RemotePlayer1" || p2.Name != "RemotePlayer2" {
 		t.Fatalf("remote profiles not persisted: %#v %#v", p1, p2)
 	}

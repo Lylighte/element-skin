@@ -8,14 +8,14 @@ import (
 
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/site"
-	"element-skin/backend/internal/service"
+	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestProfileRoutesCreateAndListExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, service.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
 	user := testutil.CreateUser(t, db, "site-profile@test.com", "Password123", "SiteProfile", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/me/profiles", strings.NewReader(`{"name":"RouteRole","model":"slim"}`))

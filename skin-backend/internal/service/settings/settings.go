@@ -70,14 +70,14 @@ func (s Settings) GetGroup(ctx context.Context, group string) (map[string]any, e
 	}
 	out := map[string]any{}
 	for _, key := range keys {
-		raw, err := s.DB.GetSetting(ctx, key, SettingDefaults[key])
+		raw, err := s.DB.Settings.Get(ctx, key, SettingDefaults[key])
 		if err != nil {
 			return nil, err
 		}
 		out[key] = settingValue(key, raw)
 	}
 	if group == "fallback" {
-		fallbacks, err := s.DB.ListFallbackEndpoints(ctx)
+		fallbacks, err := s.DB.Fallbacks.ListEndpoints(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -119,7 +119,7 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 			}
 			value = string(b)
 		}
-		if err := s.DB.SetSetting(ctx, key, value); err != nil {
+		if err := s.DB.Settings.Set(ctx, key, value); err != nil {
 			return err
 		}
 	}
@@ -129,7 +129,7 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 			if err != nil {
 				return err
 			}
-			if err := s.DB.SaveFallbackEndpoints(ctx, fallbacks); err != nil {
+			if err := s.DB.Fallbacks.SaveEndpoints(ctx, fallbacks); err != nil {
 				return err
 			}
 		}
@@ -138,51 +138,51 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 }
 
 func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map[string]any, error) {
-	siteName, err := s.DB.GetSetting(ctx, "site_name", SettingDefaults["site_name"])
+	siteName, err := s.DB.Settings.Get(ctx, "site_name", SettingDefaults["site_name"])
 	if err != nil {
 		return nil, err
 	}
-	allow, err := s.DB.GetSetting(ctx, "allow_register", SettingDefaults["allow_register"])
+	allow, err := s.DB.Settings.Get(ctx, "allow_register", SettingDefaults["allow_register"])
 	if err != nil {
 		return nil, err
 	}
-	siteURL, err := s.DB.GetSetting(ctx, "site_url", cfgSiteURL)
+	siteURL, err := s.DB.Settings.Get(ctx, "site_url", cfgSiteURL)
 	if err != nil {
 		return nil, err
 	}
-	apiURL, err := s.DB.GetSetting(ctx, "api_url", cfgAPIURL)
+	apiURL, err := s.DB.Settings.Get(ctx, "api_url", cfgAPIURL)
 	if err != nil {
 		return nil, err
 	}
-	subtitle, err := s.DB.GetSetting(ctx, "site_subtitle", SettingDefaults["site_subtitle"])
+	subtitle, err := s.DB.Settings.Get(ctx, "site_subtitle", SettingDefaults["site_subtitle"])
 	if err != nil {
 		return nil, err
 	}
-	enableLibrary, err := s.DB.GetSetting(ctx, "enable_skin_library", SettingDefaults["enable_skin_library"])
+	enableLibrary, err := s.DB.Settings.Get(ctx, "enable_skin_library", SettingDefaults["enable_skin_library"])
 	if err != nil {
 		return nil, err
 	}
-	emailVerify, err := s.DB.GetSetting(ctx, "email_verify_enabled", SettingDefaults["email_verify_enabled"])
+	emailVerify, err := s.DB.Settings.Get(ctx, "email_verify_enabled", SettingDefaults["email_verify_enabled"])
 	if err != nil {
 		return nil, err
 	}
-	footer, err := s.DB.GetSetting(ctx, "footer_text", SettingDefaults["footer_text"])
+	footer, err := s.DB.Settings.Get(ctx, "footer_text", SettingDefaults["footer_text"])
 	if err != nil {
 		return nil, err
 	}
-	icp, err := s.DB.GetSetting(ctx, "filing_icp", SettingDefaults["filing_icp"])
+	icp, err := s.DB.Settings.Get(ctx, "filing_icp", SettingDefaults["filing_icp"])
 	if err != nil {
 		return nil, err
 	}
-	icpLink, err := s.DB.GetSetting(ctx, "filing_icp_link", SettingDefaults["filing_icp_link"])
+	icpLink, err := s.DB.Settings.Get(ctx, "filing_icp_link", SettingDefaults["filing_icp_link"])
 	if err != nil {
 		return nil, err
 	}
-	mps, err := s.DB.GetSetting(ctx, "filing_mps", SettingDefaults["filing_mps"])
+	mps, err := s.DB.Settings.Get(ctx, "filing_mps", SettingDefaults["filing_mps"])
 	if err != nil {
 		return nil, err
 	}
-	mpsLink, err := s.DB.GetSetting(ctx, "filing_mps_link", SettingDefaults["filing_mps_link"])
+	mpsLink, err := s.DB.Settings.Get(ctx, "filing_mps_link", SettingDefaults["filing_mps_link"])
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map
 		"account":  "https://api.mojang.com",
 		"services": "https://api.minecraftservices.com",
 	}
-	primary, err := s.DB.GetPrimaryFallbackEndpoint(ctx)
+	primary, err := s.DB.Fallbacks.PrimaryEndpoint(ctx)
 	if err != nil {
 		return nil, err
 	}

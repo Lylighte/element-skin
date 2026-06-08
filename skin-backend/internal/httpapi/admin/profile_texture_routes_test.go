@@ -23,12 +23,12 @@ func TestProfileTextureRoutesUpdateProfileAndRejectBadTexturePublicValue(t *test
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
 		t.Fatalf("profile update response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
-	updated, err := db.GetProfileByID(req.Context(), profile.ID)
+	updated, err := db.Profiles.GetByID(req.Context(), profile.ID)
 	if err != nil || updated == nil || updated.Name != "RenamedAdmin" {
 		t.Fatalf("profile name should persist exactly: profile=%#v err=%v", updated, err)
 	}
 
-	if err := db.AddTextureToLibrary(req.Context(), user.ID, "admin_route_hash", "skin", "route texture", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(req.Context(), user.ID, "admin_route_hash", "skin", "route texture", true, "default"); err != nil {
 		t.Fatal(err)
 	}
 	req = httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_route_hash", strings.NewReader(`{"is_public":"yes"}`))

@@ -5,16 +5,16 @@ import (
 	"strconv"
 	"strings"
 
-	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/util"
 )
 
-func ValidateFallbackEndpoints(value any) ([]database.FallbackEndpoint, error) {
+func ValidateFallbackEndpoints(value any) ([]fallback.Endpoint, error) {
 	raw, ok := value.([]any)
 	if !ok {
 		return nil, util.HTTPError{Status: 400, Detail: "fallbacks must be a list"}
 	}
-	out := make([]database.FallbackEndpoint, 0, len(raw))
+	out := make([]fallback.Endpoint, 0, len(raw))
 	for i, item := range raw {
 		m, ok := item.(map[string]any)
 		if !ok {
@@ -24,7 +24,7 @@ func ValidateFallbackEndpoints(value any) ([]database.FallbackEndpoint, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, database.FallbackEndpoint{
+		out = append(out, fallback.Endpoint{
 			Priority:        intValue(m["priority"], i+1),
 			SessionURL:      normalized["session_url"].(string),
 			AccountURL:      normalized["account_url"].(string),

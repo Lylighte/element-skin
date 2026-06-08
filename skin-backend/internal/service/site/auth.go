@@ -7,6 +7,7 @@ import (
 
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
+	invitestore "element-skin/backend/internal/database/invite"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/util"
 )
@@ -18,7 +19,7 @@ type Site struct {
 }
 
 func (s Site) Login(ctx context.Context, email, password string) (map[string]any, error) {
-	user, err := s.DB.GetUserByEmail(ctx, email)
+	user, err := s.DB.Users.GetByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
@@ -37,25 +38,25 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 	if !validEmail(email) {
 		return "", util.HTTPError{Status: 400, Detail: "Invalid email format"}
 	}
-	if taken, err := s.DB.IsDisplayNameTaken(ctx, username, ""); err != nil {
+	if taken, err := s.DB.Users.IsDisplayNameTaken(ctx, username, ""); err != nil {
 		return "", err
 	} else if taken {
 		return "", util.HTTPError{Status: 400, Detail: "Username already exists"}
 	}
-	if existing, err := s.DB.GetUserByEmail(ctx, email); err != nil {
+	if existing, err := s.DB.Users.GetByEmail(ctx, email); err != nil {
 		return "", err
 	} else if existing != nil {
 		return "", util.HTTPError{Status: 400, Detail: "Email already registered"}
 	}
-	if strong, _ := s.DB.GetSetting(ctx, "enable_strong_password_check", "false"); strong == "true" {
+	if strong, _ := s.DB.Settings.Get(ctx, "enable_strong_password_check", "false"); strong == "true" {
 		if errs := util.ValidateStrongPassword(password); len(errs) > 0 {
 			return "", util.HTTPError{Status: 400, Detail: util.JoinPasswordErrors(errs)}
 		}
 	}
-	if allow, _ := s.DB.GetSetting(ctx, "allow_register", "true"); allow != "true" {
+	if allow, _ := s.DB.Settings.Get(ctx, "allow_register", "true"); allow != "true" {
 		return "", util.HTTPError{Status: 403, Detail: "registration is disabled"}
 	}
-	if enabled, _ := s.DB.GetSetting(ctx, "email_verify_enabled", "false"); enabled == "true" {
+	if enabled, _ := s.DB.Settings.Get(ctx, "email_verify_enabled", "false"); enabled == "true" {
 		if code == "" {
 			return "", util.HTTPError{Status: 400, Detail: "Verification code required"}
 		}
@@ -66,15 +67,15 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 		if !ok {
 			return "", util.HTTPError{Status: 400, Detail: "Invalid or expired verification code"}
 		}
-		defer s.DB.DeleteVerificationCode(ctx, email, "register")
+		defer s.DB.Verifications.DeleteCode(ctx, email, "register")
 	}
-	requireInvite, _ := s.DB.GetSetting(ctx, "require_invite", "false")
+	requireInvite, _ := s.DB.Settings.Get(ctx, "require_invite", "false")
 	inviteCode := ""
 	if requireInvite == "true" {
 		if invite == "" {
 			return "", util.HTTPError{Status: 400, Detail: "invite code required"}
 		}
-		inv, err := s.DB.GetInvite(ctx, invite)
+		inv, err := s.DB.Invites.Get(ctx, invite)
 		if err != nil {
 			return "", err
 		}
@@ -86,11 +87,11 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 		}
 		inviteCode = invite
 	}
-	count, err := s.DB.CountUsers(ctx)
+	count, err := s.DB.Users.Count(ctx)
 	if err != nil {
 		return "", err
 	}
-	mode, _ := s.DB.GetSetting(ctx, "profile_uuid_mode", "random")
+	mode, _ := s.DB.Settings.Get(ctx, "profile_uuid_mode", "random")
 	base := regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(strings.Split(email, "@")[0], "_")
 	if len(base) > 12 {
 		base = base[:12]
@@ -109,7 +110,7 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 	if mode == "offline" {
 		profileID = util.OfflineUUIDNoDash(profileName)
 	}
-	if p, err := s.DB.GetProfileByID(ctx, profileID); err != nil {
+	if p, err := s.DB.Profiles.GetByID(ctx, profileID); err != nil {
 		return "", err
 	} else if p != nil {
 		return "", util.HTTPError{Status: 400, Detail: "角色 UUID 冲突，无法新建角色"}
@@ -124,8 +125,8 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 	}
 	u := model.User{ID: userID, Email: email, Password: hash, IsAdmin: count == 0, DisplayName: username}
 	p := model.Profile{ID: profileID, UserID: userID, Name: profileName, TextureModel: "default"}
-	if err := s.DB.CreateUserWithProfile(ctx, u, p, inviteCode, email); err != nil {
-		if err == database.ErrInviteExhausted {
+	if err := s.DB.Users.CreateWithProfile(ctx, u, p, inviteCode, email); err != nil {
+		if err == invitestore.ErrExhausted {
 			return "", util.HTTPError{Status: 400, Detail: "invite code has no remaining uses"}
 		}
 		return "", err
@@ -142,7 +143,7 @@ func (s Site) uniqueProfileName(ctx context.Context, base string) (string, error
 		if len(name) > 16 {
 			name = name[:16]
 		}
-		p, err := s.DB.GetProfileByName(ctx, name)
+		p, err := s.DB.Profiles.GetByName(ctx, name)
 		if err != nil {
 			return "", err
 		}

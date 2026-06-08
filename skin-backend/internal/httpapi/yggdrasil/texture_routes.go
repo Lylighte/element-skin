@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"element-skin/backend/internal/database"
+	profilestore "element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/httpapi/shared"
 	texturesvc "element-skin/backend/internal/service/texture"
 	"element-skin/backend/internal/util"
@@ -16,7 +16,7 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 401, Detail: "Bearer token required"})
 		return
 	}
-	tok, err := h.db.GetToken(req.Context(), token)
+	tok, err := h.db.Tokens.Get(req.Context(), token)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -25,12 +25,12 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 401, Detail: "Invalid token"})
 		return
 	}
-	profile, err := h.db.GetProfileByID(req.Context(), *tok.ProfileID)
+	selectedProfile, err := h.db.Profiles.GetByID(req.Context(), *tok.ProfileID)
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	if profile == nil || profile.UserID != tok.UserID {
+	if selectedProfile == nil || selectedProfile.UserID != tok.UserID {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "Profile not yours"})
 		return
 	}
@@ -54,18 +54,18 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: err.Error()})
 		return
 	}
-	if err := h.db.AddTextureToLibrary(req.Context(), tok.UserID, hash, textureType, "", false, database.NormalizeProfileModel(req.FormValue("model"))); err != nil {
+	if err := h.db.Textures.AddToLibrary(req.Context(), tok.UserID, hash, textureType, "", false, profilestore.NormalizeModel(req.FormValue("model"))); err != nil {
 		util.Error(w, err)
 		return
 	}
 	if textureType == "skin" {
-		if err := h.db.UpdateProfileSkin(req.Context(), profile.ID, &hash); err != nil {
+		if err := h.db.Profiles.UpdateSkin(req.Context(), selectedProfile.ID, &hash); err != nil {
 			util.Error(w, err)
 			return
 		}
-		_ = h.db.UpdateProfileModel(req.Context(), profile.ID, database.NormalizeProfileModel(req.FormValue("model")))
+		_ = h.db.Profiles.UpdateModel(req.Context(), selectedProfile.ID, profilestore.NormalizeModel(req.FormValue("model")))
 	} else if textureType == "cape" {
-		if err := h.db.UpdateProfileCape(req.Context(), profile.ID, &hash); err != nil {
+		if err := h.db.Profiles.UpdateCape(req.Context(), selectedProfile.ID, &hash); err != nil {
 			util.Error(w, err)
 			return
 		}
@@ -82,7 +82,7 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 401, Detail: "Bearer token required"})
 		return
 	}
-	tok, err := h.db.GetToken(req.Context(), token)
+	tok, err := h.db.Tokens.Get(req.Context(), token)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -93,9 +93,9 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 	}
 	switch strings.ToLower(req.PathValue("texture_type")) {
 	case "skin":
-		err = h.db.UpdateProfileSkin(req.Context(), *tok.ProfileID, nil)
+		err = h.db.Profiles.UpdateSkin(req.Context(), *tok.ProfileID, nil)
 	case "cape":
-		err = h.db.UpdateProfileCape(req.Context(), *tok.ProfileID, nil)
+		err = h.db.Profiles.UpdateCape(req.Context(), *tok.ProfileID, nil)
 	default:
 		err = util.HTTPError{Status: 400, Detail: "Invalid texture_type"}
 	}

@@ -3,10 +3,12 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"element-skin/backend/internal/database"
+
+	"element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
+
 	"encoding/base64"
 	"encoding/json"
 	"mime/multipart"
@@ -23,13 +25,13 @@ func TestYggdrasilAuthenticateJoinAndProfile(t *testing.T) {
 	skin := "my_skin_hash"
 	cape := "my_cape_hash"
 	profile := testutil.CreateProfile(t, db, user.ID, "ygg_profile_id", "YggPlayer")
-	if err := db.UpdateProfileSkin(context.Background(), profile.ID, &skin); err != nil {
+	if err := db.Profiles.UpdateSkin(context.Background(), profile.ID, &skin); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.UpdateProfileCape(context.Background(), profile.ID, &cape); err != nil {
+	if err := db.Profiles.UpdateCape(context.Background(), profile.ID, &cape); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.UpdateProfileModel(context.Background(), profile.ID, "slim"); err != nil {
+	if err := db.Profiles.UpdateModel(context.Background(), profile.ID, "slim"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,7 +68,7 @@ func TestYggdrasilAuthenticateJoinAndProfile(t *testing.T) {
 			t.Fatalf("%s malformed JSON should be 400, got %d body=%s", tc.name, resp.Code, resp.Body.String())
 		}
 	}
-	if token, _ := db.GetToken(context.Background(), accessToken); token == nil {
+	if token, _ := db.Tokens.Get(context.Background(), accessToken); token == nil {
 		t.Fatal("malformed invalidate request must not delete the valid token")
 	}
 
@@ -81,10 +83,10 @@ func TestYggdrasilAuthenticateJoinAndProfile(t *testing.T) {
 	if newAccessToken == "" || newAccessToken == accessToken {
 		t.Fatalf("refresh should rotate access token: %#v", refreshBody)
 	}
-	if oldToken, _ := db.GetToken(context.Background(), accessToken); oldToken != nil {
+	if oldToken, _ := db.Tokens.Get(context.Background(), accessToken); oldToken != nil {
 		t.Fatal("old ygg access token should be deleted after refresh")
 	}
-	if newToken, _ := db.GetToken(context.Background(), newAccessToken); newToken == nil {
+	if newToken, _ := db.Tokens.Get(context.Background(), newAccessToken); newToken == nil {
 		t.Fatal("new ygg access token should be persisted after refresh")
 	}
 	if refreshBody["selectedProfile"].(map[string]any)["id"] != profile.ID || refreshBody["user"].(map[string]any)["id"] != user.ID {
@@ -144,7 +146,7 @@ func TestYggdrasilAuthenticateJoinAndProfile(t *testing.T) {
 
 	defaultProfile := testutil.CreateProfile(t, db, user.ID, "default_profile_id", "DefaultModel")
 	defaultSkin := "default_skin_hash"
-	if err := db.UpdateProfileSkin(context.Background(), defaultProfile.ID, &defaultSkin); err != nil {
+	if err := db.Profiles.UpdateSkin(context.Background(), defaultProfile.ID, &defaultSkin); err != nil {
 		t.Fatal(err)
 	}
 	defaultResp := doJSON(t, h, "GET", "/sessionserver/session/minecraft/profile/"+defaultProfile.ID, nil)
@@ -202,7 +204,7 @@ func TestAdminAccessUsesDatabaseState(t *testing.T) {
 	if users.Code != 200 {
 		t.Fatalf("admin users status=%d body=%s", users.Code, users.Body.String())
 	}
-	if _, err := db.ToggleAdmin(context.Background(), admin.ID); err != nil {
+	if _, err := db.Users.ToggleAdmin(context.Background(), admin.ID); err != nil {
 		t.Fatal(err)
 	}
 	demoted := doJSON(t, h, "GET", "/admin/users", nil, adminCookie)
@@ -270,7 +272,7 @@ func TestTextureUploadAndYggdrasilTextureRoutes(t *testing.T) {
 		t.Fatalf("site texture upload status=%d body=%s", upload.Code, upload.Body.String())
 	}
 	hash := parseJSON(t, upload)["hash"].(string)
-	info, _ := db.GetTextureInfo(context.Background(), user.ID, hash, "skin")
+	info, _ := db.Textures.GetInfo(context.Background(), user.ID, hash, "skin")
 	if info == nil || info["note"] != "API Upload" || info["is_public"].(int) != 1 {
 		t.Fatalf("uploaded texture not persisted: %#v", info)
 	}
@@ -288,7 +290,7 @@ func TestTextureUploadAndYggdrasilTextureRoutes(t *testing.T) {
 	}
 
 	token := model.Token{AccessToken: "texture_token", ClientToken: "client", UserID: user.ID, ProfileID: &profile.ID, CreatedAt: time.Now().UnixMilli()}
-	if err := db.AddToken(context.Background(), token); err != nil {
+	if err := db.Tokens.Add(context.Background(), token); err != nil {
 		t.Fatal(err)
 	}
 	var b bytes.Buffer
@@ -305,7 +307,7 @@ func TestTextureUploadAndYggdrasilTextureRoutes(t *testing.T) {
 	if yggRR.Code != 200 {
 		t.Fatalf("ygg texture upload status=%d body=%s", yggRR.Code, yggRR.Body.String())
 	}
-	p, _ := db.GetProfileByID(context.Background(), profile.ID)
+	p, _ := db.Profiles.GetByID(context.Background(), profile.ID)
 	if p.SkinHash == nil || p.TextureModel != "slim" {
 		t.Fatalf("ygg upload did not apply skin/model: %#v", p)
 	}
@@ -317,7 +319,7 @@ func TestTextureUploadAndYggdrasilTextureRoutes(t *testing.T) {
 	if delRR.Code != 204 {
 		t.Fatalf("ygg delete status=%d body=%s", delRR.Code, delRR.Body.String())
 	}
-	p, _ = db.GetProfileByID(context.Background(), profile.ID)
+	p, _ = db.Profiles.GetByID(context.Background(), profile.ID)
 	if p.SkinHash != nil {
 		t.Fatalf("skin should be cleared: %#v", p)
 	}
@@ -328,7 +330,7 @@ func TestYggdrasilFallbackRoutes(t *testing.T) {
 	ctx := context.Background()
 
 	var seen []string
-	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	fallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = append(seen, r.Method+" "+r.URL.String())
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -359,10 +361,10 @@ func TestYggdrasilFallbackRoutes(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer fallback.Close()
+	defer fallbackServer.Close()
 
-	if err := db.SaveFallbackEndpoints(ctx, []database.FallbackEndpoint{{
-		Priority: 1, SessionURL: fallback.URL, AccountURL: fallback.URL, ServicesURL: fallback.URL,
+	if err := db.Fallbacks.SaveEndpoints(ctx, []fallback.Endpoint{{
+		Priority: 1, SessionURL: fallbackServer.URL, AccountURL: fallbackServer.URL, ServicesURL: fallbackServer.URL,
 		CacheTTL: 60, EnableProfile: true, EnableHasJoined: true,
 	}}); err != nil {
 		t.Fatal(err)

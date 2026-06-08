@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/httpapi/shared"
 	texturesvc "element-skin/backend/internal/service/texture"
 	"element-skin/backend/internal/util"
@@ -48,7 +48,7 @@ func (h Handler) UploadMyTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: err.Error()})
 		return
 	}
-	if err := h.db.AddTextureToLibrary(req.Context(), shared.CurrentUserID(req), hash, textureType, req.FormValue("note"), shared.FormBool(req.FormValue("is_public")), database.NormalizeProfileModel(req.FormValue("model"))); err != nil {
+	if err := h.db.Textures.AddToLibrary(req.Context(), shared.CurrentUserID(req), hash, textureType, req.FormValue("note"), shared.FormBool(req.FormValue("is_public")), profile.NormalizeModel(req.FormValue("model"))); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -81,8 +81,8 @@ func (h Handler) UploadAndApplyTexture(w http.ResponseWriter, req *http.Request)
 		util.Error(w, util.HTTPError{Status: 400, Detail: err.Error()})
 		return
 	}
-	model := database.NormalizeProfileModel(req.FormValue("model"))
-	if err := h.db.AddTextureToLibrary(req.Context(), shared.CurrentUserID(req), hash, textureType, "", shared.FormBool(req.FormValue("is_public")), model); err != nil {
+	model := profile.NormalizeModel(req.FormValue("model"))
+	if err := h.db.Textures.AddToLibrary(req.Context(), shared.CurrentUserID(req), hash, textureType, "", shared.FormBool(req.FormValue("is_public")), model); err != nil {
 		util.Error(w, err)
 		return
 	}

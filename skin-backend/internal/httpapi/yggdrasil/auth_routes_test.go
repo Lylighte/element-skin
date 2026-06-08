@@ -7,14 +7,14 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/httpapi/yggdrasil"
-	"element-skin/backend/internal/service"
+	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestAuthRoutesValidateMissingTokenAndMetadataExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := yggdrasil.New(cfg, db, service.Yggdrasil{DB: db, Cfg: cfg})
+	h := yggdrasil.New(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()

@@ -26,7 +26,7 @@ func TestDBInitSchemaDefaultsAndCoreHelpers(t *testing.T) {
 			t.Fatalf("InitSQL should create table %s", table)
 		}
 	}
-	siteName, err := db.GetSetting(ctx, "site_name", "")
+	siteName, err := db.Settings.Get(ctx, "site_name", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,10 +36,10 @@ func TestDBInitSchemaDefaultsAndCoreHelpers(t *testing.T) {
 
 	avatar := "avatar_hash"
 	user := testutil.CreateUser(t, db, "scan@test.com", "Password123", "ScanUser", true)
-	if err := db.UpdateUser(ctx, user.ID, map[string]any{"avatar_hash": avatar}); err != nil {
+	if err := db.Users.Update(ctx, user.ID, map[string]any{"avatar_hash": avatar}); err != nil {
 		t.Fatal(err)
 	}
-	scannedUser, err := db.GetUserByID(ctx, user.ID)
+	scannedUser, err := db.Users.GetByID(ctx, user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,13 +51,13 @@ func TestDBInitSchemaDefaultsAndCoreHelpers(t *testing.T) {
 
 	skin := "skin"
 	profile := testutil.CreateProfile(t, db, user.ID, "scan_profile", "ScanProfile")
-	if err := db.UpdateProfileSkin(ctx, profile.ID, &skin); err != nil {
+	if err := db.Profiles.UpdateSkin(ctx, profile.ID, &skin); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.UpdateProfileModel(ctx, profile.ID, "slim"); err != nil {
+	if err := db.Profiles.UpdateModel(ctx, profile.ID, "slim"); err != nil {
 		t.Fatal(err)
 	}
-	scannedProfile, err := db.GetProfileByID(ctx, profile.ID)
+	scannedProfile, err := db.Profiles.GetByID(ctx, profile.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,16 +79,16 @@ func TestResetPublicSchemaRemovesDataAndRestoresDefaults(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	testutil.CreateUser(t, db, "reset-schema@test.com", "Password123", "ResetSchema", false)
-	if count, err := db.CountUsers(ctx); err != nil || count != 1 {
+	if count, err := db.Users.Count(ctx); err != nil || count != 1 {
 		t.Fatalf("expected one user before reset: count=%d err=%v", count, err)
 	}
 	if err := db.ResetPublicSchema(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if count, err := db.CountUsers(ctx); err != nil || count != 0 {
+	if count, err := db.Users.Count(ctx); err != nil || count != 0 {
 		t.Fatalf("reset should remove users: count=%d err=%v", count, err)
 	}
-	if siteName, err := db.GetSetting(ctx, "site_name", ""); err != nil || siteName != "皮肤站" {
+	if siteName, err := db.Settings.Get(ctx, "site_name", ""); err != nil || siteName != "皮肤站" {
 		t.Fatalf("reset should restore default settings: site_name=%q err=%v", siteName, err)
 	}
 }

@@ -30,10 +30,10 @@ func (f Fallback) HasJoined(ctx context.Context, username, serverID, ip string) 
 	if err != nil || len(eps) == 0 {
 		return nil, err
 	}
-	strategy, _ := f.DB.GetSetting(ctx, "fallback_strategy", "serial")
+	strategy, _ := f.DB.Settings.Get(ctx, "fallback_strategy", "serial")
 	call := func(ep map[string]any) (*FallbackResponse, error) {
 		if ep["enable_whitelist"].(bool) {
-			ok, err := f.DB.IsUserInWhitelist(ctx, username, ep["id"].(int))
+			ok, err := f.DB.Fallbacks.IsUserInWhitelist(ctx, username, ep["id"].(int))
 			if err != nil || !ok {
 				return nil, err
 			}
@@ -53,7 +53,7 @@ func (f Fallback) GetProfile(ctx context.Context, uuid string, unsigned bool) (*
 	if err != nil || len(eps) == 0 {
 		return nil, err
 	}
-	strategy, _ := f.DB.GetSetting(ctx, "fallback_strategy", "serial")
+	strategy, _ := f.DB.Settings.Get(ctx, "fallback_strategy", "serial")
 	call := func(ep map[string]any) (*FallbackResponse, error) {
 		u := strings.TrimRight(ep["session_url"].(string), "/") + "/session/minecraft/profile/" + uuid
 		u += "?unsigned=" + strconv.FormatBool(unsigned)
@@ -67,7 +67,7 @@ func (f Fallback) GetProfileByName(ctx context.Context, playerName string) (*Fal
 	if err != nil || len(eps) == 0 {
 		return nil, err
 	}
-	strategy, _ := f.DB.GetSetting(ctx, "fallback_strategy", "serial")
+	strategy, _ := f.DB.Settings.Get(ctx, "fallback_strategy", "serial")
 	call := func(ep map[string]any) (*FallbackResponse, error) {
 		accountURL := strings.TrimRight(ep["account_url"].(string), "/")
 		if accountURL == "" {
@@ -84,7 +84,7 @@ func (f Fallback) ServicesLookup(ctx context.Context, playerName string) (*Fallb
 	if err != nil || len(eps) == 0 {
 		return nil, err
 	}
-	strategy, _ := f.DB.GetSetting(ctx, "fallback_strategy", "serial")
+	strategy, _ := f.DB.Settings.Get(ctx, "fallback_strategy", "serial")
 	call := func(ep map[string]any) (*FallbackResponse, error) {
 		servicesURL := strings.TrimRight(ep["services_url"].(string), "/")
 		if servicesURL == "" {
@@ -101,7 +101,7 @@ func (f Fallback) BulkLookup(ctx context.Context, names []string) ([]map[string]
 	if err != nil || len(eps) == 0 {
 		return nil, err
 	}
-	strategy, _ := f.DB.GetSetting(ctx, "fallback_strategy", "serial")
+	strategy, _ := f.DB.Settings.Get(ctx, "fallback_strategy", "serial")
 	call := func(ep map[string]any) (*FallbackResponse, error) {
 		accountURL := strings.TrimRight(ep["account_url"].(string), "/")
 		if accountURL == "" {
@@ -121,7 +121,7 @@ func (f Fallback) BulkLookup(ctx context.Context, names []string) ([]map[string]
 }
 
 func (f Fallback) enabledEndpoints(ctx context.Context, kind string) ([]map[string]any, error) {
-	eps, err := f.DB.ListFallbackEndpoints(ctx)
+	eps, err := f.DB.Fallbacks.ListEndpoints(ctx)
 	if err != nil {
 		return nil, err
 	}
