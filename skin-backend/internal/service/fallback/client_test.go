@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	dbfallback "element-skin/backend/internal/database/fallback"
-	"element-skin/backend/internal/service/fallback"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -24,7 +23,7 @@ func TestFallbackHTTPClientIgnoresNonOKResponses(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	resp, err := (fallback.Fallback{DB: db, Client: server.Client()}).GetProfile(ctx, "missing", true)
+	resp, err := (newFallback(db, server.Client())).GetProfile(ctx, "missing", true)
 	if err != nil || resp != nil {
 		t.Fatalf("non-OK fallback response should be ignored: resp=%#v err=%v", resp, err)
 	}

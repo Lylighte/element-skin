@@ -14,7 +14,7 @@ import (
 func TestHandlerAuthRequestsUserAccessAndKeepsStateStore(t *testing.T) {
 	var requireAdmin bool
 	states := util.NewInMemoryStateStore()
-	h := microsoft.New(testutil.TestConfig(), nil, settings.Settings{}, func(next http.HandlerFunc, require bool) http.HandlerFunc {
+	h := microsoft.New(testutil.TestConfig(), nil, settings.Settings{Redis: testutil.NewMemoryRedis()}, func(next http.HandlerFunc, require bool) http.HandlerFunc {
 		requireAdmin = require
 		return next
 	}, states)

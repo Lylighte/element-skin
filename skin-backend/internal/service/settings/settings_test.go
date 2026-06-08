@@ -11,7 +11,7 @@ import (
 
 func TestSettingsStoresDatabaseDependency(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
-	settings := settings.Settings{DB: db}
+	settings := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
 	if settings.DB != db {
 		t.Fatalf("Settings should retain DB dependency")
 	}

@@ -11,7 +11,7 @@ import (
 func TestSettingsSaveGetRoundTripExactValues(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	settings := settings.Settings{DB: db}
+	settings := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
 
 	if err := settings.SaveGroup(ctx, "site", map[string]any{
 		"site_name":           "Exact Skin",
@@ -82,7 +82,7 @@ func TestSettingsSaveGetRoundTripExactValues(t *testing.T) {
 
 func TestSettingsRejectInvalidGroupAndProfileMode(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
-	settings := settings.Settings{DB: db}
+	settings := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
 	if _, err := settings.GetGroup(context.Background(), "missing"); err == nil {
 		t.Fatal("missing settings group should reject")
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -12,7 +11,7 @@ func TestSessionRotateRefreshIsSingleUse(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	svc := site.Site{DB: db, Cfg: cfg, Redis: testutil.NewMemoryRedis()}
+	svc := newSiteService(db, cfg)
 	testutil.CreateUser(t, db, "site-session-service@test.com", "Password123", "SiteSessionService", false)
 	login, err := svc.Login(ctx, "site-session-service@test.com", "Password123")
 	if err != nil {

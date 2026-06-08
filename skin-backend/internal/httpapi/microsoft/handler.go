@@ -19,9 +19,6 @@ type Handler struct {
 }
 
 func New(cfg config.Config, db *database.DB, settings settingssvc.Settings, auth shared.AuthFunc, states *util.InMemoryStateStore) Handler {
-	if settings.DB == nil {
-		settings.DB = db
-	}
 	return Handler{cfg: cfg, db: db, settings: settings, auth: auth, states: states}
 }
 

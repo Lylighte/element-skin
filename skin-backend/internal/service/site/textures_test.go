@@ -4,14 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestTexturesApplyUpdateAndDeleteExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+	svc := newSiteService(db, testutil.TestConfig())
 	user := testutil.CreateUser(t, db, "site-textures-service@test.com", "Password123", "SiteTexturesService", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_textures_profile", "SiteTexturesProfile")
 	if err := db.Textures.AddToLibrary(ctx, user.ID, "texture_service_skin", "skin", "Texture Service Skin", true, "slim"); err != nil {

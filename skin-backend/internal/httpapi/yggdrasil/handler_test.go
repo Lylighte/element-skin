@@ -15,7 +15,7 @@ import (
 func TestNewStoresConfigAndServicesByValue(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := ygghttp.New(cfg, db, settings.Settings{DB: db}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	h := ygghttp.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	rec := httptest.NewRecorder()
 	h.Metadata(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "element-skin") {

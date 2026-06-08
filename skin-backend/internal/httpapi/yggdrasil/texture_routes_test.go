@@ -16,7 +16,7 @@ import (
 func TestTextureRoutesRequireBearerAndDeleteClearsProfileSkinExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := yggdrasil.New(cfg, db, settings.Settings{DB: db}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	h := yggdrasil.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	user := testutil.CreateUser(t, db, "ygg-texture@test.com", "Password123", "YggTexture", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "ygg_texture_profile", "YggTextureProfile")
 

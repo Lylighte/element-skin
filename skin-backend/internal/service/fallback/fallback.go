@@ -14,9 +14,6 @@ type Fallback struct {
 }
 
 func (f Fallback) settings() settingssvc.Settings {
-	if f.Settings.DB == nil {
-		f.Settings.DB = f.DB
-	}
 	return f.Settings
 }
 

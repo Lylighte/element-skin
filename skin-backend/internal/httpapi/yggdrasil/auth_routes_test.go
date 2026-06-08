@@ -16,7 +16,7 @@ import (
 func TestAuthRoutesValidateMissingTokenAndMetadataExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := yggdrasil.New(cfg, db, settings.Settings{DB: db}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	h := yggdrasil.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -36,7 +36,7 @@ func TestAuthRoutesValidateMissingTokenAndMetadataExactly(t *testing.T) {
 func TestAuthRoutesAuthenticateRefreshJoinAndHasJoinedFlow(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := yggdrasil.New(cfg, db, settings.Settings{DB: db}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	h := yggdrasil.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	user := testutil.CreateUser(t, db, "ygg-flow@test.com", "Password123", "YggFlow", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "ygg_flow_profile", "YggFlowProfile")
 

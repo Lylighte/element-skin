@@ -26,9 +26,6 @@ func (s Settings) cacheTTL() time.Duration {
 }
 
 func (s Settings) Get(ctx context.Context, key, fallback string) (string, error) {
-	if s.Redis == nil {
-		return s.DB.Settings.Get(ctx, key, fallback)
-	}
 	value, err := s.Redis.GetSetting(ctx, key)
 	if err == nil {
 		return value, nil
@@ -56,8 +53,5 @@ func (s Settings) Int(ctx context.Context, key string, fallback int) (int, error
 }
 
 func (s Settings) InvalidateCache(ctx context.Context) error {
-	if s.Redis == nil {
-		return nil
-	}
 	return s.Redis.InvalidateSettings(ctx)
 }
