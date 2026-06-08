@@ -15,6 +15,8 @@ runtime small, explicit, and centered on the Go domain modules.
 - `internal/httpapi`: HTTP route adapters. Business rules should stay in
   `internal/service` or `internal/database` unless they are purely request/response
   concerns.
+- `internal/redisstore`: Redis-backed cache/verification/rate-limit/auth-store
+  abstractions plus the in-memory test implementation.
 - `internal/service`: site, Yggdrasil, fallback, Microsoft/import, settings, and
   texture-storage domain logic.
 - `internal/util`: small security, pagination, JWT, URL, and response helpers.
@@ -32,6 +34,14 @@ go test ./...
 go vet ./...
 go build ./cmd/element-skin
 ```
+
+The backend requires Redis at runtime. Local defaults expect `127.0.0.1:6379`
+with no password; override with `redis.addr`, `redis.password`, `redis.db`, or
+the matching `REDIS_*` environment variables.
+
+Unit tests use the in-memory Redis implementation. Integration tests in
+`internal/integration` use a real Redis instance (`REDIS_TEST_ADDR`, default
+`127.0.0.1:6379`) and clean only their unique key prefix.
 
 ## Load Testing
 
@@ -84,8 +94,13 @@ paths used by the current frontend and Yggdrasil clients.
 ## Design Notes
 
 - Authentication checks re-read the user from the database on each protected
-  request, so deleted users and demoted admins lose access immediately even if
-  their JWT has not expired.
+  request only on Redis auth-cache misses. Admin/user mutations invalidate the
+  auth cache; Redis errors fail protected requests instead of falling back to
+  stale or database-only behavior.
+- `/public/settings` and `/public/carousel` are served through Redis caches.
+  Cache misses rebuild from PostgreSQL/filesystem, while Redis command failures
+  fail the request instead of silently falling back.
+- Verification codes and rate-limit counters live in Redis only.
 - Site refresh tokens are one-shot and consumed atomically in PostgreSQL.
 - Registration creates the user and initial profile in one transaction, including
   invite consumption, so profile or invite failures do not leave orphan users.

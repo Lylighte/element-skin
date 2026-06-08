@@ -8,6 +8,7 @@ import (
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/httpapi"
+	"element-skin/backend/internal/redisstore"
 	sitepkg "element-skin/backend/internal/service/site"
 	yggpkg "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/util"
@@ -15,6 +16,7 @@ import (
 
 type App struct {
 	db       *database.DB
+	redis    redisstore.Store
 	handler  http.Handler
 	cancelFn context.CancelFunc
 }
@@ -35,9 +37,15 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		db.Close()
 		return nil, err
 	}
-	site := sitepkg.Site{DB: db, Cfg: cfg}
+	redis, err := redisstore.Open(ctx, cfg)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	site := sitepkg.Site{DB: db, Cfg: cfg, Redis: redis}
 	ygg, err := yggpkg.New(db, cfg)
 	if err != nil {
+		_ = redis.Close()
 		db.Close()
 		return nil, err
 	}
@@ -45,18 +53,28 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	go RunRefreshCleanupLoop(cleanupCtx, db.Tokens, time.Hour)
 	return &App{
 		db:       db,
-		handler:  httpapi.NewRouter(cfg, db, site, ygg),
+		redis:    redis,
+		handler:  httpapi.NewRouterWithRedis(cfg, db, redis, site, ygg),
 		cancelFn: cancel,
 	}, nil
 }
 
 func NewWithDB(cfg config.Config, db *database.DB) (*App, error) {
-	site := sitepkg.Site{DB: db, Cfg: cfg}
-	ygg, err := yggpkg.New(db, cfg)
+	redis, err := redisstore.Open(context.Background(), cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &App{db: db, handler: httpapi.NewRouter(cfg, db, site, ygg)}, nil
+	return NewWithDBAndRedis(cfg, db, redis)
+}
+
+func NewWithDBAndRedis(cfg config.Config, db *database.DB, redis redisstore.Store) (*App, error) {
+	site := sitepkg.Site{DB: db, Cfg: cfg, Redis: redis}
+	ygg, err := yggpkg.New(db, cfg)
+	if err != nil {
+		_ = redis.Close()
+		return nil, err
+	}
+	return &App{db: db, redis: redis, handler: httpapi.NewRouterWithRedis(cfg, db, redis, site, ygg)}, nil
 }
 
 func (a *App) Handler() http.Handler {
@@ -69,6 +87,9 @@ func (a *App) Close() {
 	}
 	if a.db != nil {
 		a.db.Close()
+	}
+	if a.redis != nil {
+		_ = a.redis.Close()
 	}
 }
 

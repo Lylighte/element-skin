@@ -2,9 +2,11 @@ package site
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"time"
 
-	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/util"
 )
 
@@ -44,19 +46,19 @@ func (s Site) SendVerificationCode(ctx context.Context, email, typ string) (map[
 	if err != nil {
 		return nil, err
 	}
-	if err := s.DB.Verifications.CreateCode(ctx, email, code, typ, ttl); err != nil {
+	if err := s.Redis.SetVerificationCode(ctx, email, typ, code, time.Duration(ttl)*time.Second); err != nil {
 		return nil, err
 	}
 	return map[string]any{"ok": true, "ttl": ttl}, nil
 }
 
 func (s Site) VerifyCode(ctx context.Context, email, code, typ string) (bool, error) {
-	stored, expiresAt, ok, err := s.DB.Verifications.GetCode(ctx, email, typ)
-	if err != nil || !ok {
-		return false, err
-	}
-	if database.NowMS() > expiresAt {
+	stored, err := s.Redis.GetVerificationCode(ctx, email, typ)
+	if errors.Is(err, redisstore.ErrCacheMiss) {
 		return false, nil
+	}
+	if err != nil {
+		return false, err
 	}
 	return strings.EqualFold(stored, code), nil
 }
@@ -95,5 +97,5 @@ func (s Site) ResetPassword(ctx context.Context, email, newPassword, code string
 	if !updated {
 		return util.HTTPError{Status: 404, Detail: "User not found"}
 	}
-	return s.DB.Verifications.DeleteCode(ctx, email, "reset")
+	return s.Redis.DeleteVerificationCode(ctx, email, "reset")
 }

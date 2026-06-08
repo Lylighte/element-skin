@@ -1,6 +1,7 @@
 package site_test
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/httpapi/site"
+	"element-skin/backend/internal/redisstore"
 	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
@@ -28,6 +30,26 @@ func TestPublicRoutesCarouselListsOnlyImagesExactly(t *testing.T) {
 	h.PublicCarousel(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "[\"hero.webp\"]\n" {
 		t.Fatalf("public carousel should list only images exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPublicRoutesRedisErrorDoesNotFallback(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cache := redisstore.NewMemoryStore()
+	cache.Err = errors.New("redis down")
+	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, nil)
+
+	rec := httptest.NewRecorder()
+	h.PublicSettings(rec, httptest.NewRequest(http.MethodGet, "/public/settings", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("public settings redis error should fail, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	h.PublicCarousel(rec, httptest.NewRequest(http.MethodGet, "/public/carousel", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("public carousel redis error should fail, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

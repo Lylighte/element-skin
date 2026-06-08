@@ -29,6 +29,13 @@ textures:
   directory: "/data/textures"
 carousel:
   directory: "/data/carousel"
+redis:
+  addr: "redis:6379"
+  password: "password123"
+  db: 2
+  key_prefix: "custom:"
+  public_cache_ttl_seconds: 120
+  auth_cache_ttl_seconds: 15
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +60,12 @@ carousel:
 	if cfg.TexturesDir != "/data/textures" || cfg.CarouselDir != "/data/carousel" {
 		t.Fatalf("storage directories not parsed: %#v", cfg)
 	}
+	if cfg.RedisAddr != "redis:6379" || cfg.RedisPassword != "password123" || cfg.RedisDB != 2 || cfg.RedisKeyPrefix != "custom:" {
+		t.Fatalf("redis fields not parsed: %#v", cfg)
+	}
+	if cfg.PublicCacheTTL != 120 || cfg.AuthCacheTTL != 15 {
+		t.Fatalf("redis ttl fields not parsed: %#v", cfg)
+	}
 	if cfg.PrivateKeyPath != filepath.Join(dir, "keys", "private.pem") || cfg.PublicKeyPath != filepath.Join(dir, "keys", "public.pem") {
 		t.Fatalf("key paths should resolve relative to config file: %#v", cfg)
 	}
@@ -71,6 +84,10 @@ database:
 	}
 	t.Setenv("JWT_SECRET", "env-secret-abcdefghijklmnopqrstuvwxyz")
 	t.Setenv("DATABASE_DSN", "postgresql://env")
+	t.Setenv("REDIS_ADDR", "127.0.0.1:6380")
+	t.Setenv("REDIS_PASSWORD", "env-redis-password")
+	t.Setenv("REDIS_DB", "3")
+	t.Setenv("REDIS_KEY_PREFIX", "envprefix:")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -82,5 +99,8 @@ database:
 	}
 	if cfg.DatabaseDSN != "postgresql://env" {
 		t.Fatalf("DATABASE_DSN env should override file, got %q", cfg.DatabaseDSN)
+	}
+	if cfg.RedisAddr != "127.0.0.1:6380" || cfg.RedisPassword != "env-redis-password" || cfg.RedisDB != 3 || cfg.RedisKeyPrefix != "envprefix:" {
+		t.Fatalf("redis env should override file/defaults: %#v", cfg)
 	}
 }

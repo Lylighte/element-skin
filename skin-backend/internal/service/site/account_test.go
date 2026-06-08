@@ -11,7 +11,7 @@ import (
 func TestAccountMeReturnsCountsAndUpdateMePersistsExactFields(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := site.Site{DB: db, Cfg: testutil.TestConfig()}
+	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
 	user := testutil.CreateUser(t, db, "site-account-service@test.com", "Password123", "SiteAccountService", false)
 
 	if err := svc.UpdateMe(ctx, user.ID, map[string]any{"email": "updated-account@test.com", "display_name": "UpdatedAccount", "preferred_language": "en_US", "avatar_hash": "avatar_hash"}); err != nil {

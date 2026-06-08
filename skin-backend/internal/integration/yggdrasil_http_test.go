@@ -191,7 +191,7 @@ func TestYggdrasilAuthenticateJoinAndProfile(t *testing.T) {
 }
 
 func TestAdminAccessUsesDatabaseState(t *testing.T) {
-	db, h := testutil.NewTestApp(t)
+	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	admin := testutil.CreateUser(t, db, "admin@test.com", "Password123", "Admin", true)
 	normal := testutil.CreateUser(t, db, "normal@test.com", "Password123", "Normal", false)
 	token, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
@@ -207,9 +207,16 @@ func TestAdminAccessUsesDatabaseState(t *testing.T) {
 	if _, err := db.Users.ToggleAdmin(context.Background(), admin.ID); err != nil {
 		t.Fatal(err)
 	}
+	cached := doJSON(t, h, "GET", "/admin/users", nil, adminCookie)
+	if cached.Code != 200 {
+		t.Fatalf("short auth cache should allow until invalidated, got %d", cached.Code)
+	}
+	if err := redis.InvalidateAuthUser(context.Background(), admin.ID); err != nil {
+		t.Fatal(err)
+	}
 	demoted := doJSON(t, h, "GET", "/admin/users", nil, adminCookie)
 	if demoted.Code != 403 {
-		t.Fatalf("demoted admin should be forbidden, got %d", demoted.Code)
+		t.Fatalf("demoted admin should be forbidden after auth cache invalidation, got %d", demoted.Code)
 	}
 
 	normalToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, normal.ID, false, time.Hour)

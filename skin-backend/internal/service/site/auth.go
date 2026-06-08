@@ -9,13 +9,15 @@ import (
 	"element-skin/backend/internal/database"
 	invitestore "element-skin/backend/internal/database/invite"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/util"
 )
 
 // Site contains user-facing account, profile, and texture operations.
 type Site struct {
-	DB  *database.DB
-	Cfg config.Config
+	DB    *database.DB
+	Cfg   config.Config
+	Redis redisstore.Store
 }
 
 func (s Site) Login(ctx context.Context, email, password string) (map[string]any, error) {
@@ -67,7 +69,7 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 		if !ok {
 			return "", util.HTTPError{Status: 400, Detail: "Invalid or expired verification code"}
 		}
-		defer s.DB.Verifications.DeleteCode(ctx, email, "register")
+		defer s.Redis.DeleteVerificationCode(ctx, email, "register")
 	}
 	requireInvite, _ := s.DB.Settings.Get(ctx, "require_invite", "false")
 	inviteCode := ""

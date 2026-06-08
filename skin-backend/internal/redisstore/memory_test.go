@@ -1,0 +1,90 @@
+package redisstore_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"element-skin/backend/internal/redisstore"
+)
+
+func TestMemoryStoreCachesAndInvalidatesPublicData(t *testing.T) {
+	store := redisstore.NewMemoryStore()
+	ctx := context.Background()
+
+	if _, err := store.GetPublicSettings(ctx); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("empty settings should miss, got %v", err)
+	}
+	if err := store.SetPublicSettings(ctx, map[string]any{"site_name": "Cached"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetPublicSettings(ctx)
+	if err != nil || got["site_name"] != "Cached" {
+		t.Fatalf("settings cache mismatch: %#v err=%v", got, err)
+	}
+	got["site_name"] = "mutated"
+	again, _ := store.GetPublicSettings(ctx)
+	if again["site_name"] != "Cached" {
+		t.Fatalf("cache should return cloned data, got %#v", again)
+	}
+	if err := store.SetPublicCarousel(ctx, []string{"a.png"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	carousel, err := store.GetPublicCarousel(ctx)
+	if err != nil || len(carousel) != 1 || carousel[0] != "a.png" {
+		t.Fatalf("carousel cache mismatch: %#v err=%v", carousel, err)
+	}
+	if err := store.InvalidatePublicSettings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetPublicSettings(ctx); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("invalidated settings should miss, got %v", err)
+	}
+}
+
+func TestMemoryStoreVerificationRateLimitAndAuthCache(t *testing.T) {
+	store := redisstore.NewMemoryStore()
+	ctx := context.Background()
+
+	if err := store.SetVerificationCode(ctx, "User@Example.com", "register", "ABC12345", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	code, err := store.GetVerificationCode(ctx, "user@example.com", "register")
+	if err != nil || code != "ABC12345" {
+		t.Fatalf("verification code mismatch: %q err=%v", code, err)
+	}
+	if err := store.DeleteVerificationCode(ctx, "user@example.com", "register"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetVerificationCode(ctx, "user@example.com", "register"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("deleted code should miss, got %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		res, err := store.HitRateLimit(ctx, "login:ip:192.0.2.1", 2, time.Minute)
+		if err != nil || !res.Allowed {
+			t.Fatalf("hit %d should be allowed: %#v err=%v", i+1, res, err)
+		}
+	}
+	res, err := store.HitRateLimit(ctx, "login:ip:192.0.2.1", 2, time.Minute)
+	if err != nil || res.Allowed || res.Remaining != 0 {
+		t.Fatalf("third hit should be rejected: %#v err=%v", res, err)
+	}
+
+	until := time.Now().Add(time.Hour).UnixMilli()
+	auth := redisstore.AuthUser{ID: "u1", IsAdmin: true, BannedUntil: &until}
+	if err := store.SetAuthUser(ctx, auth, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	cached, err := store.GetAuthUser(ctx, "u1")
+	if err != nil || !cached.IsAdmin || !cached.Banned(time.Now()) {
+		t.Fatalf("auth cache mismatch: %#v err=%v", cached, err)
+	}
+	if err := store.InvalidateAuthUser(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetAuthUser(ctx, "u1"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("invalidated auth cache should miss, got %v", err)
+	}
+}

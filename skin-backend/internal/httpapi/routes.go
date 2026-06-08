@@ -9,11 +9,11 @@ import (
 )
 
 func (r *Router) routes() {
-	siteRoutes := site.New(r.cfg, r.db, r.site, r.auth)
+	siteRoutes := site.NewWithRedis(r.cfg, r.db, r.redis, r.site, r.auth)
 	yggRoutes := yggdrasil.New(r.cfg, r.db, r.ygg)
 	microsoftRoutes := microsoft.New(r.cfg, r.db, r.auth, MicrosoftImportStates)
 	remoteRoutes := remote.New(r.db, r.auth)
-	adminRoutes := admin.New(r.cfg, r.db, r.auth)
+	adminRoutes := admin.NewWithRedis(r.cfg, r.db, r.redis, r.auth)
 
 	r.handle("GET /", yggRoutes.Metadata)
 	r.handle("POST /site-login", siteRoutes.Login)

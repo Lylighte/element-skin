@@ -12,7 +12,7 @@ import (
 func TestAuthRegisterCreatesFirstAdminAndOfflineProfileExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := site.Site{DB: db, Cfg: testutil.TestConfig()}
+	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
 	if err := db.Settings.Set(ctx, "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
 	}

@@ -22,6 +22,12 @@ type Config struct {
 	ServerPort      string
 	TexturesDir     string
 	CarouselDir     string
+	RedisAddr       string
+	RedisPassword   string
+	RedisDB         int
+	RedisKeyPrefix  string
+	PublicCacheTTL  int
+	AuthCacheTTL    int
 	PrivateKeyPath  string
 	PublicKeyPath   string
 	FallbackDomains []string
@@ -49,6 +55,18 @@ func Load(path string) (Config, error) {
 	if env := os.Getenv("JWT_SECRET"); env != "" {
 		cfg.JWTSecret = env
 	}
+	if env := os.Getenv("REDIS_ADDR"); env != "" {
+		cfg.RedisAddr = env
+	}
+	if env := os.Getenv("REDIS_PASSWORD"); env != "" {
+		cfg.RedisPassword = env
+	}
+	if env := os.Getenv("REDIS_DB"); env != "" {
+		cfg.RedisDB = atoiDefault(env, cfg.RedisDB)
+	}
+	if env := os.Getenv("REDIS_KEY_PREFIX"); env != "" {
+		cfg.RedisKeyPrefix = env
+	}
 	return cfg, nil
 }
 
@@ -65,6 +83,12 @@ func Defaults() Config {
 		ServerPort:     "8000",
 		TexturesDir:    "textures",
 		CarouselDir:    "carousel",
+		RedisAddr:      "127.0.0.1:6379",
+		RedisPassword:  "",
+		RedisDB:        0,
+		RedisKeyPrefix: "elementskin:",
+		PublicCacheTTL: 60,
+		AuthCacheTTL:   30,
 		PrivateKeyPath: "private.pem",
 		PublicKeyPath:  "public.pem",
 		FallbackDomains: []string{
@@ -87,6 +111,18 @@ func (c *Config) apply(raw rawConfig) {
 	c.ServerPort = strconv.Itoa(getInt(raw, "server.port", atoiDefault(c.ServerPort, 8000)))
 	c.TexturesDir = getString(raw, "textures.directory", c.TexturesDir)
 	c.CarouselDir = getString(raw, "carousel.directory", c.CarouselDir)
+	c.RedisAddr = getString(raw, "redis.addr", c.RedisAddr)
+	c.RedisPassword = getString(raw, "redis.password", c.RedisPassword)
+	if n := getInt(raw, "redis.db", c.RedisDB); n >= 0 {
+		c.RedisDB = n
+	}
+	c.RedisKeyPrefix = getString(raw, "redis.key_prefix", c.RedisKeyPrefix)
+	if n := getInt(raw, "redis.public_cache_ttl_seconds", c.PublicCacheTTL); n > 0 {
+		c.PublicCacheTTL = n
+	}
+	if n := getInt(raw, "redis.auth_cache_ttl_seconds", c.AuthCacheTTL); n > 0 {
+		c.AuthCacheTTL = n
+	}
 	c.PrivateKeyPath = getString(raw, "keys.private_key", c.PrivateKeyPath)
 	c.PublicKeyPath = getString(raw, "keys.public_key", c.PublicKeyPath)
 }

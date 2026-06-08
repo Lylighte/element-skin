@@ -15,6 +15,9 @@ func (h Handler) setSessionCookies(w http.ResponseWriter, access, refresh string
 }
 
 func (h Handler) Login(w http.ResponseWriter, req *http.Request) {
+	if !h.checkAuthRateLimit(w, req, "login") {
+		return
+	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -39,6 +42,9 @@ func (h Handler) Logout(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) Register(w http.ResponseWriter, req *http.Request) {
+	if !h.checkAuthRateLimit(w, req, "register") {
+		return
+	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -53,6 +59,9 @@ func (h Handler) Register(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) SendVerificationCode(w http.ResponseWriter, req *http.Request) {
+	if !h.checkAuthRateLimit(w, req, "verification") {
+		return
+	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -72,6 +81,9 @@ func (h Handler) SendVerificationCode(w http.ResponseWriter, req *http.Request) 
 }
 
 func (h Handler) ResetPassword(w http.ResponseWriter, req *http.Request) {
+	if !h.checkAuthRateLimit(w, req, "reset") {
+		return
+	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})

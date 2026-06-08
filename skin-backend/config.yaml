@@ -16,6 +16,16 @@ database:
   dsn: "postgresql://postgres:12345678@localhost:5432/elementskin?sslmode=disable"
   max_connections: 20
 
+# Redis 配置
+# Redis 是验证码、限流、公开设置/轮播缓存和短期鉴权缓存的必需依赖
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+  key_prefix: "elementskin:"
+  public_cache_ttl_seconds: 60
+  auth_cache_ttl_seconds: 30
+
 # 材质存储配置
 textures:
   directory: "textures"
