@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"element-skin/backend/internal/httpapi/site"
@@ -27,5 +28,29 @@ func TestPublicRoutesCarouselListsOnlyImagesExactly(t *testing.T) {
 	h.PublicCarousel(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "[\"hero.webp\"]\n" {
 		t.Fatalf("public carousel should list only images exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPublicRoutesSettingsAndLibraryExactResponses(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "public-routes@test.com", "Password123", "PublicRoutes", false)
+	if err := db.Textures.AddToLibrary(t.Context(), user.ID, "public_route_hash", "skin", "Public Route Texture", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/settings", nil)
+	rec := httptest.NewRecorder()
+	h.PublicSettings(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"site_name"`) || !strings.Contains(rec.Body.String(), `"enable_skin_library"`) {
+		t.Fatalf("public settings response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/public/skin-library?texture_type=skin&q=Public%20Route", nil)
+	rec = httptest.NewRecorder()
+	h.PublicLibrary(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"hash":"public_route_hash"`) || !strings.Contains(rec.Body.String(), `"name":"Public Route Texture"`) {
+		t.Fatalf("public library response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
