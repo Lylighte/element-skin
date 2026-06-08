@@ -109,30 +109,25 @@ func TestSummarize(t *testing.T) {
 	}
 }
 
-func TestSummarizeCapacities(t *testing.T) {
-	cfg := capacityConfig{
-		Levels:        []int{1, 5, 10},
-		FailThreshold: 1,
-		MaxP95:        100 * time.Millisecond,
+func TestLoadTestConcurrency(t *testing.T) {
+	t.Setenv("LOADTEST_CONCURRENCY", "")
+	got, err := loadTestConcurrency()
+	if err != nil {
+		t.Fatal(err)
 	}
-	results := []scenarioResult{
-		{Scenario: loadScenario{Name: "a"}, Concurrency: 1, Summary: stepSummary{Concurrency: 1, Total: 10, FailurePct: 0, P95: 10 * time.Millisecond, SuccessRPS: 10}},
-		{Scenario: loadScenario{Name: "a"}, Concurrency: 5, Summary: stepSummary{Concurrency: 5, Total: 10, FailurePct: 0, P95: 90 * time.Millisecond, SuccessRPS: 50}},
-		{Scenario: loadScenario{Name: "a"}, Concurrency: 10, Summary: stepSummary{Concurrency: 10, Total: 10, FailurePct: 2, P95: 90 * time.Millisecond, SuccessRPS: 98}},
-		{Scenario: loadScenario{Name: "b"}, Concurrency: 10, Summary: stepSummary{Concurrency: 10, Total: 10, FailurePct: 0, P95: 50 * time.Millisecond, SuccessRPS: 100}},
-		{Scenario: loadScenario{Name: "c"}, Concurrency: 1, Summary: stepSummary{Concurrency: 1, Total: 10, FailurePct: 0, P95: 150 * time.Millisecond, SuccessRPS: 10}},
+	if got != 500 {
+		t.Fatalf("default fixed concurrency mismatch: got=%d want=500", got)
 	}
-	got := summarizeCapacities(results, cfg)
-	if len(got) != 3 {
-		t.Fatalf("unexpected capacity count: %#v", got)
+	t.Setenv("LOADTEST_CONCURRENCY", "250")
+	got, err = loadTestConcurrency()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got[0].Scenario.Name != "a" || got[0].Best.Concurrency != 5 || got[0].HitTestCeiling {
-		t.Fatalf("scenario a capacity mismatch: %#v", got[0])
+	if got != 250 {
+		t.Fatalf("env fixed concurrency mismatch: got=%d want=250", got)
 	}
-	if got[1].Scenario.Name != "b" || got[1].Best.Concurrency != 10 || !got[1].HitTestCeiling {
-		t.Fatalf("scenario b capacity mismatch: %#v", got[1])
-	}
-	if got[2].Scenario.Name != "c" || got[2].Pass {
-		t.Fatalf("scenario c should have no passing level: %#v", got[2])
+	t.Setenv("LOADTEST_CONCURRENCY", "1,2")
+	if _, err := loadTestConcurrency(); err == nil {
+		t.Fatal("fixed concurrency should reject comma-separated levels")
 	}
 }
