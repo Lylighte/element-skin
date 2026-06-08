@@ -1,7 +1,12 @@
 package site_test
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -39,6 +44,108 @@ func TestTextureRoutesListAndDetailExactResponses(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"hash":"site_route_hash"`) || !strings.Contains(rec.Body.String(), `"type":"skin"`) {
 		t.Fatalf("texture detail response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
+}
+
+func TestTextureRoutesUploadAndUploadApplyExactResponses(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-texture-upload@test.com", "Password123", "SiteTextureUpload", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "site_texture_upload_apply", "SiteTextureUploadApply")
+
+	req := textureMultipartRequest(t, "/me/textures", map[string]string{
+		"texture_type": "skin",
+		"note":         "Uploaded Route Texture",
+		"is_public":    "true",
+		"model":        "slim",
+	}, "file", "skin.png", routePNG(t, 64, 64))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec := httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"texture_type":"skin"`) {
+		t.Fatalf("upload texture response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	uploadedHash := jsonStringField(t, rec.Body.String(), "hash")
+	info, err := db.Textures.GetInfo(req.Context(), user.ID, uploadedHash, "skin")
+	if err != nil || info == nil || info["note"] != "Uploaded Route Texture" || info["model"] != "slim" || info["is_public"] != 1 {
+		t.Fatalf("upload texture should persist library row: info=%#v err=%v", info, err)
+	}
+
+	req = textureMultipartRequest(t, "/textures/upload", map[string]string{
+		"uuid":         profile.ID,
+		"texture_type": "skin",
+		"model":        "default",
+	}, "file", "apply.png", routePNGWithColor(t, 64, 64, color.RGBA{R: 200, G: 80, B: 120, A: 255}))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.UploadAndApplyTexture(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("upload and apply response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	appliedHash := jsonStringField(t, rec.Body.String(), "hash")
+	applied, err := db.Profiles.GetByID(req.Context(), profile.ID)
+	if err != nil || applied == nil || applied.SkinHash == nil || *applied.SkinHash != appliedHash || applied.TextureModel != "default" {
+		t.Fatalf("upload and apply should update profile: profile=%#v hash=%q err=%v", applied, appliedHash, err)
+	}
+}
+
+func textureMultipartRequest(t *testing.T, target string, fields map[string]string, fileField, fileName string, data []byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for k, v := range fields {
+		if err := writer.WriteField(k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := writer.CreateFormFile(fileField, fileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, target, &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
+
+func routePNG(t *testing.T, w, h int) []byte {
+	return routePNGWithColor(t, w, h, color.RGBA{R: 80, G: 120, B: 200, A: 255})
+}
+
+func routePNGWithColor(t *testing.T, w, h int, c color.RGBA) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for x := 0; x < w; x++ {
+		for y := 0; y < h; y++ {
+			img.SetRGBA(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func jsonStringField(t *testing.T, body, field string) string {
+	t.Helper()
+	marker := `"` + field + `":"`
+	start := strings.Index(body, marker)
+	if start < 0 {
+		t.Fatalf("missing field %s in %q", field, body)
+	}
+	start += len(marker)
+	end := strings.Index(body[start:], `"`)
+	if end < 0 {
+		t.Fatalf("unterminated field %s in %q", field, body)
+	}
+	return body[start : start+end]
 }
 
 func TestTextureRoutesAddUpdateDeleteAndApplyExactResponses(t *testing.T) {
