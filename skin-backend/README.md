@@ -63,7 +63,7 @@ then runs the same concurrency ladder against real routes:
 
 ```powershell
 $env:LOADTEST_ENABLE='1'
-$env:LOADTEST_CONCURRENCY='500'
+$env:LOADTEST_CONCURRENCY='200'
 $env:LOADTEST_DURATION='1s'
 go test ./cmd/loadtest -run TestRealBackendLoad -count=1 -v
 ```

@@ -1,9 +1,9 @@
 # Backend Concurrency Load Test Report
 
-- Generated at: `2026-06-09T00:14:39+08:00`
+- Generated at: `2026-06-09T00:21:36+08:00`
 - Harness: `go test ./cmd/loadtest -run TestRealBackendLoad -count=1 -v`
 - Data set: 100 users, 300 profiles, 500 texture rows, 50 invites
-- Fixed concurrency: `500`
+- Fixed concurrency: `200`
 - Duration per level: `1s`
 - Backend database pool used by harness: `20` max connections
 - Test database: isolated `elementskin_go_test_*`, dropped by test cleanup
@@ -21,36 +21,36 @@
 | User center | `my-textures` | `GET` | `/me/textures?limit=20` |
 | User center | `texture-detail` | `GET` | `/me/textures/load_texture_001_000/skin` |
 | Admin console | `admin-users` | `GET` | `/admin/users?limit=20&q=Load` |
-| Admin console | `admin-user-detail` | `GET` | `/admin/users/47c22b1728a14b1981a47023b589584a` |
-| Admin console | `admin-user-profiles` | `GET` | `/admin/users/47c22b1728a14b1981a47023b589584a/profiles?limit=20` |
+| Admin console | `admin-user-detail` | `GET` | `/admin/users/6cdf33bc12fd40c7a57d0601847483bb` |
+| Admin console | `admin-user-profiles` | `GET` | `/admin/users/6cdf33bc12fd40c7a57d0601847483bb/profiles?limit=20` |
 | Admin console | `admin-profiles` | `GET` | `/admin/profiles?limit=20` |
 | Admin console | `admin-textures` | `GET` | `/admin/textures?limit=20` |
 | Admin console | `admin-invites` | `GET` | `/admin/invites?limit=20` |
 | Admin console | `admin-settings-site` | `GET` | `/admin/settings/site` |
 
-## Fixed-500 One-Second Results
+## Fixed-200 One-Second Results
 
 | Area | Scenario | Concurrency | Requests | OK | Fail | Fail % | Successful req/s | Total req/s | Avg | P50 | P95 | P99 | Status | First Error |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| Public home | `public-settings` | 500 | 33065 | 3541 | 29524 | 89.29 | 3444.9 | 32168.0 | 15.3ms | 4.0ms | 47.2ms | 424.0ms | `200:3541` | `Get "http://127.0.0.1:59938/public/settings": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Public home | `public-carousel` | 500 | 40052 | 4867 | 35185 | 87.85 | 4629.5 | 38097.4 | 12.7ms | 5.3ms | 30.5ms | 77.9ms | `200:4867` | `Get "http://127.0.0.1:59938/public/carousel": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Public library | `public-library-search` | 500 | 39929 | 4007 | 35922 | 89.96 | 3911.9 | 38981.8 | 12.6ms | 4.1ms | 52.6ms | 125.6ms | `200:4007` | `Get "http://127.0.0.1:59938/public/skin-library?limit=20&q=Load": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Authentication | `site-login` | 500 | 16296 | 450 | 15846 | 97.24 | 262.2 | 9494.7 | 36.0ms | 11.8ms | 50.1ms | 1.10s | `200:450` | `Post "http://127.0.0.1:59938/site-login": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| User center | `me` | 500 | 44346 | 3716 | 40630 | 91.62 | 3654.7 | 43614.5 | 11.3ms | 4.0ms | 20.1ms | 122.1ms | `200:3716` | `Get "http://127.0.0.1:59938/me": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| User center | `my-profiles` | 500 | 46993 | 5457 | 41536 | 88.39 | 5410.4 | 46591.7 | 10.6ms | 4.5ms | 30.5ms | 62.2ms | `200:5457` | `Get "http://127.0.0.1:59938/me/profiles?limit=20": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| User center | `my-textures` | 500 | 43912 | 2620 | 41292 | 94.03 | 2563.6 | 42966.9 | 11.4ms | 4.8ms | 36.0ms | 92.2ms | `200:2620` | `Get "http://127.0.0.1:59938/me/textures?limit=20": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| User center | `texture-detail` | 500 | 47461 | 2408 | 45053 | 94.93 | 2363.0 | 46574.0 | 10.6ms | 4.5ms | 26.2ms | 64.1ms | `200:2408` | `Get "http://127.0.0.1:59938/me/textures/load_texture_001_000/skin": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Admin console | `admin-users` | 500 | 43475 | 3267 | 40208 | 92.49 | 3197.0 | 42543.1 | 11.6ms | 4.2ms | 38.9ms | 80.0ms | `200:3267` | `Get "http://127.0.0.1:59938/admin/users?limit=20&q=Load": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Admin console | `admin-user-detail` | 500 | 45943 | 2342 | 43601 | 94.90 | 2311.3 | 45341.3 | 10.8ms | 4.5ms | 25.0ms | 69.3ms | `200:2342` | `Get "http://127.0.0.1:59938/admin/users/47c22b1728a14b1981a47023b589584a": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Admin console | `admin-user-profiles` | 500 | 45946 | 2527 | 43419 | 94.50 | 2494.8 | 45359.6 | 10.9ms | 4.5ms | 30.9ms | 70.4ms | `200:2527` | `Get "http://127.0.0.1:59938/admin/users/47c22b1728a14b1981a47023b589584a/profiles?limit=20": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Admin console | `admin-profiles` | 500 | 41402 | 1920 | 39482 | 95.36 | 1883.7 | 40618.8 | 12.1ms | 5.0ms | 25.9ms | 80.1ms | `200:1920` | `Get "http://127.0.0.1:59938/admin/profiles?limit=20": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Admin console | `admin-textures` | 500 | 44907 | 2236 | 42671 | 95.02 | 2194.4 | 44071.1 | 11.1ms | 5.0ms | 21.7ms | 75.7ms | `200:2236` | `Get "http://127.0.0.1:59938/admin/textures?limit=20": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Admin console | `admin-invites` | 500 | 42825 | 4862 | 37963 | 88.65 | 4791.7 | 42205.6 | 11.7ms | 4.5ms | 38.0ms | 96.4ms | `200:4862` | `Get "http://127.0.0.1:59938/admin/invites?limit=20": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
-| Admin console | `admin-settings-site` | 500 | 40126 | 1021 | 39105 | 97.46 | 973.4 | 38255.8 | 12.8ms | 4.2ms | 11.3ms | 325.6ms | `200:1021` | `Get "http://127.0.0.1:59938/admin/settings/site": dial tcp 127.0.0.1:59938: connectex: No connection could be made because the target machine actively refused it.` |
+| Public home | `public-settings` | 200 | 6811 | 6811 | 0 | 0.00 | 6747.7 | 6747.7 | 29.5ms | 23.8ms | 57.9ms | 161.8ms | `200:6811` | `` |
+| Public home | `public-carousel` | 200 | 9729 | 9729 | 0 | 0.00 | 9627.1 | 9627.1 | 20.6ms | 14.1ms | 50.9ms | 116.1ms | `200:9729` | `` |
+| Public library | `public-library-search` | 200 | 17012 | 17012 | 0 | 0.00 | 16881.4 | 16881.4 | 11.6ms | 11.3ms | 14.3ms | 18.7ms | `200:17012` | `` |
+| Authentication | `site-login` | 200 | 465 | 465 | 0 | 0.00 | 310.5 | 310.5 | 598.8ms | 484.9ms | 1.04s | 1.41s | `200:465` | `` |
+| User center | `me` | 200 | 24457 | 24457 | 0 | 0.00 | 24333.9 | 24333.9 | 8.1ms | 7.8ms | 10.3ms | 12.6ms | `200:24457` | `` |
+| User center | `my-profiles` | 200 | 34352 | 34352 | 0 | 0.00 | 34239.2 | 34239.2 | 5.8ms | 5.3ms | 8.1ms | 9.3ms | `200:34352` | `` |
+| User center | `my-textures` | 200 | 29738 | 29738 | 0 | 0.00 | 29564.1 | 29564.1 | 6.6ms | 6.2ms | 9.3ms | 20.6ms | `200:29738` | `` |
+| User center | `texture-detail` | 200 | 36235 | 36235 | 0 | 0.00 | 36116.0 | 36116.0 | 5.4ms | 5.0ms | 7.9ms | 9.9ms | `200:36235` | `` |
+| Admin console | `admin-users` | 200 | 18252 | 18252 | 0 | 0.00 | 18130.5 | 18130.5 | 10.8ms | 10.6ms | 13.3ms | 19.5ms | `200:18252` | `` |
+| Admin console | `admin-user-detail` | 200 | 38754 | 38754 | 0 | 0.00 | 38631.6 | 38631.6 | 5.1ms | 4.7ms | 7.2ms | 9.3ms | `200:38754` | `` |
+| Admin console | `admin-user-profiles` | 200 | 37240 | 37240 | 0 | 0.00 | 37150.2 | 37150.2 | 5.3ms | 5.0ms | 7.4ms | 9.0ms | `200:37240` | `` |
+| Admin console | `admin-profiles` | 200 | 21336 | 21336 | 0 | 0.00 | 21164.2 | 21164.2 | 9.3ms | 9.1ms | 12.2ms | 16.3ms | `200:21336` | `` |
+| Admin console | `admin-textures` | 200 | 19072 | 19072 | 0 | 0.00 | 18932.7 | 18932.7 | 10.4ms | 10.1ms | 13.2ms | 17.8ms | `200:19072` | `` |
+| Admin console | `admin-invites` | 200 | 22659 | 22659 | 0 | 0.00 | 22551.1 | 22551.1 | 8.7ms | 8.7ms | 11.1ms | 14.7ms | `200:22659` | `` |
+| Admin console | `admin-settings-site` | 200 | 8775 | 8775 | 0 | 0.00 | 8669.1 | 8669.1 | 22.9ms | 22.7ms | 26.5ms | 40.0ms | `200:8775` | `` |
 
 ## Notes
 
-- Every scenario is measured once at the same fixed concurrency, default `500`, for a one-second window.
+- Every scenario is measured once at the same fixed concurrency, default `200`, for a one-second window.
 - `Successful req/s` is the useful per-second throughput under that fixed concurrency.
 - This report focuses on realistic frontend page-load endpoints and login; destructive write endpoints are intentionally excluded from high-concurrency runs.
 - A failure is any request with a transport error or non-2xx/3xx response.

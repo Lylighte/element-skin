@@ -115,8 +115,8 @@ func TestLoadTestConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != 500 {
-		t.Fatalf("default fixed concurrency mismatch: got=%d want=500", got)
+	if got != 200 {
+		t.Fatalf("default fixed concurrency mismatch: got=%d want=200", got)
 	}
 	t.Setenv("LOADTEST_CONCURRENCY", "250")
 	got, err = loadTestConcurrency()

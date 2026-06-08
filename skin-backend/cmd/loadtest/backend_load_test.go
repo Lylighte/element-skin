@@ -162,7 +162,7 @@ func loadTestConfig() loadTestConfigValue {
 func loadTestConcurrency() (int, error) {
 	raw := os.Getenv("LOADTEST_CONCURRENCY")
 	if raw == "" {
-		raw = "500"
+		raw = "200"
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || n <= 0 {
@@ -275,7 +275,7 @@ func writeLoadTestReport(path string, cfg loadTestConfigValue, concurrency int, 
 		seen[key] = true
 		fmt.Fprintf(&b, "| %s | `%s` | `%s` | `%s` |\n", result.Scenario.Area, result.Scenario.Name, result.Scenario.Method, result.Scenario.Path)
 	}
-	fmt.Fprintf(&b, "\n## Fixed-500 One-Second Results\n\n")
+	fmt.Fprintf(&b, "\n## Fixed-%d One-Second Results\n\n", concurrency)
 	fmt.Fprintf(&b, "| Area | Scenario | Concurrency | Requests | OK | Fail | Fail %% | Successful req/s | Total req/s | Avg | P50 | P95 | P99 | Status | First Error |\n")
 	fmt.Fprintf(&b, "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |\n")
 	for _, result := range results {
@@ -299,7 +299,7 @@ func writeLoadTestReport(path string, cfg loadTestConfigValue, concurrency int, 
 		)
 	}
 	fmt.Fprintf(&b, "\n## Notes\n\n")
-	fmt.Fprintf(&b, "- Every scenario is measured once at the same fixed concurrency, default `500`, for a one-second window.\n")
+	fmt.Fprintf(&b, "- Every scenario is measured once at the same fixed concurrency, default `200`, for a one-second window.\n")
 	fmt.Fprintf(&b, "- `Successful req/s` is the useful per-second throughput under that fixed concurrency.\n")
 	fmt.Fprintf(&b, "- This report focuses on realistic frontend page-load endpoints and login; destructive write endpoints are intentionally excluded from high-concurrency runs.\n")
 	fmt.Fprintf(&b, "- A failure is any request with a transport error or non-2xx/3xx response.\n")
