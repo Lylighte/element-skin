@@ -11,6 +11,39 @@ import (
 	"time"
 )
 
+func TestPasswordHashVerifyAndStrongPasswordMessages(t *testing.T) {
+	hash, err := HashPassword("GoodPass123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash == "GoodPass123" {
+		t.Fatal("password hash must not equal plaintext")
+	}
+	if !VerifyPassword("GoodPass123", hash) {
+		t.Fatal("correct password should verify")
+	}
+	if VerifyPassword("WrongPass123", hash) {
+		t.Fatal("wrong password should not verify")
+	}
+
+	errs := ValidateStrongPassword("short")
+	want := []string{"密码长度至少 8 位", "密码需包含大写字母", "密码需包含数字"}
+	if len(errs) != len(want) {
+		t.Fatalf("unexpected strong password errors: %#v", errs)
+	}
+	for i := range want {
+		if errs[i] != want[i] {
+			t.Fatalf("error %d got %q want %q; all=%#v", i, errs[i], want[i], errs)
+		}
+	}
+	if joined := JoinPasswordErrors(errs); joined != "密码长度至少 8 位；密码需包含大写字母；密码需包含数字" {
+		t.Fatalf("unexpected joined password errors: %q", joined)
+	}
+	if errs := ValidateStrongPassword("GoodPass123"); len(errs) != 0 {
+		t.Fatalf("strong password should pass, got %#v", errs)
+	}
+}
+
 func TestValidateOutboundURLBlocksUnsafeTargets(t *testing.T) {
 	blocked := []string{
 		"http://127.0.0.1/x",

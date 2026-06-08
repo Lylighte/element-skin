@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"element-skin/backend/internal/model"
-
-	"github.com/jackc/pgx/v5"
 )
 
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
@@ -60,12 +58,6 @@ func (db *DB) CreateUserWithProfile(ctx context.Context, u model.User, p model.P
 	}
 	return tx.Commit(ctx)
 }
-
-var ErrInviteExhausted = errString("invite exhausted")
-
-type errString string
-
-func (e errString) Error() string { return string(e) }
 
 func (db *DB) CountUsers(ctx context.Context) (int, error) {
 	var n int
@@ -162,26 +154,6 @@ func (db *DB) DeleteUser(ctx context.Context, id string) (bool, error) {
 	return tag.RowsAffected() > 0, tx.Commit(ctx)
 }
 
-func (db *DB) ToggleAdmin(ctx context.Context, id string) (bool, error) {
-	var cur bool
-	if err := db.Pool.QueryRow(ctx, `SELECT is_admin FROM users WHERE id=$1`, id).Scan(&cur); err != nil {
-		return false, err
-	}
-	next := !cur
-	_, err := db.Pool.Exec(ctx, `UPDATE users SET is_admin=$1 WHERE id=$2`, next, id)
-	return next, err
-}
-
-func (db *DB) BanUser(ctx context.Context, id string, until int64) error {
-	_, err := db.Pool.Exec(ctx, `UPDATE users SET banned_until=$1 WHERE id=$2`, until, id)
-	return err
-}
-
-func (db *DB) UnbanUser(ctx context.Context, id string) error {
-	_, err := db.Pool.Exec(ctx, `UPDATE users SET banned_until=NULL WHERE id=$1`, id)
-	return err
-}
-
 func (db *DB) IsBanned(ctx context.Context, id string) (bool, error) {
 	var until *int64
 	err := db.Pool.QueryRow(ctx, `SELECT banned_until FROM users WHERE id=$1`, id).Scan(&until)
@@ -189,113 +161,4 @@ func (db *DB) IsBanned(ctx context.Context, id string) (bool, error) {
 		return false, nil
 	}
 	return *until > NowMS(), err
-}
-
-func (db *DB) CreateInvite(ctx context.Context, code string, totalUses int, note string) error {
-	_, err := db.Pool.Exec(ctx, `INSERT INTO invites (code,created_at,total_uses,used_count,note) VALUES ($1,$2,$3,0,$4)`, code, NowMS(), totalUses, note)
-	return err
-}
-
-func (db *DB) GetInvite(ctx context.Context, code string) (*model.Invite, error) {
-	var inv model.Invite
-	err := db.Pool.QueryRow(ctx, `SELECT code,created_at,used_by,total_uses,used_count,note FROM invites WHERE code=$1`, code).
-		Scan(&inv.Code, &inv.CreatedAt, &inv.UsedBy, &inv.TotalUses, &inv.UsedCount, &inv.Note)
-	if IsNoRows(err) {
-		return nil, nil
-	}
-	return &inv, err
-}
-
-func (db *DB) DeleteInvite(ctx context.Context, code string) error {
-	_, err := db.Pool.Exec(ctx, `DELETE FROM invites WHERE code=$1`, code)
-	return err
-}
-
-func (db *DB) ListInvites(ctx context.Context, limit int, lastCreated *int64, lastCode string) (map[string]any, error) {
-	actual := limit + 1
-	var rows pgx.Rows
-	var err error
-	if lastCreated != nil && lastCode != "" {
-		rows, err = db.Pool.Query(ctx, `SELECT code,created_at,used_by,total_uses,used_count,note FROM invites WHERE (created_at < $1) OR (created_at=$1 AND code < $2) ORDER BY created_at DESC, code DESC LIMIT $3`, *lastCreated, lastCode, actual)
-	} else {
-		rows, err = db.Pool.Query(ctx, `SELECT code,created_at,used_by,total_uses,used_count,note FROM invites ORDER BY created_at DESC, code DESC LIMIT $1`, actual)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var got []model.Invite
-	for rows.Next() {
-		var inv model.Invite
-		if err := rows.Scan(&inv.Code, &inv.CreatedAt, &inv.UsedBy, &inv.TotalUses, &inv.UsedCount, &inv.Note); err != nil {
-			return nil, err
-		}
-		got = append(got, inv)
-	}
-	hasNext := len(got) > limit
-	items := got
-	if hasNext {
-		items = got[:limit]
-	}
-	out := make([]map[string]any, 0, len(items))
-	for _, inv := range items {
-		out = append(out, map[string]any{"code": inv.Code, "created_at": inv.CreatedAt, "used_by": inv.UsedBy, "total_uses": inv.TotalUses, "used_count": inv.UsedCount, "note": inv.Note})
-	}
-	var next map[string]any
-	if hasNext {
-		last := got[limit-1]
-		next = map[string]any{"last_created_at": *last.CreatedAt, "last_code": last.Code}
-	}
-	return map[string]any{"items": out, "has_next": hasNext, "next_key": next, "page_size": len(out)}, rows.Err()
-}
-
-func (db *DB) ListUsers(ctx context.Context, limit int, lastID, query string) (map[string]any, error) {
-	actual := limit + 1
-	var rowsRows []model.User
-	var rows pgx.Rows
-	var err error
-	if query != "" {
-		pat := "%" + query + "%"
-		if lastID != "" {
-			rows, err = db.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,preferred_language,display_name,banned_until,avatar_hash FROM users WHERE (display_name ILIKE $1 OR email ILIKE $1 OR EXISTS (SELECT 1 FROM profiles WHERE profiles.user_id=users.id AND profiles.name ILIKE $1)) AND id>$2 ORDER BY id LIMIT $3`, pat, lastID, actual)
-		} else {
-			rows, err = db.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,preferred_language,display_name,banned_until,avatar_hash FROM users WHERE (display_name ILIKE $1 OR email ILIKE $1 OR EXISTS (SELECT 1 FROM profiles WHERE profiles.user_id=users.id AND profiles.name ILIKE $1)) ORDER BY id LIMIT $2`, pat, actual)
-		}
-	} else if lastID != "" {
-		rows, err = db.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,preferred_language,display_name,banned_until,avatar_hash FROM users WHERE id>$1 ORDER BY id LIMIT $2`, lastID, actual)
-	} else {
-		rows, err = db.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,preferred_language,display_name,banned_until,avatar_hash FROM users ORDER BY id LIMIT $1`, actual)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var u model.User
-		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.IsAdmin, &u.PreferredLanguage, &u.DisplayName, &u.BannedUntil, &u.AvatarHash); err != nil {
-			return nil, err
-		}
-		rowsRows = append(rowsRows, u)
-	}
-	hasNext := len(rowsRows) > limit
-	items := rowsRows
-	if hasNext {
-		items = rowsRows[:limit]
-	}
-	next := map[string]any(nil)
-	if hasNext {
-		next = map[string]any{"last_id": rowsRows[limit-1].ID}
-	}
-	out := make([]map[string]any, 0, len(items))
-	for _, u := range items {
-		out = append(out, map[string]any{"id": u.ID, "email": u.Email, "display_name": u.DisplayName, "is_admin": u.IsAdmin, "banned_until": u.BannedUntil, "preferred_language": u.PreferredLanguage, "avatar_hash": u.AvatarHash})
-	}
-	return map[string]any{"items": out, "has_next": hasNext, "next_key": next, "page_size": len(out)}, rows.Err()
-}
-
-func NormalizeProfileModel(m string) string {
-	if m == "slim" {
-		return "slim"
-	}
-	return "default"
 }

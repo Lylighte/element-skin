@@ -54,6 +54,6 @@ paths.
 
 ## Docker
 
-`../docker-compose.yml` builds this backend through `skin-backend-go/Dockerfile`.
+`../docker-compose.yml` builds this backend through `skin-backend/Dockerfile`.
 The Dockerfile builds the frontend first, then compiles a static Go binary and
 serves both from the runtime image.
