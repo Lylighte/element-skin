@@ -32,7 +32,7 @@ func (db *DB) ListProfilesByUser(ctx context.Context, userID string, limit int, 
 	if hasNext {
 		items = got[:limit]
 	}
-	next := map[string]any(nil)
+	var next any
 	if hasNext {
 		next = map[string]any{"last_id": got[limit-1].ID}
 	}
@@ -88,7 +88,7 @@ func (db *DB) ListAllProfiles(ctx context.Context, limit int, lastID, query stri
 	if hasNext {
 		items = got[:limit]
 	}
-	var next map[string]any
+	var next any
 	if hasNext {
 		next = map[string]any{"last_id": got[limit-1]["id"]}
 	}

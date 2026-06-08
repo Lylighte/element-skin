@@ -2,9 +2,39 @@ package database
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"element-skin/backend/internal/model"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func NormalizeProfileModel(m string) string {
+	if m == "slim" {
+		return "slim"
+	}
+	return "default"
+}
+
+func ProfileSummary(p model.Profile) map[string]any {
+	return map[string]any{"id": p.ID, "name": p.Name, "model": p.TextureModel, "skin_hash": p.SkinHash, "cape_hash": p.CapeHash}
+}
+
+func ProfileModelKey(item map[string]any) map[string]any {
+	if v, ok := item["texture_model"]; ok {
+		item["model"] = v
+	}
+	return item
+}
+
+func IsProfileNameConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+	return err != nil && strings.Contains(err.Error(), "duplicate key")
+}
 
 func (db *DB) CreateProfile(ctx context.Context, p model.Profile) error {
 	_, err := db.Pool.Exec(ctx, `INSERT INTO profiles (id,user_id,name,texture_model,skin_hash,cape_hash) VALUES ($1,$2,$3,$4,$5,$6)`,

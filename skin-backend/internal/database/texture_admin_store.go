@@ -1,6 +1,10 @@
 package database
 
-import "context"
+import (
+	"context"
+	"errors"
+	"strconv"
+)
 
 func (db *DB) ListAllTextures(ctx context.Context, limit int, lastCreated *int64, lastHash, query, typeFilter string) (map[string]any, error) {
 	actual := limit + 1
@@ -8,21 +12,21 @@ func (db *DB) ListAllTextures(ctx context.Context, limit int, lastCreated *int64
 	where := "TRUE"
 	idx := 1
 	if typeFilter != "" {
-		where += ` AND sl.texture_type=$` + itoa(idx)
+		where += ` AND sl.texture_type=$` + strconv.Itoa(idx)
 		args = append(args, typeFilter)
 		idx++
 	}
 	if query != "" {
-		where += ` AND (sl.skin_hash ILIKE $` + itoa(idx) + ` OR sl.name ILIKE $` + itoa(idx) + ` OR u.display_name ILIKE $` + itoa(idx) + `)`
+		where += ` AND (sl.skin_hash ILIKE $` + strconv.Itoa(idx) + ` OR sl.name ILIKE $` + strconv.Itoa(idx) + ` OR u.display_name ILIKE $` + strconv.Itoa(idx) + `)`
 		args = append(args, "%"+query+"%")
 		idx++
 	}
 	if lastCreated != nil && lastHash != "" {
-		where += ` AND (sl.created_at < $` + itoa(idx) + ` OR (sl.created_at = $` + itoa(idx) + ` AND sl.skin_hash < $` + itoa(idx+1) + `))`
+		where += ` AND (sl.created_at < $` + strconv.Itoa(idx) + ` OR (sl.created_at = $` + strconv.Itoa(idx) + ` AND sl.skin_hash < $` + strconv.Itoa(idx+1) + `))`
 		args = append(args, *lastCreated, lastHash)
 		idx += 2
 	}
-	q := `SELECT sl.skin_hash,sl.texture_type,sl.is_public,sl.uploader,sl.created_at,sl.model,sl.name,COALESCE(u.email,''),COALESCE(u.display_name,'') FROM skin_library sl LEFT JOIN users u ON sl.uploader=u.id WHERE ` + where + ` ORDER BY sl.created_at DESC, sl.skin_hash DESC LIMIT $` + itoa(idx)
+	q := `SELECT sl.skin_hash,sl.texture_type,sl.is_public,sl.uploader,sl.created_at,sl.model,sl.name,COALESCE(u.email,''),COALESCE(u.display_name,'') FROM skin_library sl LEFT JOIN users u ON sl.uploader=u.id WHERE ` + where + ` ORDER BY sl.created_at DESC, sl.skin_hash DESC LIMIT $` + strconv.Itoa(idx)
 	args = append(args, actual)
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
@@ -147,7 +151,7 @@ func (db *DB) AdminDeleteTexture(ctx context.Context, hash, textureType, userID 
 		return tx.Commit(ctx)
 	}
 	if userID == "" {
-		return errString("per-user deletion requires user_id")
+		return errors.New("per-user deletion requires user_id")
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3`, userID, hash, textureType); err != nil {
 		return err

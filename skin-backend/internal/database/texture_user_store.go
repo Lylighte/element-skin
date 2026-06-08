@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"element-skin/backend/internal/util"
@@ -70,11 +71,11 @@ func (db *DB) ListUserTextures(ctx context.Context, userID, textureType string, 
 		idx++
 	}
 	if lastCreated != nil && lastHash != "" {
-		where += ` AND (created_at < $` + itoa(idx) + ` OR (created_at = $` + itoa(idx) + ` AND hash < $` + itoa(idx+1) + `))`
+		where += ` AND (created_at < $` + strconv.Itoa(idx) + ` OR (created_at = $` + strconv.Itoa(idx) + ` AND hash < $` + strconv.Itoa(idx+1) + `))`
 		args = append(args, *lastCreated, lastHash)
 		idx += 2
 	}
-	q := `SELECT hash,texture_type,note,created_at,model,is_public FROM user_textures WHERE ` + where + ` ORDER BY created_at DESC, hash DESC LIMIT $` + itoa(idx)
+	q := `SELECT hash,texture_type,note,created_at,model,is_public FROM user_textures WHERE ` + where + ` ORDER BY created_at DESC, hash DESC LIMIT $` + strconv.Itoa(idx)
 	args = append(args, actual)
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {

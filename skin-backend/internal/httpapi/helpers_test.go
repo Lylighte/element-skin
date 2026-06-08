@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,5 +103,50 @@ func TestBearerTokenRequiresBearerSchemeAndNonEmptyToken(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token-value ")
 	if token, ok := bearerToken(req); !ok || token != "token-value" {
 		t.Fatalf("bearer token parsed token=%q ok=%v", token, ok)
+	}
+}
+
+func TestMultipartFileBytesReadsExactFieldAndRejectsTooLarge(t *testing.T) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "skin.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(part, "abcde"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if err := req.ParseMultipartForm(1024); err != nil {
+		t.Fatal(err)
+	}
+	data, err := multipartFileBytes(req, "file", 5)
+	if err != nil || string(data) != "abcde" {
+		t.Fatalf("multipartFileBytes exact read mismatch: data=%q err=%v", data, err)
+	}
+
+	body = &bytes.Buffer{}
+	writer = multipart.NewWriter(body)
+	part, err = writer.CreateFormFile("file", "skin.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(part, "abcdef"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if err := req.ParseMultipartForm(1024); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := multipartFileBytes(req, "file", 5); err == nil || string(data) != "" || !bytes.Contains([]byte(err.Error()), []byte("File too large")) {
+		t.Fatalf("oversized upload should reject: data=%q err=%v", data, err)
 	}
 }
