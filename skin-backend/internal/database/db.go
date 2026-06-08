@@ -68,5 +68,3 @@ func scanProfile(row pgx.Row) (model.Profile, error) {
 }
 
 func IsNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
-
-var ErrNotFound = errors.New("not found")

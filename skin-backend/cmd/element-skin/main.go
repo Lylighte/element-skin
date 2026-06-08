@@ -25,15 +25,10 @@ func main() {
 	}
 	defer application.Close()
 
-	addr := cfg.ServerHost + ":" + cfg.ServerPort
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           application.Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	srv := newHTTPServer(cfg, application.Handler())
 
 	go func() {
-		log.Printf("Element Skin Go backend listening on %s", addr)
+		log.Printf("Element Skin Go backend listening on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
@@ -46,4 +41,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
+}
+
+func newHTTPServer(cfg config.Config, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              cfg.ServerHost + ":" + cfg.ServerPort,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 }
