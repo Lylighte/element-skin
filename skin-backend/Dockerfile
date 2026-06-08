@@ -11,9 +11,9 @@ RUN npm run build
 # --- Build Go backend ---
 FROM golang:1.26-alpine AS backend-builder
 WORKDIR /src
-COPY skin-backend-go/go.mod skin-backend-go/go.sum ./
+COPY skin-backend/go.mod skin-backend/go.sum ./
 RUN go mod download
-COPY skin-backend-go/ .
+COPY skin-backend/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/element-skin ./cmd/element-skin
 
 # --- Runtime ---
@@ -22,7 +22,7 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates sed findutils
 COPY --from=backend-builder /out/element-skin /app/element-skin
 COPY --from=frontend-builder /web/dist /app/frontend_dist
-COPY skin-backend-go/entrypoint.sh /app/entrypoint.sh
+COPY skin-backend/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000

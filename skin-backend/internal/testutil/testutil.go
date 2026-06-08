@@ -78,17 +78,17 @@ func ensureTestDatabase(t *testing.T, ctx context.Context, dbName string) {
 func CreateUser(t *testing.T, db *database.DB, email, password, username string, isAdmin bool) model.User {
 	t.Helper()
 	if email == "" {
-		email = util.RandomUUIDNoDash()[:8] + "@example.com"
+		email = randomID(t)[:8] + "@example.com"
 	}
 	if username == "" {
-		username = "User_" + util.RandomUUIDNoDash()[:8]
+		username = "User_" + randomID(t)[:8]
 	}
 	hash, err := util.HashPassword(password)
 	if err != nil {
 		t.Fatal(err)
 	}
 	user := model.User{
-		ID: util.RandomUUIDNoDash(), Email: email, Password: hash,
+		ID: randomID(t), Email: email, Password: hash,
 		IsAdmin: isAdmin, PreferredLanguage: "zh_CN", DisplayName: username,
 	}
 	if err := db.CreateUser(context.Background(), user); err != nil {
@@ -100,11 +100,20 @@ func CreateUser(t *testing.T, db *database.DB, email, password, username string,
 func CreateProfile(t *testing.T, db *database.DB, userID, id, name string) model.Profile {
 	t.Helper()
 	if id == "" {
-		id = util.RandomUUIDNoDash()
+		id = randomID(t)
 	}
 	p := model.Profile{ID: id, UserID: userID, Name: name, TextureModel: "default"}
 	if err := db.CreateProfile(context.Background(), p); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
 	return p
+}
+
+func randomID(t *testing.T) string {
+	t.Helper()
+	id, err := util.GenerateUUIDNoDash()
+	if err != nil {
+		t.Fatalf("generate uuid: %v", err)
+	}
+	return id
 }
