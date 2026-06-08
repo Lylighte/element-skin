@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"element-skin/backend/internal/database/profile"
+	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/util"
 )
@@ -45,7 +46,7 @@ func (s Site) CreateProfile(ctx context.Context, userID, name, mdl string) (map[
 	return map[string]any{"id": id, "name": name, "model": mdl}, nil
 }
 
-func (s Site) PublicLibrary(ctx context.Context, cursor string, limit int, typ, q string) (map[string]any, error) {
+func (s Site) PublicLibrary(ctx context.Context, cursor string, limit int, typ, q, sort string) (map[string]any, error) {
 	enabled, err := s.settings().Get(ctx, "enable_skin_library", "true")
 	if err != nil {
 		return nil, err
@@ -53,11 +54,19 @@ func (s Site) PublicLibrary(ctx context.Context, cursor string, limit int, typ, 
 	if enabled != "true" {
 		return nil, util.HTTPError{Status: 403, Detail: "Skin library is disabled by administrator"}
 	}
-	lastCreated, lastHash, err := textureCursor(cursor, "last_skin_hash")
+	lastCreated, lastHash, lastUsage, err := publicLibraryCursor(cursor)
 	if err != nil {
 		return nil, util.HTTPError{Status: 400, Detail: "Invalid cursor"}
 	}
-	return s.DB.Textures.ListPublic(ctx, limit, typ, strings.TrimSpace(q), lastCreated, lastHash)
+	return s.DB.Textures.ListPublic(ctx, texture.PublicListOptions{
+		Limit:       limit,
+		TextureType: typ,
+		Query:       strings.TrimSpace(q),
+		Sort:        texture.ParsePublicLibrarySort(sort),
+		LastCreated: lastCreated,
+		LastHash:    lastHash,
+		LastUsage:   lastUsage,
+	})
 }
 
 func (s Site) ListMyProfiles(ctx context.Context, userID, cursor string, limit int) (map[string]any, error) {
@@ -138,24 +147,116 @@ func (s Site) DeleteProfile(ctx context.Context, userID, profileID string) error
 	if p.UserID != userID {
 		return util.HTTPError{Status: 403, Detail: "not allowed"}
 	}
-	_, err = s.DB.Profiles.DeleteCascade(ctx, profileID)
-	return err
+	return s.deleteProfile(ctx, profileID)
 }
 
 func (s Site) ClearProfileTexture(ctx context.Context, userID, profileID, textureType string) error {
-	ok, err := s.DB.Profiles.VerifyOwnership(ctx, userID, profileID)
+	p, err := s.DB.Profiles.GetByID(ctx, profileID)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return util.HTTPError{Status: 404, Detail: "profile not found"}
+	}
+	if p.UserID != userID {
+		return util.HTTPError{Status: 403, Detail: "not allowed"}
+	}
+	return s.SetProfileTexture(ctx, profileID, textureType, nil)
+}
+
+func (s Site) SetProfileTexture(ctx context.Context, profileID, textureType string, hash *string) error {
+	p, err := s.DB.Profiles.GetByID(ctx, profileID)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return util.HTTPError{Status: 404, Detail: "profile not found"}
+	}
+	switch strings.ToLower(textureType) {
+	case "skin":
+		if sameHash(p.SkinHash, hash) {
+			return nil
+		}
+		if err := s.DB.Profiles.UpdateSkin(ctx, profileID, hash); err != nil {
+			return err
+		}
+	case "cape":
+		if sameHash(p.CapeHash, hash) {
+			return nil
+		}
+		if err := s.DB.Profiles.UpdateCape(ctx, profileID, hash); err != nil {
+			return err
+		}
+	default:
+		return util.HTTPError{Status: 400, Detail: "Invalid texture_type"}
+	}
+	return nil
+}
+
+func (s Site) DeleteProfileByID(ctx context.Context, profileID string) error {
+	return s.deleteProfile(ctx, profileID)
+}
+
+func (s Site) DeleteUser(ctx context.Context, userID string) (bool, error) {
+	textures, err := s.DB.Textures.ListForUser(ctx, userID, "", 10000, nil, "")
+	if err != nil {
+		return false, err
+	}
+	recountAfterDelete := make([]map[string]string, 0)
+	ok, err := s.DB.Users.Delete(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, item := range textures["items"].([]map[string]any) {
+		hash, _ := item["hash"].(string)
+		textureType, _ := item["type"].(string)
+		if hash == "" || textureType == "" {
+			continue
+		}
+		uploader, exists, err := s.DB.Textures.LibraryUploader(ctx, hash, textureType)
+		if err != nil {
+			return false, err
+		}
+		if exists && uploader == userID {
+			if err := s.DB.Textures.DeleteLibraryTexture(ctx, hash, textureType); err != nil {
+				return false, err
+			}
+			continue
+		}
+		recountAfterDelete = append(recountAfterDelete, map[string]string{"hash": hash, "type": textureType})
+	}
+	if !ok {
+		return false, nil
+	}
+	for _, item := range recountAfterDelete {
+		if err := s.DB.Textures.RecountUsage(ctx, item["hash"], item["type"]); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (s Site) deleteProfile(ctx context.Context, profileID string) error {
+	p, err := s.DB.Profiles.GetByID(ctx, profileID)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return util.HTTPError{Status: 404, Detail: "profile not found"}
+	}
+	ok, err := s.DB.Profiles.DeleteCascade(ctx, profileID)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return util.HTTPError{Status: 403, Detail: "not allowed"}
+		return util.HTTPError{Status: 404, Detail: "profile not found"}
 	}
-	switch strings.ToLower(textureType) {
-	case "skin":
-		return s.DB.Profiles.UpdateSkin(ctx, profileID, nil)
-	case "cape":
-		return s.DB.Profiles.UpdateCape(ctx, profileID, nil)
-	default:
-		return util.HTTPError{Status: 400, Detail: "Invalid texture_type"}
+	return nil
+}
+
+func sameHash(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
 	}
+	return *a == *b
 }

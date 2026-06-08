@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS skin_library (
     model TEXT DEFAULT 'default',
     name TEXT DEFAULT '',
     created_at BIGINT NOT NULL,
+    usage_count BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY(skin_hash, texture_type)
 );
 
@@ -115,6 +116,15 @@ CREATE TABLE IF NOT EXISTS verification_codes (
     PRIMARY KEY(email, type)
 );
 
+ALTER TABLE skin_library DROP CONSTRAINT IF EXISTS skin_library_pkey;
+ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash, texture_type);
+ALTER TABLE skin_library ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DEFAULT 0;
+UPDATE skin_library sl SET usage_count = CASE sl.texture_type
+    WHEN 'skin' THEN (SELECT COUNT(*) FROM user_textures ut WHERE ut.hash = sl.skin_hash AND ut.texture_type = 'skin')
+    WHEN 'cape' THEN (SELECT COUNT(*) FROM user_textures ut WHERE ut.hash = sl.skin_hash AND ut.texture_type = 'cape')
+    ELSE (SELECT COUNT(*) FROM user_textures ut WHERE ut.hash = sl.skin_hash AND ut.texture_type = sl.texture_type)
+END;
+
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles (user_id, id);
 CREATE INDEX IF NOT EXISTS idx_tokens_user_created ON tokens (user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_tokens_profile_id ON tokens (profile_id);
@@ -125,10 +135,8 @@ CREATE INDEX IF NOT EXISTS idx_user_textures_hash_type ON user_textures (hash, t
 CREATE INDEX IF NOT EXISTS idx_users_display_name ON users (display_name);
 CREATE INDEX IF NOT EXISTS idx_skin_library_public_created_hash ON skin_library (is_public, created_at, skin_hash);
 CREATE INDEX IF NOT EXISTS idx_skin_library_created_hash ON skin_library (created_at, skin_hash);
+CREATE INDEX IF NOT EXISTS idx_skin_library_public_usage_created_hash ON skin_library (is_public, usage_count DESC, created_at DESC, skin_hash DESC);
 CREATE INDEX IF NOT EXISTS idx_whitelisted_users_endpoint ON whitelisted_users (endpoint_id);
-
-ALTER TABLE skin_library DROP CONSTRAINT IF EXISTS skin_library_pkey;
-ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash, texture_type);
 
 INSERT INTO settings (key, value) VALUES
 ('microsoft_client_id', ''),

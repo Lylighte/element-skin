@@ -83,3 +83,31 @@ func TestAdminTextureUpdatesAreScopedByTextureType(t *testing.T) {
 		t.Fatalf("cape should be deleted only: exists=%v err=%v", exists, err)
 	}
 }
+
+func TestAdminPerUserDeleteUpdatesUsageCount(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	owner := testutil.CreateUser(t, db, "domain-texture-admin-count-owner@test.com", "Password123", "AdminCountOwner", false)
+	other := testutil.CreateUser(t, db, "domain-texture-admin-count-other@test.com", "Password123", "AdminCountOther", false)
+	if err := store.AddToLibrary(ctx, owner.ID, "admin_count_hash", "skin", "Admin Count", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if added, err := store.AddToWardrobe(ctx, other.ID, "admin_count_hash", "skin"); err != nil || !added {
+		t.Fatalf("wardrobe add mismatch: added=%v err=%v", added, err)
+	}
+	if err := store.AdminDelete(ctx, "admin_count_hash", "skin", other.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListPublic(ctx, texture.PublicListOptions{Limit: 1, Sort: texture.PublicLibrarySortMostUsed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := page["items"].([]map[string]any)
+	if len(items) != 1 || items[0]["hash"] != "admin_count_hash" || items[0]["usage_count"] != int64(1) {
+		t.Fatalf("per-user admin delete should update usage_count: %#v", page)
+	}
+	if ok, err := store.VerifyOwnership(ctx, other.ID, "admin_count_hash", "skin"); err != nil || ok {
+		t.Fatalf("other row should be removed: ok=%v err=%v", ok, err)
+	}
+}

@@ -47,6 +47,7 @@ export interface Texture {
   uploader_display_name?: string
   uploader_email?: string
   created_at?: number
+  usage_count?: number
 }
 
 // Public site settings

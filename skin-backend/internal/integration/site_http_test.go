@@ -170,6 +170,14 @@ func TestPublicSkinLibrarySearchAndWardrobeName(t *testing.T) {
 	if err := db.Textures.AddToLibrary(context.Background(), alice.ID, "eeee", "skin", "UniquePrivateTex", false, "default"); err != nil {
 		t.Fatal(err)
 	}
+	for _, userID := range []string{bob.ID, charlie.ID} {
+		if ok, err := db.Textures.AddToWardrobe(context.Background(), userID, "aaaa", "skin"); err != nil || !ok {
+			t.Fatalf("wardrobe add for most_used setup ok=%v err=%v", ok, err)
+		}
+	}
+	if ok, err := db.Textures.AddToWardrobe(context.Background(), alice.ID, "bbbb", "skin"); err != nil || !ok {
+		t.Fatalf("wardrobe add for second most_used setup ok=%v err=%v", ok, err)
+	}
 
 	resp := doJSON(t, h, "GET", "/public/skin-library?q=MagicSword", nil)
 	if resp.Code != 200 {
@@ -193,6 +201,10 @@ func TestPublicSkinLibrarySearchAndWardrobeName(t *testing.T) {
 	}
 	if priv := parseJSON(t, doJSON(t, h, "GET", "/public/skin-library?q=UniquePrivateTex", nil))["items"].([]any); len(priv) != 0 {
 		t.Fatalf("private matching texture should be excluded: %#v", priv)
+	}
+	mostUsed := parseJSON(t, doJSON(t, h, "GET", "/public/skin-library?sort=most_used&texture_type=skin&limit=2", nil))["items"].([]any)
+	if len(mostUsed) != 2 || mostUsed[0].(map[string]any)["hash"] != "aaaa" || mostUsed[0].(map[string]any)["usage_count"] != float64(3) || mostUsed[1].(map[string]any)["hash"] != "bbbb" || mostUsed[1].(map[string]any)["usage_count"] != float64(2) {
+		t.Fatalf("most_used sort should order by personal library user count: %#v", mostUsed)
 	}
 	if skins := parseJSON(t, doJSON(t, h, "GET", "/public/skin-library?q=SharedName&texture_type=skin", nil))["items"].([]any); len(skins) != 0 {
 		t.Fatalf("skin filter should exclude matching cape: %#v", skins)

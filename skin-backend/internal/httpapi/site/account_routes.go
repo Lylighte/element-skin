@@ -48,7 +48,7 @@ func (h Handler) DeleteMe(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "管理员不能删除自己的账号"})
 		return
 	}
-	ok, err := h.db.Users.Delete(req.Context(), userID)
+	ok, err := h.site.DeleteUser(req.Context(), userID)
 	if err != nil {
 		util.Error(w, err)
 		return
