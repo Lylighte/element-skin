@@ -7,16 +7,16 @@
           <p>创建并管理您的 Minecraft 角色身份</p>
         </div>
       </div>
-      <div class="page-header-actions">
-        <el-button size="large" @click="showYggImportDialog = true" class="btn-gradient btn-gradient-warning">
+      <div class="page-header-actions role-header-actions">
+        <el-button size="large" @click="showYggImportDialog = true" class="btn-gradient btn-gradient-warning role-header-button">
           <el-icon><Download /></el-icon>
           <span style="margin-left:8px">导入皮肤站角色</span>
         </el-button>
-        <el-button size="large" @click="startMicrosoftAuth" class="btn-gradient btn-gradient-success">
+        <el-button size="large" @click="startMicrosoftAuth" class="btn-gradient btn-gradient-success role-header-button">
           <el-icon><Connection /></el-icon>
           <span style="margin-left:8px">绑定正版角色</span>
         </el-button>
-        <el-button size="large" @click="showCreateRoleDialog = true" class="btn-gradient btn-gradient-primary">
+        <el-button size="large" @click="showCreateRoleDialog = true" class="btn-gradient btn-gradient-primary role-header-button">
           <el-icon><Plus /></el-icon>
           <span style="margin-left:8px">新建角色</span>
         </el-button>
@@ -759,6 +759,35 @@ onMounted(async () => {
 .role-actions .el-button {
   flex: 1;
   min-width: 0;
+}
+
+.role-header-actions {
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.role-header-button {
+  flex: 0 1 auto;
+  margin-left: 0 !important;
+}
+
+@media (max-width: 900px) {
+  .role-header-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .role-header-button {
+    flex: 1 1 180px;
+  }
+}
+
+@media (max-width: 520px) {
+  .role-header-button {
+    flex-basis: 100%;
+  }
 }
 
 .clickable-card {
