@@ -32,11 +32,11 @@ func TestSettingsSaveGetAndPublicRoundTripExactValues(t *testing.T) {
 		site["profile_uuid_mode"] != "offline" || site["site_url"] != "skin.example.com/root/" || site["api_url"] != "https://api.example.com/skinapi/" {
 		t.Fatalf("unexpected site settings: %#v", site)
 	}
-	if raw, _ := db.GetSetting(ctx, "unknown_should_skip", "missing"); raw != "missing" {
+	if raw, _ := db.Settings.Get(ctx, "unknown_should_skip", "missing"); raw != "missing" {
 		t.Fatalf("unknown setting should not persist, got %q", raw)
 	}
 
-	if err := db.SetSetting(ctx, "smtp_password", "existing-secret"); err != nil {
+	if err := db.Settings.Set(ctx, "smtp_password", "existing-secret"); err != nil {
 		t.Fatal(err)
 	}
 	if err := settings.SaveGroup(ctx, "email", map[string]any{"smtp_host": "mail.example.com", "smtp_password": ""}); err != nil {

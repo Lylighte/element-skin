@@ -39,7 +39,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 	if patchProfile.Code != 200 {
 		t.Fatalf("admin patch profile status=%d body=%s", patchProfile.Code, patchProfile.Body.String())
 	}
-	p, _ := db.GetProfileByID(context.Background(), profile.ID)
+	p, _ := db.Profiles.GetByID(context.Background(), profile.ID)
 	if p.Name != "AdminRenamed" {
 		t.Fatal("admin profile rename did not persist")
 	}
@@ -56,11 +56,11 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 		t.Fatalf("missing admin profile delete should be 404, got %d", missingProfileDelete.Code)
 	}
 	skinHash := "skinhash"
-	if err := db.UpdateProfileSkin(context.Background(), profile.ID, &skinHash); err != nil {
+	if err := db.Profiles.UpdateSkin(context.Background(), profile.ID, &skinHash); err != nil {
 		t.Fatal(err)
 	}
 	capeHash := "capehash"
-	if err := db.UpdateProfileCape(context.Background(), profile.ID, &capeHash); err != nil {
+	if err := db.Profiles.UpdateCape(context.Background(), profile.ID, &capeHash); err != nil {
 		t.Fatal(err)
 	}
 	forbiddenClearSkin := doJSON(t, h, "PATCH", "/admin/profiles/"+profile.ID+"/skin", map[string]any{"hash": nil}, userCookie)
@@ -71,7 +71,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 	if clearSkin.Code != 200 {
 		t.Fatalf("admin clear skin status=%d body=%s", clearSkin.Code, clearSkin.Body.String())
 	}
-	p, _ = db.GetProfileByID(context.Background(), profile.ID)
+	p, _ = db.Profiles.GetByID(context.Background(), profile.ID)
 	if p.SkinHash != nil || p.CapeHash == nil || *p.CapeHash != capeHash {
 		t.Fatalf("clearing skin should not affect cape: %#v", p)
 	}
@@ -79,7 +79,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 	if clearCape.Code != 200 {
 		t.Fatalf("admin clear cape status=%d body=%s", clearCape.Code, clearCape.Body.String())
 	}
-	p, _ = db.GetProfileByID(context.Background(), profile.ID)
+	p, _ = db.Profiles.GetByID(context.Background(), profile.ID)
 	if p.CapeHash != nil {
 		t.Fatal("admin cape clear did not persist")
 	}
@@ -88,7 +88,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 		t.Fatalf("missing clear cape should be 404, got %d", missingClearCape.Code)
 	}
 
-	if err := db.AddTextureToLibrary(context.Background(), user.ID, "adm_hash", "skin", "AdminTexture", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), user.ID, "adm_hash", "skin", "AdminTexture", true, "default"); err != nil {
 		t.Fatal(err)
 	}
 	forbiddenTextures := doJSON(t, h, "GET", "/admin/textures", nil, userCookie)
@@ -107,7 +107,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 	if patchTex.Code != 200 {
 		t.Fatalf("admin patch texture status=%d body=%s", patchTex.Code, patchTex.Body.String())
 	}
-	info, _ := db.GetTextureInfo(context.Background(), user.ID, "adm_hash", "skin")
+	info, _ := db.Textures.GetInfo(context.Background(), user.ID, "adm_hash", "skin")
 	if info["is_public"].(int) != 0 || info["note"] != "AdminRenamedTexture" {
 		t.Fatalf("admin texture patch did not persist: %#v", info)
 	}
@@ -123,7 +123,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 	if delTex.Code != 200 {
 		t.Fatalf("admin delete texture status=%d body=%s", delTex.Code, delTex.Body.String())
 	}
-	info, _ = db.GetTextureInfo(context.Background(), user.ID, "adm_hash", "skin")
+	info, _ = db.Textures.GetInfo(context.Background(), user.ID, "adm_hash", "skin")
 	if info != nil {
 		t.Fatal("texture should be deleted from user library")
 	}
@@ -136,7 +136,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 	if badInvite.Code != 400 {
 		t.Fatalf("malformed invite JSON should be 400, got %d body=%s", badInvite.Code, badInvite.Body.String())
 	}
-	if inv, err := db.GetInvite(context.Background(), "BAD_INVITE"); err != nil || inv != nil {
+	if inv, err := db.Invites.Get(context.Background(), "BAD_INVITE"); err != nil || inv != nil {
 		t.Fatalf("malformed invite JSON must not create invite: invite=%#v err=%v", inv, err)
 	}
 	invites := doJSON(t, h, "GET", "/admin/invites", nil, adminCookie)
@@ -156,7 +156,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 	if delInvite.Code != 200 {
 		t.Fatalf("delete invite status=%d body=%s", delInvite.Code, delInvite.Body.String())
 	}
-	inv, _ := db.GetInvite(context.Background(), "INV_HTTP")
+	inv, _ := db.Invites.Get(context.Background(), "INV_HTTP")
 	if inv != nil {
 		t.Fatal("invite should be deleted")
 	}
@@ -191,7 +191,7 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 	if toggled.Code != 200 || parseJSON(t, toggled)["is_admin"] != true {
 		t.Fatalf("toggle admin status=%d body=%s", toggled.Code, toggled.Body.String())
 	}
-	row, _ := db.GetUserByID(context.Background(), user.ID)
+	row, _ := db.Users.GetByID(context.Background(), user.ID)
 	if row == nil || !row.IsAdmin {
 		t.Fatalf("user should now be admin: %#v", row)
 	}
@@ -205,21 +205,21 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 	if ban.Code != 200 {
 		t.Fatalf("ban status=%d body=%s", ban.Code, ban.Body.String())
 	}
-	if banned, _ := db.IsBanned(context.Background(), user.ID); !banned {
+	if banned, _ := db.Users.IsBanned(context.Background(), user.ID); !banned {
 		t.Fatal("user should be banned")
 	}
 	unban := doJSON(t, h, "POST", "/admin/users/"+user.ID+"/unban", nil, adminCookie)
 	if unban.Code != 200 {
 		t.Fatalf("unban status=%d body=%s", unban.Code, unban.Body.String())
 	}
-	if banned, _ := db.IsBanned(context.Background(), user.ID); banned {
+	if banned, _ := db.Users.IsBanned(context.Background(), user.ID); banned {
 		t.Fatal("user should be unbanned")
 	}
 
 	now := database.NowMS()
 	refreshHashes := []string{util.HashRefreshToken("admin-reset-1"), util.HashRefreshToken("admin-reset-2")}
 	for _, hsh := range refreshHashes {
-		if err := db.AddRefreshToken(context.Background(), hsh, user.ID, now+3600*1000, now); err != nil {
+		if err := db.Tokens.AddRefresh(context.Background(), hsh, user.ID, now+3600*1000, now); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -227,12 +227,12 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 	if reset.Code != 200 {
 		t.Fatalf("reset password status=%d body=%s", reset.Code, reset.Body.String())
 	}
-	updated, _ := db.GetUserByID(context.Background(), user.ID)
+	updated, _ := db.Users.GetByID(context.Background(), user.ID)
 	if !util.VerifyPassword("NewStr0ngPass!", updated.Password) {
 		t.Fatal("password was not updated")
 	}
 	for _, hsh := range refreshHashes {
-		if row, _ := db.GetRefreshToken(context.Background(), hsh); row != nil {
+		if row, _ := db.Tokens.GetRefresh(context.Background(), hsh); row != nil {
 			t.Fatal("admin reset should revoke refresh tokens")
 		}
 	}
@@ -243,26 +243,26 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 
 	profile := testutil.CreateProfile(t, db, user.ID, "delete_user_profile", "DeleteUserProfile")
 	token := model.Token{AccessToken: "delete-user-token", ClientToken: "client", UserID: user.ID, ProfileID: &profile.ID, CreatedAt: now}
-	if err := db.AddToken(context.Background(), token); err != nil {
+	if err := db.Tokens.Add(context.Background(), token); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddTextureToLibrary(context.Background(), user.ID, "delete_user_texture", "skin", "DeleteUserTex", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), user.ID, "delete_user_texture", "skin", "DeleteUserTex", true, "default"); err != nil {
 		t.Fatal(err)
 	}
 	del := doJSON(t, h, "DELETE", "/admin/users/"+user.ID, nil, adminCookie)
 	if del.Code != 200 {
 		t.Fatalf("delete user status=%d body=%s", del.Code, del.Body.String())
 	}
-	if row, _ := db.GetUserByID(context.Background(), user.ID); row != nil {
+	if row, _ := db.Users.GetByID(context.Background(), user.ID); row != nil {
 		t.Fatal("user should be deleted")
 	}
-	if p, _ := db.GetProfileByID(context.Background(), profile.ID); p != nil {
+	if p, _ := db.Profiles.GetByID(context.Background(), profile.ID); p != nil {
 		t.Fatal("user profiles should be deleted")
 	}
-	if tok, _ := db.GetToken(context.Background(), "delete-user-token"); tok != nil {
+	if tok, _ := db.Tokens.Get(context.Background(), "delete-user-token"); tok != nil {
 		t.Fatal("user tokens should be deleted")
 	}
-	if ok, _ := db.VerifyTextureOwnership(context.Background(), user.ID, "delete_user_texture", "skin"); ok {
+	if ok, _ := db.Textures.VerifyOwnership(context.Background(), user.ID, "delete_user_texture", "skin"); ok {
 		t.Fatal("user textures should be deleted")
 	}
 	missingDelete := doJSON(t, h, "DELETE", "/admin/users/"+user.ID, nil, adminCookie)
@@ -304,20 +304,20 @@ func TestAdminTextureValidationEdges(t *testing.T) {
 
 	user1 := testutil.CreateUser(t, db, "tex1@test.com", "Password123", "TexOne", false)
 	user2 := testutil.CreateUser(t, db, "tex2@test.com", "Password123", "TexTwo", false)
-	if err := db.AddTextureToLibrary(context.Background(), user1.ID, "force_hash", "skin", "Force", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), user1.ID, "force_hash", "skin", "Force", true, "default"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddTextureToLibrary(context.Background(), user2.ID, "force_hash", "skin", "Copy", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), user2.ID, "force_hash", "skin", "Copy", true, "default"); err != nil {
 		t.Fatal(err)
 	}
 	force := doJSON(t, h, "DELETE", "/admin/textures/force_hash?type=skin&force=true", nil, adminCookie)
 	if force.Code != 200 {
 		t.Fatalf("force delete status=%d body=%s", force.Code, force.Body.String())
 	}
-	if ok, _ := db.VerifyTextureOwnership(context.Background(), user1.ID, "force_hash", "skin"); ok {
+	if ok, _ := db.Textures.VerifyOwnership(context.Background(), user1.ID, "force_hash", "skin"); ok {
 		t.Fatal("force delete should remove user1 reference")
 	}
-	if ok, _ := db.VerifyTextureOwnership(context.Background(), user2.ID, "force_hash", "skin"); ok {
+	if ok, _ := db.Textures.VerifyOwnership(context.Background(), user2.ID, "force_hash", "skin"); ok {
 		t.Fatal("force delete should remove user2 reference")
 	}
 }

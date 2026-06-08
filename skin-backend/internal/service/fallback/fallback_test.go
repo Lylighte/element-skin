@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"element-skin/backend/internal/database"
+	dbfallback "element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/service/fallback"
 	"element-skin/backend/internal/testutil"
 )
@@ -25,13 +25,13 @@ func TestFallbackHasJoinedForwardsAndWhitelist(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if err := db.SaveFallbackEndpoints(ctx, []database.FallbackEndpoint{{
+	if err := db.Fallbacks.SaveEndpoints(ctx, []dbfallback.Endpoint{{
 		Priority: 1, SessionURL: server.URL, AccountURL: "a", ServicesURL: "s", CacheTTL: 60,
 		EnableProfile: true, EnableHasJoined: true, EnableWhitelist: true, Note: "WhitelistedNode",
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	eps, _ := db.ListFallbackEndpoints(ctx)
+	eps, _ := db.Fallbacks.ListEndpoints(ctx)
 	endpointID := eps[0]["id"].(int)
 	fb := fallback.Fallback{DB: db, Client: server.Client()}
 
@@ -42,7 +42,7 @@ func TestFallbackHasJoinedForwardsAndWhitelist(t *testing.T) {
 	if resp != nil {
 		t.Fatal("non-whitelisted user should not be forwarded")
 	}
-	if err := db.AddWhitelistUser(ctx, "Stranger", endpointID); err != nil {
+	if err := db.Fallbacks.AddWhitelistUser(ctx, "Stranger", endpointID); err != nil {
 		t.Fatal(err)
 	}
 	resp, err = fb.HasJoined(ctx, "Stranger", "sid", "")
@@ -70,10 +70,10 @@ func TestFallbackParallelReturnsFastSuccess(t *testing.T) {
 		_, _ = w.Write([]byte(`{"fast":true}`))
 	}))
 	defer fast.Close()
-	if err := db.SetSetting(ctx, "fallback_strategy", "parallel"); err != nil {
+	if err := db.Settings.Set(ctx, "fallback_strategy", "parallel"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SaveFallbackEndpoints(ctx, []database.FallbackEndpoint{
+	if err := db.Fallbacks.SaveEndpoints(ctx, []dbfallback.Endpoint{
 		{Priority: 1, SessionURL: slow.URL, AccountURL: "a", ServicesURL: "s", CacheTTL: 60, EnableProfile: true, EnableHasJoined: true},
 		{Priority: 2, SessionURL: fast.URL, AccountURL: "a", ServicesURL: "s", CacheTTL: 60, EnableProfile: true, EnableHasJoined: true},
 	}); err != nil {
@@ -117,7 +117,7 @@ func TestFallbackLookupRoutesForwardExactRequests(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if err := db.SaveFallbackEndpoints(ctx, []database.FallbackEndpoint{{
+	if err := db.Fallbacks.SaveEndpoints(ctx, []dbfallback.Endpoint{{
 		Priority: 1, SessionURL: server.URL, AccountURL: server.URL, ServicesURL: server.URL, CacheTTL: 60,
 		EnableProfile: true, EnableHasJoined: true,
 	}}); err != nil {

@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/util"
 )
@@ -25,7 +26,7 @@ func (s ImportService) ImportProfile(ctx context.Context, userID, profileID, pro
 	if profileID == "" || profileName == "" {
 		return nil, util.HTTPError{Status: 400, Detail: "profile_id and profile_name are required"}
 	}
-	existing, err := s.DB.GetProfileByID(ctx, profileID)
+	existing, err := s.DB.Profiles.GetByID(ctx, profileID)
 	if err != nil {
 		return nil, err
 	}
@@ -64,10 +65,10 @@ func (s ImportService) ImportProfile(ctx context.Context, userID, profileID, pro
 	}
 
 	p := model.Profile{ID: profileID, UserID: userID, Name: name, TextureModel: modelName, SkinHash: skinHash, CapeHash: capeHash}
-	if err := s.DB.CreateProfile(ctx, p); err != nil {
+	if err := s.DB.Profiles.Create(ctx, p); err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "profile": database.ProfileSummary(p)}, nil
+	return map[string]any{"ok": true, "profile": profile.Summary(p)}, nil
 }
 
 func (s ImportService) ImportProfiles(ctx context.Context, userID string, profiles []map[string]string, fetch func(context.Context, string) ([]TextureAsset, error)) map[string]any {
@@ -113,7 +114,7 @@ func (s ImportService) uniqueName(ctx context.Context, base string) (string, err
 		if len(name) > 16 {
 			name = name[:16]
 		}
-		p, err := s.DB.GetProfileByName(ctx, name)
+		p, err := s.DB.Profiles.GetByName(ctx, name)
 		if err != nil {
 			return "", err
 		}

@@ -8,15 +8,15 @@ import (
 )
 
 func (s Site) Me(ctx context.Context, userID string) (map[string]any, error) {
-	u, err := s.DB.GetUserByID(ctx, userID)
+	u, err := s.DB.Users.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if u == nil {
 		return nil, util.HTTPError{Status: 404, Detail: "user not found"}
 	}
-	pc, _ := s.DB.CountProfilesByUser(ctx, userID)
-	tc, _ := s.DB.CountTexturesForUser(ctx, userID)
+	pc, _ := s.DB.Profiles.CountByUser(ctx, userID)
+	tc, _ := s.DB.Textures.CountForUser(ctx, userID)
 	return map[string]any{
 		"id": u.ID, "email": u.Email, "lang": u.PreferredLanguage, "display_name": u.DisplayName,
 		"is_admin": u.IsAdmin, "banned_until": u.BannedUntil, "avatar_hash": u.AvatarHash,
@@ -31,7 +31,7 @@ func (s Site) UpdateMe(ctx context.Context, userID string, body map[string]any) 
 		if !validEmail(v) {
 			return util.HTTPError{Status: 400, Detail: "Invalid email format"}
 		}
-		existing, err := s.DB.GetUserByEmail(ctx, v)
+		existing, err := s.DB.Users.GetByEmail(ctx, v)
 		if err != nil {
 			return err
 		}
@@ -45,7 +45,7 @@ func (s Site) UpdateMe(ctx context.Context, userID string, body map[string]any) 
 		if v == "" {
 			return util.HTTPError{Status: 400, Detail: "Username cannot be empty"}
 		}
-		if taken, err := s.DB.IsDisplayNameTaken(ctx, v, userID); err != nil {
+		if taken, err := s.DB.Users.IsDisplayNameTaken(ctx, v, userID); err != nil {
 			return err
 		} else if taken {
 			return util.HTTPError{Status: 400, Detail: "Username already exists"}
@@ -58,11 +58,11 @@ func (s Site) UpdateMe(ctx context.Context, userID string, body map[string]any) 
 	if v, ok := body["avatar_hash"]; ok {
 		fields["avatar_hash"] = v
 	}
-	return s.DB.UpdateUser(ctx, userID, fields)
+	return s.DB.Users.Update(ctx, userID, fields)
 }
 
 func (s Site) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
-	u, err := s.DB.GetUserByID(ctx, userID)
+	u, err := s.DB.Users.GetByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -76,8 +76,8 @@ func (s Site) ChangePassword(ctx context.Context, userID, oldPassword, newPasswo
 	if err != nil {
 		return err
 	}
-	if err := s.DB.UpdatePassword(ctx, userID, hash); err != nil {
+	if err := s.DB.Users.UpdatePassword(ctx, userID, hash); err != nil {
 		return err
 	}
-	return s.DB.DeleteRefreshTokensByUser(ctx, userID)
+	return s.DB.Tokens.DeleteRefreshByUser(ctx, userID)
 }

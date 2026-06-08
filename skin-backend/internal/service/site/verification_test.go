@@ -14,10 +14,10 @@ func TestVerificationSendAndVerifyExactStoredCode(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	svc := site.Site{DB: db, Cfg: testutil.TestConfig()}
-	if err := db.SetSetting(ctx, "email_verify_enabled", "true"); err != nil {
+	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetSetting(ctx, "email_verify_ttl", "180"); err != nil {
+	if err := db.Settings.Set(ctx, "email_verify_ttl", "180"); err != nil {
 		t.Fatal(err)
 	}
 	res, err := svc.SendVerificationCode(ctx, "verify-service@test.com", "register")
@@ -27,7 +27,7 @@ func TestVerificationSendAndVerifyExactStoredCode(t *testing.T) {
 	if res["ok"] != true || res["ttl"] != 180 {
 		t.Fatalf("verification response mismatch: %#v", res)
 	}
-	code, expiresAt, ok, err := db.GetVerificationCode(ctx, "verify-service@test.com", "register")
+	code, expiresAt, ok, err := db.Verifications.GetCode(ctx, "verify-service@test.com", "register")
 	if err != nil || !ok || len(code) != 8 || strings.ToUpper(code) != code || expiresAt <= database.NowMS() {
 		t.Fatalf("stored verification code mismatch: code=%q expires=%d ok=%v err=%v", code, expiresAt, ok, err)
 	}

@@ -31,7 +31,7 @@ func (h Handler) UpdateMe(w http.ResponseWriter, req *http.Request) {
 
 func (h Handler) DeleteMe(w http.ResponseWriter, req *http.Request) {
 	userID := shared.CurrentUserID(req)
-	user, err := h.db.GetUserByID(req.Context(), userID)
+	user, err := h.db.Users.GetByID(req.Context(), userID)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -44,7 +44,7 @@ func (h Handler) DeleteMe(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "管理员不能删除自己的账号"})
 		return
 	}
-	ok, err := h.db.DeleteUser(req.Context(), userID)
+	ok, err := h.db.Users.Delete(req.Context(), userID)
 	if err != nil {
 		util.Error(w, err)
 		return

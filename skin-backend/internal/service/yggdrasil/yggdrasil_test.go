@@ -97,7 +97,7 @@ func TestYggdrasilAuthRefreshValidateJoinAndMetadata(t *testing.T) {
 	cfg := testutil.TestConfig()
 	cfg.SiteURL = "https://skin.example/root"
 	cfg.FallbackDomains = []string{"cdn.example"}
-	if err := db.SetSetting(ctx, "site_name", "Exact Ygg"); err != nil {
+	if err := db.Settings.Set(ctx, "site_name", "Exact Ygg"); err != nil {
 		t.Fatal(err)
 	}
 	user := testutil.CreateUser(t, db, "ygg-auth@test.com", "Password123", "YggAuth", false)
@@ -170,10 +170,10 @@ func TestYggdrasilAuthRefreshValidateJoinAndMetadata(t *testing.T) {
 		t.Fatalf("new access token should validate: %v", err)
 	}
 
-	if err := db.DeleteToken(ctx, newAccess); err != nil {
+	if err := db.Tokens.Delete(ctx, newAccess); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddToken(ctx, model.Token{AccessToken: "unbound_access", ClientToken: "client_unbound", UserID: user.ID, ProfileID: nil, CreatedAt: database.NowMS()}); err != nil {
+	if err := db.Tokens.Add(ctx, model.Token{AccessToken: "unbound_access", ClientToken: "client_unbound", UserID: user.ID, ProfileID: nil, CreatedAt: database.NowMS()}); err != nil {
 		t.Fatal(err)
 	}
 	bound, err := ygg.Refresh(ctx, "unbound_access", "client_unbound", profile.ID, false)

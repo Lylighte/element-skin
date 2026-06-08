@@ -30,7 +30,7 @@ func TestNewTestAppCreateHelpersExactState(t *testing.T) {
 	if len(emailLocal) != 8 || !strings.HasSuffix(user.Email, "@example.com") || !strings.HasPrefix(user.DisplayName, "User_") || len(displaySuffix) != 8 || !user.IsAdmin {
 		t.Fatalf("CreateUser generated fields mismatch: %#v", user)
 	}
-	stored, err := db.GetUserByID(ctx, user.ID)
+	stored, err := db.Users.GetByID(ctx, user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestNewTestAppCreateHelpersExactState(t *testing.T) {
 	if profile.UserID != user.ID || profile.Name != "GeneratedProfile" || profile.TextureModel != "default" || len(profile.ID) != 32 {
 		t.Fatalf("CreateProfile generated fields mismatch: %#v", profile)
 	}
-	if ok, err := db.VerifyProfileOwnership(ctx, user.ID, profile.ID); err != nil || !ok {
+	if ok, err := db.Profiles.VerifyOwnership(ctx, user.ID, profile.ID); err != nil || !ok {
 		t.Fatalf("CreateProfile should persist ownership: ok=%v err=%v", ok, err)
 	}
 }

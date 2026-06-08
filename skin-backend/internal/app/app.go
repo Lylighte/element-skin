@@ -20,7 +20,7 @@ type App struct {
 }
 
 type refreshTokenCleaner interface {
-	DeleteExpiredRefreshTokens(ctx context.Context, cutoff int64) error
+	DeleteExpiredRefresh(ctx context.Context, cutoff int64) error
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -31,14 +31,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.DeleteExpiredRefreshTokens(ctx, database.NowMS()); err != nil {
+	if err := db.Tokens.DeleteExpiredRefresh(ctx, database.NowMS()); err != nil {
 		db.Close()
 		return nil, err
 	}
 	site := sitepkg.Site{DB: db, Cfg: cfg}
 	ygg := yggpkg.Yggdrasil{DB: db, Cfg: cfg}
 	cleanupCtx, cancel := context.WithCancel(context.Background())
-	go RunRefreshCleanupLoop(cleanupCtx, db, time.Hour)
+	go RunRefreshCleanupLoop(cleanupCtx, db.Tokens, time.Hour)
 	return &App{
 		db:       db,
 		handler:  httpapi.NewRouter(cfg, db, site, ygg),
@@ -73,7 +73,7 @@ func RunRefreshCleanupLoop(ctx context.Context, cleaner refreshTokenCleaner, int
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = cleaner.DeleteExpiredRefreshTokens(ctx, database.NowMS())
+			_ = cleaner.DeleteExpiredRefresh(ctx, database.NowMS())
 		}
 	}
 }

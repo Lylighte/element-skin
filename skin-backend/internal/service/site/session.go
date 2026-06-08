@@ -9,7 +9,7 @@ import (
 )
 
 func (s Site) issueSession(ctx context.Context, userID string, isAdmin bool, extra map[string]any) (map[string]any, error) {
-	expireDays, _ := s.DB.SettingInt(ctx, "jwt_expire_days", s.Cfg.JWTExpireDays)
+	expireDays, _ := s.DB.Settings.Int(ctx, "jwt_expire_days", s.Cfg.JWTExpireDays)
 	access, err := util.CreateAccessToken(s.Cfg.JWTSecret, userID, isAdmin, time.Duration(s.Cfg.AccessMinutes)*time.Minute)
 	if err != nil {
 		return nil, err
@@ -19,7 +19,7 @@ func (s Site) issueSession(ctx context.Context, userID string, isAdmin bool, ext
 		return nil, err
 	}
 	now := database.NowMS()
-	if err := s.DB.AddRefreshToken(ctx, refreshHash, userID, now+int64(expireDays)*24*3600*1000, now); err != nil {
+	if err := s.DB.Tokens.AddRefresh(ctx, refreshHash, userID, now+int64(expireDays)*24*3600*1000, now); err != nil {
 		return nil, err
 	}
 	out := map[string]any{"access_token": access, "refresh_token": rawRefresh, "is_admin": isAdmin}
@@ -30,7 +30,7 @@ func (s Site) issueSession(ctx context.Context, userID string, isAdmin bool, ext
 }
 
 func (s Site) RotateRefresh(ctx context.Context, raw string) (map[string]any, error) {
-	row, err := s.DB.ConsumeRefreshToken(ctx, util.HashRefreshToken(raw))
+	row, err := s.DB.Tokens.ConsumeRefresh(ctx, util.HashRefreshToken(raw))
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (s Site) RotateRefresh(ctx context.Context, raw string) (map[string]any, er
 	if database.NowMS() >= row["expires_at"].(int64) {
 		return nil, util.HTTPError{Status: 401, Detail: "refresh token expired"}
 	}
-	user, err := s.DB.GetUserByID(ctx, row["user_id"].(string))
+	user, err := s.DB.Users.GetByID(ctx, row["user_id"].(string))
 	if err != nil {
 		return nil, err
 	}
@@ -51,5 +51,5 @@ func (s Site) RotateRefresh(ctx context.Context, raw string) (map[string]any, er
 }
 
 func (s Site) RevokeRefresh(ctx context.Context, raw string) error {
-	return s.DB.DeleteRefreshToken(ctx, util.HashRefreshToken(raw))
+	return s.DB.Tokens.DeleteRefresh(ctx, util.HashRefreshToken(raw))
 }

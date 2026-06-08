@@ -78,7 +78,7 @@ func (h Handler) Invalidate(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if body["accessToken"] != "" {
-		_ = h.db.DeleteToken(req.Context(), body["accessToken"])
+		_ = h.db.Tokens.Delete(req.Context(), body["accessToken"])
 	}
 	w.WriteHeader(204)
 }

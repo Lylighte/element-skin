@@ -91,7 +91,7 @@ func CreateUser(t *testing.T, db *database.DB, email, password, username string,
 		ID: randomID(t), Email: email, Password: hash,
 		IsAdmin: isAdmin, PreferredLanguage: "zh_CN", DisplayName: username,
 	}
-	if err := db.CreateUser(context.Background(), user); err != nil {
+	if err := db.Users.Create(context.Background(), user); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 	return user
@@ -103,7 +103,7 @@ func CreateProfile(t *testing.T, db *database.DB, userID, id, name string) model
 		id = randomID(t)
 	}
 	p := model.Profile{ID: id, UserID: userID, Name: name, TextureModel: "default"}
-	if err := db.CreateProfile(context.Background(), p); err != nil {
+	if err := db.Profiles.Create(context.Background(), p); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
 	return p

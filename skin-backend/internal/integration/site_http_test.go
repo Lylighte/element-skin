@@ -49,14 +49,14 @@ func TestSiteLoginMeAndRefresh(t *testing.T) {
 	if _, ok := meBody["texture_count"]; !ok {
 		t.Fatalf("/me should include texture_count: %#v", meBody)
 	}
-	if err := db.BanUser(context.Background(), user.ID, time.Now().Add(time.Hour).UnixMilli()); err != nil {
+	if err := db.Users.Ban(context.Background(), user.ID, time.Now().Add(time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	bannedMe := doJSON(t, h, "GET", "/me", nil, access)
 	if bannedMe.Code != 200 {
 		t.Fatalf("banned user should still access site API, got %d body=%s", bannedMe.Code, bannedMe.Body.String())
 	}
-	if err := db.UnbanUser(context.Background(), user.ID); err != nil {
+	if err := db.Users.Unban(context.Background(), user.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -118,7 +118,7 @@ func TestSiteLoginMeAndRefresh(t *testing.T) {
 	deletedUser := testutil.CreateUser(t, db, "refresh_deleted@test.com", "Password123", "RefreshDeleted", false)
 	deletedLogin := doJSON(t, h, "POST", "/site-login", map[string]any{"email": deletedUser.Email, "password": "Password123"})
 	deletedRefresh := cookieNamed(deletedLogin, "refresh_token")
-	if ok, err := db.DeleteUser(context.Background(), deletedUser.ID); err != nil || !ok {
+	if ok, err := db.Users.Delete(context.Background(), deletedUser.ID); err != nil || !ok {
 		t.Fatalf("delete refresh test user ok=%v err=%v", ok, err)
 	}
 	afterDelete := doJSON(t, h, "POST", "/me/refresh-token", nil, deletedRefresh)
@@ -134,7 +134,7 @@ func TestSiteLoginMeAndRefresh(t *testing.T) {
 
 func TestPublicSettingsAndAuthlibHeader(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
-	if err := db.SetSetting(context.Background(), "site_name", "Public Name"); err != nil {
+	if err := db.Settings.Set(context.Background(), "site_name", "Public Name"); err != nil {
 		t.Fatal(err)
 	}
 	resp := doJSON(t, h, "GET", "/public/settings", nil)
@@ -155,19 +155,19 @@ func TestPublicSkinLibrarySearchAndWardrobeName(t *testing.T) {
 	alice := testutil.CreateUser(t, db, "alice@test.com", "Password123", "ApiSearchAlice", false)
 	bob := testutil.CreateUser(t, db, "bob@test.com", "Password123", "ApiSearchBob", false)
 	charlie := testutil.CreateUser(t, db, "charlie@test.com", "Password123", "ApiSearchCharlie", false)
-	if err := db.AddTextureToLibrary(context.Background(), alice.ID, "aaaa", "skin", "MagicSword", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), alice.ID, "aaaa", "skin", "MagicSword", true, "default"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddTextureToLibrary(context.Background(), bob.ID, "bbbb", "skin", "DragonShield", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), bob.ID, "bbbb", "skin", "DragonShield", true, "default"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddTextureToLibrary(context.Background(), charlie.ID, "cccc", "skin", "HolyArmor", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), charlie.ID, "cccc", "skin", "HolyArmor", true, "default"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddTextureToLibrary(context.Background(), charlie.ID, "dddd", "cape", "SharedName", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), charlie.ID, "dddd", "cape", "SharedName", true, "default"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddTextureToLibrary(context.Background(), alice.ID, "eeee", "skin", "UniquePrivateTex", false, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), alice.ID, "eeee", "skin", "UniquePrivateTex", false, "default"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -242,7 +242,7 @@ func TestPublicSkinLibrarySearchAndWardrobeName(t *testing.T) {
 	if badCursor := doJSON(t, h, "GET", "/public/skin-library?cursor=garbage!!", nil); badCursor.Code != 400 {
 		t.Fatalf("invalid public library cursor should be 400, got %d body=%s", badCursor.Code, badCursor.Body.String())
 	}
-	if err := db.SetSetting(context.Background(), "enable_skin_library", false); err != nil {
+	if err := db.Settings.Set(context.Background(), "enable_skin_library", false); err != nil {
 		t.Fatal(err)
 	}
 	if disabled := doJSON(t, h, "GET", "/public/skin-library", nil); disabled.Code != 403 {
@@ -265,7 +265,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 		t.Fatalf("update me did not persist: %#v", me)
 	}
 
-	if err := db.SetSetting(context.Background(), "profile_uuid_mode", "offline"); err != nil {
+	if err := db.Settings.Set(context.Background(), "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
 	}
 	offline := doJSON(t, h, "POST", "/me/profiles", map[string]any{"name": "OfflinePlayerA", "model": "default"}, cookie)
@@ -275,7 +275,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	if parseJSON(t, offline)["id"] != util.OfflineUUIDNoDash("OfflinePlayerA") {
 		t.Fatalf("offline profile should use offline UUID: %s", offline.Body.String())
 	}
-	if err := db.SetSetting(context.Background(), "profile_uuid_mode", "random"); err != nil {
+	if err := db.Settings.Set(context.Background(), "profile_uuid_mode", "random"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -285,7 +285,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	}
 	profileID := parseJSON(t, create)["id"].(string)
 	for i := 0; i < 5; i++ {
-		if err := db.CreateProfile(context.Background(), model.Profile{ID: "http_profile_" + strconv.Itoa(i), UserID: user.ID, Name: "HTTPProfile_" + strconv.Itoa(i), TextureModel: "default"}); err != nil {
+		if err := db.Profiles.Create(context.Background(), model.Profile{ID: "http_profile_" + strconv.Itoa(i), UserID: user.ID, Name: "HTTPProfile_" + strconv.Itoa(i), TextureModel: "default"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -327,16 +327,16 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	if rename.Code != 200 {
 		t.Fatalf("rename status=%d body=%s", rename.Code, rename.Body.String())
 	}
-	p, _ := db.GetProfileByID(context.Background(), profileID)
+	p, _ := db.Profiles.GetByID(context.Background(), profileID)
 	if p.Name != "NewFancyName" {
 		t.Fatalf("profile not renamed: %#v", p)
 	}
 
-	if err := db.AddTextureToLibrary(context.Background(), user.ID, "apply_hash", "skin", "ApplySkin", false, "slim"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), user.ID, "apply_hash", "skin", "ApplySkin", false, "slim"); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
-		if err := db.AddTextureToLibrary(context.Background(), user.ID, "http_tex_"+strconv.Itoa(i), "skin", "HTTP Texture "+strconv.Itoa(i), false, "default"); err != nil {
+		if err := db.Textures.AddToLibrary(context.Background(), user.ID, "http_tex_"+strconv.Itoa(i), "skin", "HTTP Texture "+strconv.Itoa(i), false, "default"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -389,7 +389,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	}
 
 	libraryOwner := testutil.CreateUser(t, db, "library-owner@test.com", "Password123", "LibraryOwner", false)
-	if err := db.AddTextureToLibrary(context.Background(), libraryOwner.ID, "lib_tex_hash_123", "skin", "Epic Skin Name", true, "default"); err != nil {
+	if err := db.Textures.AddToLibrary(context.Background(), libraryOwner.ID, "lib_tex_hash_123", "skin", "Epic Skin Name", true, "default"); err != nil {
 		t.Fatal(err)
 	}
 	addMissing := doJSON(t, h, "POST", "/me/textures/nonexistent_hash/add", nil, cookie)
@@ -400,7 +400,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	if addLibrary.Code != 200 {
 		t.Fatalf("add library texture status=%d body=%s", addLibrary.Code, addLibrary.Body.String())
 	}
-	addedInfo, _ := db.GetTextureInfo(context.Background(), user.ID, "lib_tex_hash_123", "skin")
+	addedInfo, _ := db.Textures.GetInfo(context.Background(), user.ID, "lib_tex_hash_123", "skin")
 	if addedInfo == nil || addedInfo["note"] != "Epic Skin Name" {
 		t.Fatalf("added library texture should preserve name: %#v", addedInfo)
 	}
@@ -413,7 +413,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	if apply.Code != 200 {
 		t.Fatalf("apply status=%d body=%s", apply.Code, apply.Body.String())
 	}
-	p, _ = db.GetProfileByID(context.Background(), profileID)
+	p, _ = db.Profiles.GetByID(context.Background(), profileID)
 	if p.SkinHash == nil || *p.SkinHash != "apply_hash" || p.TextureModel != "slim" {
 		t.Fatalf("texture not applied: %#v", p)
 	}
@@ -430,7 +430,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	if update.Code != 200 {
 		t.Fatalf("update texture status=%d body=%s", update.Code, update.Body.String())
 	}
-	info, _ := db.GetTextureInfo(context.Background(), user.ID, "apply_hash", "skin")
+	info, _ := db.Textures.GetInfo(context.Background(), user.ID, "apply_hash", "skin")
 	if info["note"] != "RenamedSkin" || info["is_public"].(int) != 1 {
 		t.Fatalf("texture update did not persist: %#v", info)
 	}
@@ -439,7 +439,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	if clear.Code != 200 {
 		t.Fatalf("clear status=%d body=%s", clear.Code, clear.Body.String())
 	}
-	p, _ = db.GetProfileByID(context.Background(), profileID)
+	p, _ = db.Profiles.GetByID(context.Background(), profileID)
 	if p.SkinHash != nil {
 		t.Fatalf("skin should be cleared: %#v", p)
 	}
@@ -448,7 +448,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	if del.Code != 200 {
 		t.Fatalf("delete profile status=%d body=%s", del.Code, del.Body.String())
 	}
-	p, _ = db.GetProfileByID(context.Background(), profileID)
+	p, _ = db.Profiles.GetByID(context.Background(), profileID)
 	if p != nil {
 		t.Fatal("profile should be deleted")
 	}
@@ -470,22 +470,22 @@ func TestSelfDeleteAndDirectTextureUploadHTTP(t *testing.T) {
 	if direct.Code != 200 {
 		t.Fatalf("direct upload status=%d body=%s", direct.Code, direct.Body.String())
 	}
-	updated, _ := db.GetProfileByID(context.Background(), profile.ID)
+	updated, _ := db.Profiles.GetByID(context.Background(), profile.ID)
 	if updated.SkinHash == nil || updated.TextureModel != "slim" {
 		t.Fatalf("direct upload did not apply texture/model: %#v", updated)
 	}
 
-	if err := db.AddRefreshToken(context.Background(), "self_delete_refresh", user.ID, database.NowMS()+3600*1000, database.NowMS()); err != nil {
+	if err := db.Tokens.AddRefresh(context.Background(), "self_delete_refresh", user.ID, database.NowMS()+3600*1000, database.NowMS()); err != nil {
 		t.Fatal(err)
 	}
 	del := doJSON(t, h, "DELETE", "/me", nil, cookie)
 	if del.Code != 200 {
 		t.Fatalf("self delete status=%d body=%s", del.Code, del.Body.String())
 	}
-	if row, _ := db.GetUserByID(context.Background(), user.ID); row != nil {
+	if row, _ := db.Users.GetByID(context.Background(), user.ID); row != nil {
 		t.Fatal("self delete should remove user")
 	}
-	if row, _ := db.GetRefreshToken(context.Background(), "self_delete_refresh"); row != nil {
+	if row, _ := db.Tokens.GetRefresh(context.Background(), "self_delete_refresh"); row != nil {
 		t.Fatal("self delete should revoke refresh tokens")
 	}
 
@@ -504,7 +504,7 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 	if first.Code != 200 {
 		t.Fatalf("first register status=%d body=%s", first.Code, first.Body.String())
 	}
-	firstUser, err := db.GetUserByEmail(ctx, "admin-first@test.com")
+	firstUser, err := db.Users.GetByEmail(ctx, "admin-first@test.com")
 	if err != nil || firstUser == nil || !firstUser.IsAdmin {
 		t.Fatalf("first registered user should be admin: user=%#v err=%v", firstUser, err)
 	}
@@ -512,7 +512,7 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 	if secondRegister.Code != 200 {
 		t.Fatalf("second register status=%d body=%s", secondRegister.Code, secondRegister.Body.String())
 	}
-	secondUser, err := db.GetUserByEmail(ctx, "second-normal@test.com")
+	secondUser, err := db.Users.GetByEmail(ctx, "second-normal@test.com")
 	if err != nil || secondUser == nil || secondUser.IsAdmin {
 		t.Fatalf("second registered user should not be admin: user=%#v err=%v", secondUser, err)
 	}
@@ -520,7 +520,7 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 	if duplicateEmail.Code != 400 || !strings.Contains(duplicateEmail.Body.String(), "Email already registered") {
 		t.Fatalf("duplicate email should be rejected, got %d body=%s", duplicateEmail.Code, duplicateEmail.Body.String())
 	}
-	if err := db.SetSetting(ctx, "enable_strong_password_check", true); err != nil {
+	if err := db.Settings.Set(ctx, "enable_strong_password_check", true); err != nil {
 		t.Fatal(err)
 	}
 	for _, weak := range []string{"12345", "simplepass"} {
@@ -533,7 +533,7 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 	if strong.Code != 200 {
 		t.Fatalf("strong password should register, got %d body=%s", strong.Code, strong.Body.String())
 	}
-	if err := db.SetSetting(ctx, "enable_strong_password_check", false); err != nil {
+	if err := db.Settings.Set(ctx, "enable_strong_password_check", false); err != nil {
 		t.Fatal(err)
 	}
 	for _, badEmail := range []string{"a@b", "a@x.com\r\nBcc: x@y.com", "notanemail"} {
@@ -541,28 +541,28 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 		if bad.Code != 400 || !strings.Contains(bad.Body.String(), "Invalid email format") {
 			t.Fatalf("invalid email %q should be rejected, got %d %s", badEmail, bad.Code, bad.Body.String())
 		}
-		if row, err := db.GetUserByEmail(ctx, badEmail); err != nil || row != nil {
+		if row, err := db.Users.GetByEmail(ctx, badEmail); err != nil || row != nil {
 			t.Fatalf("invalid email registration should not create user: row=%#v err=%v", row, err)
 		}
 	}
-	if err := db.SetSetting(ctx, "allow_register", false); err != nil {
+	if err := db.Settings.Set(ctx, "allow_register", false); err != nil {
 		t.Fatal(err)
 	}
 	disabled := doJSON(t, h, "POST", "/register", map[string]any{"email": "x@test.com", "password": "Password123", "username": "XUser"})
 	if disabled.Code != 403 {
 		t.Fatalf("disabled register should be 403, got %d body=%s", disabled.Code, disabled.Body.String())
 	}
-	if err := db.SetSetting(ctx, "allow_register", true); err != nil {
+	if err := db.Settings.Set(ctx, "allow_register", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetSetting(ctx, "require_invite", true); err != nil {
+	if err := db.Settings.Set(ctx, "require_invite", true); err != nil {
 		t.Fatal(err)
 	}
 	missingInvite := doJSON(t, h, "POST", "/register", map[string]any{"email": "x@test.com", "password": "Password123", "username": "XUser"})
 	if missingInvite.Code != 400 {
 		t.Fatalf("missing invite should be 400, got %d", missingInvite.Code)
 	}
-	if err := db.CreateInvite(ctx, "VALID_CODE", 1, "once"); err != nil {
+	if err := db.Invites.Create(ctx, "VALID_CODE", 1, "once"); err != nil {
 		t.Fatal(err)
 	}
 	ok := doJSON(t, h, "POST", "/register", map[string]any{"email": "first@test.com", "password": "Password123", "username": "FirstUser", "invite": "VALID_CODE"})
@@ -573,7 +573,7 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 	if overuse.Code != 400 {
 		t.Fatalf("overused invite should be 400, got %d body=%s", overuse.Code, overuse.Body.String())
 	}
-	second, _ := db.GetUserByEmail(ctx, "second@test.com")
+	second, _ := db.Users.GetByEmail(ctx, "second@test.com")
 	if second != nil {
 		t.Fatal("overused invite should not create user")
 	}
@@ -587,10 +587,10 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if disabled.Code != 400 {
 		t.Fatalf("verification disabled should be 400, got %d body=%s", disabled.Code, disabled.Body.String())
 	}
-	if err := db.SetSetting(ctx, "email_verify_enabled", true); err != nil {
+	if err := db.Settings.Set(ctx, "email_verify_enabled", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetSetting(ctx, "email_verify_ttl", 300); err != nil {
+	if err := db.Settings.Set(ctx, "email_verify_ttl", 300); err != nil {
 		t.Fatal(err)
 	}
 
@@ -602,7 +602,7 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if sendBody["ok"] != true || sendBody["ttl"] != float64(300) {
 		t.Fatalf("unexpected verification response: %#v", sendBody)
 	}
-	code, expiresAt, ok, err := db.GetVerificationCode(ctx, "verify@test.com", "register")
+	code, expiresAt, ok, err := db.Verifications.GetCode(ctx, "verify@test.com", "register")
 	if err != nil || !ok {
 		t.Fatalf("verification code missing ok=%v err=%v", ok, err)
 	}
@@ -623,7 +623,7 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if register.Code != 200 {
 		t.Fatalf("verified register status=%d body=%s", register.Code, register.Body.String())
 	}
-	if _, _, ok, _ := db.GetVerificationCode(ctx, "verify@test.com", "register"); ok {
+	if _, _, ok, _ := db.Verifications.GetCode(ctx, "verify@test.com", "register"); ok {
 		t.Fatal("register verification code should be deleted after use")
 	}
 
@@ -641,7 +641,7 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if sendReset.Code != 200 {
 		t.Fatalf("send reset status=%d body=%s", sendReset.Code, sendReset.Body.String())
 	}
-	resetCode, _, ok, err := db.GetVerificationCode(ctx, user.Email, "reset")
+	resetCode, _, ok, err := db.Verifications.GetCode(ctx, user.Email, "reset")
 	if err != nil || !ok {
 		t.Fatalf("reset code missing ok=%v err=%v", ok, err)
 	}
@@ -649,7 +649,7 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if reset.Code != 200 {
 		t.Fatalf("reset status=%d body=%s", reset.Code, reset.Body.String())
 	}
-	updated, _ := db.GetUserByID(ctx, user.ID)
+	updated, _ := db.Users.GetByID(ctx, user.ID)
 	if !util.VerifyPassword("NewPassword456!", updated.Password) {
 		t.Fatal("reset password did not update password")
 	}
@@ -657,7 +657,7 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if reuseRefresh.Code != 401 {
 		t.Fatalf("old refresh should be revoked after reset, got %d", reuseRefresh.Code)
 	}
-	if _, _, ok, _ := db.GetVerificationCode(ctx, user.Email, "reset"); ok {
+	if _, _, ok, _ := db.Verifications.GetCode(ctx, user.Email, "reset"); ok {
 		t.Fatal("reset verification code should be deleted after use")
 	}
 }

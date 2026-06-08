@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"element-skin/backend/internal/httpapi"
-	"element-skin/backend/internal/service/site"
-	"element-skin/backend/internal/service/yggdrasil"
+	sitesvc "element-skin/backend/internal/service/site"
+	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
@@ -18,7 +18,7 @@ func TestAuthRejectsMissingInvalidAndNonAdminExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "auth-direct-user@test.com", "Password123", "AuthDirectUser", false)
-	router := httpapi.NewRouter(cfg, db, site.Site{DB: db, Cfg: cfg}, yggdrasil.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/me", nil))
