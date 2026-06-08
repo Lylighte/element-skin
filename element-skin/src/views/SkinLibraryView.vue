@@ -471,15 +471,14 @@ onMounted(() => {
 .skin-library-container .page-header-actions {
   align-items: center;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: center;
   min-width: 0;
   max-width: 100%;
   width: 100%;
 }
 
 .search-bar-container {
-  flex: 1 1 420px;
-  max-width: 640px;
+  flex: 0 1 560px;
   min-width: 320px;
 }
 
@@ -521,7 +520,7 @@ onMounted(() => {
 
 @media (max-width: 900px) {
   .search-bar-container {
-    max-width: none;
+    flex: 1 1 420px;
   }
 }
 
