@@ -13,6 +13,7 @@ import (
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/util"
 
 	"github.com/jackc/pgx/v5"
@@ -33,6 +34,12 @@ func TestConfig() config.Config {
 	cfg.APIURL = "http://localhost:8000"
 	cfg.PrivateKeyPath = filepath.Join(repoRoot(), "private.pem")
 	cfg.PublicKeyPath = filepath.Join(repoRoot(), "public.pem")
+	cfg.RedisAddr = os.Getenv("REDIS_TEST_ADDR")
+	if cfg.RedisAddr == "" {
+		cfg.RedisAddr = "127.0.0.1:6379"
+	}
+	cfg.RedisPassword = os.Getenv("REDIS_TEST_PASSWORD")
+	cfg.RedisKeyPrefix = fmt.Sprintf("elementskin:test:%d:", os.Getpid())
 	return cfg
 }
 
@@ -52,22 +59,29 @@ func repoRoot() string {
 }
 
 func NewTestApp(t *testing.T) (*database.DB, http.Handler) {
-	return NewTestAppTB(t)
+	db, handler, _ := NewTestAppWithRedisTB(t)
+	return db, handler
 }
 
 func NewTestAppTB(t testing.TB) (*database.DB, http.Handler) {
-	return newTestAppTB(t, nil)
+	db, handler, _ := newTestAppTB(t, nil)
+	return db, handler
 }
 
 func NewTestAppWithMaxConnectionsTB(t testing.TB, maxConnections int32) (*database.DB, http.Handler) {
-	return newTestAppTB(t, func(cfg *config.Config) {
+	db, handler, _ := newTestAppTB(t, func(cfg *config.Config) {
 		if maxConnections > 0 {
 			cfg.MaxConnections = maxConnections
 		}
 	})
+	return db, handler
 }
 
-func newTestAppTB(t testing.TB, configure func(*config.Config)) (*database.DB, http.Handler) {
+func NewTestAppWithRedisTB(t testing.TB) (*database.DB, http.Handler, redisstore.Store) {
+	return newTestAppTB(t, nil)
+}
+
+func newTestAppTB(t testing.TB, configure func(*config.Config)) (*database.DB, http.Handler, redisstore.Store) {
 	t.Helper()
 	ctx := context.Background()
 	cfg := TestConfig()
@@ -89,11 +103,48 @@ func newTestAppTB(t testing.TB, configure func(*config.Config)) (*database.DB, h
 	}
 	t.Cleanup(func() { dropTestDatabase(t, context.Background(), dbName) })
 	t.Cleanup(db.Close)
-	application, err := app.NewWithDB(cfg, db)
+	var redis redisstore.Store
+	if usingIntegrationRedis() {
+		redis = NewRedisStoreTB(t, cfg.RedisKeyPrefix+dbName+":")
+	} else {
+		redis = NewMemoryRedis()
+	}
+	application, err := app.NewWithDBAndRedis(cfg, db, redis)
 	if err != nil {
 		t.Fatalf("build test app: %v", err)
 	}
-	return db, application.Handler()
+	return db, application.Handler(), redis
+}
+
+func NewRedisStoreTB(t testing.TB, prefix string) redisstore.Store {
+	t.Helper()
+	cfg := TestConfig()
+	if prefix != "" {
+		cfg.RedisKeyPrefix = prefix
+	}
+	store, err := redisstore.Open(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("open redis test store: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := store.DeleteByPrefix(context.Background(), ""); err != nil {
+			t.Fatalf("cleanup redis test keys: %v", err)
+		}
+		_ = store.Close()
+	})
+	return store
+}
+
+func NewMemoryRedis() redisstore.Store {
+	return redisstore.NewMemoryStore()
+}
+
+func usingIntegrationRedis() bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	return filepath.Base(cwd) == "integration" && filepath.Base(filepath.Dir(cwd)) == "internal"
 }
 
 func ensureTestDatabase(t testing.TB, ctx context.Context, dbName string) {

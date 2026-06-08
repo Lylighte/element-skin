@@ -580,7 +580,7 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 }
 
 func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
-	db, h := testutil.NewTestApp(t)
+	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	ctx := context.Background()
 
 	disabled := doJSON(t, h, "POST", "/send-verification-code", map[string]any{"email": "verify@test.com", "type": "register"})
@@ -602,12 +602,12 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if sendBody["ok"] != true || sendBody["ttl"] != float64(300) {
 		t.Fatalf("unexpected verification response: %#v", sendBody)
 	}
-	code, expiresAt, ok, err := db.Verifications.GetCode(ctx, "verify@test.com", "register")
-	if err != nil || !ok {
-		t.Fatalf("verification code missing ok=%v err=%v", ok, err)
+	code, err := redis.GetVerificationCode(ctx, "verify@test.com", "register")
+	if err != nil {
+		t.Fatalf("verification code missing err=%v", err)
 	}
-	if len(code) != 8 || expiresAt <= database.NowMS() {
-		t.Fatalf("bad verification code code=%q expires=%d", code, expiresAt)
+	if len(code) != 8 {
+		t.Fatalf("bad verification code code=%q", code)
 	}
 	for _, ch := range code {
 		if !((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) {
@@ -623,7 +623,7 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if register.Code != 200 {
 		t.Fatalf("verified register status=%d body=%s", register.Code, register.Body.String())
 	}
-	if _, _, ok, _ := db.Verifications.GetCode(ctx, "verify@test.com", "register"); ok {
+	if _, err := redis.GetVerificationCode(ctx, "verify@test.com", "register"); err == nil {
 		t.Fatal("register verification code should be deleted after use")
 	}
 
@@ -641,9 +641,9 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if sendReset.Code != 200 {
 		t.Fatalf("send reset status=%d body=%s", sendReset.Code, sendReset.Body.String())
 	}
-	resetCode, _, ok, err := db.Verifications.GetCode(ctx, user.Email, "reset")
-	if err != nil || !ok {
-		t.Fatalf("reset code missing ok=%v err=%v", ok, err)
+	resetCode, err := redis.GetVerificationCode(ctx, user.Email, "reset")
+	if err != nil {
+		t.Fatalf("reset code missing err=%v", err)
 	}
 	reset := doJSON(t, h, "POST", "/reset-password", map[string]any{"email": user.Email, "password": "NewPassword456!", "code": resetCode})
 	if reset.Code != 200 {
@@ -657,7 +657,7 @@ func TestVerificationCodeRegisterAndResetPasswordHTTP(t *testing.T) {
 	if reuseRefresh.Code != 401 {
 		t.Fatalf("old refresh should be revoked after reset, got %d", reuseRefresh.Code)
 	}
-	if _, _, ok, _ := db.Verifications.GetCode(ctx, user.Email, "reset"); ok {
+	if _, err := redis.GetVerificationCode(ctx, user.Email, "reset"); err == nil {
 		t.Fatal("reset verification code should be deleted after use")
 	}
 }

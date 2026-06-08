@@ -15,7 +15,7 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	site := site.Site{DB: db, Cfg: cfg}
+	site := site.Site{DB: db, Cfg: cfg, Redis: testutil.NewMemoryRedis()}
 
 	if err := db.Settings.Set(ctx, "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 func TestSiteProfilesTexturesAndLibraryExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	site := site.Site{DB: db, Cfg: testutil.TestConfig()}
+	site := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
 	user := testutil.CreateUser(t, db, "profile-site@test.com", "Password123", "ProfileSite", false)
 	other := testutil.CreateUser(t, db, "other-site@test.com", "Password123", "OtherSite", false)
 
@@ -211,7 +211,7 @@ func TestSiteProfilesTexturesAndLibraryExactState(t *testing.T) {
 func TestSiteVerificationAndResetPasswordExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	site := site.Site{DB: db, Cfg: testutil.TestConfig()}
+	site := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
 	user := testutil.CreateUser(t, db, "reset-site@test.com", "Password123", "ResetSite", false)
 	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
 		t.Fatal(err)
@@ -227,12 +227,12 @@ func TestSiteVerificationAndResetPasswordExactState(t *testing.T) {
 	if res["ok"] != true || res["ttl"] != 180 {
 		t.Fatalf("SendVerificationCode register response mismatch: %#v", res)
 	}
-	code, expiresAt, ok, err := db.Verifications.GetCode(ctx, "new-register@test.com", "register")
+	code, err := site.Redis.GetVerificationCode(ctx, "new-register@test.com", "register")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || len(code) != 8 || strings.ToUpper(code) != code || expiresAt <= database.NowMS() {
-		t.Fatalf("register verification code mismatch: code=%q expires=%d ok=%v", code, expiresAt, ok)
+	if len(code) != 8 || strings.ToUpper(code) != code {
+		t.Fatalf("register verification code mismatch: code=%q", code)
 	}
 
 	resetRes, err := site.SendVerificationCode(ctx, "reset-site@test.com", "reset")
@@ -242,9 +242,9 @@ func TestSiteVerificationAndResetPasswordExactState(t *testing.T) {
 	if resetRes["ttl"] != 180 {
 		t.Fatalf("reset ttl mismatch: %#v", resetRes)
 	}
-	resetCode, _, ok, err := db.Verifications.GetCode(ctx, "reset-site@test.com", "reset")
-	if err != nil || !ok {
-		t.Fatalf("reset code should exist: code=%q ok=%v err=%v", resetCode, ok, err)
+	resetCode, err := site.Redis.GetVerificationCode(ctx, "reset-site@test.com", "reset")
+	if err != nil {
+		t.Fatalf("reset code should exist: code=%q err=%v", resetCode, err)
 	}
 	if verified, err := site.VerifyCode(ctx, "reset-site@test.com", resetCode, "reset"); err != nil || !verified {
 		t.Fatalf("VerifyCode should accept exact stored code: verified=%v err=%v", verified, err)
@@ -262,8 +262,8 @@ func TestSiteVerificationAndResetPasswordExactState(t *testing.T) {
 	if !util.VerifyPassword("ResetPassword123", updated.Password) {
 		t.Fatal("ResetPassword should persist new password hash")
 	}
-	if _, _, ok, err := db.Verifications.GetCode(ctx, "reset-site@test.com", "reset"); err != nil || ok {
-		t.Fatalf("ResetPassword should consume reset verification code: ok=%v err=%v", ok, err)
+	if _, err := site.Redis.GetVerificationCode(ctx, "reset-site@test.com", "reset"); err == nil {
+		t.Fatal("ResetPassword should consume reset verification code")
 	}
 	if refresh, err := db.Tokens.GetRefresh(ctx, "reset_refresh"); err != nil || refresh != nil {
 		t.Fatalf("ResetPassword should revoke refresh tokens: refresh=%#v err=%v", refresh, err)

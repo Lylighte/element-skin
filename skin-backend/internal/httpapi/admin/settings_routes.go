@@ -27,6 +27,10 @@ func (h Handler) SaveSiteSettings(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
+	if err := h.redis.InvalidatePublicSettings(req.Context()); err != nil {
+		util.Error(w, err)
+		return
+	}
 	util.JSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -48,6 +52,13 @@ func (h Handler) SaveSettingsGroup(w http.ResponseWriter, req *http.Request) {
 	if err := (settingssvc.Settings{DB: h.db}).SaveGroup(req.Context(), req.PathValue("group"), body); err != nil {
 		util.Error(w, err)
 		return
+	}
+	switch req.PathValue("group") {
+	case "site", "fallback", "email":
+		if err := h.redis.InvalidatePublicSettings(req.Context()); err != nil {
+			util.Error(w, err)
+			return
+		}
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
 }

@@ -1,11 +1,14 @@
 package site
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"element-skin/backend/internal/redisstore"
 	settingssvc "element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/util"
 )
@@ -21,8 +24,19 @@ func (h Handler) PublicLibrary(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) PublicSettings(w http.ResponseWriter, req *http.Request) {
+	if cached, err := h.redis.GetPublicSettings(req.Context()); err == nil {
+		util.JSON(w, 200, cached)
+		return
+	} else if !errors.Is(err, redisstore.ErrCacheMiss) {
+		util.Error(w, err)
+		return
+	}
 	res, err := (settingssvc.Settings{DB: h.db}).Public(req.Context(), h.cfg.SiteURL, h.cfg.APIURL)
 	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	if err := h.redis.SetPublicSettings(req.Context(), res, time.Duration(h.cfg.PublicCacheTTL)*time.Second); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -30,9 +44,21 @@ func (h Handler) PublicSettings(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) PublicCarousel(w http.ResponseWriter, req *http.Request) {
+	if cached, err := h.redis.GetPublicCarousel(req.Context()); err == nil {
+		util.JSON(w, 200, cached)
+		return
+	} else if !errors.Is(err, redisstore.ErrCacheMiss) {
+		util.Error(w, err)
+		return
+	}
 	entries, err := os.ReadDir(h.cfg.CarouselDir)
 	if os.IsNotExist(err) {
-		util.JSON(w, 200, []string{})
+		images := []string{}
+		if err := h.redis.SetPublicCarousel(req.Context(), images, time.Duration(h.cfg.PublicCacheTTL)*time.Second); err != nil {
+			util.Error(w, err)
+			return
+		}
+		util.JSON(w, 200, images)
 		return
 	}
 	if err != nil {
@@ -52,6 +78,10 @@ func (h Handler) PublicCarousel(w http.ResponseWriter, req *http.Request) {
 	}
 	if images == nil {
 		images = []string{}
+	}
+	if err := h.redis.SetPublicCarousel(req.Context(), images, time.Duration(h.cfg.PublicCacheTTL)*time.Second); err != nil {
+		util.Error(w, err)
+		return
 	}
 	util.JSON(w, 200, images)
 }

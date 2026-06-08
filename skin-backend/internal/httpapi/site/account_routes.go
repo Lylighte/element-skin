@@ -26,6 +26,10 @@ func (h Handler) UpdateMe(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), shared.CurrentUserID(req)); err != nil {
+		util.Error(w, err)
+		return
+	}
 	util.JSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -53,6 +57,10 @@ func (h Handler) DeleteMe(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
 		return
 	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), userID); err != nil {
+		util.Error(w, err)
+		return
+	}
 	util.JSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -63,6 +71,10 @@ func (h Handler) ChangePassword(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if err := h.site.ChangePassword(req.Context(), shared.CurrentUserID(req), body["old_password"], body["new_password"]); err != nil {
+		util.Error(w, err)
+		return
+	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), shared.CurrentUserID(req)); err != nil {
 		util.Error(w, err)
 		return
 	}

@@ -9,11 +9,20 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
+var testRequestIP atomic.Uint64
+
 func doJSON(t *testing.T, h http.Handler, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	return doJSONFromIP(t, h, method, path, body, nextTestRemoteAddr(), cookies...)
+}
+
+func doJSONFromIP(t *testing.T, h http.Handler, method, path string, body any, remoteAddr string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	var b bytes.Buffer
 	if body != nil {
@@ -22,8 +31,12 @@ func doJSON(t *testing.T, h http.Handler, method, path string, body any, cookies
 		}
 	}
 	req := httptest.NewRequest(method, path, &b)
+	req.RemoteAddr = remoteAddr
 	req.Header.Set("Content-Type", "application/json")
 	for _, c := range cookies {
+		if c == nil {
+			continue
+		}
 		req.AddCookie(c)
 	}
 	rr := httptest.NewRecorder()
@@ -34,6 +47,7 @@ func doJSON(t *testing.T, h http.Handler, method, path string, body any, cookies
 func doRawJSON(t *testing.T, h http.Handler, method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.RemoteAddr = nextTestRemoteAddr()
 	req.Header.Set("Content-Type", "application/json")
 	for _, c := range cookies {
 		if c == nil {
@@ -101,11 +115,20 @@ func doMultipart(t *testing.T, h http.Handler, method, path string, fields map[s
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(method, path, &b)
+	req.RemoteAddr = nextTestRemoteAddr()
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	for _, c := range cookies {
+		if c == nil {
+			continue
+		}
 		req.AddCookie(c)
 	}
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	return rr
+}
+
+func nextTestRemoteAddr() string {
+	n := testRequestIP.Add(1)
+	return "192.0.2." + strconv.Itoa(int(n%250+1)) + ":" + strconv.Itoa(10_000+int(n%50_000))
 }

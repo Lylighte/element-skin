@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
@@ -13,7 +12,7 @@ import (
 func TestVerificationSendAndVerifyExactStoredCode(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := site.Site{DB: db, Cfg: testutil.TestConfig()}
+	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
 	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
 		t.Fatal(err)
 	}
@@ -27,9 +26,9 @@ func TestVerificationSendAndVerifyExactStoredCode(t *testing.T) {
 	if res["ok"] != true || res["ttl"] != 180 {
 		t.Fatalf("verification response mismatch: %#v", res)
 	}
-	code, expiresAt, ok, err := db.Verifications.GetCode(ctx, "verify-service@test.com", "register")
-	if err != nil || !ok || len(code) != 8 || strings.ToUpper(code) != code || expiresAt <= database.NowMS() {
-		t.Fatalf("stored verification code mismatch: code=%q expires=%d ok=%v err=%v", code, expiresAt, ok, err)
+	code, err := svc.Redis.GetVerificationCode(ctx, "verify-service@test.com", "register")
+	if err != nil || len(code) != 8 || strings.ToUpper(code) != code {
+		t.Fatalf("stored verification code mismatch: code=%q err=%v", code, err)
 	}
 	verified, err := svc.VerifyCode(ctx, "verify-service@test.com", strings.ToLower(code), "register")
 	if err != nil || !verified {

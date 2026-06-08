@@ -12,6 +12,14 @@ database:
   dsn: "postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable"
   max_connections: 20
 
+redis:
+  addr: "redis:6379"
+  password: "password123"
+  db: 0
+  key_prefix: "elementskin:"
+  public_cache_ttl_seconds: 60
+  auth_cache_ttl_seconds: 30
+
 textures:
   directory: "/app/frontend/static/textures"
 

@@ -12,7 +12,7 @@ func TestSessionRotateRefreshIsSingleUse(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	svc := site.Site{DB: db, Cfg: cfg}
+	svc := site.Site{DB: db, Cfg: cfg, Redis: testutil.NewMemoryRedis()}
 	testutil.CreateUser(t, db, "site-session-service@test.com", "Password123", "SiteSessionService", false)
 	login, err := svc.Login(ctx, "site-session-service@test.com", "Password123")
 	if err != nil {

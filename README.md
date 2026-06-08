@@ -14,15 +14,16 @@
     <img src="https://img.shields.io/github/license/water2004/element-skin">
   </a>
   <img src="https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js&logoColor=white">
-  <img src="https://img.shields.io/badge/Python-3.14t-3776AB?logo=python&logoColor=white">
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white">
   <img src="https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white">
+  <img src="https://img.shields.io/badge/Redis-required-DC382D?logo=redis&logoColor=white">
 </p>
 
 ![](./img/root.png)
 
 ## ✨ 功能特性
 
-- **✅ 极致性能**: 后端基于 Python 3.14 并开启 **Free Threading (GIL-free)**充分发挥多核并发优势。
+- **✅ 极致性能**: 后端基于 Go 重构，使用 PostgreSQL + Redis 支撑高并发读写路径。
 - **✅ 现代化数据库**: 使用 **PostgreSQL 18** 作为主存储，支持高性能异步驱动 (`asyncpg`)。
 - **✅ 完整协议支持**: 完美实现 Yggdrasil API，无缝对接 Authlib-Injector 等主流加载器。
 - **✅ 完整的Fallback机制**: 支持多个第三方服务作为数据源，允许其他其他皮肤站的用户进入服务器。
@@ -37,7 +38,7 @@
 
 ## 🚀 Docker 部署指南 (推荐)
 
-项目现在默认使用 **PostgreSQL 18** 并支持自动化初始化。
+项目现在默认使用 **PostgreSQL 18 + Redis** 并支持自动化初始化。Redis 是运行时必需依赖，用于公开配置/轮播缓存、验证码、限流数据和短期用户鉴权缓存。
 
 ### 1. 准备配置文件
 
@@ -58,6 +59,17 @@ services:
       - ./data/db:/var/lib/postgresql
     ports:
       - "5432:5432" # 在迁移完成后可以关闭这个端口暴露
+  redis:
+    image: redis:8-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "password123"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "password123", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
   backend:
     image: ghcr.io/water2004/element-skin:latest
     container_name: element-skin
@@ -65,6 +77,11 @@ services:
     environment:
       - VITE_BASE_PATH=${VITE_BASE_PATH:-/}    # 👈 前端部署路径 (如 /skin/)
       - VITE_API_BASE=${VITE_API_BASE:-/skinapi} # 👈 后端 API 路径 (如 /skinapi)
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./frontend:/app/frontend           # 前端、皮肤、轮播图全部在这里
@@ -92,6 +109,14 @@ database:
   # 格式: postgresql://用户名:密码@db:5432/数据库名?sslmode=disable
   dsn: "postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable" #⚠️ 用户名和密码请确保与 PostgreSQL 环境变量一致
   max_connections: 20
+
+redis:
+  addr: "redis:6379"
+  password: "password123" # ⚠️ 与 docker compose 中 Redis 密码一致，生产环境请修改
+  db: 0
+  key_prefix: "elementskin:"
+  public_cache_ttl_seconds: 60
+  auth_cache_ttl_seconds: 30
 
 textures:
   directory: "/app/frontend/static/textures"
@@ -237,18 +262,24 @@ location = /skin/api {
     ```
     > 💡 **自动初始化**: 后端在每次启动时会自动同步数据库结构（创建缺失的表及默认配置），无需手动执行 SQL 脚本。
 
-#### 2. 后端 (Python 3.14+)
-```bash
-cd skin-backend
-python -m venv .venv
-# Windows: .venv\Scripts\activate | Linux: source .venv/bin/activate
-pip install -r requirements.txt
-python gen_key.py                # 生成密钥
-# 运行测试 (需本地开启 PG)
-uvicorn routes_reference:app --reload --host 0.0.0.0
+#### 2. Redis 配置
+本地开发需要 Redis 运行在 `127.0.0.1:6379`。如果你的 Redis 设置了密码，请同步修改 `skin-backend/config.yaml`：
+
+```yaml
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+  key_prefix: "elementskin:"
 ```
 
-#### 3. 前端 (Node.js)
+#### 3. 后端 (Go 1.26+)
+```bash
+cd skin-backend
+go run ./cmd/element-skin
+```
+
+#### 4. 前端 (Node.js)
 ```bash
 cd element-skin
 npm install
@@ -297,11 +328,11 @@ element-skin/
 - [x] PostgreSQL 数据库模块
 - [x] JWT认证机制
 - [x] API速率限制
-- [x] 数据库内存缓存与连接池
+- [x] Redis 缓存、限流、验证码与短期鉴权缓存
 - [x] 管理员设置细粒度API
 - [x] 数据库性能优化
 - [x] PostgreSQL 连接池
-- [ ] Redis缓存支持
+- [x] Redis缓存支持
 - [ ] 材质存储优化（如使用云存储或CDN）
 
 ### 前端优化
@@ -327,34 +358,23 @@ element-skin/
 
 ## 🧪 自动化测试
 
-项目采用了分层测试架构，确保从底层数据库到顶层 API 的稳定性。
+Go 后端采用分层测试架构，确保从底层数据库到顶层 API 的稳定性。
 
 ### 测试架构
-1.  **数据库层 (tests/database/)**: 验证 SQL 逻辑、数据迁移及缓存一致性。
-2.  **业务逻辑层 (tests/backends/)**: 验证核心业务规则（如注册权限、材质级联更新）。
-3.  **API 接口层 (tests/api/)**: 模拟真实 HTTP 请求，验证路由、中间件及响应格式。
+1.  **数据库层 (`internal/database`)**: 验证 SQL 逻辑、数据迁移及缓存一致性。
+2.  **业务逻辑层 (`internal/service`)**: 验证核心业务规则（如注册权限、材质级联更新）。
+3.  **HTTP 集成层 (`internal/integration`)**: 使用真实 PostgreSQL 和真实 Redis，模拟真实 HTTP 请求。
 
 ### 运行测试
 测试会自动创建临时数据库和文件目录，不会影响本地开发数据。
 
 ```bash
 cd skin-backend
-# 安装测试依赖
-pip install -r requirements.txt
-
-# 运行所有测试
-pytest tests/
-
-# 查看详细输出
-pytest -v
+go test ./...
 ```
 
 ### 编写新测试
-利用 `tests/conftest.py` 中预定义的 Fixtures 可以极速编写测试：
-- `db_session`: 获取一个干净的临时数据库实例。
-- `user_factory`: 快速创建测试用户。
-- `auth_headers` / `admin_headers`: 自动生成带 JWT 的请求头。
-- `client`: 异步 API 客户端。
+单元测试使用内存 Redis mock；`internal/integration` 使用真实 Redis，并通过唯一 key 前缀自动清理测试数据，不会清空你的本地 Redis。
 
 ## 📄 许可证
 

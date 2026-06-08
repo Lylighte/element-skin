@@ -11,7 +11,7 @@ import (
 func TestProfilesCreateListAndClearTextureExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := site.Site{DB: db, Cfg: testutil.TestConfig()}
+	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
 	user := testutil.CreateUser(t, db, "site-profiles-service@test.com", "Password123", "SiteProfilesService", false)
 	created, err := svc.CreateProfile(ctx, user.ID, "ProfileSvc", "slim")
 	if err != nil {

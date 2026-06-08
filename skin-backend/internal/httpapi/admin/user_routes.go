@@ -59,6 +59,10 @@ func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), targetID); err != nil {
+		util.Error(w, err)
+		return
+	}
 	util.JSON(w, 200, map[string]any{"ok": true, "is_admin": next})
 }
 
@@ -75,6 +79,10 @@ func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
 	}
 	if !ok {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
+		return
+	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), targetID); err != nil {
+		util.Error(w, err)
 		return
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
@@ -106,6 +114,10 @@ func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), req.PathValue("user_id")); err != nil {
+		util.Error(w, err)
+		return
+	}
 	util.JSON(w, 200, map[string]any{"ok": true, "banned_until": until})
 }
 
@@ -120,6 +132,10 @@ func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if err := h.db.Users.Unban(req.Context(), user.ID); err != nil {
+		util.Error(w, err)
+		return
+	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), user.ID); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -150,6 +166,10 @@ func (h Handler) ResetUserPassword(w http.ResponseWriter, req *http.Request) {
 	}
 	if !ok {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
+		return
+	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), userID); err != nil {
+		util.Error(w, err)
 		return
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})

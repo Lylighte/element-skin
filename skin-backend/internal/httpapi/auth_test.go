@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/httpapi"
+	"element-skin/backend/internal/redisstore"
 	sitesvc "element-skin/backend/internal/service/site"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
@@ -44,5 +46,25 @@ func TestAuthRejectsMissingInvalidAndNonAdminExactly(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "admin required") {
 		t.Fatalf("non-admin auth mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthRedisErrorDoesNotFallBackToDatabase(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	user := testutil.CreateUser(t, db, "auth-redis-error@test.com", "Password123", "AuthRedisError", true)
+	cache := redisstore.NewMemoryStore()
+	cache.Err = errors.New("redis down")
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, true, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("redis auth error should fail without DB fallback, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }

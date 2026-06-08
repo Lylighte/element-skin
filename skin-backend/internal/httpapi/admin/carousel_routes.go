@@ -51,6 +51,10 @@ func (h Handler) UploadCarousel(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
+	if err := h.redis.InvalidatePublicCarousel(req.Context()); err != nil {
+		util.Error(w, err)
+		return
+	}
 	util.JSON(w, 200, map[string]any{"filename": filename})
 }
 
@@ -62,6 +66,10 @@ func (h Handler) DeleteCarousel(w http.ResponseWriter, req *http.Request) {
 	}
 	err := os.Remove(filepath.Join(h.cfg.CarouselDir, filename))
 	if err != nil && !os.IsNotExist(err) {
+		util.Error(w, err)
+		return
+	}
+	if err := h.redis.InvalidatePublicCarousel(req.Context()); err != nil {
 		util.Error(w, err)
 		return
 	}
