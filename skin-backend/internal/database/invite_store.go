@@ -2,13 +2,14 @@ package database
 
 import (
 	"context"
+	"errors"
 
 	"element-skin/backend/internal/model"
 
 	"github.com/jackc/pgx/v5"
 )
 
-var ErrInviteExhausted = errString("invite exhausted")
+var ErrInviteExhausted = errors.New("invite exhausted")
 
 func (db *DB) CreateInvite(ctx context.Context, code string, totalUses int, note string) error {
 	_, err := db.Pool.Exec(ctx, `INSERT INTO invites (code,created_at,total_uses,used_count,note) VALUES ($1,$2,$3,0,$4)`, code, NowMS(), totalUses, note)

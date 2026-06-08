@@ -48,3 +48,27 @@ func TestValidateFallbackEndpointsRejectsMissingURLs(t *testing.T) {
 		t.Fatalf("unexpected error: %#v", httpErr)
 	}
 }
+
+func TestFallbackNormalizationHelpersExactValues(t *testing.T) {
+	if got := intValue("7", 1); got != 7 {
+		t.Fatalf("intValue string mismatch: %d", got)
+	}
+	if got := intValue(float64(8), 1); got != 8 {
+		t.Fatalf("intValue float mismatch: %d", got)
+	}
+	if got := intValue("bad", 9); got != 9 {
+		t.Fatalf("intValue fallback mismatch: %d", got)
+	}
+	if !boolValue("1") || !boolValue(float64(1)) || boolValue("false") || boolValue(0) {
+		t.Fatalf("boolValue exact coercion failed")
+	}
+	if got := normalizeDomains([]any{" skins.example ", "", "cdn.example"}); got != "skins.example,cdn.example" {
+		t.Fatalf("normalizeDomains list mismatch: %q", got)
+	}
+	if got := valueOr(nil, "fallback"); got != "fallback" {
+		t.Fatalf("valueOr nil mismatch: %#v", got)
+	}
+	if got := valueOr("value", "fallback"); got != "value" {
+		t.Fatalf("valueOr value mismatch: %#v", got)
+	}
+}

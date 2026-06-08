@@ -5,10 +5,17 @@ import (
 	"regexp"
 	"strings"
 
+	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/util"
 )
+
+// Site contains user-facing account, profile, and texture operations.
+type Site struct {
+	DB  *database.DB
+	Cfg config.Config
+}
 
 func (s Site) Login(ctx context.Context, email, password string) (map[string]any, error) {
 	user, err := s.DB.GetUserByEmail(ctx, email)

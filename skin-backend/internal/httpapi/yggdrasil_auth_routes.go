@@ -85,3 +85,16 @@ func (r *Router) yggInvalidate(w http.ResponseWriter, req *http.Request) {
 func (r *Router) yggSignout(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(204)
 }
+
+func (r *Router) yggJoin(w http.ResponseWriter, req *http.Request) {
+	var body map[string]string
+	if err := decodeJSON(req, &body); err != nil {
+		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
+		return
+	}
+	if err := r.ygg.Join(req.Context(), body["accessToken"], body["selectedProfile"], body["serverId"], req.RemoteAddr); err != nil {
+		util.Error(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}

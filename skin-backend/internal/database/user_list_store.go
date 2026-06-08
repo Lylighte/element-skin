@@ -41,7 +41,7 @@ func (db *DB) ListUsers(ctx context.Context, limit int, lastID, query string) (m
 	if hasNext {
 		items = rowsRows[:limit]
 	}
-	next := map[string]any(nil)
+	var next any
 	if hasNext {
 		next = map[string]any{"last_id": rowsRows[limit-1].ID}
 	}
