@@ -144,7 +144,9 @@ func usingIntegrationRedis() bool {
 	if err != nil {
 		return false
 	}
-	return filepath.Base(cwd) == "integration" && filepath.Base(filepath.Dir(cwd)) == "internal"
+	base := filepath.Base(cwd)
+	parent := filepath.Base(filepath.Dir(cwd))
+	return (base == "integration" && parent == "internal") || (base == "loadtest" && parent == "cmd")
 }
 
 func ensureTestDatabase(t testing.TB, ctx context.Context, dbName string) {
