@@ -205,6 +205,10 @@ func (s *MemoryStore) yggSessionKey(serverID string) string {
 	return s.key("ygg", "session", serverID)
 }
 
+func (s *MemoryStore) authUserKey(userID string) string {
+	return s.key("auth", "user", "v2", userID)
+}
+
 func (s *MemoryStore) SetYggToken(_ context.Context, token model.Token, ttl time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -437,7 +441,7 @@ func (s *MemoryStore) HitRateLimit(_ context.Context, key string, limit int, win
 func (s *MemoryStore) GetAuthUser(_ context.Context, userID string) (AuthUser, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v, err := s.get(s.key("auth", "user", userID))
+	v, err := s.get(s.authUserKey(userID))
 	if err != nil {
 		return AuthUser{}, err
 	}
@@ -450,7 +454,7 @@ func (s *MemoryStore) GetAuthUser(_ context.Context, userID string) (AuthUser, e
 func (s *MemoryStore) SetAuthUser(_ context.Context, user AuthUser, ttl time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.set(s.key("auth", "user", user.ID), user, ttl)
+	return s.set(s.authUserKey(user.ID), user, ttl)
 }
 
 func (s *MemoryStore) InvalidateAuthUser(_ context.Context, userID string) error {
@@ -459,7 +463,7 @@ func (s *MemoryStore) InvalidateAuthUser(_ context.Context, userID string) error
 	if s.Err != nil {
 		return s.Err
 	}
-	delete(s.items, s.key("auth", "user", userID))
+	delete(s.items, s.authUserKey(userID))
 	return nil
 }
 

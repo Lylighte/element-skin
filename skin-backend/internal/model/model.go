@@ -5,8 +5,10 @@ type User struct {
 	Email             string
 	Password          string
 	IsAdmin           bool
+	IsSuperAdmin      bool
 	PreferredLanguage string
 	DisplayName       string
+	CreatedAt         int64
 	BannedUntil       *int64
 	AvatarHash        *string
 }

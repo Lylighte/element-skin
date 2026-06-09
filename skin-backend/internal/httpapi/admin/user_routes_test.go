@@ -42,11 +42,55 @@ func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+adminUser.ID+"/toggle-admin", nil)
 	req.SetPathValue("user_id", adminUser.ID)
-	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true, true))
 	rec = httptest.NewRecorder()
 	h.ToggleUserAdmin(rec, req)
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "cannot change your own admin status") {
 		t.Fatalf("self admin toggle should be forbidden exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSuperAdminOnlyAdminRoleControls(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := admin.New(cfg, db, nil)
+	superAdmin := testutil.CreateUser(t, db, "super-role@test.com", "Password123", "SuperRole", true, true)
+	plainAdmin := testutil.CreateUser(t, db, "plain-role@test.com", "Password123", "PlainRole", true)
+	target := testutil.CreateUser(t, db, "target-role@test.com", "Password123", "TargetRole", false)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), plainAdmin.ID, true))
+	rec := httptest.NewRecorder()
+	h.ToggleUserAdmin(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "super admin required") {
+		t.Fatalf("plain admin toggle should require super admin: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), superAdmin.ID, true, true))
+	rec = httptest.NewRecorder()
+	h.ToggleUserAdmin(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"is_admin":true`) {
+		t.Fatalf("super admin toggle response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), superAdmin.ID, true, true))
+	rec = httptest.NewRecorder()
+	h.TransferSuperAdmin(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("transfer super admin response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	oldSuper, err := db.Users.GetByID(req.Context(), superAdmin.ID)
+	if err != nil || oldSuper == nil || oldSuper.IsSuperAdmin || !oldSuper.IsAdmin {
+		t.Fatalf("old super admin should become plain admin: user=%#v err=%v", oldSuper, err)
+	}
+	newSuper, err := db.Users.GetByID(req.Context(), target.ID)
+	if err != nil || newSuper == nil || !newSuper.IsSuperAdmin || !newSuper.IsAdmin {
+		t.Fatalf("target should become super admin: user=%#v err=%v", newSuper, err)
 	}
 }
 

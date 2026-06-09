@@ -72,6 +72,7 @@ func (r *Router) routes() {
 	r.handle("GET /admin/users/{user_id}", adminRoutes.Auth(adminRoutes.User))
 	r.handle("GET /admin/users/{user_id}/profiles", adminRoutes.Auth(adminRoutes.UserProfiles))
 	r.handle("POST /admin/users/{user_id}/toggle-admin", adminRoutes.Auth(adminRoutes.ToggleUserAdmin))
+	r.handle("POST /admin/users/{user_id}/transfer-super-admin", adminRoutes.Auth(adminRoutes.TransferSuperAdmin))
 	r.handle("DELETE /admin/users/{user_id}", adminRoutes.Auth(adminRoutes.DeleteUser))
 	r.handle("POST /admin/users/{user_id}/ban", adminRoutes.Auth(adminRoutes.BanUser))
 	r.handle("POST /admin/users/{user_id}/unban", adminRoutes.Auth(adminRoutes.UnbanUser))

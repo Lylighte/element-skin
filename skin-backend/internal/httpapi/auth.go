@@ -51,6 +51,6 @@ func (r *Router) auth(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc
 			util.Error(w, util.HTTPError{Status: 403, Detail: "admin required"})
 			return
 		}
-		next(w, req.WithContext(shared.WithUser(req.Context(), authUser.ID, authUser.IsAdmin)))
+		next(w, req.WithContext(shared.WithUser(req.Context(), authUser.ID, authUser.IsAdmin, authUser.IsSuperAdmin)))
 	}
 }

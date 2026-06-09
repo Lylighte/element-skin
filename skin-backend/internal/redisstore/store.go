@@ -17,13 +17,14 @@ import (
 var ErrCacheMiss = errors.New("redis cache miss")
 
 type AuthUser struct {
-	ID          string `json:"id"`
-	IsAdmin     bool   `json:"is_admin"`
-	BannedUntil *int64 `json:"banned_until,omitempty"`
+	ID           string `json:"id"`
+	IsAdmin      bool   `json:"is_admin"`
+	IsSuperAdmin bool   `json:"is_super_admin"`
+	BannedUntil  *int64 `json:"banned_until,omitempty"`
 }
 
 func AuthUserFromModel(u model.User) AuthUser {
-	return AuthUser{ID: u.ID, IsAdmin: u.IsAdmin, BannedUntil: u.BannedUntil}
+	return AuthUser{ID: u.ID, IsAdmin: u.IsAdmin, IsSuperAdmin: u.IsSuperAdmin, BannedUntil: u.BannedUntil}
 }
 
 func (u AuthUser) Banned(now time.Time) bool {
@@ -244,6 +245,10 @@ func (s *RedisStore) fallbackRequestKey(endpoint, request string) string {
 	return s.key("fallback", "request", endpoint, request)
 }
 
+func (s *RedisStore) authUserKey(userID string) string {
+	return s.key("auth", "user", "v2", userID)
+}
+
 func (s *RedisStore) SetYggToken(ctx context.Context, token model.Token, ttl time.Duration) error {
 	value := yggTokenFromModel(token)
 	b, err := json.Marshal(value)
@@ -405,18 +410,18 @@ func (s *RedisStore) HitRateLimit(ctx context.Context, key string, limit int, wi
 
 func (s *RedisStore) GetAuthUser(ctx context.Context, userID string) (AuthUser, error) {
 	var out AuthUser
-	if err := s.getJSON(ctx, s.key("auth", "user", userID), &out); err != nil {
+	if err := s.getJSON(ctx, s.authUserKey(userID), &out); err != nil {
 		return AuthUser{}, err
 	}
 	return out, nil
 }
 
 func (s *RedisStore) SetAuthUser(ctx context.Context, user AuthUser, ttl time.Duration) error {
-	return s.setJSON(ctx, s.key("auth", "user", user.ID), user, ttl)
+	return s.setJSON(ctx, s.authUserKey(user.ID), user, ttl)
 }
 
 func (s *RedisStore) InvalidateAuthUser(ctx context.Context, userID string) error {
-	return s.client.Del(ctx, s.key("auth", "user", userID)).Err()
+	return s.client.Del(ctx, s.authUserKey(userID)).Err()
 }
 
 func (s *RedisStore) DeleteByPrefix(ctx context.Context, prefix string) error {

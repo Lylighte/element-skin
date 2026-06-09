@@ -27,7 +27,7 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user == nil || user.Email != "site-user@test.com" || user.DisplayName != "SiteUser" || !user.IsAdmin {
+	if user == nil || user.Email != "site-user@test.com" || user.DisplayName != "SiteUser" || !user.IsAdmin || !user.IsSuperAdmin {
 		t.Fatalf("registered first user mismatch: %#v", user)
 	}
 	profiles, err := db.Profiles.GetByUser(ctx, userID, 10)
@@ -42,14 +42,14 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if login["user_id"] != userID || login["is_admin"] != true || login["access_token"] == "" || login["refresh_token"] == "" {
+	if login["user_id"] != userID || login["is_admin"] != true || login["is_super_admin"] != true || login["access_token"] == "" || login["refresh_token"] == "" {
 		t.Fatalf("login response mismatch: %#v", login)
 	}
 	rotated, err := site.RotateRefresh(ctx, login["refresh_token"].(string))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rotated["is_admin"] != true || rotated["access_token"] == "" || rotated["refresh_token"] == "" || rotated["refresh_token"] == login["refresh_token"] {
+	if rotated["is_admin"] != true || rotated["is_super_admin"] != true || rotated["access_token"] == "" || rotated["refresh_token"] == "" || rotated["refresh_token"] == login["refresh_token"] {
 		t.Fatalf("rotated session mismatch: %#v", rotated)
 	}
 	if _, err := site.RotateRefresh(ctx, login["refresh_token"].(string)); err == nil {

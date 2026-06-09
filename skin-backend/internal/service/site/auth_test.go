@@ -20,7 +20,7 @@ func TestAuthRegisterCreatesFirstAdminAndOfflineProfileExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	user, err := db.Users.GetByID(ctx, userID)
-	if err != nil || user == nil || !user.IsAdmin || user.Email != "auth-service@test.com" || user.DisplayName != "AuthService" {
+	if err != nil || user == nil || !user.IsAdmin || !user.IsSuperAdmin || user.Email != "auth-service@test.com" || user.DisplayName != "AuthService" {
 		t.Fatalf("registered user mismatch: user=%#v err=%v", user, err)
 	}
 	profiles, err := db.Profiles.GetByUser(ctx, userID, 10)

@@ -16,14 +16,14 @@ func (s Store) List(ctx context.Context, limit int, lastID, query string) (map[s
 	if query != "" {
 		pat := "%" + query + "%"
 		if lastID != "" {
-			rows, err = s.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,preferred_language,display_name,banned_until,avatar_hash FROM users WHERE (display_name ILIKE $1 OR email ILIKE $1 OR EXISTS (SELECT 1 FROM profiles WHERE profiles.user_id=users.id AND profiles.name ILIKE $1)) AND id>$2 ORDER BY id LIMIT $3`, pat, lastID, actual)
+			rows, err = s.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,is_super_admin,preferred_language,display_name,created_at,banned_until,avatar_hash FROM users WHERE (display_name ILIKE $1 OR email ILIKE $1 OR EXISTS (SELECT 1 FROM profiles WHERE profiles.user_id=users.id AND profiles.name ILIKE $1)) AND id>$2 ORDER BY id LIMIT $3`, pat, lastID, actual)
 		} else {
-			rows, err = s.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,preferred_language,display_name,banned_until,avatar_hash FROM users WHERE (display_name ILIKE $1 OR email ILIKE $1 OR EXISTS (SELECT 1 FROM profiles WHERE profiles.user_id=users.id AND profiles.name ILIKE $1)) ORDER BY id LIMIT $2`, pat, actual)
+			rows, err = s.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,is_super_admin,preferred_language,display_name,created_at,banned_until,avatar_hash FROM users WHERE (display_name ILIKE $1 OR email ILIKE $1 OR EXISTS (SELECT 1 FROM profiles WHERE profiles.user_id=users.id AND profiles.name ILIKE $1)) ORDER BY id LIMIT $2`, pat, actual)
 		}
 	} else if lastID != "" {
-		rows, err = s.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,preferred_language,display_name,banned_until,avatar_hash FROM users WHERE id>$1 ORDER BY id LIMIT $2`, lastID, actual)
+		rows, err = s.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,is_super_admin,preferred_language,display_name,created_at,banned_until,avatar_hash FROM users WHERE id>$1 ORDER BY id LIMIT $2`, lastID, actual)
 	} else {
-		rows, err = s.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,preferred_language,display_name,banned_until,avatar_hash FROM users ORDER BY id LIMIT $1`, actual)
+		rows, err = s.Pool.Query(ctx, `SELECT id,email,'' AS password,is_admin,is_super_admin,preferred_language,display_name,created_at,banned_until,avatar_hash FROM users ORDER BY id LIMIT $1`, actual)
 	}
 	if err != nil {
 		return nil, err
@@ -31,7 +31,7 @@ func (s Store) List(ctx context.Context, limit int, lastID, query string) (map[s
 	defer rows.Close()
 	for rows.Next() {
 		var u model.User
-		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.IsAdmin, &u.PreferredLanguage, &u.DisplayName, &u.BannedUntil, &u.AvatarHash); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.IsAdmin, &u.IsSuperAdmin, &u.PreferredLanguage, &u.DisplayName, &u.CreatedAt, &u.BannedUntil, &u.AvatarHash); err != nil {
 			return nil, err
 		}
 		rowsRows = append(rowsRows, u)

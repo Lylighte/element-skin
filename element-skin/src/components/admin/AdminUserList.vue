@@ -36,7 +36,8 @@
         <el-table-column prop="email" label="邮箱" min-width="220" />
         <el-table-column label="身份状态" width="120">
           <template #default="{ row }">
-            <el-tag v-if="row.is_admin" type="danger" effect="light" size="small">管理员</el-tag>
+            <el-tag v-if="row.is_super_admin" type="danger" effect="dark" size="small">超级管理员</el-tag>
+            <el-tag v-else-if="row.is_admin" type="danger" effect="light" size="small">管理员</el-tag>
             <el-tag v-else-if="getUserBanStatus(row)" type="warning" effect="light" size="small">已封禁</el-tag>
             <el-tag v-else type="success" effect="light" size="small">正常</el-tag>
           </template>
@@ -79,9 +80,11 @@
       :is-banned="currentUser ? getUserBanStatus(currentUser) : false"
       :ban-remaining="formatBanRemaining(currentUser?.banned_until)"
       :is-self="currentUser ? isCurrentUserSelf(currentUser) : false"
+      :current-is-super-admin="loggedInUser?.is_super_admin || false"
       @profiles-prev="handleProfilesPrevPage"
       @profiles-next="handleProfilesNextPage"
       @toggle-admin="toggleAdmin"
+      @transfer-super-admin="transferSuperAdmin"
       @show-ban="showBanDialog"
       @unban="unbanUser"
       @show-reset-password="showResetPasswordDialog"
@@ -120,7 +123,7 @@ import ResetPasswordDialog from '@/components/admin/users/ResetPasswordDialog.vu
 import BanUserDialog from '@/components/admin/users/BanUserDialog.vue'
 import { getAvatarForHash } from '@/composables/useAvatar'
 import { useCursorPagination } from '@/composables/useCursorPagination'
-import { getUsers, getUser, getUserProfiles, toggleAdmin as apiToggleAdmin, deleteUser as apiDeleteUser, banUser as apiBanUser, unbanUser as apiUnbanUser, resetUserPassword } from '@/api/admin/users'
+import { getUsers, getUser, getUserProfiles, toggleAdmin as apiToggleAdmin, transferSuperAdmin as apiTransferSuperAdmin, deleteUser as apiDeleteUser, banUser as apiBanUser, unbanUser as apiUnbanUser, resetUserPassword } from '@/api/admin/users'
 import type { User, Profile } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 
@@ -263,10 +266,28 @@ async function handleProfilesPrevPage() {
 async function toggleAdmin(user: User) {
   try {
     await ElMessageBox.confirm(`确定要切换 ${user.email} 的管理员状态吗？`, '确认', { type: 'warning' })
-    await apiToggleAdmin(user.id)
+    const res = await apiToggleAdmin(user.id)
     ElMessage.success('操作成功')
     await refreshUsers()
-    if (currentUser.value) currentUser.value.is_admin = !currentUser.value.is_admin
+    if (currentUser.value) currentUser.value.is_admin = Boolean(res.data.is_admin)
+  } catch (e) {}
+}
+
+async function transferSuperAdmin(user: User) {
+  try {
+    await ElMessageBox.confirm(
+      `确定将超级管理员转让给 ${user.email} 吗？转让后你仍是管理员，但不再能设置/解除管理员。`,
+      '转让超级管理员',
+      { type: 'warning', confirmButtonText: '确认转让', cancelButtonText: '取消' },
+    )
+    await apiTransferSuperAdmin(user.id)
+    ElMessage.success('超级管理员已转让')
+    if (loggedInUser?.value) {
+      loggedInUser.value.is_super_admin = false
+      loggedInUser.value.is_admin = true
+    }
+    userDetailDialogVisible.value = false
+    await refreshUsersFromFirst()
   } catch (e) {}
 }
 

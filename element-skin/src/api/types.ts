@@ -13,6 +13,7 @@ export interface User {
   email: string
   display_name?: string
   is_admin: boolean
+  is_super_admin?: boolean
   avatar_hash?: string | null
   banned_until?: number | null
   profile_count?: number
@@ -71,6 +72,7 @@ export interface SiteSettings {
 export interface LoginResponse {
   user_id: string
   is_admin: boolean
+  is_super_admin?: boolean
 }
 
 // Invite code
