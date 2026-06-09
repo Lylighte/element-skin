@@ -94,6 +94,14 @@ const definitions: EasterEggDefinition[] = [
     load: () => import('./midAutumn'),
   },
   {
+    id: 'halloween',
+    name: '万圣节',
+    description: '10 月 31 日启用南瓜灯按钮 hover 效果。',
+    htmlClass: 'easter-egg-halloween',
+    active: (date) => date.getMonth() === 9 && date.getDate() === 31,
+    load: () => import('./halloween'),
+  },
+  {
     id: 'christmas',
     name: '圣诞节',
     description: '12 月 24 日至 12 月 25 日启用飘雪效果。',
