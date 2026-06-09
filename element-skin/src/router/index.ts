@@ -20,6 +20,7 @@ import AdminInviteList from '@/components/admin/AdminInviteList.vue'
 import AdminMojang from '@/components/admin/AdminMojang.vue'
 import AdminCarousel from '@/components/admin/AdminCarousel.vue'
 import AdminEmail from '@/components/admin/AdminEmail.vue'
+import AdminEasterEggs from '@/components/admin/AdminEasterEggs.vue'
 import AdminTexturesList from '@/components/admin/AdminTexturesList.vue'
 import AdminRolesList from '@/components/admin/AdminRolesList.vue'
 import { installEasterEggRouterHooks } from '@/easter-eggs'
@@ -81,6 +82,11 @@ const router = createRouter({
           path: 'carousel',
           name: 'admin-carousel',
           component: AdminCarousel,
+        },
+        {
+          path: 'easter-eggs',
+          name: 'admin-easter-eggs',
+          component: AdminEasterEggs,
         },
         {
           path: 'textures',

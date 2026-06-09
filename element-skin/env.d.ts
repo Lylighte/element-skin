@@ -14,3 +14,13 @@ declare module 'matter-js' {
   const Matter: any
   export default Matter
 }
+
+interface Window {
+  elementSkinEasterEggs?: {
+    list: () => Array<{ id: string; name: string; description: string }>
+    start: (id: string) => Promise<boolean>
+    stop: () => void
+    refreshAt: (date: string | Date) => Promise<void>
+    setDisabled: (disabled: boolean) => void
+  }
+}
