@@ -35,7 +35,8 @@ export function start(): EasterEggCleanup {
       opacity: 0;
       background:
         radial-gradient(ellipse at 50% 50%, rgba(255, 151, 44, 0.24), transparent 44%),
-        linear-gradient(135deg, rgba(255, 122, 24, 0.1), rgba(80, 35, 12, 0.06));
+        linear-gradient(135deg, rgba(255, 122, 24, 0.18), rgba(80, 35, 12, 0.1)),
+        linear-gradient(135deg, #f08a24, #b85b13);
       transition: opacity 0.22s ease;
     }
 
@@ -79,10 +80,6 @@ export function start(): EasterEggCleanup {
     html.easter-egg-halloween .btn-glass:hover:not(:disabled),
     html.easter-egg-halloween .btn-outline:hover:not(:disabled),
     html.easter-egg-halloween .canvas-glass-button:hover:not(:disabled) {
-      background:
-        radial-gradient(ellipse at 50% 50%, rgba(255, 151, 44, 0.24), transparent 44%),
-        linear-gradient(135deg, rgba(255, 122, 24, 0.18), rgba(80, 35, 12, 0.1)),
-        linear-gradient(135deg, #f08a24, #b85b13) !important;
       border-color: rgba(255, 145, 35, 0.58) !important;
       color: #fff !important;
       box-shadow:
@@ -141,6 +138,26 @@ export function start(): EasterEggCleanup {
       position: relative;
       isolation: isolate;
       overflow: hidden;
+      background: var(--el-color-primary) !important;
+      border-color: var(--el-color-primary) !important;
+      opacity: 1 !important;
+      transition:
+        border-color 0.25s ease,
+        box-shadow 0.25s ease;
+    }
+
+    html.easter-egg-halloween .search-bar-container .el-input-group__append::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0;
+      background:
+        radial-gradient(ellipse at 50% 50%, rgba(255, 151, 44, 0.24), transparent 44%),
+        linear-gradient(135deg, rgba(255, 122, 24, 0.16), rgba(80, 35, 12, 0.08)),
+        linear-gradient(135deg, #f08a24, #b85b13);
+      transition: opacity 0.25s ease;
     }
 
     html.easter-egg-halloween .search-bar-container .el-input-group__append::after {
@@ -148,7 +165,7 @@ export function start(): EasterEggCleanup {
       position: absolute;
       left: 50%;
       top: 50%;
-      z-index: 0;
+      z-index: 1;
       width: 46px;
       height: 28px;
       pointer-events: none;
@@ -164,14 +181,17 @@ export function start(): EasterEggCleanup {
     }
 
     html.easter-egg-halloween .search-bar-container .el-input-group__append:hover {
-      background:
-        radial-gradient(ellipse at 50% 50%, rgba(255, 151, 44, 0.24), transparent 44%),
-        linear-gradient(135deg, rgba(255, 122, 24, 0.16), rgba(80, 35, 12, 0.08)),
-        linear-gradient(135deg, #f08a24, #b85b13) !important;
+      background: var(--el-color-primary) !important;
       border-color: rgba(255, 161, 42, 0.58) !important;
+      opacity: 1 !important;
       box-shadow:
         0 8px 24px rgba(89, 42, 10, 0.22),
         0 0 0 1px rgba(255, 183, 74, 0.24) !important;
+    }
+
+    html.easter-egg-halloween .search-bar-container .el-input-group__append:hover::before,
+    html.easter-egg-halloween .search-bar-container .el-input-group__append:focus-within::before {
+      opacity: 1;
     }
 
     html.easter-egg-halloween .search-bar-container .el-input-group__append:hover::after,
@@ -184,7 +204,7 @@ export function start(): EasterEggCleanup {
     html.easter-egg-halloween .search-bar-container .el-input-group__append .el-button:hover,
     html.easter-egg-halloween .search-bar-container .el-input-group__append .el-button:focus {
       position: relative;
-      z-index: 1;
+      z-index: 2;
       transform: none !important;
       background: transparent !important;
       background-image: none !important;
