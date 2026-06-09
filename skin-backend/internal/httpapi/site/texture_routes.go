@@ -66,6 +66,10 @@ func (h Handler) UploadAndApplyTexture(w http.ResponseWriter, req *http.Request)
 		util.Error(w, util.HTTPError{Status: 400, Detail: "uuid and texture_type are required"})
 		return
 	}
+	if textureType != "skin" && textureType != "cape" {
+		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid texture_type"})
+		return
+	}
 	data, err := shared.MultipartFileBytes(req, "file", 16<<20)
 	if err != nil {
 		util.Error(w, err)

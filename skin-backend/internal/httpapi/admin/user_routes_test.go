@@ -96,6 +96,47 @@ func TestSuperAdminOnlyAdminRoleControls(t *testing.T) {
 	}
 }
 
+func TestSuperAdminRoleControlsRejectExactInvalidTargets(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := admin.New(cfg, db, nil)
+	superAdmin := testutil.CreateUser(t, db, "super-role-errors@test.com", "Password123", "SuperRoleErrors", true, true)
+	plainAdmin := testutil.CreateUser(t, db, "plain-role-errors@test.com", "Password123", "PlainRoleErrors", true)
+	target := testutil.CreateUser(t, db, "target-role-errors@test.com", "Password123", "TargetRoleErrors", false)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), plainAdmin.ID, true))
+	rec := httptest.NewRecorder()
+	h.TransferSuperAdmin(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"super admin required\"}\n" {
+		t.Fatalf("plain admin transfer mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+superAdmin.ID+"/transfer-super-admin", nil)
+	req.SetPathValue("user_id", superAdmin.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), superAdmin.ID, true, true))
+	rec = httptest.NewRecorder()
+	h.TransferSuperAdmin(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"target is already current super admin\"}\n" {
+		t.Fatalf("self transfer mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/missing-user/transfer-super-admin", nil)
+	req.SetPathValue("user_id", "missing-user")
+	req = req.WithContext(shared.WithUser(req.Context(), superAdmin.ID, true, true))
+	rec = httptest.NewRecorder()
+	h.TransferSuperAdmin(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+		t.Fatalf("missing transfer target mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	currentSuper, err := db.Users.GetByID(req.Context(), superAdmin.ID)
+	if err != nil || currentSuper == nil || !currentSuper.IsSuperAdmin {
+		t.Fatalf("invalid transfer attempts should keep current super admin: user=%#v err=%v", currentSuper, err)
+	}
+}
+
 func TestAdminAuthWrapperRequiresAdmin(t *testing.T) {
 	var requireAdmin bool
 	h := admin.New(testutil.TestConfig(), nil, func(next http.HandlerFunc, require bool) http.HandlerFunc {
@@ -173,6 +214,60 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 	updated, err := db.Users.GetByID(req.Context(), target.ID)
 	if err != nil || updated == nil || !util.VerifyPassword("AdminNewPassword123", updated.Password) {
 		t.Fatalf("reset password should persist new hash: user=%#v err=%v", updated, err)
+	}
+}
+
+func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := admin.New(cfg, db, nil)
+	adminUser := testutil.CreateUser(t, db, "admin-user-errors@test.com", "Password123", "AdminUserErrors", true)
+	target := testutil.CreateUser(t, db, "target-user-errors@test.com", "Password123", "TargetUserErrors", false)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/ban", strings.NewReader(`{`))
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec := httptest.NewRecorder()
+	h.BanUser(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("ban bad json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":1}`))
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec = httptest.NewRecorder()
+	h.BanUser(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"banned_until is required\"}\n" {
+		t.Fatalf("ban expired timestamp mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if banned, err := db.Users.IsBanned(req.Context(), target.ID); err != nil || banned {
+		t.Fatalf("invalid ban should not change user state: banned=%v err=%v", banned, err)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/missing-user/unban", nil)
+	req.SetPathValue("user_id", "missing-user")
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec = httptest.NewRecorder()
+	h.UnbanUser(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+		t.Fatalf("unban missing user mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"`+target.ID+`"}`))
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec = httptest.NewRecorder()
+	h.ResetUserPassword(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"user_id and new_password required\"}\n" {
+		t.Fatalf("reset missing password mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"missing-user","new_password":"AdminNewPassword123"}`))
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec = httptest.NewRecorder()
+	h.ResetUserPassword(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+		t.Fatalf("reset missing user mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

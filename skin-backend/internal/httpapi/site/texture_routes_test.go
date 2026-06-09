@@ -209,3 +209,65 @@ func TestTextureRoutesAddUpdateDeleteAndApplyExactResponses(t *testing.T) {
 		t.Fatalf("delete texture should remove wardrobe row: info=%#v err=%v", info, err)
 	}
 }
+
+func TestTextureRoutesRejectInvalidInputsWithExactErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-texture-errors@test.com", "Password123", "SiteTextureErrors", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "site_texture_errors_profile", "SiteTextureErrorsProfile")
+
+	req := textureMultipartRequest(t, "/me/textures", map[string]string{
+		"texture_type": "elytra",
+	}, "file", "invalid-type.png", routePNG(t, 64, 64))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec := httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid texture_type\"}\n" {
+		t.Fatalf("invalid upload texture_type mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = textureMultipartRequest(t, "/textures/upload", map[string]string{
+		"uuid":         profile.ID,
+		"texture_type": "elytra",
+	}, "file", "invalid-apply-type.png", routePNG(t, 64, 64))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.UploadAndApplyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid texture_type\"}\n" {
+		t.Fatalf("invalid upload apply type should fail before persisting: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if count, err := db.Textures.CountForUser(req.Context(), user.ID); err != nil || count != 0 {
+		t.Fatalf("invalid upload apply should not persist texture rows: count=%d err=%v", count, err)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/me/textures/missing_hash/apply", strings.NewReader(`{"profile_id":"`+profile.ID+`","texture_type":"skin"}`))
+	req.SetPathValue("hash", "missing_hash")
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.ApplyTexture(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"Texture not found in your library\"}\n" {
+		t.Fatalf("apply missing texture mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/me/textures/missing_hash/skin", strings.NewReader(`{`))
+	req.SetPathValue("hash", "missing_hash")
+	req.SetPathValue("texture_type", "skin")
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.UpdateTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("bad update json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/me/textures/missing_hash/skin", nil)
+	req.SetPathValue("hash", "missing_hash")
+	req.SetPathValue("texture_type", "skin")
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.TextureDetail(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"Texture not found\"}\n" {
+		t.Fatalf("missing texture detail mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}

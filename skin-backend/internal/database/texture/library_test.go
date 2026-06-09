@@ -104,6 +104,52 @@ func TestPublicLibrarySortsByLatestAndMostUsed(t *testing.T) {
 	assertHashes(t, next["items"].([]map[string]any), []string{"sort_new"})
 }
 
+func TestUsageCountRecountAndUploaderDeleteSemantics(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	owner := testutil.CreateUser(t, db, "domain-library-usage-owner@test.com", "Password123", "UsageOwner", false)
+	userA := testutil.CreateUser(t, db, "domain-library-usage-a@test.com", "Password123", "UsageUserA", false)
+	userB := testutil.CreateUser(t, db, "domain-library-usage-b@test.com", "Password123", "UsageUserB", false)
+
+	if err := store.AddToLibrary(ctx, owner.ID, "usage_recount_hash", "skin", "Usage Recount", true, "slim"); err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []string{userA.ID, userB.ID} {
+		added, err := store.AddToWardrobe(ctx, userID, "usage_recount_hash", "skin")
+		if err != nil || !added {
+			t.Fatalf("AddToWardrobe user=%s added=%v err=%v", userID, added, err)
+		}
+	}
+	duplicate, err := store.AddToWardrobe(ctx, userA.ID, "usage_recount_hash", "skin")
+	if err != nil || !duplicate {
+		t.Fatalf("duplicate wardrobe add should still report found texture: added=%v err=%v", duplicate, err)
+	}
+	assertPublicUsage(t, store, "usage_recount_hash", int64(3))
+
+	deleted, err := store.DeleteFromLibrary(ctx, userA.ID, "usage_recount_hash", "skin")
+	if err != nil || !deleted {
+		t.Fatalf("DeleteFromLibrary userA deleted=%v err=%v", deleted, err)
+	}
+	if err := store.RecountUsage(ctx, "usage_recount_hash", "skin"); err != nil {
+		t.Fatal(err)
+	}
+	assertPublicUsage(t, store, "usage_recount_hash", int64(2))
+
+	if err := store.DeleteLibraryTexture(ctx, "usage_recount_hash", "skin"); err != nil {
+		t.Fatal(err)
+	}
+	if exists, err := store.Exists(ctx, "usage_recount_hash", "skin"); err != nil || exists {
+		t.Fatalf("DeleteLibraryTexture should remove public library row: exists=%v err=%v", exists, err)
+	}
+	for _, userID := range []string{owner.ID, userB.ID} {
+		info, err := store.GetInfo(ctx, userID, "usage_recount_hash", "skin")
+		if err != nil || info != nil {
+			t.Fatalf("DeleteLibraryTexture should remove wardrobe row for %s: info=%#v err=%v", userID, info, err)
+		}
+	}
+}
+
 func assertHashes(t *testing.T, items []map[string]any, want []string) {
 	t.Helper()
 	if len(items) != len(want) {
@@ -118,4 +164,21 @@ func assertHashes(t *testing.T, items []map[string]any, want []string) {
 
 func int64Ptr(v int64) *int64 {
 	return &v
+}
+
+func assertPublicUsage(t *testing.T, store texture.Store, hash string, want int64) {
+	t.Helper()
+	page, err := store.ListPublic(context.Background(), texture.PublicListOptions{Limit: 5, Sort: texture.PublicLibrarySortMostUsed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range page["items"].([]map[string]any) {
+		if item["hash"] == hash {
+			if item["usage_count"] != want {
+				t.Fatalf("usage_count mismatch for %s want=%d got=%#v", hash, want, item)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing public library item %s in %#v", hash, page)
 }
