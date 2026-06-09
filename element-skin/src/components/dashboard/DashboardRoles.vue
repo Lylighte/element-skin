@@ -762,9 +762,12 @@ onMounted(async () => {
 }
 
 .role-header-actions {
+  display: flex;
+  gap: 12px;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
+  flex: 1 1 100%;
   min-width: 0;
 }
 
@@ -775,7 +778,7 @@ onMounted(async () => {
 
 @media (max-width: 900px) {
   .role-header-actions {
-    justify-content: flex-start;
+    justify-content: center;
     width: 100%;
   }
 
@@ -785,6 +788,14 @@ onMounted(async () => {
 }
 
 @media (max-width: 520px) {
+  .role-actions {
+    flex-wrap: wrap;
+  }
+
+  .role-actions .el-button {
+    flex: 1 1 92px;
+  }
+
   .role-header-button {
     flex-basis: 100%;
   }
