@@ -39,6 +39,35 @@ func TestTextureRoutesRejectInvalidPatchTextureType(t *testing.T) {
 	}
 }
 
+func TestTextureRoutesRejectNoUpdateFieldsAndMissingTextureExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	h := admin.New(testutil.TestConfig(), db, nil)
+
+	req := httptest.NewRequest(http.MethodPatch, "/admin/textures/missing_hash", strings.NewReader(`{"type":"skin"}`))
+	req.SetPathValue("hash", "missing_hash")
+	rec := httptest.NewRecorder()
+	h.UpdateTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "至少需要一个更新字段") {
+		t.Fatalf("empty update should be rejected exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/admin/textures/missing_hash", strings.NewReader(`{"type":"skin","note":"Nope"}`))
+	req.SetPathValue("hash", "missing_hash")
+	rec = httptest.NewRecorder()
+	h.UpdateTexture(rec, req)
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `"detail":"Texture not found"`) {
+		t.Fatalf("missing texture update should be 404 exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/admin/textures/missing_hash?type=skin", nil)
+	req.SetPathValue("hash", "missing_hash")
+	rec = httptest.NewRecorder()
+	h.DeleteTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "per-user deletion requires user_id") {
+		t.Fatalf("non-force delete without user_id mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestTextureRoutesListUpdateAndDeleteExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	h := admin.New(testutil.TestConfig(), db, nil)
