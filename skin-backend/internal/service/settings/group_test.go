@@ -78,6 +78,20 @@ func TestSettingsSaveGetRoundTripExactValues(t *testing.T) {
 	if len(fallbacks) != 1 || fallbacks[0]["session_url"] != "https://session.example" || fallbacks[0]["enable_hasjoined"] != false {
 		t.Fatalf("unexpected fallback endpoints: %#v", fallbacks)
 	}
+
+	if err := settings.SaveGroup(ctx, "easter_eggs", map[string]any{
+		"easter_eggs_enabled": []any{"april-fools", "christmas", "april-fools"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	easterEggs, err := settings.GetGroup(ctx, "easter_eggs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := easterEggs["easter_eggs_enabled"].([]string)
+	if len(enabled) != 2 || enabled[0] != "april-fools" || enabled[1] != "christmas" {
+		t.Fatalf("unexpected easter egg settings: %#v", easterEggs)
+	}
 }
 
 func TestSettingsRejectInvalidGroupAndProfileMode(t *testing.T) {
@@ -88,5 +102,8 @@ func TestSettingsRejectInvalidGroupAndProfileMode(t *testing.T) {
 	}
 	if err := settings.SaveGroup(context.Background(), "site", map[string]any{"profile_uuid_mode": "bad"}); err == nil {
 		t.Fatal("invalid profile_uuid_mode should reject")
+	}
+	if err := settings.SaveGroup(context.Background(), "easter_eggs", map[string]any{"easter_eggs_enabled": []any{"missing"}}); err == nil {
+		t.Fatal("invalid easter egg should reject")
 	}
 }

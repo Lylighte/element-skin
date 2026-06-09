@@ -21,6 +21,12 @@ func settingValue(key, raw string) any {
 			return []map[string]any{}
 		}
 		return out
+	case "easter_eggs_enabled":
+		var out []string
+		if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			return []string{}
+		}
+		return out
 	default:
 		return raw
 	}

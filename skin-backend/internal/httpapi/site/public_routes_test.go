@@ -65,7 +65,7 @@ func TestPublicRoutesSettingsAndLibraryExactResponses(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/public/settings", nil)
 	rec := httptest.NewRecorder()
 	h.PublicSettings(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"site_name"`) || !strings.Contains(rec.Body.String(), `"enable_skin_library"`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"site_name"`) || !strings.Contains(rec.Body.String(), `"enable_skin_library"`) || !strings.Contains(rec.Body.String(), `"easter_eggs"`) {
 		t.Fatalf("public settings response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 

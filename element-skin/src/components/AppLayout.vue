@@ -148,8 +148,8 @@ import {
   Menu as MenuIcon, Box, User, Setting, Tools, Back, Odometer, Link, Picture, Message, Moon, Sunny
 } from '@element-plus/icons-vue'
 
-import '@/assets/scripts/meow.ts'
 import { useAvatar } from '@/composables/useAvatar'
+import { cleanupEasterEgg, refreshEasterEgg, setServerEasterEggConfig } from '@/easter-eggs'
 
 interface NavLink {
   type?: 'item' | 'group'
@@ -328,6 +328,7 @@ async function fetchMe() {
 
 onMounted(async () => {
   initTheme()
+  void refreshEasterEgg()
   try {
     const res = await getPublicSettings()
     if (res.data.site_name) {
@@ -343,6 +344,7 @@ onMounted(async () => {
     if (res.data.filing_icp_link !== undefined) filingIcpLink.value = res.data.filing_icp_link
     if (res.data.filing_mps !== undefined) filingMps.value = res.data.filing_mps
     if (res.data.filing_mps_link !== undefined) filingMpsLink.value = res.data.filing_mps_link
+    setServerEasterEggConfig(res.data.easter_eggs)
     updateFooterHeight()
   } catch (e) { console.warn('Failed to load site settings:', e) }
 
@@ -358,6 +360,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', updateFooterHeight)
   if (resizeObserver) resizeObserver.disconnect()
+  cleanupEasterEgg()
 })
 </script>
 

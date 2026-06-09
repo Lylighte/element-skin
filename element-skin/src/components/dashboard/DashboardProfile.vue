@@ -71,7 +71,7 @@
           个性化
         </el-divider>
         <el-form-item v-if="user" label="关闭彩蛋">
-          <el-switch v-model="disableMeowEasterEgg" />
+          <el-switch v-model="disableEasterEgg" />
           <el-text size="small" type="info" style="margin-left: 12px">
             效果你猜
           </el-text>
@@ -134,6 +134,7 @@ import { ElMessage } from 'element-plus'
 import { Clock, Check, Delete } from '@element-plus/icons-vue'
 import { useAvatar } from '@/composables/useAvatar'
 import { changePassword, patchMe, deleteMe } from '@/api/me'
+import { isEasterEggDisabled, setEasterEggDisabled } from '@/easter-eggs'
 import type { User } from '@/api/types'
 
 const { currentAvatarImg: customAvatar } = useAvatar()
@@ -146,7 +147,7 @@ const router = useRouter()
 const form = ref({ email: '', display_name: '', old_password: '', new_password: '', confirm_password: '' })
 const showDeleteDialog = ref(false)
 const deleteConfirmText = ref('')
-const disableMeowEasterEgg = ref(localStorage.getItem('disableMeowEasterEgg') === '1')
+const disableEasterEgg = ref(isEasterEggDisabled())
 
 const emailInitial = computed(() => {
   const email = user.value?.email || user.value?.display_name || 'U'
@@ -160,18 +161,7 @@ watch(() => user.value, (newUser) => {
   }
 }, { immediate: true, deep: true })
 
-watch(disableMeowEasterEgg, (disabled) => {
-  localStorage.setItem('disableMeowEasterEgg', disabled ? '1' : '0')
-  if (disabled) {
-    if (typeof window !== 'undefined' && window.meowCleanup) {
-      window.meowCleanup()
-    }
-    return
-  }
-  if (typeof window !== 'undefined' && window.meowReinit) {
-    window.meowReinit()
-  }
-})
+watch(disableEasterEgg, (disabled) => setEasterEggDisabled(disabled))
 
 function getUserBanStatus() {
   if (!user.value?.banned_until) return false
