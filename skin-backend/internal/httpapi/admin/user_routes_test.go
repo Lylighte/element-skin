@@ -2,6 +2,7 @@ package admin_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"element-skin/backend/internal/httpapi/admin"
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
@@ -171,6 +173,72 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 	updated, err := db.Users.GetByID(req.Context(), target.ID)
 	if err != nil || updated == nil || !util.VerifyPassword("AdminNewPassword123", updated.Password) {
 		t.Fatalf("reset password should persist new hash: user=%#v err=%v", updated, err)
+	}
+}
+
+func TestUserRoutesDeleteUserAndInvalidateAuthCacheExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	h := admin.NewWithRedis(cfg, db, redis, nil)
+	adminUser := testutil.CreateUser(t, db, "admin-delete@test.com", "Password123", "AdminDelete", true)
+	target := testutil.CreateUser(t, db, "target-delete@test.com", "Password123", "TargetDelete", false)
+	profile := testutil.CreateProfile(t, db, target.ID, "delete_user_profile", "DeleteUserProfile")
+	if err := redis.SetAuthUser(context.Background(), redisstore.AuthUser{ID: target.ID, IsAdmin: false}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID, nil)
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec := httptest.NewRecorder()
+	h.DeleteUser(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("delete user response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if user, err := db.Users.GetByID(req.Context(), target.ID); err != nil || user != nil {
+		t.Fatalf("delete user should remove user row: user=%#v err=%v", user, err)
+	}
+	if p, err := db.Profiles.GetByID(req.Context(), profile.ID); err != nil || p != nil {
+		t.Fatalf("delete user should cascade profile row: profile=%#v err=%v", p, err)
+	}
+	if _, err := redis.GetAuthUser(context.Background(), target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("delete user should invalidate auth cache, got %v", err)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID, nil)
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec = httptest.NewRecorder()
+	h.DeleteUser(rec, req)
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `"detail":"user not found"`) {
+		t.Fatalf("delete missing user mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUserRoutesProtectSuperAdminFromPlainAdminExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := admin.New(cfg, db, nil)
+	plainAdmin := testutil.CreateUser(t, db, "plain-protect@test.com", "Password123", "PlainProtect", true)
+	superAdmin := testutil.CreateUser(t, db, "super-protect@test.com", "Password123", "SuperProtect", true, true)
+
+	req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+superAdmin.ID, nil)
+	req.SetPathValue("user_id", superAdmin.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), plainAdmin.ID, true))
+	rec := httptest.NewRecorder()
+	h.DeleteUser(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"detail":"cannot modify super admin"`) {
+		t.Fatalf("plain admin deleting super admin mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+superAdmin.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+	req.SetPathValue("user_id", superAdmin.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), plainAdmin.ID, true))
+	rec = httptest.NewRecorder()
+	h.BanUser(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"detail":"cannot modify super admin"`) {
+		t.Fatalf("plain admin banning super admin mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
