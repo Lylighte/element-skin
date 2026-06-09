@@ -173,3 +173,70 @@ func TestSettingsRoutesRejectInvalidGroupAndBadJSONExactly(t *testing.T) {
 		t.Fatalf("invalid profile uuid mode mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
+
+func TestSettingsRoutesReturnErrorWhenCacheInvalidationFailsAfterPersist(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	redis := &invalidateFailRedis{Store: testutil.NewMemoryRedis(), failSettings: true}
+	h := admin.NewWithRedis(testutil.TestConfig(), db, redis, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/settings/site", strings.NewReader(`{"site_name":"Persisted Despite Cache Failure"}`))
+	rec := httptest.NewRecorder()
+	h.SaveSiteSettings(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("site save should expose generic error when settings cache invalidation fails: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	got, err := db.Settings.Get(req.Context(), "site_name", "")
+	if err != nil || got != "Persisted Despite Cache Failure" {
+		t.Fatalf("site setting should persist before cache invalidation failure: got=%q err=%v", got, err)
+	}
+
+	redis.failSettings = false
+	redis.failPublic = true
+	req = httptest.NewRequest(http.MethodPost, "/admin/settings/easter_eggs", strings.NewReader(`{"easter_eggs_enabled":["christmas"]}`))
+	req.SetPathValue("group", "easter_eggs")
+	rec = httptest.NewRecorder()
+	h.SaveSettingsGroup(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("named public group save should fail when public cache invalidation fails: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	raw, err := db.Settings.Get(req.Context(), "easter_eggs_enabled", "")
+	if err != nil || raw != `["christmas"]` {
+		t.Fatalf("easter egg settings should persist before public cache invalidation failure: got=%q err=%v", raw, err)
+	}
+
+	redis.failPublic = false
+	if err := redis.SetPublicSettings(req.Context(), map[string]any{"site_name": "still-fresh"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/admin/settings/security", strings.NewReader(`{"rate_limit_auth_attempts":11}`))
+	req.SetPathValue("group", "security")
+	rec = httptest.NewRecorder()
+	h.SaveSettingsGroup(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("non-public settings group should not invalidate public cache: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	cached, err := redis.GetPublicSettings(req.Context())
+	if err != nil || cached["site_name"] != "still-fresh" {
+		t.Fatalf("non-public settings group should keep public cache intact: cached=%#v err=%v", cached, err)
+	}
+}
+
+type invalidateFailRedis struct {
+	redisstore.Store
+	failSettings bool
+	failPublic   bool
+}
+
+func (r *invalidateFailRedis) InvalidateSettings(ctx context.Context) error {
+	if r.failSettings {
+		return errors.New("settings cache invalidation failed")
+	}
+	return r.Store.InvalidateSettings(ctx)
+}
+
+func (r *invalidateFailRedis) InvalidatePublicSettings(ctx context.Context) error {
+	if r.failPublic {
+		return errors.New("public cache invalidation failed")
+	}
+	return r.Store.InvalidatePublicSettings(ctx)
+}
