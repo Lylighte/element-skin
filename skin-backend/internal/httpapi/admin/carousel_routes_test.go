@@ -2,6 +2,8 @@ package admin_test
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -14,6 +16,7 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/httpapi/admin"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -44,7 +47,11 @@ func TestCarouselRoutesRejectUnsupportedUploadFormat(t *testing.T) {
 func TestCarouselRoutesUploadAndDeleteExactFileState(t *testing.T) {
 	cfg := testutil.TestConfig()
 	cfg.CarouselDir = t.TempDir()
-	h := admin.New(cfg, nil, nil)
+	cache := testutil.NewMemoryRedis()
+	if err := cache.SetPublicCarousel(context.Background(), []string{"stale.png"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	h := admin.NewWithRedis(cfg, nil, cache, nil)
 	req := carouselUploadRequest(t, "slide.png", carouselPNG(t))
 	rec := httptest.NewRecorder()
 	h.UploadCarousel(rec, req)
@@ -54,6 +61,12 @@ func TestCarouselRoutesUploadAndDeleteExactFileState(t *testing.T) {
 	filename := responseStringField(t, rec.Body.String(), "filename")
 	if _, err := os.Stat(filepath.Join(cfg.CarouselDir, filename)); err != nil {
 		t.Fatalf("uploaded carousel file should exist: %v", err)
+	}
+	if _, err := cache.GetPublicCarousel(context.Background()); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("upload should invalidate public carousel cache, got %v", err)
+	}
+	if err := cache.SetPublicCarousel(context.Background(), []string{filename}, 0); err != nil {
+		t.Fatal(err)
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/carousel/"+filename, nil)
@@ -65,6 +78,65 @@ func TestCarouselRoutesUploadAndDeleteExactFileState(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(cfg.CarouselDir, filename)); !os.IsNotExist(err) {
 		t.Fatalf("carousel file should be deleted, stat err=%v", err)
+	}
+	if _, err := cache.GetPublicCarousel(context.Background()); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("delete should invalidate public carousel cache, got %v", err)
+	}
+}
+
+func TestCarouselRoutesRejectInvalidUploadInputsExactly(t *testing.T) {
+	h := admin.New(testutil.TestConfig(), nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/carousel", strings.NewReader("not multipart"))
+	rec := httptest.NewRecorder()
+	h.UploadCarousel(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid multipart form\"}\n" {
+		t.Fatalf("bad multipart carousel upload mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var missingBody bytes.Buffer
+	missingWriter := multipart.NewWriter(&missingBody)
+	if err := missingWriter.WriteField("note", "no file"); err != nil {
+		t.Fatal(err)
+	}
+	if err := missingWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/admin/carousel", &missingBody)
+	req.Header.Set("Content-Type", missingWriter.FormDataContentType())
+	rec = httptest.NewRecorder()
+	h.UploadCarousel(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"file is required\"}\n" {
+		t.Fatalf("missing carousel file mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = carouselUploadRequest(t, "huge.png", bytes.Repeat([]byte("x"), 5*1024*1024+1))
+	rec = httptest.NewRecorder()
+	h.UploadCarousel(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"File too large\"}\n" {
+		t.Fatalf("oversized carousel file mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCarouselRoutesDeleteInvalidOrMissingFileExactly(t *testing.T) {
+	cfg := testutil.TestConfig()
+	cfg.CarouselDir = t.TempDir()
+	h := admin.New(cfg, nil, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/admin/carousel/", nil)
+	req.SetPathValue("filename", "")
+	rec := httptest.NewRecorder()
+	h.DeleteCarousel(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid filename\"}\n" {
+		t.Fatalf("delete empty filename mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/admin/carousel/missing.png", nil)
+	req.SetPathValue("filename", "missing.png")
+	rec = httptest.NewRecorder()
+	h.DeleteCarousel(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("delete missing carousel file should be idempotent: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
