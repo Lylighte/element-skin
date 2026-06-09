@@ -47,8 +47,12 @@ func TestAccountRoutesMeAndAdminSelfDeleteExactResponses(t *testing.T) {
 func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	redis := testutil.NewMemoryRedis()
+	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
 	user := testutil.CreateUser(t, db, "site-account-update@test.com", "Password123", "SiteAccountUpdate", false)
+	if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID, IsAdmin: false}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"display_name":"UpdatedAccount","preferred_language":"en_US"}`))
 	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
@@ -61,6 +65,19 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	if err != nil || updated == nil || updated.DisplayName != "UpdatedAccount" || updated.PreferredLanguage != "en_US" {
 		t.Fatalf("user update should persist exactly: user=%#v err=%v", updated, err)
 	}
+	if _, err := redis.GetAuthUser(t.Context(), user.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("update me should invalidate auth cache, got %v", err)
+	}
+	loginReq := httptest.NewRequest(http.MethodPost, "/site-login", strings.NewReader(`{"email":"site-account-update@test.com","password":"Password123"}`))
+	loginRec := httptest.NewRecorder()
+	h.Login(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login before change password mismatch: status=%d body=%q", loginRec.Code, loginRec.Body.String())
+	}
+	refresh := cookieValue(t, loginRec.Result().Cookies(), "refresh_token")
+	if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID, IsAdmin: false}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
 
 	req = httptest.NewRequest(http.MethodPost, "/me/password", strings.NewReader(`{"old_password":"Password123","new_password":"NewPassword123"}`))
 	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
@@ -68,6 +85,12 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	h.ChangePassword(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "密码修改成功") {
 		t.Fatalf("change password response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if _, err := redis.GetAuthUser(t.Context(), user.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("change password should invalidate auth cache, got %v", err)
+	}
+	if got, err := db.Tokens.GetRefresh(t.Context(), util.HashRefreshToken(refresh)); err != nil || got != nil {
+		t.Fatalf("change password should revoke existing refresh tokens: refresh=%#v err=%v", got, err)
 	}
 }
 

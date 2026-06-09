@@ -271,3 +271,40 @@ func TestTextureRoutesRejectInvalidInputsWithExactErrors(t *testing.T) {
 		t.Fatalf("missing texture detail mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
+
+func TestTextureRoutesDeleteMissingWardrobeRowDoesNotClearAppliedProfile(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	owner := testutil.CreateUser(t, db, "site-texture-delete-owner@test.com", "Password123", "SiteTextureDeleteOwner", false)
+	other := testutil.CreateUser(t, db, "site-texture-delete-other@test.com", "Password123", "SiteTextureDeleteOther", false)
+	profile := testutil.CreateProfile(t, db, other.ID, "site_texture_delete_keeps_profile", "SiteTextureDeleteKeepsProfile")
+	if err := db.Textures.AddToLibrary(context.Background(), owner.ID, "site_route_delete_foreign", "skin", "Foreign Texture", true, "slim"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Profiles.UpdateSkin(t.Context(), profile.ID, ptrString("site_route_delete_foreign")); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/me/textures/site_route_delete_foreign/skin", nil)
+	req.SetPathValue("hash", "site_route_delete_foreign")
+	req.SetPathValue("texture_type", "skin")
+	req = req.WithContext(shared.WithUser(req.Context(), other.ID, false))
+	rec := httptest.NewRecorder()
+	h.DeleteTexture(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"Texture not found\"}\n" {
+		t.Fatalf("delete missing wardrobe row should return not found: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	applied, err := db.Profiles.GetByID(req.Context(), profile.ID)
+	if err != nil || applied == nil || applied.SkinHash == nil || *applied.SkinHash != "site_route_delete_foreign" {
+		t.Fatalf("failed delete of non-wardrobe texture must not clear applied profile hash: profile=%#v err=%v", applied, err)
+	}
+	info, err := db.Textures.GetInfo(req.Context(), owner.ID, "site_route_delete_foreign", "skin")
+	if err != nil || info == nil {
+		t.Fatalf("failed delete of non-wardrobe texture must not remove uploader library row: info=%#v err=%v", info, err)
+	}
+}
+
+func ptrString(s string) *string {
+	return &s
+}

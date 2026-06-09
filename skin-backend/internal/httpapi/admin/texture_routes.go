@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -94,6 +95,10 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 		typ = "skin"
 	}
 	if err := h.db.Textures.AdminDelete(req.Context(), req.PathValue("hash"), typ, req.URL.Query().Get("user_id"), force); err != nil {
+		if errors.Is(err, texture.ErrNotFound) {
+			util.Error(w, util.HTTPError{Status: 404, Detail: "Texture not found"})
+			return
+		}
 		if strings.Contains(err.Error(), "user_id") {
 			util.Error(w, util.HTTPError{Status: 400, Detail: err.Error()})
 			return

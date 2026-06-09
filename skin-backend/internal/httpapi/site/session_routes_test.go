@@ -36,6 +36,45 @@ func TestSessionRoutesLoginSetsExactCookies(t *testing.T) {
 	}
 }
 
+func TestSessionRoutesAuthRateLimitIsScopedByForwardedClientIP(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	testutil.CreateUser(t, db, "site-rate-limit@test.com", "Password123", "SiteRateLimit", false)
+	if err := db.Settings.Set(t.Context(), "rate_limit_auth_attempts", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Settings.Set(t.Context(), "rate_limit_auth_window", "1"); err != nil {
+		t.Fatal(err)
+	}
+
+	first := httptest.NewRequest(http.MethodPost, "/site-login", strings.NewReader(`{"email":"site-rate-limit@test.com","password":"Password123"}`))
+	first.Header.Set("X-Forwarded-For", "203.0.113.9, 198.51.100.1")
+	rec := httptest.NewRecorder()
+	h.Login(rec, first)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first login from forwarded IP should pass: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	second := httptest.NewRequest(http.MethodPost, "/site-login", strings.NewReader(`{"email":"site-rate-limit@test.com","password":"Password123"}`))
+	second.Header.Set("X-Forwarded-For", "203.0.113.9")
+	rec = httptest.NewRecorder()
+	h.Login(rec, second)
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") != "60" ||
+		rec.Body.String() != "{\"detail\":\"Too many requests, please try again later\"}\n" {
+		t.Fatalf("second login from same forwarded IP should be rate-limited: status=%d retry=%q body=%q", rec.Code, rec.Header().Get("Retry-After"), rec.Body.String())
+	}
+
+	otherIP := httptest.NewRequest(http.MethodPost, "/site-login", strings.NewReader(`{"email":"site-rate-limit@test.com","password":"Password123"}`))
+	otherIP.Header.Set("X-Forwarded-For", "203.0.113.10")
+	rec = httptest.NewRecorder()
+	h.Login(rec, otherIP)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login from a different forwarded IP should not inherit the first IP limit: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestSessionRoutesRefreshRotatesAndLogoutRevokesExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()

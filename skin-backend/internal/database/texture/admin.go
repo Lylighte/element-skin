@@ -155,8 +155,20 @@ func (s Store) AdminDelete(ctx context.Context, hash, textureType, userID string
 	if userID == "" {
 		return errors.New("per-user deletion requires user_id")
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3`, userID, hash, textureType); err != nil {
+	var one int
+	err = tx.QueryRow(ctx, `SELECT 1 FROM skin_library WHERE skin_hash=$1 AND texture_type=$2`, hash, textureType).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
 		return err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3`, userID, hash, textureType)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
 	}
 	var remaining int
 	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM user_textures WHERE hash=$1 AND texture_type=$2`, hash, textureType).Scan(&remaining); err != nil {

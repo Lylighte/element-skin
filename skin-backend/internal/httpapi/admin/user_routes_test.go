@@ -217,6 +217,73 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 	}
 }
 
+func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	h := admin.NewWithRedis(cfg, db, redis, nil)
+	superAdmin := testutil.CreateUser(t, db, "admin-cache-super@test.com", "Password123", "AdminCacheSuper", true, true)
+	adminUser := testutil.CreateUser(t, db, "admin-cache-admin@test.com", "Password123", "AdminCacheAdmin", true)
+	target := testutil.CreateUser(t, db, "admin-cache-target@test.com", "Password123", "AdminCacheTarget", false)
+
+	cacheTarget := func(t *testing.T) {
+		t.Helper()
+		if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: target.ID, IsAdmin: false}, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertTargetCacheMiss := func(t *testing.T, action string) {
+		t.Helper()
+		if _, err := redis.GetAuthUser(t.Context(), target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+			t.Fatalf("%s should invalidate target auth cache, got %v", action, err)
+		}
+	}
+
+	cacheTarget(t)
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), superAdmin.ID, true, true))
+	rec := httptest.NewRecorder()
+	h.ToggleUserAdmin(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("toggle admin response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	assertTargetCacheMiss(t, "toggle admin")
+
+	cacheTarget(t)
+	banUntil := time.Now().Add(time.Hour).UnixMilli()
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(banUntil)+`}`))
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec = httptest.NewRecorder()
+	h.BanUser(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ban user response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	assertTargetCacheMiss(t, "ban user")
+
+	cacheTarget(t)
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/unban", nil)
+	req.SetPathValue("user_id", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec = httptest.NewRecorder()
+	h.UnbanUser(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unban user response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	assertTargetCacheMiss(t, "unban user")
+
+	cacheTarget(t)
+	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"AdminCachePassword123"}`))
+	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	rec = httptest.NewRecorder()
+	h.ResetUserPassword(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reset user password response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	assertTargetCacheMiss(t, "reset user password")
+}
+
 func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()

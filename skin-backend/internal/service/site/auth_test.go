@@ -2,8 +2,10 @@ package site_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
@@ -26,5 +28,86 @@ func TestAuthRegisterCreatesFirstAdminAndOfflineProfileExactly(t *testing.T) {
 	profiles, err := db.Profiles.GetByUser(ctx, userID, 10)
 	if err != nil || len(profiles) != 1 || profiles[0].ID != util.OfflineUUIDNoDash("auth_service") || profiles[0].Name != "auth_service" {
 		t.Fatalf("registration profile mismatch: profiles=%#v err=%v", profiles, err)
+	}
+}
+
+func TestAuthRegisterRejectsPolicyFailuresWithoutCreatingUser(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+
+	if err := db.Settings.Set(ctx, "allow_register", "false"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Register(ctx, "closed-register@test.com", "Password123", "ClosedRegister", "", ""); !httpError(err, 403, "registration is disabled") {
+		t.Fatalf("closed registration should reject exactly, got %#v", err)
+	}
+	if user, err := db.Users.GetByEmail(ctx, "closed-register@test.com"); err != nil || user != nil {
+		t.Fatalf("closed registration must not create user: user=%#v err=%v", user, err)
+	}
+
+	if err := db.Settings.Set(ctx, "allow_register", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settings.InvalidateCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Settings.Set(ctx, "enable_strong_password_check", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settings.InvalidateCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Register(ctx, "weak-register@test.com", "weak", "WeakRegister", "", ""); err == nil {
+		t.Fatal("strong password policy should reject weak registration password")
+	}
+	if user, err := db.Users.GetByEmail(ctx, "weak-register@test.com"); err != nil || user != nil {
+		t.Fatalf("weak password registration must not create user: user=%#v err=%v", user, err)
+	}
+}
+
+func TestAuthRegisterConsumesVerificationAndInviteExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Settings.Set(ctx, "require_invite", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settings.InvalidateCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Invites.Create(ctx, "INVITE_ONCE", 1, "Invite Once"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Redis.SetVerificationCode(ctx, "verified-register@test.com", "register", "ABC12345", 0); err != nil {
+		t.Fatal(err)
+	}
+
+	userID, err := svc.Register(ctx, "verified-register@test.com", "Password123", "VerifiedRegister", "INVITE_ONCE", "abc12345")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user, err := db.Users.GetByID(ctx, userID); err != nil || user == nil || user.Email != "verified-register@test.com" || user.DisplayName != "VerifiedRegister" {
+		t.Fatalf("verified invite registration should create user: user=%#v err=%v", user, err)
+	}
+	if _, err := svc.Redis.GetVerificationCode(ctx, "verified-register@test.com", "register"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("successful register should consume verification code, got %v", err)
+	}
+	invite, err := db.Invites.Get(ctx, "INVITE_ONCE")
+	if err != nil || invite == nil || invite.UsedCount != 1 || invite.UsedBy == nil || *invite.UsedBy != "verified-register@test.com" {
+		t.Fatalf("successful register should consume invite exactly: invite=%#v err=%v", invite, err)
+	}
+
+	if err := svc.Redis.SetVerificationCode(ctx, "second-register@test.com", "register", "SECOND12", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Register(ctx, "second-register@test.com", "Password123", "SecondRegister", "INVITE_ONCE", "SECOND12"); !httpError(err, 400, "invite code has no remaining uses") {
+		t.Fatalf("exhausted invite should reject exactly, got %#v", err)
+	}
+	if user, err := db.Users.GetByEmail(ctx, "second-register@test.com"); err != nil || user != nil {
+		t.Fatalf("exhausted invite must not create user: user=%#v err=%v", user, err)
 	}
 }

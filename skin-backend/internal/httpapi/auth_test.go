@@ -68,3 +68,26 @@ func TestAuthRedisErrorDoesNotFallBackToDatabase(t *testing.T) {
 		t.Fatalf("redis auth error should fail without DB fallback, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAuthUsesRedisCachedUserStateOnCacheHit(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	user := testutil.CreateUser(t, db, "auth-cache-hit@test.com", "Password123", "AuthCacheHit", true)
+	cache := testutil.NewMemoryRedis()
+	if err := cache.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID, IsAdmin: false, IsSuperAdmin: false}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, true, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "admin required") {
+		t.Fatalf("cached non-admin state should override newer DB admin state until invalidated: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
