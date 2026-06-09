@@ -133,6 +133,13 @@ func TestLookupRoutesProtocolMissesAndBadBulkBodyExactly(t *testing.T) {
 	if body["detail"] != "Request body must be an array" {
 		t.Fatalf("bad bulk lookup body mismatch: %#v", body)
 	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/profiles/minecraft", strings.NewReader(`[`))
+	rec = httptest.NewRecorder()
+	h.LookupNames(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Request body must be an array\"}\n" {
+		t.Fatalf("malformed bulk lookup body mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
 
 func TestLookupRoutesFallbackMissesReturnExactNoContent(t *testing.T) {

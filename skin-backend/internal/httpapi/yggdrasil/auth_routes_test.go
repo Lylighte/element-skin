@@ -170,6 +170,32 @@ func TestAuthRoutesProtocolStatusBodiesAndErrorsExactly(t *testing.T) {
 	assertDetailError(t, badJSONRec, http.StatusBadRequest, "invalid json")
 }
 
+func TestAuthRoutesRejectBadJSONOnEachProtocolEndpointExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	h := yggdrasil.New(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+
+	cases := []struct {
+		name string
+		call func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "refresh", call: h.Refresh},
+		{name: "validate", call: h.Validate},
+		{name: "invalidate", call: h.Invalidate},
+		{name: "signout", call: h.Signout},
+		{name: "join", call: h.Join},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/"+tc.name, strings.NewReader(`{`))
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			assertDetailError(t, rec, http.StatusBadRequest, "invalid json")
+		})
+	}
+}
+
 func TestAuthRoutesRefreshSelectedProfileProtocolRules(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
