@@ -29,7 +29,7 @@ func (h Handler) Login(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	h.setSessionCookies(w, res["access_token"].(string), res["refresh_token"].(string), res["refresh_max_age_seconds"].(int))
-	util.JSON(w, 200, map[string]any{"user_id": res["user_id"], "is_admin": res["is_admin"]})
+	util.JSON(w, 200, map[string]any{"user_id": res["user_id"], "is_admin": res["is_admin"], "is_super_admin": res["is_super_admin"]})
 }
 
 func (h Handler) Logout(w http.ResponseWriter, req *http.Request) {
@@ -112,5 +112,5 @@ func (h Handler) RefreshToken(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	h.setSessionCookies(w, res["access_token"].(string), res["refresh_token"].(string), res["refresh_max_age_seconds"].(int))
-	util.JSON(w, 200, map[string]any{"is_admin": res["is_admin"]})
+	util.JSON(w, 200, map[string]any{"is_admin": res["is_admin"], "is_super_admin": res["is_super_admin"]})
 }

@@ -17,8 +17,12 @@ export function getUserProfiles(userId: string, params: { cursor?: string | null
   return client.get(`/admin/users/${userId}/profiles`, { params })
 }
 
-export function toggleAdmin(userId: string): Promise<{ data: { ok: boolean } }> {
+export function toggleAdmin(userId: string): Promise<{ data: { ok: boolean; is_admin: boolean } }> {
   return client.post(`/admin/users/${userId}/toggle-admin`)
+}
+
+export function transferSuperAdmin(userId: string): Promise<{ data: { ok: boolean } }> {
+  return client.post(`/admin/users/${userId}/transfer-super-admin`)
 }
 
 export function deleteUser(userId: string): Promise<{ data: { ok: boolean } }> {

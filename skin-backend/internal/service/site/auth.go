@@ -34,7 +34,7 @@ func (s Site) Login(ctx context.Context, email, password string) (map[string]any
 	if user == nil || !util.VerifyPassword(password, user.Password) {
 		return nil, util.HTTPError{Status: 401, Detail: "Invalid credentials"}
 	}
-	return s.issueSession(ctx, user.ID, user.IsAdmin, map[string]any{"user_id": user.ID})
+	return s.issueSession(ctx, user.ID, user.IsAdmin, user.IsSuperAdmin, map[string]any{"user_id": user.ID})
 }
 
 func (s Site) Register(ctx context.Context, email, password, username, invite, code string) (string, error) {
@@ -150,7 +150,8 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 	if err != nil {
 		return "", err
 	}
-	u := model.User{ID: userID, Email: email, Password: hash, IsAdmin: count == 0, DisplayName: username}
+	firstUser := count == 0
+	u := model.User{ID: userID, Email: email, Password: hash, IsAdmin: firstUser, IsSuperAdmin: firstUser, DisplayName: username}
 	p := model.Profile{ID: profileID, UserID: userID, Name: profileName, TextureModel: "default"}
 	if err := s.DB.Users.CreateWithProfile(ctx, u, p, inviteCode, email); err != nil {
 		if err == invitestore.ErrExhausted {

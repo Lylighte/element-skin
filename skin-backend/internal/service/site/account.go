@@ -19,7 +19,7 @@ func (s Site) Me(ctx context.Context, userID string) (map[string]any, error) {
 	tc, _ := s.DB.Textures.CountForUser(ctx, userID)
 	return map[string]any{
 		"id": u.ID, "email": u.Email, "lang": u.PreferredLanguage, "display_name": u.DisplayName,
-		"is_admin": u.IsAdmin, "banned_until": u.BannedUntil, "avatar_hash": u.AvatarHash,
+		"is_admin": u.IsAdmin, "is_super_admin": u.IsSuperAdmin, "banned_until": u.BannedUntil, "avatar_hash": u.AvatarHash,
 		"profile_count": pc, "texture_count": tc,
 	}, nil
 }

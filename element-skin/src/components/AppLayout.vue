@@ -60,7 +60,7 @@
                 </el-avatar>
                 <div class="account-meta">
                   <h4>{{ accountName }}</h4>
-                  <p>{{ isAdmin ? '管理员' : '普通用户' }}</p>
+                  <p>{{ accountRoleLabel }}</p>
                 </div>
               </div>
               <div class="account-actions">
@@ -299,6 +299,8 @@ const repoLabel = `Element Skin ${typeof __APP_VERSION__ !== 'undefined' ? __APP
 
 const isLogged = computed(() => !!user.value)
 const isAdmin = computed(() => user.value?.is_admin || false)
+const isSuperAdmin = computed(() => user.value?.is_super_admin || false)
+const accountRoleLabel = computed(() => isSuperAdmin.value ? '超级管理员' : (isAdmin.value ? '管理员' : '普通用户'))
 const accountName = computed(() => user.value?.display_name || user.value?.email || '用户')
 const avatarInitial = computed(() => (accountName.value || 'U').slice(0, 1).toUpperCase())
 

@@ -45,6 +45,10 @@ func (h Handler) User(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
+	if !shared.CurrentUserIsSuperAdmin(req) {
+		util.Error(w, util.HTTPError{Status: 403, Detail: "super admin required"})
+		return
+	}
 	targetID := req.PathValue("user_id")
 	if targetID == shared.CurrentUserID(req) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot change your own admin status"})
@@ -66,10 +70,52 @@ func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
 	util.JSON(w, 200, map[string]any{"ok": true, "is_admin": next})
 }
 
+func (h Handler) TransferSuperAdmin(w http.ResponseWriter, req *http.Request) {
+	if !shared.CurrentUserIsSuperAdmin(req) {
+		util.Error(w, util.HTTPError{Status: 403, Detail: "super admin required"})
+		return
+	}
+	targetID := req.PathValue("user_id")
+	if targetID == shared.CurrentUserID(req) {
+		util.Error(w, util.HTTPError{Status: 400, Detail: "target is already current super admin"})
+		return
+	}
+	target, err := h.db.Users.GetByID(req.Context(), targetID)
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	if target == nil {
+		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
+		return
+	}
+	if err := h.db.Users.TransferSuperAdmin(req.Context(), shared.CurrentUserID(req), targetID); err != nil {
+		if database.IsNoRows(err) {
+			util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
+			return
+		}
+		util.Error(w, err)
+		return
+	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), shared.CurrentUserID(req)); err != nil {
+		util.Error(w, err)
+		return
+	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), targetID); err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, 200, map[string]any{"ok": true})
+}
+
 func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
 	targetID := req.PathValue("user_id")
 	if targetID == shared.CurrentUserID(req) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot delete yourself"})
+		return
+	}
+	if err := h.ensureTargetNotSuperAdmin(req, targetID); err != nil {
+		util.Error(w, err)
 		return
 	}
 	ok, err := h.site.DeleteUser(req.Context(), targetID)
@@ -110,11 +156,16 @@ func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "banned_until is required"})
 		return
 	}
-	if err := h.db.Users.Ban(req.Context(), req.PathValue("user_id"), until); err != nil {
+	userID := req.PathValue("user_id")
+	if err := h.ensureTargetNotSuperAdmin(req, userID); err != nil {
 		util.Error(w, err)
 		return
 	}
-	if err := h.redis.InvalidateAuthUser(req.Context(), req.PathValue("user_id")); err != nil {
+	if err := h.db.Users.Ban(req.Context(), userID, until); err != nil {
+		util.Error(w, err)
+		return
+	}
+	if err := h.redis.InvalidateAuthUser(req.Context(), userID); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -129,6 +180,10 @@ func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
 	}
 	if user == nil {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
+		return
+	}
+	if user.IsSuperAdmin && !shared.CurrentUserIsSuperAdmin(req) {
+		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot modify super admin"})
 		return
 	}
 	if err := h.db.Users.Unban(req.Context(), user.ID); err != nil {
@@ -154,6 +209,10 @@ func (h Handler) ResetUserPassword(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "user_id and new_password required"})
 		return
 	}
+	if err := h.ensureTargetNotSuperAdmin(req, userID); err != nil {
+		util.Error(w, err)
+		return
+	}
 	hash, err := util.HashPassword(newPassword)
 	if err != nil {
 		util.Error(w, err)
@@ -173,4 +232,18 @@ func (h Handler) ResetUserPassword(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
+}
+
+func (h Handler) ensureTargetNotSuperAdmin(req *http.Request, targetID string) error {
+	target, err := h.db.Users.GetByID(req.Context(), targetID)
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return util.HTTPError{Status: 404, Detail: "user not found"}
+	}
+	if target.IsSuperAdmin && !shared.CurrentUserIsSuperAdmin(req) {
+		return util.HTTPError{Status: 403, Detail: "cannot modify super admin"}
+	}
+	return nil
 }

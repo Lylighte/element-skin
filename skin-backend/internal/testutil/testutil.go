@@ -190,7 +190,7 @@ func dropTestDatabase(t testing.TB, ctx context.Context, dbName string) {
 	}
 }
 
-func CreateUser(t testing.TB, db *database.DB, email, password, username string, isAdmin bool) model.User {
+func CreateUser(t testing.TB, db *database.DB, email, password, username string, isAdmin bool, isSuperAdmin ...bool) model.User {
 	t.Helper()
 	if email == "" {
 		email = randomID(t)[:8] + "@example.com"
@@ -202,9 +202,13 @@ func CreateUser(t testing.TB, db *database.DB, email, password, username string,
 	if err != nil {
 		t.Fatal(err)
 	}
+	super := false
+	if len(isSuperAdmin) > 0 {
+		super = isSuperAdmin[0]
+	}
 	user := model.User{
 		ID: randomID(t), Email: email, Password: hash,
-		IsAdmin: isAdmin, PreferredLanguage: "zh_CN", DisplayName: username,
+		IsAdmin: isAdmin, IsSuperAdmin: super, PreferredLanguage: "zh_CN", DisplayName: username,
 	}
 	if err := db.Users.Create(context.Background(), user); err != nil {
 		t.Fatalf("create user: %v", err)

@@ -17,17 +17,28 @@ type AuthFunc func(http.HandlerFunc, bool) http.HandlerFunc
 type ctxKey string
 
 const (
-	userIDKey ctxKey = "user_id"
-	adminKey  ctxKey = "admin"
+	userIDKey     ctxKey = "user_id"
+	adminKey      ctxKey = "admin"
+	superAdminKey ctxKey = "super_admin"
 )
 
-func WithUser(ctx context.Context, userID string, isAdmin bool) context.Context {
+func WithUser(ctx context.Context, userID string, isAdmin bool, isSuperAdmin ...bool) context.Context {
 	ctx = context.WithValue(ctx, userIDKey, userID)
-	return context.WithValue(ctx, adminKey, isAdmin)
+	ctx = context.WithValue(ctx, adminKey, isAdmin)
+	super := false
+	if len(isSuperAdmin) > 0 {
+		super = isSuperAdmin[0]
+	}
+	return context.WithValue(ctx, superAdminKey, super)
 }
 
 func CurrentUserID(req *http.Request) string {
 	v, _ := req.Context().Value(userIDKey).(string)
+	return v
+}
+
+func CurrentUserIsSuperAdmin(req *http.Request) bool {
+	v, _ := req.Context().Value(superAdminKey).(bool)
 	return v
 }
 

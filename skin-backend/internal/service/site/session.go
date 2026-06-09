@@ -8,7 +8,7 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-func (s Site) issueSession(ctx context.Context, userID string, isAdmin bool, extra map[string]any) (map[string]any, error) {
+func (s Site) issueSession(ctx context.Context, userID string, isAdmin, isSuperAdmin bool, extra map[string]any) (map[string]any, error) {
 	expireDays, err := s.settings().Int(ctx, "jwt_expire_days", s.Cfg.JWTExpireDays)
 	if err != nil {
 		return nil, err
@@ -29,6 +29,7 @@ func (s Site) issueSession(ctx context.Context, userID string, isAdmin bool, ext
 		"access_token":            access,
 		"refresh_token":           rawRefresh,
 		"is_admin":                isAdmin,
+		"is_super_admin":          isSuperAdmin,
 		"refresh_max_age_seconds": expireDays * 24 * 3600,
 	}
 	for k, v := range extra {
@@ -55,7 +56,7 @@ func (s Site) RotateRefresh(ctx context.Context, raw string) (map[string]any, er
 	if user == nil {
 		return nil, util.HTTPError{Status: 401, Detail: "invalid refresh token"}
 	}
-	return s.issueSession(ctx, user.ID, user.IsAdmin, nil)
+	return s.issueSession(ctx, user.ID, user.IsAdmin, user.IsSuperAdmin, nil)
 }
 
 func (s Site) RevokeRefresh(ctx context.Context, raw string) error {

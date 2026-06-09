@@ -164,7 +164,7 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 
 func TestAdminUserControlsHTTP(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
-	admin := testutil.CreateUser(t, db, "admin-controls@test.com", "Password123", "AdminControls", true)
+	admin := testutil.CreateUser(t, db, "admin-controls@test.com", "Password123", "AdminControls", true, true)
 	user := testutil.CreateUser(t, db, "normal-controls@test.com", "Password123", "NormalControls", false)
 	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
 	adminCookie := &http.Cookie{Name: "access_token", Value: adminToken}

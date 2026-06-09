@@ -20,7 +20,8 @@
         <div class="panel-info">
           <div class="panel-name">
             <h3>{{ user.display_name || '未设置显示名' }}</h3>
-            <el-tag v-if="user.is_admin" type="danger" size="small" class="ml-2">管理员</el-tag>
+            <el-tag v-if="user.is_super_admin" type="danger" effect="dark" size="small" class="ml-2">超级管理员</el-tag>
+            <el-tag v-else-if="user.is_admin" type="danger" size="small" class="ml-2">管理员</el-tag>
           </div>
           <div class="panel-email">{{ user.email }}</div>
           <div class="panel-id">UID: {{ user.id }}</div>
@@ -74,11 +75,27 @@
               </div>
               <el-button
                 :type="user.is_admin ? 'warning' : 'primary'"
-                :disabled="isSelf"
+                :disabled="!currentIsSuperAdmin || isSelf || user.is_super_admin"
                 class="hover-lift"
                 @click="$emit('toggle-admin', user)"
               >
                 {{ user.is_admin ? '撤销管理' : '设为管理' }}
+              </el-button>
+            </div>
+
+            <div class="action-card-item">
+              <div class="action-text-box">
+                <div class="a-title">超级管理员转让</div>
+                <div class="a-desc">将唯一超级管理员身份转让给该用户，自己保留管理员权限。</div>
+              </div>
+              <el-button
+                type="danger"
+                plain
+                :disabled="!currentIsSuperAdmin || isSelf || user.is_super_admin"
+                class="hover-lift"
+                @click="$emit('transfer-super-admin', user)"
+              >
+                转让给此用户
               </el-button>
             </div>
 
@@ -90,7 +107,7 @@
               <el-button
                 v-if="!isBanned"
                 type="warning"
-                :disabled="user.is_admin || isSelf"
+                :disabled="user.is_super_admin || isSelf"
                 class="hover-lift"
                 @click="$emit('show-ban')"
               >
@@ -118,7 +135,7 @@
               </div>
               <el-button
                 type="danger"
-                :disabled="user.is_admin || isSelf"
+                :disabled="user.is_super_admin || isSelf"
                 class="hover-lift"
                 @click="$emit('delete-user', user)"
               >
@@ -149,12 +166,14 @@ defineProps<{
   isBanned: boolean
   banRemaining: string
   isSelf: boolean
+  currentIsSuperAdmin: boolean
 }>()
 
 defineEmits<{
   'profiles-prev': []
   'profiles-next': []
   'toggle-admin': [user: User]
+  'transfer-super-admin': [user: User]
   'show-ban': []
   unban: [user: User]
   'show-reset-password': []
