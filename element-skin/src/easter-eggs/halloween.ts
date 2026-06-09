@@ -64,14 +64,17 @@ export function start(): EasterEggCleanup {
         transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
-    html.easter-egg-halloween .el-button > span,
-    html.easter-egg-halloween .el-button .el-icon,
+    html.easter-egg-halloween .el-button:not(.btn-icon-swap) > span,
     html.easter-egg-halloween .el-button .el-button__text,
-    html.easter-egg-halloween .btn-gradient > *:not(canvas):not(.glass-tint),
-    html.easter-egg-halloween .btn-glass > *,
-    html.easter-egg-halloween .btn-outline > *,
+    html.easter-egg-halloween .btn-gradient:not(.btn-icon-swap) > *:not(canvas):not(.glass-tint),
+    html.easter-egg-halloween .btn-glass:not(.btn-icon-swap) > *,
+    html.easter-egg-halloween .btn-outline:not(.btn-icon-swap) > *,
     html.easter-egg-halloween .canvas-glass-button > .glass-content {
       position: relative;
+      z-index: 2;
+    }
+
+    html.easter-egg-halloween .el-button .el-icon {
       z-index: 2;
     }
 
@@ -132,6 +135,11 @@ export function start(): EasterEggCleanup {
     html.easter-egg-halloween .el-button.is-circle:focus-visible::after,
     html.easter-egg-halloween .el-button.is-round:focus-visible::after {
       transform: translate(-50%, -50%) scale(1);
+    }
+
+    html.easter-egg-halloween .el-button.is-round.drag-btn::after {
+      width: min(88px, calc(100% - 48px));
+      height: 42px;
     }
 
     html.easter-egg-halloween .search-bar-container .el-input-group__append {
