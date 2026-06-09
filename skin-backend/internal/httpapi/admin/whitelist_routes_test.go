@@ -38,4 +38,57 @@ func TestWhitelistRoutesAddOfficialWhitelistPersistsUser(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("whitelist row should exist exactly: ok=%v err=%v", ok, err)
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/official-whitelist?endpoint_id=1", nil)
+	rec = httptest.NewRecorder()
+	h.OfficialWhitelist(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"username":"Steve"`) || !strings.Contains(rec.Body.String(), `"created_at":`) {
+		t.Fatalf("whitelist list response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/admin/official-whitelist/Steve?endpoint_id=1", nil)
+	req.SetPathValue("username", "Steve")
+	rec = httptest.NewRecorder()
+	h.RemoveOfficialWhitelist(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("remove whitelist response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	ok, err = db.Fallbacks.IsUserInWhitelist(req.Context(), "Steve", 1)
+	if err != nil || ok {
+		t.Fatalf("whitelist row should be removed exactly: ok=%v err=%v", ok, err)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/official-whitelist?endpoint_id=1", nil)
+	rec = httptest.NewRecorder()
+	h.OfficialWhitelist(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"items\":[]}\n" {
+		t.Fatalf("empty whitelist list response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWhitelistRoutesRejectInvalidInputsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	h := admin.New(testutil.TestConfig(), db, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/official-whitelist", nil)
+	rec := httptest.NewRecorder()
+	h.OfficialWhitelist(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"endpoint_id is required"`) {
+		t.Fatalf("missing endpoint id list mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/official-whitelist", strings.NewReader(`{"username":" ","endpoint_id":1}`))
+	rec = httptest.NewRecorder()
+	h.AddOfficialWhitelist(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"username is required"`) {
+		t.Fatalf("missing username add mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/admin/official-whitelist/Steve", nil)
+	req.SetPathValue("username", "Steve")
+	rec = httptest.NewRecorder()
+	h.RemoveOfficialWhitelist(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"endpoint_id is required"`) {
+		t.Fatalf("missing endpoint id remove mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
