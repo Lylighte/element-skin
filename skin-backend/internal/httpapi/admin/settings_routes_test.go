@@ -101,6 +101,52 @@ func TestSettingsRoutesGetAndSaveNamedGroupExactState(t *testing.T) {
 	}
 }
 
+func TestSettingsRoutesNamedGroupsInvalidateOnlyRelevantPublicCaches(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	redis := testutil.NewMemoryRedis()
+	h := admin.NewWithRedis(testutil.TestConfig(), db, redis, nil)
+
+	for _, tc := range []struct {
+		group string
+		body  string
+	}{
+		{"fallback", `{"fallback_strategy":"parallel"}`},
+		{"email", `{"smtp_sender":"skin@example.com"}`},
+		{"easter_eggs", `{"easter_eggs_enabled":["christmas"]}`},
+	} {
+		t.Run(tc.group, func(t *testing.T) {
+			if err := redis.SetPublicSettings(t.Context(), map[string]any{"site_name": "stale"}, time.Minute); err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/admin/settings/"+tc.group, strings.NewReader(tc.body))
+			req.SetPathValue("group", tc.group)
+			rec := httptest.NewRecorder()
+			h.SaveSettingsGroup(rec, req)
+			if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+				t.Fatalf("save %s group response mismatch: status=%d body=%q", tc.group, rec.Code, rec.Body.String())
+			}
+			if _, err := redis.GetPublicSettings(t.Context()); !errors.Is(err, redisstore.ErrCacheMiss) {
+				t.Fatalf("save %s group should invalidate public settings cache, got %v", tc.group, err)
+			}
+		})
+	}
+
+	if err := redis.SetPublicSettings(t.Context(), map[string]any{"site_name": "still-fresh"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/settings/security", strings.NewReader(`{"rate_limit_auth_attempts":7}`))
+	req.SetPathValue("group", "security")
+	rec := httptest.NewRecorder()
+	h.SaveSettingsGroup(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("save security group response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	cached, err := redis.GetPublicSettings(t.Context())
+	if err != nil || cached["site_name"] != "still-fresh" {
+		t.Fatalf("save security group should not invalidate public settings cache: cached=%#v err=%v", cached, err)
+	}
+}
+
 func TestSettingsRoutesRejectInvalidGroupAndBadJSONExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	h := admin.New(testutil.TestConfig(), db, nil)

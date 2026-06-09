@@ -34,8 +34,12 @@ func TestStoreCreateUpdateDeleteAndInviteExhaustion(t *testing.T) {
 	if err := store.Update(ctx, u.ID, map[string]any{"email": "updated-domain-user@test.com", "display_name": "UpdatedDomainUser"}); err != nil {
 		t.Fatal(err)
 	}
+	avatar := "domain-avatar-hash"
+	if err := store.Update(ctx, u.ID, map[string]any{"preferred_language": "zh_CN", "avatar_hash": &avatar, "ignored_field": "ignored"}); err != nil {
+		t.Fatal(err)
+	}
 	got, err := store.GetByEmail(ctx, "updated-domain-user@test.com")
-	if err != nil || got == nil || got.ID != u.ID || got.DisplayName != "UpdatedDomainUser" {
+	if err != nil || got == nil || got.ID != u.ID || got.DisplayName != "UpdatedDomainUser" || got.PreferredLanguage != "zh_CN" || got.AvatarHash == nil || *got.AvatarHash != avatar {
 		t.Fatalf("updated user mismatch: user=%#v err=%v", got, err)
 	}
 	if count, err := store.Count(ctx); err != nil || count != 1 {
@@ -43,6 +47,19 @@ func TestStoreCreateUpdateDeleteAndInviteExhaustion(t *testing.T) {
 	}
 	if taken, err := store.IsDisplayNameTaken(ctx, "UpdatedDomainUser", ""); err != nil || !taken {
 		t.Fatalf("display name should be taken: taken=%v err=%v", taken, err)
+	}
+	if taken, err := store.IsDisplayNameTaken(ctx, "UpdatedDomainUser", u.ID); err != nil || taken {
+		t.Fatalf("display name exclude should ignore current user: taken=%v err=%v", taken, err)
+	}
+	directHash, err := util.HashPassword("DirectPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdatePassword(ctx, u.ID, directHash); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.GetByID(ctx, u.ID); err != nil || got == nil || !util.VerifyPassword("DirectPassword123", got.Password) {
+		t.Fatalf("UpdatePassword should persist hash: user=%#v err=%v", got, err)
 	}
 	newHash, err := util.HashPassword("NewPassword123")
 	if err != nil {
@@ -52,12 +69,18 @@ func TestStoreCreateUpdateDeleteAndInviteExhaustion(t *testing.T) {
 	if err != nil || !updated {
 		t.Fatalf("password update mismatch: updated=%v err=%v", updated, err)
 	}
+	if updated, err := store.UpdatePasswordAndRevokeRefresh(ctx, "missing-user", newHash); err != nil || updated {
+		t.Fatalf("password update missing user should return false: updated=%v err=%v", updated, err)
+	}
 	deleted, err := store.Delete(ctx, u.ID)
 	if err != nil || !deleted {
 		t.Fatalf("delete mismatch: deleted=%v err=%v", deleted, err)
 	}
 	if got, err := store.GetByID(ctx, u.ID); err != nil || got != nil {
 		t.Fatalf("deleted user should be gone: user=%#v err=%v", got, err)
+	}
+	if deleted, err := store.Delete(ctx, u.ID); err != nil || deleted {
+		t.Fatalf("delete missing user should return false: deleted=%v err=%v", deleted, err)
 	}
 }
 

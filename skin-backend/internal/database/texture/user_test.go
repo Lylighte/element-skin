@@ -2,6 +2,7 @@ package texture_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"element-skin/backend/internal/database/texture"
@@ -43,13 +44,39 @@ func TestUserTextureLibraryCRUDAndPagination(t *testing.T) {
 	if err := store.UpdatePublic(ctx, user.ID, "domain_texture_user_hash", "skin", false); err != nil {
 		t.Fatal(err)
 	}
+	for _, tc := range []struct {
+		name string
+		call func() error
+	}{
+		{"missing note", func() error { return store.UpdateNote(ctx, user.ID, "missing_texture", "skin", "note") }},
+		{"missing model", func() error { return store.UpdateModel(ctx, user.ID, "missing_texture", "skin", "slim") }},
+		{"missing public", func() error { return store.UpdatePublic(ctx, user.ID, "missing_texture", "skin", true) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); !errors.Is(err, texture.ErrNotFound) {
+				t.Fatalf("%s should return ErrNotFound, got %v", tc.name, err)
+			}
+		})
+	}
 	info, err = store.GetInfo(ctx, user.ID, "domain_texture_user_hash", "skin")
 	if err != nil || info["note"] != "Domain Updated" || info["model"] != "default" || info["is_public"] != 0 {
 		t.Fatalf("updated info mismatch: info=%#v err=%v", info, err)
 	}
+	if uploader, exists, err := store.LibraryUploader(ctx, "domain_texture_user_hash", "skin"); err != nil || !exists || uploader != user.ID {
+		t.Fatalf("LibraryUploader should return uploader: uploader=%q exists=%v err=%v", uploader, exists, err)
+	}
+	if uploader, exists, err := store.LibraryUploader(ctx, "missing_texture", "skin"); err != nil || exists || uploader != "" {
+		t.Fatalf("missing LibraryUploader should return exists=false: uploader=%q exists=%v err=%v", uploader, exists, err)
+	}
+	if err := store.RecountUsage(ctx, "domain_texture_user_hash", "elytra"); err == nil || err.Error() != "invalid texture_type" {
+		t.Fatalf("invalid recount texture type should reject, got %v", err)
+	}
 	deleted, err := store.DeleteFromLibrary(ctx, user.ID, "domain_texture_user_hash", "skin")
 	if err != nil || !deleted {
 		t.Fatalf("delete mismatch: deleted=%v err=%v", deleted, err)
+	}
+	if deleted, err := store.DeleteFromLibrary(ctx, user.ID, "domain_texture_user_hash", "skin"); err != nil || deleted {
+		t.Fatalf("delete missing personal texture should return false: deleted=%v err=%v", deleted, err)
 	}
 }
 

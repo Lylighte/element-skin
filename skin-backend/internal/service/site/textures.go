@@ -2,9 +2,11 @@ package site
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"element-skin/backend/internal/database/profile"
+	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/util"
 )
 
@@ -58,12 +60,12 @@ func (s Site) TextureDetail(ctx context.Context, userID, hash, textureType strin
 func (s Site) UpdateTexture(ctx context.Context, userID, hash, textureType string, body map[string]any) (map[string]any, error) {
 	if v, ok := body["note"].(string); ok {
 		if err := s.DB.Textures.UpdateNote(ctx, userID, hash, textureType, v); err != nil {
-			return nil, err
+			return nil, textureNotFoundError(err)
 		}
 	}
 	if v, ok := body["model"].(string); ok {
 		if err := s.DB.Textures.UpdateModel(ctx, userID, hash, textureType, v); err != nil {
-			return nil, err
+			return nil, textureNotFoundError(err)
 		}
 	}
 	if v, ok := body["is_public"]; ok {
@@ -77,7 +79,7 @@ func (s Site) UpdateTexture(ctx context.Context, userID, hash, textureType strin
 			pub = x != 0
 		}
 		if err := s.DB.Textures.UpdatePublic(ctx, userID, hash, textureType, pub); err != nil {
-			return nil, err
+			return nil, textureNotFoundError(err)
 		}
 	}
 	info, err := s.TextureDetail(ctx, userID, hash, textureType)
@@ -97,10 +99,20 @@ func (s Site) DeleteTexture(ctx context.Context, userID, hash, textureType strin
 		return s.DB.Textures.DeleteLibraryTexture(ctx, hash, textureType)
 	}
 	deleted, err := s.DB.Textures.DeleteFromLibrary(ctx, userID, hash, textureType)
-	if err != nil || !deleted {
+	if err != nil {
 		return err
 	}
+	if !deleted {
+		return util.HTTPError{Status: 404, Detail: "Texture not found"}
+	}
 	return s.DB.Textures.RecountUsage(ctx, hash, textureType)
+}
+
+func textureNotFoundError(err error) error {
+	if errors.Is(err, texture.ErrNotFound) {
+		return util.HTTPError{Status: 404, Detail: "Texture not found"}
+	}
+	return err
 }
 
 func textureCursor(cursor, hashKey string) (*int64, string, error) {

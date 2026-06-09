@@ -37,6 +37,9 @@ func TestAdminTextureUpdateListDeleteAndMissingSentinel(t *testing.T) {
 	if err := store.AdminDelete(ctx, "domain_texture_admin_hash", "skin", "", false); err == nil || err.Error() != "per-user deletion requires user_id" {
 		t.Fatalf("expected per-user deletion validation, got %v", err)
 	}
+	if err := store.AdminDelete(ctx, "missing_domain_texture", "skin", user.ID, false); !errors.Is(err, texture.ErrNotFound) {
+		t.Fatalf("per-user delete missing texture should return ErrNotFound, got %v", err)
+	}
 	if err := store.AdminDelete(ctx, "domain_texture_admin_hash", "skin", "", true); err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +48,12 @@ func TestAdminTextureUpdateListDeleteAndMissingSentinel(t *testing.T) {
 	}
 	if err := store.AdminUpdateNote(ctx, "missing_domain_texture", "skin", "note"); !errors.Is(err, texture.ErrNotFound) {
 		t.Fatalf("missing texture should return ErrNotFound, got %v", err)
+	}
+	if err := store.AdminUpdateModel(ctx, "missing_domain_texture", "skin", "slim"); !errors.Is(err, texture.ErrNotFound) {
+		t.Fatalf("missing model update should return ErrNotFound, got %v", err)
+	}
+	if err := store.AdminUpdatePublic(ctx, "missing_domain_texture", "skin", true); !errors.Is(err, texture.ErrNotFound) {
+		t.Fatalf("missing public update should return ErrNotFound, got %v", err)
 	}
 }
 
@@ -109,5 +118,41 @@ func TestAdminPerUserDeleteUpdatesUsageCount(t *testing.T) {
 	}
 	if ok, err := store.VerifyOwnership(ctx, other.ID, "admin_count_hash", "skin"); err != nil || ok {
 		t.Fatalf("other row should be removed: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestAdminTextureListPaginatesWithCursor(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	user := testutil.CreateUser(t, db, "domain-texture-admin-page@test.com", "Password123", "AdminPageOwner", false)
+	for _, item := range []struct {
+		hash string
+		name string
+	}{
+		{"admin_page_old", "Admin Page Old"},
+		{"admin_page_new", "Admin Page New"},
+	} {
+		if err := store.AddToLibrary(ctx, user.ID, item.hash, "skin", item.name, true, "default"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := store.ListAll(ctx, 1, nil, "", "Admin Page", "skin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstItems := first["items"].([]map[string]any)
+	nextKey := first["next_key"].(map[string]any)
+	if len(firstItems) != 1 || first["has_next"] != true || nextKey["last_skin_hash"] == "" {
+		t.Fatalf("first admin texture page mismatch: %#v", first)
+	}
+	lastCreated := nextKey["last_created_at"].(int64)
+	second, err := store.ListAll(ctx, 1, &lastCreated, nextKey["last_skin_hash"].(string), "Admin Page", "skin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondItems := second["items"].([]map[string]any)
+	if len(secondItems) != 1 || secondItems[0]["hash"] == firstItems[0]["hash"] || second["has_next"] != false {
+		t.Fatalf("second admin texture page should advance cursor: first=%#v second=%#v", first, second)
 	}
 }

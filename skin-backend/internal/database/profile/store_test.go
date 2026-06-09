@@ -22,19 +22,39 @@ func TestStoreCRUDHelpersSearchAndCascade(t *testing.T) {
 	if profile.NormalizeModel("wide") != "default" || profile.NormalizeModel("slim") != "slim" {
 		t.Fatal("NormalizeModel should whitelist slim only")
 	}
+	item := profile.ModelKey(map[string]any{"texture_model": "slim"})
+	if item["model"] != "slim" {
+		t.Fatalf("ModelKey should expose texture_model as model: %#v", item)
+	}
 	summary := profile.Summary(p)
 	if summary["id"] != p.ID || summary["model"] != "slim" || summary["skin_hash"] == nil {
 		t.Fatalf("summary mismatch: %#v", summary)
+	}
+	if err := store.Create(ctx, model.Profile{ID: "domain_profile_dup", UserID: user.ID, Name: p.Name, TextureModel: "default"}); !profile.IsNameConflict(err) {
+		t.Fatalf("duplicate profile name should be detected as conflict, got %v", err)
 	}
 	got, err := store.GetByName(ctx, "DomainProfileA")
 	if err != nil || got == nil || got.ID != p.ID {
 		t.Fatalf("GetByName mismatch: profile=%#v err=%v", got, err)
 	}
+	userProfiles, err := store.GetByUser(ctx, user.ID, 5)
+	if err != nil || len(userProfiles) != 1 || userProfiles[0].ID != p.ID {
+		t.Fatalf("GetByUser mismatch: profiles=%#v err=%v", userProfiles, err)
+	}
+	if count, err := store.CountByUser(ctx, user.ID); err != nil || count != 1 {
+		t.Fatalf("CountByUser mismatch: count=%d err=%v", count, err)
+	}
 	if ok, err := store.VerifyOwnership(ctx, user.ID, p.ID); err != nil || !ok {
 		t.Fatalf("ownership mismatch: ok=%v err=%v", ok, err)
 	}
+	if ok, err := store.VerifyOwnership(ctx, user.ID, "missing_profile"); err != nil || ok {
+		t.Fatalf("missing ownership should be false: ok=%v err=%v", ok, err)
+	}
 	if ok, err := store.UpdateName(ctx, p.ID, "DomainProfileRenamed"); err != nil || !ok {
 		t.Fatalf("rename mismatch: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.UpdateName(ctx, "missing_profile", "Nope"); err != nil || ok {
+		t.Fatalf("missing rename should be false: ok=%v err=%v", ok, err)
 	}
 	if err := store.UpdateSkin(ctx, p.ID, nil); err != nil {
 		t.Fatal(err)
@@ -52,6 +72,9 @@ func TestStoreCRUDHelpersSearchAndCascade(t *testing.T) {
 	deleted, err := store.DeleteCascade(ctx, p.ID)
 	if err != nil || !deleted {
 		t.Fatalf("delete cascade mismatch: deleted=%v err=%v", deleted, err)
+	}
+	if deleted, err := store.DeleteCascade(ctx, p.ID); err != nil || deleted {
+		t.Fatalf("delete cascade missing profile should be false: deleted=%v err=%v", deleted, err)
 	}
 	if got, err := store.GetByID(ctx, p.ID); err != nil || got != nil {
 		t.Fatalf("delete cascade should remove profile row: profile=%#v err=%v", got, err)

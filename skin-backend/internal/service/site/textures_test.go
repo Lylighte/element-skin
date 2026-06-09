@@ -2,9 +2,11 @@ package site_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
 )
 
 func TestTexturesApplyUpdateAndDeleteExactState(t *testing.T) {
@@ -32,6 +34,53 @@ func TestTexturesApplyUpdateAndDeleteExactState(t *testing.T) {
 	}
 	if info, err := db.Textures.GetInfo(ctx, user.ID, "texture_service_skin", "skin"); err != nil || info != nil {
 		t.Fatalf("texture should be deleted: info=%#v err=%v", info, err)
+	}
+}
+
+func TestApplyTextureRejectsMissingForeignAndInvalidTypeWithoutMutatingProfile(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	owner := testutil.CreateUser(t, db, "site-textures-apply-owner@test.com", "Password123", "ApplyOwner", false)
+	other := testutil.CreateUser(t, db, "site-textures-apply-other@test.com", "Password123", "ApplyOther", false)
+	profile := testutil.CreateProfile(t, db, owner.ID, "site_apply_profile", "SiteApplyProfile")
+	foreign := testutil.CreateProfile(t, db, other.ID, "site_apply_foreign", "SiteApplyForeign")
+	if err := db.Textures.AddToLibrary(ctx, owner.ID, "texture_service_apply_skin", "skin", "Texture Apply Skin", true, "slim"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		call func() error
+		code int
+		want string
+	}{
+		{"missing texture ownership", func() error {
+			return svc.ApplyTextureToProfile(ctx, owner.ID, profile.ID, "missing_apply_texture", "skin")
+		}, 403, "Texture not found in your library"},
+		{"foreign profile", func() error {
+			return svc.ApplyTextureToProfile(ctx, owner.ID, foreign.ID, "texture_service_apply_skin", "skin")
+		}, 403, "Profile not yours"},
+		{"invalid type", func() error {
+			return svc.ApplyTextureToProfile(ctx, owner.ID, profile.ID, "texture_service_apply_skin", "elytra")
+		}, 403, "Texture not found in your library"},
+		{"set invalid type", func() error {
+			return svc.SetProfileTexture(ctx, profile.ID, "elytra", ptrString("texture_service_apply_skin"))
+		}, 400, "Invalid texture_type"},
+		{"set missing profile", func() error {
+			return svc.SetProfileTexture(ctx, "missing-profile", "skin", ptrString("texture_service_apply_skin"))
+		}, 404, "profile not found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); !httpError(err, tc.code, tc.want) {
+				t.Fatalf("%s should reject exactly, got %#v", tc.name, err)
+			}
+		})
+	}
+
+	unchanged, err := db.Profiles.GetByID(ctx, profile.ID)
+	if err != nil || unchanged == nil || unchanged.SkinHash != nil || unchanged.CapeHash != nil || unchanged.TextureModel != profile.TextureModel {
+		t.Fatalf("failed apply attempts must not mutate profile: profile=%#v err=%v", unchanged, err)
 	}
 }
 
@@ -94,4 +143,36 @@ func TestNonUploaderDeleteOnlyDecrementsUsageCount(t *testing.T) {
 	if exists, err := db.Textures.Exists(ctx, "texture_service_count_skin", "skin"); err != nil || !exists {
 		t.Fatalf("non-uploader delete should keep library row: exists=%v err=%v", exists, err)
 	}
+}
+
+func TestDeleteMissingWardrobeTextureReturnsNotFoundAndKeepsAppliedHash(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	owner := testutil.CreateUser(t, db, "site-textures-missing-owner@test.com", "Password123", "MissingOwner", false)
+	other := testutil.CreateUser(t, db, "site-textures-missing-other@test.com", "Password123", "MissingOther", false)
+	profile := testutil.CreateProfile(t, db, other.ID, "site_missing_delete_profile", "SiteMissingDeleteProfile")
+	if err := db.Textures.AddToLibrary(ctx, owner.ID, "texture_service_missing_delete", "skin", "Missing Delete Texture", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Profiles.UpdateSkin(ctx, profile.ID, ptrString("texture_service_missing_delete")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.DeleteTexture(ctx, other.ID, "texture_service_missing_delete", "skin")
+	var httpErr util.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != 404 || httpErr.Detail != "Texture not found" {
+		t.Fatalf("missing wardrobe delete should return exact 404 error, got %#v", err)
+	}
+	if info, err := db.Textures.GetInfo(ctx, owner.ID, "texture_service_missing_delete", "skin"); err != nil || info == nil {
+		t.Fatalf("missing wardrobe delete must keep uploader library row: info=%#v err=%v", info, err)
+	}
+	afterDelete, err := db.Profiles.GetByID(ctx, profile.ID)
+	if err != nil || afterDelete == nil || afterDelete.SkinHash == nil || *afterDelete.SkinHash != "texture_service_missing_delete" {
+		t.Fatalf("missing wardrobe delete must not clear applied profile hash: profile=%#v err=%v", afterDelete, err)
+	}
+}
+
+func ptrString(s string) *string {
+	return &s
 }
