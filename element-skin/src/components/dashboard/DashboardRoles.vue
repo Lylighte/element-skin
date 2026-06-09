@@ -7,7 +7,7 @@
           <p>创建并管理您的 Minecraft 角色身份</p>
         </div>
       </div>
-      <div class="page-header-actions role-header-actions">
+      <ActionBar full>
         <el-button size="large" @click="showYggImportDialog = true" class="btn-gradient btn-gradient-warning role-header-button">
           <el-icon><Download /></el-icon>
           <span style="margin-left:8px">导入皮肤站角色</span>
@@ -20,68 +20,23 @@
           <el-icon><Plus /></el-icon>
           <span style="margin-left:8px">新建角色</span>
         </el-button>
-      </div>
+      </ActionBar>
     </div>
 
     <div class="roles-grid-container" v-loading="loading" element-loading-background="transparent">
       <div class="auto-grid" v-if="profiles.length > 0">
-        <div 
-          v-for="(profile, index) in profiles" 
-          :key="profile.id" 
-          class="surface-card hoverable animate-card-slide clickable-card" 
-          :style="{ '--delay-index': index % limit }"
-          @click="openPreviewDialog(profile)"
-        >
-          <div
-            class="role-preview"
-            :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }"
-          >
-            <SkinViewer
-              v-if="profile.skin_hash"
-              :skinUrl="texturesUrl(profile.skin_hash)"
-              :capeUrl="profile.cape_hash ? texturesUrl(profile.cape_hash) : null"
-              :model="profile.model || 'default'"
-              :width="200"
-              :height="280"
-              is-static
-            />
-            <el-empty v-else description="未设置皮肤" :image-size="120" />
-          </div>
-          <div class="role-info">
-            <div class="role-name">{{ profile.name }}</div>
-            <div class="role-model">模型: {{ profile.model || 'default' }}</div>
-          </div>
-          <div class="role-actions" @click.stop>
-            <el-button
-              class="btn-gradient btn-gradient-danger btn-icon-swap"
-              @click="deleteRole(profile.id)"
-              size="default"
-            >
-              <span class="btn-label">删除</span>
-              <el-icon class="btn-icon"><Delete /></el-icon>
-            </el-button>
-
-            <el-button
-              v-if="profile.skin_hash"
-              class="btn-soft-warning btn-icon-swap"
-              @click="clearRoleSkin(profile.id)"
-              size="default"
-            >
-              <span class="btn-label">皮肤</span>
-              <el-icon class="btn-icon"><Close /></el-icon>
-            </el-button>
-
-            <el-button
-              v-if="profile.cape_hash"
-              class="btn-soft-warning btn-icon-swap"
-              @click="clearRoleCape(profile.id)"
-              size="default"
-            >
-              <span class="btn-label">披风</span>
-              <el-icon class="btn-icon"><Close /></el-icon>
-            </el-button>
-          </div>
-        </div>
+        <RoleCard
+          v-for="(profile, index) in profiles"
+          :key="profile.id"
+          :profile="profile"
+          :delay-index="index % limit"
+          :is-dark="isDark"
+          :textures-url="texturesUrl"
+          @preview="openPreviewDialog"
+          @delete="deleteRole"
+          @clear-skin="clearRoleSkin"
+          @clear-cape="clearRoleCape"
+        />
       </div>
 
       <el-empty v-else-if="!loading" description="还没有角色，快去创建吧！" />
@@ -98,225 +53,44 @@
       />
     </div>
 
-    <!-- 预览对话框 -->
-    <el-dialog
-      v-model="showPreviewDialog"
-      destroy-on-close
-      class="dialog-viewer"
-      append-to-body
-    >
-      <div class="viewer-layout" v-if="selectedProfile">
-        <div class="viewer-stage">
-          <SkinViewer
-            v-if="selectedProfile.skin_hash"
-            :skinUrl="texturesUrl(selectedProfile.skin_hash)"
-            :capeUrl="selectedProfile.cape_hash ? texturesUrl(selectedProfile.cape_hash) : null"
-            :model="selectedProfile.model || 'default'"
-            :width="320"
-            :height="430"
-          />
-          <el-empty v-else description="未设置皮肤" />
-        </div>
+    <RolePreviewDialog
+      v-model:visible="showPreviewDialog"
+      :profile="selectedProfile"
+      :textures-url="texturesUrl"
+      @rename="updateRoleName"
+      @set-avatar="setAsAvatar"
+      @clear-skin="clearRoleSkin"
+      @clear-cape="clearRoleCape"
+      @delete="deleteRole"
+    />
 
-        <div class="viewer-info-panel">
-          <section class="viewer-section title-section">
-            <div class="viewer-title-row">
-              <el-button text circle class="title-edit-btn" @click="focusNameInput">
-                <el-icon><Edit /></el-icon>
-              </el-button>
-              <el-input
-                ref="nameInputRef"
-                v-model="selectedProfile.name"
-                class="viewer-title-input"
-                placeholder="角色名称"
-                @change="updateRoleName"
-              />
-            </div>
-          </section>
+    <CreateRoleDialog
+      v-model:visible="showCreateRoleDialog"
+      v-model:name="newRoleName"
+      @create="createRole"
+    />
 
-          <section class="viewer-section meta-section">
-            <div class="viewer-section-label">角色信息</div>
-            <div class="viewer-title-row">
-              <span class="meta-chip">模型: {{ selectedProfile.model || 'default' }}</span>
-            </div>
-            <div class="hash-label">UUID: {{ formatUUID(selectedProfile.id) }}</div>
-            <div class="hash-label" v-if="selectedProfile.skin_hash">皮肤 HASH: {{ selectedProfile.skin_hash }}</div>
-            <div class="hash-label" v-if="selectedProfile.cape_hash">披风 HASH: {{ selectedProfile.cape_hash }}</div>
-          </section>
+    <MicrosoftImportDialog
+      v-model:visible="showMicrosoftLoginDialog"
+      :profile="microsoftProfile"
+      :importing="importing"
+      @cancel="cancelMicrosoftLogin"
+      @confirm="importMicrosoftProfile"
+    />
 
-          <section class="viewer-section" v-if="selectedProfile.skin_hash || selectedProfile.cape_hash">
-            <div class="viewer-section-label">快捷操作</div>
-            <div class="apply-row" style="display: flex; gap: 8px;">
-              <el-button
-                v-if="selectedProfile.skin_hash"
-                type="primary"
-                plain
-                style="flex: 1; border-radius: 8px;"
-                @click="setAsAvatar(selectedProfile)"
-              >
-                用作头像
-              </el-button>
-              <el-button 
-                v-if="selectedProfile.skin_hash"
-                type="warning" 
-                plain 
-                style="flex: 1; border-radius: 8px;"
-                @click="clearRoleSkin(selectedProfile.id)"
-              >
-                清除皮肤
-              </el-button>
-              <el-button 
-                v-if="selectedProfile.cape_hash"
-                type="warning" 
-                plain 
-                style="flex: 1; border-radius: 8px;"
-                @click="clearRoleCape(selectedProfile.id)"
-              >
-                清除披风
-              </el-button>
-            </div>
-          </section>
-
-          <section class="viewer-section footer-section" style="margin-top: auto;">
-             <el-button 
-              type="danger" 
-              plain 
-              style="width: 100%; border-radius: 8px;"
-              @click="deleteRole(selectedProfile.id)"
-            >
-              删除此角色
-            </el-button>
-          </section>
-        </div>
-      </div>
-    </el-dialog>
-
-    <!-- 新建角色对话框 -->
-    <el-dialog v-model="showCreateRoleDialog" title="新建角色" class="dialog-form dialog-create-role" append-to-body>
-      <el-form label-width="100px">
-        <el-form-item label="角色名称">
-          <el-input v-model="newRoleName" placeholder="请输入角色名称" maxlength="32" show-word-limit />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showCreateRoleDialog = false">取消</el-button>
-        <el-button type="primary" @click="createRole">
-          <el-icon><Check /></el-icon>
-          创建
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 微软正版登录对话框 -->
-    <el-dialog
-      v-model="showMicrosoftLoginDialog"
-      title="绑定正版角色"
-      class="dialog-form dialog-microsoft-login"
-      :close-on-click-modal="false"
-      :destroy-on-close="true"
-      :before-close="handleMicrosoftDialogClose"
-      append-to-body
-    >
-      <div class="microsoft-login-content">
-        <!-- 步骤2: 选择角色 (已找到) -->
-        <div v-if="microsoftStep === 'select-profile' && microsoftProfile" class="step-content">
-          <div class="selection-item is-checked" style="cursor: default; pointer-events: none;">
-            <div class="selection-info">
-              <span class="title">{{ microsoftProfile?.name }}</span>
-              <span class="subtitle">{{ formatUUID(microsoftProfile?.id || '') }}</span>
-            </div>
-            <div style="margin-left: auto;">
-               <el-tag v-if="microsoftProfile?.has_game" type="success" effect="dark">
-                  拥有游戏
-               </el-tag>
-               <el-tag v-else type="danger" effect="dark">
-                  无游戏权限
-               </el-tag>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="cancelMicrosoftLogin" :disabled="importing">取消</el-button>
-          <el-button
-            v-if="microsoftStep === 'select-profile'"
-            type="primary"
-            @click="importMicrosoftProfile"
-            :loading="importing"
-            :disabled="!microsoftProfile?.has_game"
-          >
-            确认导入
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- 外部皮肤站角色导入对话框 -->
-    <el-dialog 
-      v-model="showYggImportDialog" 
-      title="从外部皮肤站导入角色" 
-      class="dialog-form dialog-ygg-import"
-      append-to-body
-      :before-close="handleYggDialogClose"
-    >
-      <div v-if="yggStep === 'input'">
-        <el-form label-position="top">
-          <el-form-item label="Yggdrasil API 地址">
-            <el-input v-model="yggApiUrl" placeholder="https://skin.example.com/api/yggdrasil" />
-            <div class="form-tip">通常以 /api/yggdrasil 结尾</div>
-          </el-form-item>
-          <el-form-item label="用户名/邮箱">
-            <el-input v-model="yggUsername" placeholder="外部皮肤站的登录用户名" />
-          </el-form-item>
-          <el-form-item label="密码">
-            <el-input v-model="yggPassword" type="password" show-password placeholder="外部皮肤站的登录密码" />
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <div v-else-if="yggStep === 'select'">
-        <p style="margin-bottom: 16px;">请选择要导入的角色：</p>
-        <el-checkbox-group v-model="selectedYggProfiles" class="selection-list">
-          <el-checkbox 
-            v-for="p in yggProfiles" 
-            :key="p.id" 
-            :value="p.id" 
-            border 
-            class="selection-item"
-          >
-            <div class="selection-info">
-              <span class="title">{{ p.name }}</span>
-              <span class="subtitle">{{ formatUUID(p.id) }}</span>
-            </div>
-          </el-checkbox>
-        </el-checkbox-group>
-      </div>
-
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="handleYggDialogClose" :disabled="yggLoading">取消</el-button>
-          <el-button 
-            v-if="yggStep === 'input'" 
-            type="primary" 
-            @click="getYggProfiles" 
-            :loading="yggLoading"
-          >
-            下一步
-          </el-button>
-          <el-button 
-            v-else 
-            type="primary" 
-            @click="importYggProfile" 
-            :loading="yggLoading"
-            :disabled="selectedYggProfiles.length === 0"
-          >
-            确认导入
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <RemoteYggImportDialog
+      v-model:visible="showYggImportDialog"
+      v-model:api-url="yggApiUrl"
+      v-model:username="yggUsername"
+      v-model:password="yggPassword"
+      v-model:selected-profiles="selectedYggProfiles"
+      :step="yggStep"
+      :profiles="yggProfiles"
+      :loading="yggLoading"
+      @cancel="handleYggDialogClose"
+      @next="getYggProfiles"
+      @confirm="importYggProfile"
+    />
   </div>
 </template>
 
@@ -324,11 +98,15 @@
 import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { InputInstance } from 'element-plus'
 import type { Ref } from 'vue'
-import { Connection, Plus, Delete, Close, Check, Download, Edit } from '@element-plus/icons-vue'
-import SkinViewer from '@/components/SkinViewer.vue'
+import { Connection, Plus, Download } from '@element-plus/icons-vue'
+import ActionBar from '@/components/common/ActionBar.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import RoleCard from '@/components/dashboard/roles/RoleCard.vue'
+import RolePreviewDialog from '@/components/dashboard/roles/RolePreviewDialog.vue'
+import CreateRoleDialog from '@/components/dashboard/roles/CreateRoleDialog.vue'
+import MicrosoftImportDialog from '@/components/dashboard/roles/MicrosoftImportDialog.vue'
+import RemoteYggImportDialog from '@/components/dashboard/roles/RemoteYggImportDialog.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { useAvatar } from '@/composables/useAvatar'
 import { getProfiles, createProfile, patchProfile, deleteProfile, clearProfileSkin, clearProfileCape } from '@/api/profiles'
@@ -354,21 +132,15 @@ const pagination = useCursorPagination<Profile>(limit)
 const showCreateRoleDialog = ref(false)
 const newRoleName = ref('')
 const showMicrosoftLoginDialog = ref(false)
-const microsoftStep = ref('select-profile')
 const microsoftProfile = ref<any>(null)
 const microsoftImportToken = ref<string | null>(null)
 const importing = ref(false)
 
 const showPreviewDialog = ref(false)
 const selectedProfile = ref<Profile | null>(null)
-const nameInputRef = ref<InputInstance | null>(null)
-
-function focusNameInput() {
-  nameInputRef.value?.focus()
-}
 
 const showYggImportDialog = ref(false)
-const yggStep = ref('input')
+const yggStep = ref<'input' | 'select'>('input')
 const yggApiUrl = ref('')
 const yggUsername = ref('')
 const yggPassword = ref('')
@@ -456,10 +228,10 @@ async function deleteRole(pid: string) {
   }
 }
 
-async function updateRoleName() {
+async function updateRoleName(name: string) {
   if (!selectedProfile.value) return
   const pid = selectedProfile.value.id
-  const newName = (selectedProfile.value.name || '').trim()
+  const newName = (name || '').trim()
 
   if (!newName) {
     ElMessage.error('角色名不能为空')
@@ -468,6 +240,7 @@ async function updateRoleName() {
 
   try {
     await patchProfile(pid, { name: newName })
+    selectedProfile.value.name = newName
     ElMessage.success('名称已修改')
     await fetchProfiles()
     if (fetchMe) fetchMe()
@@ -534,15 +307,6 @@ async function setAsAvatar(profile: Profile) {
   }
 }
 
-// 微软正版登录相关函数
-function formatUUID(uuid: string) {
-  if (!uuid) return ''
-  if (uuid.length === 32) {
-    return `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`
-  }
-  return uuid
-}
-
 async function startMicrosoftAuth() {
   try {
     const response = await getMicrosoftAuthUrl()
@@ -574,9 +338,8 @@ async function importMicrosoftProfile() {
     // Delay clearing the profile slightly to allow transition, or just leave it since dialog is destroying anyway
     // But safely clearing it prevents state leak if reopened somehow without reload (unlikely but possible)
     setTimeout(() => {
-        microsoftProfile.value = null
-        microsoftImportToken.value = null
-        microsoftStep.value = 'select-profile'
+      microsoftProfile.value = null
+      microsoftImportToken.value = null
     }, 300)
 
     // Refresh data in background
@@ -596,18 +359,9 @@ async function importMicrosoftProfile() {
 
 function cancelMicrosoftLogin() {
   showMicrosoftLoginDialog.value = false
-  microsoftStep.value = 'select-profile'
   microsoftProfile.value = null
   microsoftImportToken.value = null
   importing.value = false
-}
-
-function handleMicrosoftDialogClose(done?: () => void) {
-  if (importing.value) {
-    return // Prevent closing while importing
-  }
-  cancelMicrosoftLogin()
-  if (done) done()
 }
 
 // Yggdrasil 相关函数
@@ -702,7 +456,6 @@ onMounted(async () => {
       microsoftProfile.value.has_game = response.data.has_game
       // 服务端换发的一次性导入凭证：确认导入时回传，导入资料以服务端固化为准。
       microsoftImportToken.value = response.data.import_token
-      microsoftStep.value = 'select-profile'
       showMicrosoftLoginDialog.value = true
 
       ElMessage.success('授权成功！')
@@ -719,101 +472,20 @@ onMounted(async () => {
   min-height: 400px;
 }
 
-.role-preview {
-  width: 100%;
-  height: 280px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.role-info {
-  padding: 16px;
-  text-align: center;
-  background: var(--color-card-background);
-}
-
-.role-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-heading);
-  margin-bottom: 8px;
-}
-
-.role-model {
-  font-size: 13px;
-  color: var(--color-text-light);
-  font-weight: 500;
-}
-
-.role-actions {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-background-soft);
-  align-items: center;
-}
-
-.role-actions .el-button {
-  flex: 1;
-  min-width: 0;
-}
-
-.role-header-actions {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  flex: 1 1 100%;
-  min-width: 0;
-}
-
 .role-header-button {
   flex: 0 1 auto;
   margin-left: 0 !important;
 }
 
 @media (max-width: 900px) {
-  .role-header-actions {
-    justify-content: center;
-    width: 100%;
-  }
-
   .role-header-button {
     flex: 1 1 180px;
   }
 }
 
 @media (max-width: 520px) {
-  .role-actions {
-    flex-wrap: wrap;
-  }
-
-  .role-actions .el-button {
-    flex: 1 1 92px;
-  }
-
   .role-header-button {
     flex-basis: 100%;
   }
-}
-
-.clickable-card {
-  cursor: pointer;
-}
-
-/* Microsoft Login Specific Styles */
-.microsoft-login-content {
-  padding: 10px 0;
-}
-
-.step-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
 }
 </style>
