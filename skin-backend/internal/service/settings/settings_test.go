@@ -3,6 +3,7 @@ package settings_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
@@ -53,5 +54,42 @@ func TestSettingsReturnsRedisErrors(t *testing.T) {
 
 	if _, err := svc.Get(t.Context(), "site_name", "fallback"); err == nil || err.Error() != "redis unavailable" {
 		t.Fatalf("settings should return redis error, got %v", err)
+	}
+}
+
+func TestSettingsIntUsesCacheTTLAndFallbacksExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	redis := redisstore.NewMemoryStore()
+	svc := settings.Settings{DB: db, Redis: redis, TTL: 50 * time.Millisecond}
+
+	if err := db.Settings.Set(t.Context(), "rate_limit_auth_attempts", "7"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := svc.Int(t.Context(), "rate_limit_auth_attempts", 5)
+	if err != nil || first != 7 {
+		t.Fatalf("first Int read mismatch: got=%d err=%v", first, err)
+	}
+	if err := db.Settings.Set(t.Context(), "rate_limit_auth_attempts", "9"); err != nil {
+		t.Fatal(err)
+	}
+	cached, err := svc.Int(t.Context(), "rate_limit_auth_attempts", 5)
+	if err != nil || cached != 7 {
+		t.Fatalf("Int should use redis value before custom TTL expires: got=%d err=%v", cached, err)
+	}
+	time.Sleep(70 * time.Millisecond)
+	refreshed, err := svc.Int(t.Context(), "rate_limit_auth_attempts", 5)
+	if err != nil || refreshed != 9 {
+		t.Fatalf("Int should refresh after custom TTL expires: got=%d err=%v", refreshed, err)
+	}
+
+	if err := db.Settings.Set(t.Context(), "rate_limit_auth_attempts", "bad-number"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.InvalidateCache(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	fallback, err := svc.Int(t.Context(), "rate_limit_auth_attempts", 5)
+	if err != nil || fallback != 5 {
+		t.Fatalf("Int should return fallback for invalid stored number: got=%d err=%v", fallback, err)
 	}
 }
