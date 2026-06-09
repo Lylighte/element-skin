@@ -34,7 +34,7 @@ const definitions: EasterEggDefinition[] = [
   {
     id: 'qingming',
     name: '清明',
-    description: '4 月 4 日至 4 月 5 日启用低饱和静默主题。',
+    description: '4 月 4 日至 4 月 5 日启用雨纷纷的细雨效果。',
     htmlClass: 'easter-egg-qingming',
     active: (date) => date.getMonth() === 3 && date.getDate() >= 4 && date.getDate() <= 5,
     load: () => import('./qingming'),
@@ -116,6 +116,23 @@ function resolveEasterEgg(date: Date): EasterEggDefinition | null {
   return activeEasterEggFor(date)
 }
 
+async function startDefinition(definition: EasterEggDefinition, token: number): Promise<void> {
+  const mod = await definition.load()
+  if (token !== runToken) return
+
+  if (definition.htmlClass) {
+    document.documentElement.classList.add(definition.htmlClass)
+    activeClass = definition.htmlClass
+  }
+
+  const cleanup = await mod.start()
+  if (token !== runToken) {
+    if (cleanup) cleanup()
+    return
+  }
+  activeCleanup = cleanup || null
+}
+
 export function cleanupEasterEgg(): void {
   runToken += 1
   if (!hasDOM()) return
@@ -135,23 +152,30 @@ export async function refreshEasterEgg(date = new Date()): Promise<void> {
   if (!definition) return
 
   try {
-    const mod = await definition.load()
-    if (token !== runToken) return
-
-    if (definition.htmlClass) {
-      document.documentElement.classList.add(definition.htmlClass)
-      activeClass = definition.htmlClass
-    }
-
-    const cleanup = await mod.start()
-    if (token !== runToken) {
-      if (cleanup) cleanup()
-      return
-    }
-    activeCleanup = cleanup || null
+    await startDefinition(definition, token)
   } catch (error) {
     console.warn(`Failed to start easter egg "${definition.id}":`, error)
     if (token === runToken) stopActive()
+  }
+}
+
+export async function startEasterEggForDebug(id: string): Promise<boolean> {
+  if (!hasDOM()) return false
+
+  const definition = definitions.find((item) => item.id === id)
+  if (!definition) return false
+
+  const token = runToken + 1
+  runToken = token
+  stopActive()
+
+  try {
+    await startDefinition(definition, token)
+    return token === runToken
+  } catch (error) {
+    console.warn(`Failed to start easter egg "${definition.id}":`, error)
+    if (token === runToken) stopActive()
+    return false
   }
 }
 
@@ -162,4 +186,16 @@ export function installEasterEggRouterHooks(router: Router): void {
   router.afterEach(() => {
     void refreshEasterEgg()
   })
+}
+
+export function installEasterEggDevTools(): void {
+  if (!hasDOM() || !import.meta.env.DEV) return
+
+  window.elementSkinEasterEggs = {
+    list: availableEasterEggs,
+    start: startEasterEggForDebug,
+    stop: cleanupEasterEgg,
+    refreshAt: (date: string | Date) => refreshEasterEgg(new Date(date)),
+    setDisabled: setEasterEggDisabled,
+  }
 }
