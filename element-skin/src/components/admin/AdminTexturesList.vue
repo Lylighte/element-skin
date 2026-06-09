@@ -10,23 +10,12 @@
     </PageHeader>
 
     <div class="filter-bar">
-      <div class="search-bar-container">
-        <el-input
-          v-model="searchQuery"
-          placeholder="搜索哈希、材质名或上传者"
-          clearable
-          @clear="handleClearSearch"
-          @keyup.enter="handleSearch"
-          size="large"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-          <template #append>
-            <el-button :icon="Search" @click="handleSearch">搜索</el-button>
-          </template>
-        </el-input>
-      </div>
+      <SearchBar
+        v-model="searchQuery"
+        placeholder="搜索哈希、材质名或上传者"
+        @clear="handleClearSearch"
+        @search="handleSearch"
+      />
       <div class="type-filter">
         <el-radio-group v-model="typeFilter" @change="handleTypeFilterChange" class="capsule-radio">
           <el-radio-button :value="null">全部</el-radio-button>
@@ -49,41 +38,28 @@
 
     <!-- Card grid -->
     <div v-else-if="textures.length > 0" class="auto-grid">
-      <div
-        class="surface-card hoverable animate-card-slide clickable-card"
+      <TextureCard
         v-for="(item, index) in textures"
         :key="item.hash"
-        @click="openPreview(item)"
-        :style="{ '--delay-index': index % limit }"
+        :texture="item"
+        :delay-index="index % limit"
+        :is-dark="isDark"
+        :textures-url="texturesUrl"
+        :title="item.name || '未命名'"
+        show-type
+        @preview="openPreview"
       >
-        <div class="texture-preview" :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }">
-          <SkinViewer
-            v-if="item.type === 'skin'"
-            :skinUrl="texturesUrl(item.hash)"
-            :model="item.model || 'default'"
-            :width="200"
-            :height="280"
-            is-static
-          />
-          <CapeViewer
-            v-else
-            :capeUrl="texturesUrl(item.hash)"
-            :width="200"
-            :height="280"
-            is-static
-          />
-        </div>
-        <div class="texture-info">
-          <div class="type-tag" :class="item.type">{{ item.type === 'skin' ? '皮肤' : '披风' }}</div>
-          <div class="texture-title">{{ item.name || '未命名' }}</div>
-          <div class="texture-uploader" v-if="item.uploader_display_name || item.uploader_email">
-            {{ item.uploader_display_name || item.uploader_email }}
+        <template #info="{ texture }">
+          <div class="type-tag" :class="texture.type">{{ texture.type === 'skin' ? '皮肤' : '披风' }}</div>
+          <div class="item-card-title">{{ texture.name || '未命名' }}</div>
+          <div class="texture-uploader" v-if="texture.uploader_display_name || texture.uploader_email">
+            {{ texture.uploader_display_name || texture.uploader_email }}
           </div>
-        </div>
-        <div class="texture-actions" @click.stop>
-          <el-button class="btn-gradient btn-gradient-primary" @click="openPreview(item)"><el-icon><Edit /></el-icon><span>编辑</span></el-button>
-        </div>
-      </div>
+        </template>
+        <template #actions="{ texture }">
+          <el-button class="btn-gradient btn-gradient-primary" @click="openPreview(texture)"><el-icon><Edit /></el-icon><span>编辑</span></el-button>
+        </template>
+      </TextureCard>
     </div>
 
     <el-empty v-else-if="!loading" description="暂无材质数据" :image-size="80" />
@@ -103,21 +79,7 @@
     <!-- Preview dialog -->
     <el-dialog v-model="showPreview" destroy-on-close class="dialog-viewer" append-to-body>
       <div class="viewer-layout" v-if="selectedItem">
-        <div class="viewer-stage">
-          <SkinViewer
-            v-if="selectedItem.type === 'skin'"
-            :skinUrl="texturesUrl(selectedItem.hash)"
-            :model="selectedItem.model || 'default'"
-            :width="320"
-            :height="430"
-          />
-          <CapeViewer
-            v-else
-            :capeUrl="texturesUrl(selectedItem.hash)"
-            :width="320"
-            :height="430"
-          />
-        </div>
+        <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
         <div class="viewer-info-panel">
           <!-- name (editable) -->
           <section class="viewer-section title-section">
@@ -163,10 +125,11 @@
 <script setup lang="ts">
 import { ref, inject, onMounted, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Picture, Search, Edit } from '@element-plus/icons-vue'
-import SkinViewer from '@/components/SkinViewer.vue'
-import CapeViewer from '@/components/CapeViewer.vue'
+import { Refresh, Picture, Edit } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import SearchBar from '@/components/common/SearchBar.vue'
+import TextureCard from '@/components/textures/TextureCard.vue'
+import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getAdminTextures, patchAdminTexture, deleteAdminTexture } from '@/api/admin/textures'
 import type { Texture } from '@/api/types'
@@ -360,68 +323,8 @@ onMounted(refreshTexturesFromFirst)
   min-width: 260px;
 }
 
-.search-bar-container :deep(.el-input-group) {
-  display: flex;
-  align-items: stretch;
-}
-
-.search-bar-container :deep(.el-input-group__append) {
-  background: var(--el-color-primary);
-  color: #fff;
-  border-color: var(--el-color-primary);
-  cursor: pointer;
-  padding: 0 20px;
-  display: flex;
-  align-items: center;
-  transition: all 0.3s ease;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-
-.search-bar-container :deep(.el-input-group__append:hover) {
-  background: var(--el-color-primary-light-3);
-  border-color: var(--el-color-primary-light-3);
-  opacity: 0.9;
-}
-
-.search-bar-container :deep(.el-input-group__append .el-button) {
-  border: none;
-  background: transparent;
-  color: inherit;
-  padding: 0;
-  margin: 0;
-  height: 100%;
-}
-
 .type-filter {
   flex-shrink: 0;
-}
-
-/* Card grid */
-.texture-preview {
-  width: 100%;
-  height: 280px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.texture-info {
-  padding: 12px 16px;
-  text-align: center;
-  background: var(--color-card-background);
-}
-
-.texture-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-heading);
-  margin: 8px 0 4px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .texture-uploader {
@@ -430,26 +333,6 @@ onMounted(refreshTexturesFromFirst)
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.texture-actions {
-  display: flex;
-  align-items: center;
-  flex-direction: row;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-background-soft);
-}
-
-.texture-actions .el-button {
-  flex: 1;
-  min-width: 0;
-  /* font-size: 12px; */
-}
-
-.clickable-card {
-  cursor: pointer;
 }
 
 /* Skeleton loading */

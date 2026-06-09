@@ -15,44 +15,19 @@
 
     <div class="wardrobe-grid-container" v-loading="loading" element-loading-background="transparent">
       <div class="auto-grid" v-if="textures.length > 0">
-        <div
-          class="surface-card hoverable animate-card-slide clickable-card"
+        <TextureCard
           v-for="(tex, index) in textures"
           :key="tex.hash + tex.type"
-          :style="{ '--delay-index': index % limit }"
-          @click="openDetailDialog(tex)"
+          :texture="tex"
+          :delay-index="index % limit"
+          :is-dark="isDark"
+          :textures-url="texturesUrl"
+          :resolution="textureResolutions.get(tex.hash)"
+          :title="tex.note || '未命名纹理'"
+          show-type
+          @preview="openDetailDialog"
         >
-          <div class="item-card-preview" :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }">
-            <SkinViewer
-              v-if="tex.type === 'skin'"
-              :skinUrl="texturesUrl(tex.hash)"
-              :model="tex.model || 'default'"
-              :width="200"
-              :height="280"
-              is-static
-            />
-            <CapeViewer
-              v-else
-              :capeUrl="texturesUrl(tex.hash)"
-              :width="200"
-              :height="280"
-              is-static
-            />
-            <div
-              v-if="tex.type === 'skin' && textureResolutions.get(tex.hash)"
-              class="floating-badge"
-              :style="getResolutionBadgeStyle(textureResolutions.get(tex.hash))"
-            >
-              {{ textureResolutions.get(tex.hash) }}x
-            </div>
-          </div>
-          <div class="item-card-info">
-            <div class="type-tag" :class="tex.type">
-              {{ tex.type === 'skin' ? '皮肤' : '披风' }}
-            </div>
-            <div class="item-card-title">{{ tex.note || '未命名纹理' }}</div>
-          </div>
-        </div>
+        </TextureCard>
       </div>
 
       <el-empty v-else-if="!loading" description="还没有纹理，快去上传吧！" />
@@ -77,21 +52,7 @@
       append-to-body
     >
       <div class="viewer-layout" v-if="selectedTexture">
-        <div class="viewer-stage">
-          <SkinViewer
-            v-if="selectedTexture.type === 'skin'"
-            :skinUrl="texturesUrl(selectedTexture.hash)"
-            :model="selectedTexture.model || 'default'"
-            :width="320"
-            :height="430"
-          />
-          <CapeViewer
-            v-else
-            :capeUrl="texturesUrl(selectedTexture.hash)"
-            :width="320"
-            :height="430"
-          />
-        </div>
+        <TexturePreviewStage :texture="selectedTexture" :textures-url="texturesUrl" />
 
         <div class="viewer-info-panel" v-loading="isDetailLoading">
           <template v-if="selectedTexture">
@@ -232,9 +193,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadInstance, UploadFile } from 'element-plus'
 import type { Ref } from 'vue'
 import { Upload, UploadFilled, Edit } from '@element-plus/icons-vue'
-import SkinViewer from '@/components/SkinViewer.vue'
-import CapeViewer from '@/components/CapeViewer.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import TextureCard from '@/components/textures/TextureCard.vue'
+import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getProfiles } from '@/api/profiles'
 import { getTextures, uploadTexture, getTextureDetail, patchTexture, deleteTexture, applyTexture } from '@/api/textures'
@@ -413,20 +374,6 @@ function loadTextureResolution(hash: string) {
   img.src = texturesUrl(hash)
 }
 
-function getResolutionBadgeStyle(resolution: number | undefined) {
-  if (!resolution) return {}
-  let hue = 0
-  if (resolution <= 64) hue = 120
-  else if (resolution <= 128) hue = 120 - ((resolution - 64) / 64) * 60
-  else if (resolution <= 256) hue = 60 - ((resolution - 128) / 128) * 30
-  else if (resolution <= 512) hue = 30 - ((resolution - 256) / 256) * 30
-  else hue = 330
-  return {
-    background: `linear-gradient(135deg, hsl(${hue}, 58%, 65%), hsl(${hue + 15}, 53%, 62%))`,
-    boxShadow: `0 2px 6px hsla(${hue}, 58%, 50%, 0.25)`
-  }
-}
-
 function handleFileChange(file: UploadFile) {
   uploadForm.value.file = file.raw ?? null
 }
@@ -506,10 +453,6 @@ onMounted(() => {
 <style scoped>
 .wardrobe-grid-container {
   min-height: 400px;
-}
-
-.clickable-card {
-  cursor: pointer;
 }
 
 .title-section {

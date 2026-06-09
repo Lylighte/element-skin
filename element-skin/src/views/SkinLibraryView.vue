@@ -15,24 +15,13 @@
             <p>探索并收藏精美材质</p>
           </div>
         </div>
-        <div class="page-header-actions">
-          <div class="search-bar-container">
-            <el-input
-              v-model="searchQuery"
-              placeholder="搜索哈希、材质名或上传者"
-              clearable
-              @clear="handleClearSearch"
-              @keyup.enter="handleSearch"
-              size="large"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-              <template #append>
-                <el-button :icon="Search" @click="handleSearch">搜索</el-button>
-              </template>
-            </el-input>
-          </div>
+        <ActionBar full align="center">
+          <SearchBar
+            v-model="searchQuery"
+            placeholder="搜索哈希、材质名或上传者"
+            @clear="handleClearSearch"
+            @search="handleSearch"
+          />
           <el-radio-group v-model="filterType" @change="handleFilterChange" size="large" class="capsule-radio">
             <el-radio-button value="">全部</el-radio-button>
             <el-radio-button value="skin">皮肤</el-radio-button>
@@ -42,68 +31,48 @@
             <el-option label="最新上传" value="latest" />
             <el-option label="最多使用" value="most_used" />
           </el-select>
-        </div>
+        </ActionBar>
       </div>
 
     <div class="library-grid-container" v-loading="loading" element-loading-background="transparent">
       <div class="auto-grid" v-if="items.length > 0">
-        <div 
-          class="surface-card hoverable animate-card-slide clickable-card" 
+        <TextureCard
           v-for="(item, index) in items" 
           :key="item.hash"
-          :style="{ '--delay-index': index % 20 }"
-          @click="openPreviewDialog(item)"
+          :texture="item"
+          :delay-index="index % 20"
+          :is-dark="isDark"
+          :textures-url="texturesUrl"
+          :resolution="textureResolutions.get(item.hash)"
+          :title="item.name || '未命名材质'"
+          @preview="openPreviewDialog"
         >
-          <div class="texture-preview" :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }">
-            <SkinViewer
-              v-if="item.type === 'skin'"
-              :skinUrl="texturesUrl(item.hash)"
-              :model="item.model || 'default'"
-              :width="200"
-              :height="280"
-              is-static
-            />
-            <CapeViewer
-              v-else
-              :capeUrl="texturesUrl(item.hash)"
-              :width="200"
-              :height="280"
-              is-static
-            />
-            <div
-              v-if="item.type === 'skin' && textureResolutions.get(item.hash)"
-              class="floating-badge"
-              :style="getResolutionBadgeStyle(textureResolutions.get(item.hash))"
-            >
-              {{ textureResolutions.get(item.hash) }}x
-            </div>
-          </div>
-          <div class="texture-info">
+          <template #info="{ texture }">
             <div class="texture-title">{{ item.name || '未命名材质' }}</div>
             <div class="texture-meta-info">
-              <span class="uploader-name" v-if="item.uploader_name">
+              <span class="uploader-name" v-if="texture.uploader_name">
                 <el-icon><User /></el-icon>
-                {{ item.uploader_name }}
+                {{ texture.uploader_name }}
               </span>
-              <span class="meta-separator" v-if="item.uploader_name">·</span>
+              <span class="meta-separator" v-if="texture.uploader_name">·</span>
               <span class="texture-date">
-                {{ formatDate(item.created_at) }}
+                {{ formatDate(texture.created_at) }}
               </span>
               <span class="meta-separator">·</span>
-              <span class="texture-usage">{{ item.usage_count || 0 }} 次使用</span>
+              <span class="texture-usage">{{ texture.usage_count || 0 }} 次使用</span>
             </div>
-          </div>
-          <div class="texture-actions" @click.stop>
+          </template>
+          <template #actions="{ texture }">
             <el-button 
               class="btn-gradient btn-gradient-primary" 
-              @click="addToWardrobe(item)"
+              @click="addToWardrobe(texture)"
               :disabled="!isLogged"
             >
               <el-icon><Plus /></el-icon>
               <span>添加到衣柜</span>
             </el-button>
-          </div>
-        </div>
+          </template>
+        </TextureCard>
       </div>
       
       <el-empty v-else-if="!loading" description="库中暂无公开材质" />
@@ -116,21 +85,7 @@
         append-to-body
       >
         <div class="viewer-layout" v-if="selectedItem">
-          <div class="viewer-stage">
-            <SkinViewer
-              v-if="selectedItem.type === 'skin'"
-              :skinUrl="texturesUrl(selectedItem.hash)"
-              :model="selectedItem.model || 'default'"
-              :width="320"
-              :height="430"
-            />
-            <CapeViewer
-              v-else
-              :capeUrl="texturesUrl(selectedItem.hash)"
-              :width="320"
-              :height="430"
-            />
-          </div>
+          <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
 
           <div class="viewer-info-panel">
             <section class="viewer-section title-section">
@@ -194,10 +149,12 @@
 <script setup lang="ts">
 import { ref, onMounted, inject, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Search, User } from '@element-plus/icons-vue'
-import SkinViewer from '@/components/SkinViewer.vue'
-import CapeViewer from '@/components/CapeViewer.vue'
+import { Plus, User } from '@element-plus/icons-vue'
+import ActionBar from '@/components/common/ActionBar.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import SearchBar from '@/components/common/SearchBar.vue'
+import TextureCard from '@/components/textures/TextureCard.vue'
+import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getPublicSkinLibrary } from '@/api/public'
 import { addToWardrobe as apiAddToWardrobe } from '@/api/textures'
@@ -278,21 +235,6 @@ function loadTextureResolution(hash: string) {
     textureResolutions.value.set(hash, img.width)
   }
   img.src = texturesUrl(hash)
-}
-
-function getResolutionBadgeStyle(resolution: number | undefined) {
-  if (!resolution) return {}
-  let hue = 0
-  if (resolution <= 64) hue = 120
-  else if (resolution <= 128) hue = 120 - ((resolution - 64) / 64) * 60
-  else if (resolution <= 256) hue = 60 - ((resolution - 128) / 128) * 30
-  else if (resolution <= 512) hue = 30 - ((resolution - 256) / 256) * 30
-  else hue = 330
-
-  return {
-    background: `linear-gradient(135deg, hsl(${hue}, 58%, 65%), hsl(${hue + 15}, 53%, 62%))`,
-    boxShadow: `0 2px 6px hsla(${hue}, 58%, 50%, 0.25)`
-  }
 }
 
 async function handleNextPage() {
@@ -391,22 +333,6 @@ onMounted(() => {
   min-height: 400px;
 }
 
-.texture-preview {
-  width: 100%;
-  height: 280px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.texture-info {
-  padding: 12px 16px;
-  text-align: center;
-  background: var(--color-card-background);
-}
-
 .texture-title {
   font-size: 15px;
   font-weight: 600;
@@ -444,36 +370,12 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.texture-actions {
-  display: flex;
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-background-soft);
-}
-
-.texture-actions .el-button {
-  flex: 1;
-}
-
-.clickable-card {
-  cursor: pointer;
-}
-
 .skin-library-container .page-header {
   align-items: flex-start;
   flex-direction: column;
 }
 
 .skin-library-container .page-header-content {
-  width: 100%;
-}
-
-.skin-library-container .page-header-actions {
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: center;
-  min-width: 0;
-  max-width: 100%;
   width: 100%;
 }
 
@@ -489,33 +391,6 @@ onMounted(() => {
 .skin-library-container .capsule-radio {
   flex: 0 1 auto;
   min-width: 0;
-}
-
-.search-bar-container :deep(.el-input-group) {
-  display: flex;
-  align-items: stretch;
-}
-
-.search-bar-container :deep(.el-input-group__append) {
-  background: var(--el-color-primary);
-  color: #fff;
-  border-color: var(--el-color-primary);
-  cursor: pointer;
-  padding: 0 20px;
-}
-
-.search-bar-container :deep(.el-input-group__append:hover) {
-  background: var(--el-color-primary-light-3);
-  border-color: var(--el-color-primary-light-3);
-  opacity: 0.9;
-}
-
-.search-bar-container :deep(.el-input-group__append .el-button) {
-  border: none;
-  background: transparent;
-  color: inherit;
-  padding: 0;
-  margin: 0;
 }
 
 @media (max-width: 900px) {

@@ -9,23 +9,12 @@
       </template>
     </PageHeader>
 
-    <div class="search-bar-container">
-      <el-input
-        v-model="searchQuery"
-        placeholder="搜索用户名 / 邮箱 / 角色名"
-        clearable
-        @clear="handleClearSearch"
-        @keyup.enter="handleSearch"
-        size="large"
-      >
-        <template #prefix>
-          <el-icon><Search /></el-icon>
-        </template>
-        <template #append>
-          <el-button :icon="Search" @click="handleSearch">搜索</el-button>
-        </template>
-      </el-input>
-    </div>
+    <SearchBar
+      v-model="searchQuery"
+      placeholder="搜索用户名 / 邮箱 / 角色名"
+      @clear="handleClearSearch"
+      @search="handleSearch"
+    />
 
     <el-card class="surface-card" shadow="never">
       <el-table :data="users" style="width: 100%" class="modern-table" v-loading="loading">
@@ -79,195 +68,56 @@
       </div>
     </el-card>
 
-    <!-- User Detail Dialog -->
-    <el-dialog
-      v-model="userDetailDialogVisible"
-      title=""
-      class="dialog-viewer"
-      destroy-on-close
-      align-center
-      append-to-body
-    >
-      <div v-if="currentUser" class="user-detail-container">
-        <!-- User Identity Panel -->
-        <div class="identity-panel mb-6">
-          <el-avatar 
-            :size="80" 
-            :shape="currentUser.avatar_hash ? 'square' : 'circle'" 
-            :class="currentUser.avatar_hash ? 'has-custom' : 'avatar-fallback panel-avatar-base'"
-            :src="userAvatars[currentUser.avatar_hash || ''] || ''"
-          >
-            {{ !currentUser.avatar_hash ? currentUser.email.charAt(0).toUpperCase() : '' }}
-          </el-avatar>
-          <div class="panel-info">
-            <div class="panel-name">
-              <h3>{{ currentUser.display_name || '未设置显示名' }}</h3>
-              <el-tag v-if="currentUser.is_admin" type="danger" size="small" class="ml-2">管理员</el-tag>
-            </div>
-            <div class="panel-email">{{ currentUser.email }}</div>
-            <div class="panel-id">UID: {{ currentUser.id }}</div>
-          </div>
-          <div class="panel-status">
-            <div v-if="getUserBanStatus(currentUser)" class="ban-info">
-              <el-tag type="warning" effect="dark">
-                <el-icon><Warning /></el-icon> 封禁中
-              </el-tag>
-              <div class="ban-timer">{{ formatBanRemaining(currentUser.banned_until) }} 后解封</div>
-            </div>
-            <el-tag v-else type="success" effect="dark">
-              <el-icon><CircleCheck /></el-icon> 状态正常
-            </el-tag>
-          </div>
-        </div>
+    <UserDetailDialog
+      v-model:visible="userDetailDialogVisible"
+      :user="currentUser"
+      :profiles="userProfiles"
+      :user-avatars="userAvatars"
+      :profiles-loading="profilesPagination.isLoading.value"
+      :profiles-prev-disabled="!profilesPagination.canGoPrev.value"
+      :profiles-next-disabled="!profilesPagination.canGoNext.value"
+      :is-banned="currentUser ? getUserBanStatus(currentUser) : false"
+      :ban-remaining="formatBanRemaining(currentUser?.banned_until)"
+      :is-self="currentUser ? isCurrentUserSelf(currentUser) : false"
+      @profiles-prev="handleProfilesPrevPage"
+      @profiles-next="handleProfilesNextPage"
+      @toggle-admin="toggleAdmin"
+      @show-ban="showBanDialog"
+      @unban="unbanUser"
+      @show-reset-password="showResetPasswordDialog"
+      @delete-user="deleteUser"
+    />
 
-        <el-tabs type="border-card" class="detail-tabs">
-          <el-tab-pane label="角色列表">
-            <el-table :data="userProfiles || []" size="small" max-height="300">
-              <el-table-column prop="name" label="角色名称" />
-              <el-table-column prop="model" label="模型" width="100">
-                <template #default="{ row }">
-                  <el-tag size="small" :type="row.model === 'slim' ? 'success' : 'info'">{{ row.model }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="id" label="角色 UUID" width="300" />
-            </el-table>
-            <el-empty v-if="!userProfiles?.length" description="该用户暂无角色" :image-size="60" />
-            <div class="pagination-container" style="margin-top: 10px;">
-              <CursorPager
-                v-if="userProfiles.length > 0"
-                :count="userProfiles.length"
-                :loading="profilesPagination.isLoading.value"
-                :disabled-prev="!profilesPagination.canGoPrev.value"
-                :disabled-next="!profilesPagination.canGoNext.value"
-                @prev="handleProfilesPrevPage"
-                @next="handleProfilesNextPage"
-              />
-            </div>
-          </el-tab-pane>
-          
-          <el-tab-pane label="危险操作">
-            <div class="actions-grid">
-              <div class="action-card-item">
-                <div class="action-text-box">
-                  <div class="a-title">管理权限</div>
-                  <div class="a-desc">授予或撤销该用户的管理员权限。</div>
-                </div>
-                <el-button 
-                  :type="currentUser.is_admin ? 'warning' : 'primary'" 
-                  @click="toggleAdmin(currentUser)"
-                  :disabled="isCurrentUserSelf(currentUser)"
-                  class="hover-lift"
-                >
-                  {{ currentUser.is_admin ? '撤销管理' : '设为管理' }}
-                </el-button>
-              </div>
+    <ResetPasswordDialog
+      v-model:visible="resetPasswordDialogVisible"
+      v-model:new-password="resetPasswordForm.new_password"
+      v-model:confirm-password="resetPasswordForm.confirm_password"
+      :resetting="resetting"
+      @confirm="confirmResetPassword"
+    />
 
-              <div class="action-card-item">
-                <div class="action-text-box">
-                  <div class="a-title">账号封禁</div>
-                  <div class="a-desc">暂时禁止该用户登录 Minecraft 客户端。</div>
-                </div>
-                <el-button 
-                  v-if="!getUserBanStatus(currentUser)" 
-                  type="warning" 
-                  @click="showBanDialog"
-                  :disabled="currentUser.is_admin || isCurrentUserSelf(currentUser)"
-                  class="hover-lift"
-                >
-                  执行封禁
-                </el-button>
-                <el-button v-else type="success" @click="unbanUser(currentUser)" class="hover-lift">
-                  解除封禁
-                </el-button>
-              </div>
-
-              <div class="action-card-item">
-                <div class="action-text-box">
-                  <div class="a-title">强制重置密码</div>
-                  <div class="a-desc">系统管理员手动为该用户设置新密码。</div>
-                </div>
-                <el-button @click="showResetPasswordDialog" class="hover-lift">
-                  重置密码
-                </el-button>
-              </div>
-
-              <div class="action-card-item dangerous">
-                <div class="action-text-box">
-                  <div class="a-title">注销账号</div>
-                  <div class="a-desc">永久删除该用户及其所有关联的角色、皮肤。</div>
-                </div>
-                <el-button 
-                  type="danger" 
-                  @click="deleteUser(currentUser)"
-                  :disabled="currentUser.is_admin || isCurrentUserSelf(currentUser)"
-                  class="hover-lift"
-                >
-                  删除用户
-                </el-button>
-              </div>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </el-dialog>
-
-    <!-- Reset Password Dialog -->
-    <el-dialog v-model="resetPasswordDialogVisible" title="重置用户密码" class="dialog-form" align-center append-to-body>
-      <el-form label-position="top">
-        <el-form-item label="新密码 (最少6位)">
-          <el-input v-model="resetPasswordForm.new_password" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="确认新密码">
-          <el-input v-model="resetPasswordForm.confirm_password" type="password" show-password />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="resetPasswordDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmResetPassword" :loading="resetting">确认重置</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- Ban User Dialog -->
-    <el-dialog v-model="banDialogVisible" title="设置封禁时长" class="dialog-form" align-center append-to-body>
-      <div class="ban-dialog-body">
-        <el-radio-group v-model="banDurationType" class="mb-4 capsule-radio">
-          <el-radio-button value="preset">快速选择</el-radio-button>
-          <el-radio-button value="custom">精确小时</el-radio-button>
-        </el-radio-group>
-
-        <div v-if="banDurationType === 'preset'" class="preset-durations mb-4">
-          <el-button 
-            v-for="p in presetDurations" 
-            :key="p.value" 
-            :type="banPresetDuration === p.value ? 'primary' : ''"
-            size="small"
-            @click="banPresetDuration = p.value"
-          >{{ p.label }}</el-button>
-        </div>
-        
-        <div v-else class="custom-duration mb-4">
-          <el-input-number v-model="banCustomHours" :min="1" :max="8760" style="width: 100%" />
-        </div>
-
-        <div class="ban-preview">
-          解封时间：<span>{{ formatBanUntilTime() }}</span>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="banDialogVisible = false">取消</el-button>
-        <el-button type="danger" @click="confirmBanUser" :loading="banning">确认封禁</el-button>
-      </template>
-    </el-dialog>
+    <BanUserDialog
+      v-model:visible="banDialogVisible"
+      v-model:duration-type="banDurationType"
+      v-model:preset-duration="banPresetDuration"
+      v-model:custom-hours="banCustomHours"
+      :presets="presetDurations"
+      :until-label="formatBanUntilTime()"
+      :banning="banning"
+      @confirm="confirmBanUser"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch, inject, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Refresh, UserFilled, Warning, CircleCheck, Search
-} from '@element-plus/icons-vue'
+import { Refresh, UserFilled } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import SearchBar from '@/components/common/SearchBar.vue'
+import UserDetailDialog from '@/components/admin/users/UserDetailDialog.vue'
+import ResetPasswordDialog from '@/components/admin/users/ResetPasswordDialog.vue'
+import BanUserDialog from '@/components/admin/users/BanUserDialog.vue'
 import { getAvatarForHash } from '@/composables/useAvatar'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getUsers, getUser, getUserProfiles, toggleAdmin as apiToggleAdmin, deleteUser as apiDeleteUser, banUser as apiBanUser, unbanUser as apiUnbanUser, resetUserPassword } from '@/api/admin/users'
@@ -528,45 +378,6 @@ watch(currentUser, async (u) => {
   display: flex;
 }
 
-.search-bar-container :deep(.el-input-group) {
-  display: flex;
-  align-items: stretch;
-}
-
-.search-bar-container :deep(.el-input-group__append) {
-  background: var(--el-color-primary);
-  color: #fff;
-  border-color: var(--el-color-primary);
-  cursor: pointer;
-  padding: 0 20px;
-  display: flex;
-  align-items: center;
-  transition: all 0.3s ease;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-
-.search-bar-container :deep(.el-input-group__append:hover) {
-  background: var(--el-color-primary-light-3);
-  border-color: var(--el-color-primary-light-3);
-  opacity: 0.9;
-}
-
-.search-bar-container :deep(.el-input-group__append .el-button) {
-  border: none;
-  background: transparent;
-  color: inherit;
-  padding: 0;
-  margin: 0;
-  height: 100%;
-}
-
-.has-custom, .el-avatar.has-custom {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
 .count-text {
   font-weight: 600;
   color: var(--color-text);
@@ -585,45 +396,6 @@ watch(currentUser, async (u) => {
   transition: background-color 0.3s ease;
 }
 
-.has-custom :deep(img) {
-  object-fit: contain;
-}
-
-.avatar-fallback {
-  background-color: var(--color-background-mute) !important;
-  color: var(--color-text-light) !important;
-}
-
-.panel-avatar-base {
-  font-weight: bold;
-  border: 2px solid #fff;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
 .user-cell { display: flex; align-items: center; }
 
-/* Dialog Styles */
-.user-detail-container { padding: 24px; }
-.identity-panel { display: flex; align-items: center; gap: 24px; padding: 20px; background: var(--color-background-soft); border-radius: 12px; }
-.panel-info { flex: 1; }
-.panel-name { display: flex; align-items: center; gap: 8px; }
-.panel-name h3 { margin: 0; font-size: 20px; color: var(--color-heading); }
-.panel-email { color: var(--color-text-light); margin-top: 4px; }
-.panel-id { font-size: 11px; font-family: monospace; color: var(--color-text-light); margin-top: 4px; }
-.panel-status { text-align: right; }
-.ban-timer { font-size: 12px; color: var(--el-color-warning); margin-top: 4px; }
-
-.actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 10px 0; }
-.action-card-item { display: flex; justify-content: space-between; align-items: center; padding: 16px; background: var(--color-background-soft); border-radius: 10px; border: 1px solid var(--color-border); }
-.action-card-item.dangerous { border-color: rgba(245, 108, 108, 0.3); }
-.action-text-box { flex: 1; margin-right: 12px; }
-.a-title { font-weight: 600; font-size: 14px; color: var(--color-heading); }
-.a-desc { font-size: 12px; color: var(--color-text-light); margin-top: 2px; }
-
-.ban-preview { font-size: 13px; color: var(--color-text-light); padding: 10px; background: var(--color-background-mute); border-radius: 6px; }
-.ban-preview span { font-weight: bold; color: var(--el-color-primary); }
-
-@media (max-width: 768px) {
-  .actions-grid { grid-template-columns: 1fr; }
-}
 </style>
