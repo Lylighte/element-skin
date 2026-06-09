@@ -125,3 +125,63 @@ func TestProfileRoutesRejectForeignProfileExactly(t *testing.T) {
 		t.Fatalf("foreign update must not mutate profile: profile=%#v err=%v", unchanged, err)
 	}
 }
+
+func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-profile-errors@test.com", "Password123", "SiteProfileErrors", false)
+	existing := testutil.CreateProfile(t, db, user.ID, "site_profile_existing", "ExistingRole")
+	target := testutil.CreateProfile(t, db, user.ID, "site_profile_target", "TargetRole")
+
+	req := httptest.NewRequest(http.MethodPost, "/me/profiles", strings.NewReader(`{`))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec := httptest.NewRecorder()
+	h.CreateProfile(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("create bad json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/me/profiles", strings.NewReader(`{"name":"bad-name!"}`))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.CreateProfile(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "角色名只能包含字母") {
+		t.Fatalf("create invalid name mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/me/profiles/"+target.ID, strings.NewReader(`{"name":"ExistingRole"}`))
+	req.SetPathValue("pid", target.ID)
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.UpdateProfile(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"角色名已被占用\"}\n" {
+		t.Fatalf("rename conflict mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	unchanged, err := db.Profiles.GetByID(req.Context(), target.ID)
+	if err != nil || unchanged == nil || unchanged.Name != "TargetRole" {
+		t.Fatalf("conflicting rename should not mutate profile: profile=%#v err=%v", unchanged, err)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/me/profiles?cursor=not-base64", nil)
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.ListMyProfiles(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
+		t.Fatalf("list invalid cursor mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/me/profiles/missing", nil)
+	req.SetPathValue("pid", "missing")
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.DeleteProfile(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"profile not found\"}\n" {
+		t.Fatalf("delete missing profile mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	stillExisting, err := db.Profiles.GetByID(req.Context(), existing.ID)
+	if err != nil || stillExisting == nil || stillExisting.Name != "ExistingRole" {
+		t.Fatalf("unrelated profile should remain unchanged: profile=%#v err=%v", stillExisting, err)
+	}
+}
