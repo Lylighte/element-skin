@@ -14,6 +14,7 @@ var allowedEasterEggs = map[string]bool{
 	"dragon-boat":           true,
 	"minecraft-anniversary": true,
 	"mid-autumn":            true,
+	"halloween":             true,
 	"christmas":             true,
 }
 

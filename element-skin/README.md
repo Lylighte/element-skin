@@ -91,6 +91,7 @@ elementSkinEasterEggs.list()
 - `dragon-boat`：端午节，农历五月初五
 - `minecraft-anniversary`：Minecraft 周年，5 月 17 日
 - `mid-autumn`：中秋节，农历八月十五
+- `halloween`：万圣节，10 月 31 日
 - `christmas`：圣诞节，12 月 24 日至 12 月 25 日
 
 农历彩蛋使用浏览器内置 Chinese calendar 判断日期；如果手动测试发现没有效果，先确认服务端公开设置允许该彩蛋，且个人资料里的“关闭彩蛋”没有开启。
