@@ -34,6 +34,7 @@ var SettingDefaults = map[string]string{
 	"email_verify_ttl":             "300",
 	"fallback_strategy":            "serial",
 	"fallback_services":            "[]",
+	"easter_eggs_enabled":          `["april-fools"]`,
 }
 
 var settingsGroups = map[string][]string{
@@ -42,9 +43,10 @@ var settingsGroups = map[string][]string{
 		"max_texture_size", "profile_uuid_mode", "site_url", "api_url",
 		"site_subtitle", "footer_text", "filing_icp", "filing_icp_link", "filing_mps", "filing_mps_link",
 	},
-	"security":  {"rate_limit_enabled", "rate_limit_auth_attempts", "rate_limit_auth_window", "enable_strong_password_check"},
-	"auth":      {"jwt_expire_days"},
-	"microsoft": {"microsoft_client_id", "microsoft_client_secret", "microsoft_redirect_uri"},
-	"email":     {"smtp_host", "smtp_port", "smtp_user", "smtp_username", "smtp_password", "smtp_ssl", "smtp_sender", "email_verify_enabled", "email_verify_ttl"},
-	"fallback":  {"fallback_strategy", "fallback_services"},
+	"security":    {"rate_limit_enabled", "rate_limit_auth_attempts", "rate_limit_auth_window", "enable_strong_password_check"},
+	"auth":        {"jwt_expire_days"},
+	"microsoft":   {"microsoft_client_id", "microsoft_client_secret", "microsoft_redirect_uri"},
+	"email":       {"smtp_host", "smtp_port", "smtp_user", "smtp_username", "smtp_password", "smtp_ssl", "smtp_sender", "email_verify_enabled", "email_verify_ttl"},
+	"fallback":    {"fallback_strategy", "fallback_services"},
+	"easter_eggs": {"easter_eggs_enabled"},
 }

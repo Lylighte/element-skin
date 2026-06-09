@@ -64,6 +64,17 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 			}
 			value = string(b)
 		}
+		if key == "easter_eggs_enabled" {
+			normalized, err := ValidateEasterEggs(value)
+			if err != nil {
+				return err
+			}
+			b, err := json.Marshal(normalized)
+			if err != nil {
+				return err
+			}
+			value = string(b)
+		}
 		if err := s.DB.Settings.Set(ctx, key, value); err != nil {
 			return err
 		}

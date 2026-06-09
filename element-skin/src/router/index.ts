@@ -22,6 +22,7 @@ import AdminCarousel from '@/components/admin/AdminCarousel.vue'
 import AdminEmail from '@/components/admin/AdminEmail.vue'
 import AdminTexturesList from '@/components/admin/AdminTexturesList.vue'
 import AdminRolesList from '@/components/admin/AdminRolesList.vue'
+import { installEasterEggRouterHooks } from '@/easter-eggs'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -128,17 +129,6 @@ const router = createRouter({
   ],
 })
 
-// Clean up meow effect on route change
-router.beforeEach(() => {
-  if (typeof window !== 'undefined' && window.meowCleanup) {
-    window.meowCleanup()
-  }
-})
-
-router.afterEach(() => {
-  if (typeof window !== 'undefined' && window.meowReinit) {
-    window.meowReinit()
-  }
-})
+installEasterEggRouterHooks(router)
 
 export default router

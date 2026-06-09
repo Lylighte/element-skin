@@ -65,6 +65,9 @@ export interface SiteSettings {
   filing_icp_link?: string
   filing_mps?: string
   filing_mps_link?: string
+  easter_eggs?: {
+    enabled?: string[]
+  }
   mojang_status_urls?: Record<string, string>
 }
 

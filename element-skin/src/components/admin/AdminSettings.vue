@@ -161,6 +161,39 @@
       </el-form>
     </el-card>
 
+    <!-- Easter Egg Config -->
+    <el-card class="surface-card mb-6" shadow="never">
+      <template #header>
+        <div class="card-header-flex">
+          <div class="title-group">
+            <el-icon><MagicStick /></el-icon>
+            <span>彩蛋列表</span>
+          </div>
+          <el-button type="primary" size="small" @click="saveGroup('easter_eggs')" :loading="saving.easter_eggs" class="hover-lift">保存</el-button>
+        </div>
+      </template>
+      <div class="easter-egg-list">
+        <div
+          v-for="egg in easterEggOptions"
+          :key="egg.id"
+          class="easter-egg-item"
+          :class="{ active: settings.easter_eggs.easter_eggs_enabled.includes(egg.id) }"
+        >
+          <div class="easter-egg-main">
+            <div class="easter-egg-title">{{ egg.name }}</div>
+            <div class="easter-egg-desc">{{ egg.description }}</div>
+          </div>
+          <el-switch
+            :model-value="settings.easter_eggs.easter_eggs_enabled.includes(egg.id)"
+            @change="toggleEasterEgg(egg.id, Boolean($event))"
+          />
+        </div>
+      </div>
+      <p class="hint-text mt-3">
+        服务端只决定允许哪些彩蛋；客户端还会结合本地日期和用户“关闭彩蛋”设置，三者都满足时才会 lazy import 对应效果。
+      </p>
+    </el-card>
+
     <!-- Microsoft Config -->
     <el-card class="surface-card mb-6" shadow="never">
       <template #header>
@@ -191,10 +224,11 @@
 import { ref, onMounted, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Refresh, Setting, Monitor, Lock, Key, Link
+  Refresh, Setting, Monitor, Lock, Key, Link, MagicStick
 } from '@element-plus/icons-vue'
 import { getAdminSettingsGroup, saveAdminSettingsGroup } from '@/api/admin/settings'
 import PageHeader from '@/components/common/PageHeader.vue'
+import { availableEasterEggs } from '@/easter-eggs'
 
 const settings = reactive({
   site: {
@@ -220,6 +254,9 @@ const settings = reactive({
   auth: {
     jwt_expire_days: 7
   },
+  easter_eggs: {
+    easter_eggs_enabled: ['april-fools']
+  },
   microsoft: {
     microsoft_client_id: '',
     microsoft_client_secret: '',
@@ -231,12 +268,14 @@ const saving = reactive({
   site: false,
   security: false,
   auth: false,
+  easter_eggs: false,
   microsoft: false
 })
 
 const regulatoryCollapse = ref<string[]>([])
+const easterEggOptions = availableEasterEggs()
 
-type SettingsGroup = 'site' | 'security' | 'auth' | 'microsoft'
+type SettingsGroup = 'site' | 'security' | 'auth' | 'easter_eggs' | 'microsoft'
 
 async function loadGroup(group: SettingsGroup) {
   try {
@@ -252,8 +291,19 @@ async function loadAllSettings() {
     loadGroup('site'),
     loadGroup('security'),
     loadGroup('auth'),
+    loadGroup('easter_eggs'),
     loadGroup('microsoft')
   ])
+}
+
+function toggleEasterEgg(id: string, enabled: boolean) {
+  const items = settings.easter_eggs.easter_eggs_enabled
+  const exists = items.includes(id)
+  if (enabled && !exists) {
+    items.push(id)
+  } else if (!enabled && exists) {
+    settings.easter_eggs.easter_eggs_enabled = items.filter((item) => item !== id)
+  }
 }
 
 async function saveGroup(group: SettingsGroup) {
@@ -296,4 +346,43 @@ onMounted(loadAllSettings)
 
 .hint-text { font-size: 12px; color: var(--color-text-light); line-height: 1.5; margin-top: 4px; display: block; }
 .uuid-mode-group { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+
+.easter-egg-list {
+  display: grid;
+  gap: 12px;
+}
+
+.easter-egg-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-card-background);
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.easter-egg-item.active {
+  border-color: rgba(64, 158, 255, 0.45);
+  background: rgba(64, 158, 255, 0.06);
+  box-shadow: 0 8px 20px rgba(64, 158, 255, 0.08);
+}
+
+.easter-egg-main {
+  min-width: 0;
+}
+
+.easter-egg-title {
+  color: var(--color-heading);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.easter-egg-desc {
+  color: var(--color-text-light);
+  font-size: 13px;
+  line-height: 1.5;
+}
 </style>

@@ -61,7 +61,7 @@ func (h Handler) SaveSettingsGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	switch req.PathValue("group") {
-	case "site", "fallback", "email":
+	case "site", "fallback", "email", "easter_eggs":
 		if err := h.redis.InvalidatePublicSettings(req.Context()); err != nil {
 			util.Error(w, err)
 			return

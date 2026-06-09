@@ -55,6 +55,11 @@ func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map
 	if err != nil {
 		return nil, err
 	}
+	easterEggsRaw, err := s.Get(ctx, "easter_eggs_enabled", SettingDefaults["easter_eggs_enabled"])
+	if err != nil {
+		return nil, err
+	}
+	easterEggs := settingValue("easter_eggs_enabled", easterEggsRaw)
 	status := map[string]any{
 		"session":  "https://sessionserver.mojang.com",
 		"account":  "https://api.mojang.com",
@@ -82,6 +87,7 @@ func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map
 		"filing_icp_link":      icpLink,
 		"filing_mps":           mps,
 		"filing_mps_link":      mpsLink,
+		"easter_eggs":          map[string]any{"enabled": easterEggs},
 		"mojang_status_urls":   status,
 	}, nil
 }
