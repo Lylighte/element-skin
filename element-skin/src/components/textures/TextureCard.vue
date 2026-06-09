@@ -4,47 +4,49 @@
     :style="{ '--delay-index': delayIndex }"
     @click="$emit('preview', texture)"
   >
-    <div
-      class="item-card-preview"
-      :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }"
-    >
-      <SkinViewer
-        v-if="texture.type === 'skin'"
-        :skin-url="texturesUrl(texture.hash)"
-        :model="texture.model || 'default'"
-        :width="200"
-        :height="280"
-        is-static
-      />
-      <CapeViewer
-        v-else
-        :cape-url="texturesUrl(texture.hash)"
-        :width="200"
-        :height="280"
-        is-static
-      />
+    <div class="card-clip">
       <div
-        v-if="texture.type === 'skin' && resolution"
-        class="floating-badge"
-        :style="resolutionBadgeStyle"
+        class="item-card-preview"
+        :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }"
       >
-        {{ resolution }}x
-      </div>
-    </div>
-
-    <div class="item-card-info texture-card-info">
-      <slot name="info" :texture="texture">
-        <div v-if="showType" class="type-tag" :class="texture.type">
-          {{ texture.type === 'skin' ? '皮肤' : '披风' }}
+        <SkinViewer
+          v-if="texture.type === 'skin'"
+          :skin-url="texturesUrl(texture.hash)"
+          :model="texture.model || 'default'"
+          :width="200"
+          :height="280"
+          is-static
+        />
+        <CapeViewer
+          v-else
+          :cape-url="texturesUrl(texture.hash)"
+          :width="200"
+          :height="280"
+          is-static
+        />
+        <div
+          v-if="texture.type === 'skin' && resolution"
+          class="floating-badge"
+          :style="resolutionBadgeStyle"
+        >
+          {{ resolution }}x
         </div>
-        <div class="item-card-title">{{ title || '未命名纹理' }}</div>
-        <div v-if="subtitle" class="item-card-subtitle">{{ subtitle }}</div>
-      </slot>
-    </div>
+      </div>
 
-    <CardActions v-if="$slots.actions">
-      <slot name="actions" :texture="texture" />
-    </CardActions>
+      <div class="item-card-info texture-card-info">
+        <slot name="info" :texture="texture">
+          <div v-if="showType" class="type-tag" :class="texture.type">
+            {{ texture.type === 'skin' ? '皮肤' : '披风' }}
+          </div>
+          <div class="item-card-title">{{ title || '未命名纹理' }}</div>
+          <div v-if="subtitle" class="item-card-subtitle">{{ subtitle }}</div>
+        </slot>
+      </div>
+
+      <CardActions v-if="$slots.actions">
+        <slot name="actions" :texture="texture" />
+      </CardActions>
+    </div>
   </div>
 </template>
 
@@ -98,6 +100,11 @@ const resolutionBadgeStyle = computed(() => {
 <style scoped>
 .texture-card {
   cursor: pointer;
+}
+
+.card-clip {
+  border-radius: inherit;
+  overflow: hidden;
 }
 
 .texture-card-info {
