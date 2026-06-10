@@ -220,6 +220,41 @@ func TestSessionRoutesVerificationAndResetPasswordExactFlow(t *testing.T) {
 	}
 }
 
+func TestSessionRoutesRejectMalformedAndIncompletePayloadsWithoutMutation(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+
+	tests := []struct {
+		name   string
+		target string
+		body   string
+		call   func(http.ResponseWriter, *http.Request)
+		want   string
+	}{
+		{name: "login malformed json", target: "/site-login", body: `{`, call: h.Login, want: "{\"detail\":\"invalid json\"}\n"},
+		{name: "register malformed json", target: "/register", body: `{`, call: h.Register, want: "{\"detail\":\"invalid json\"}\n"},
+		{name: "verification malformed json", target: "/verification-code", body: `{`, call: h.SendVerificationCode, want: "{\"detail\":\"invalid json\"}\n"},
+		{name: "verification missing email", target: "/verification-code", body: `{"type":"register"}`, call: h.SendVerificationCode, want: "{\"detail\":\"email required\"}\n"},
+		{name: "reset malformed json", target: "/reset-password", body: `{`, call: h.ResetPassword, want: "{\"detail\":\"invalid json\"}\n"},
+		{name: "reset missing code", target: "/reset-password", body: `{"email":"person@test.com","password":"NewPassword123"}`, call: h.ResetPassword, want: "{\"detail\":\"email, password and code required\"}\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tc.target, strings.NewReader(tc.body))
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusBadRequest || rec.Body.String() != tc.want {
+				t.Fatalf("status=%d body=%q, want 400 %q", rec.Code, rec.Body.String(), tc.want)
+			}
+		})
+	}
+
+	if count, err := db.Users.Count(t.Context()); err != nil || count != 0 {
+		t.Fatalf("rejected session requests must not create users: count=%d err=%v", count, err)
+	}
+}
+
 func cookieValue(t *testing.T, cookies []*http.Cookie, name string) string {
 	t.Helper()
 	for _, c := range cookies {
