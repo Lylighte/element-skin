@@ -140,7 +140,7 @@ func TestCarouselRoutesDeleteInvalidOrMissingFileExactly(t *testing.T) {
 	}
 }
 
-func TestCarouselRoutesCacheFailureKeepsCompletedFileMutation(t *testing.T) {
+func TestCarouselRoutesCacheFailureRollsBackFileMutation(t *testing.T) {
 	cfg := testutil.TestConfig()
 	cfg.CarouselDir = t.TempDir()
 	cache := &carouselInvalidateFailRedis{Store: testutil.NewMemoryRedis()}
@@ -153,19 +153,26 @@ func TestCarouselRoutesCacheFailureKeepsCompletedFileMutation(t *testing.T) {
 		t.Fatalf("upload cache failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	entries, err := os.ReadDir(cfg.CarouselDir)
-	if err != nil || len(entries) != 1 || filepath.Ext(entries[0].Name()) != ".png" {
-		t.Fatalf("upload is written before cache invalidation, entries=%#v err=%v", entries, err)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("failed upload cache invalidation must remove the new file: entries=%#v err=%v", entries, err)
 	}
 
-	req = httptest.NewRequest(http.MethodDelete, "/admin/carousel/"+entries[0].Name(), nil)
-	req.SetPathValue("filename", entries[0].Name())
+	const existingName = "existing.png"
+	original := []byte("existing carousel bytes")
+	path := filepath.Join(cfg.CarouselDir, existingName)
+	if err := os.WriteFile(path, original, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodDelete, "/admin/carousel/"+existingName, nil)
+	req.SetPathValue("filename", existingName)
 	rec = httptest.NewRecorder()
 	h.DeleteCarousel(rec, req)
 	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
 		t.Fatalf("delete cache failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
-	if _, err := os.Stat(filepath.Join(cfg.CarouselDir, entries[0].Name())); !os.IsNotExist(err) {
-		t.Fatalf("delete occurs before cache invalidation, stat err=%v", err)
+	restored, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(restored, original) {
+		t.Fatalf("failed delete cache invalidation must restore exact file bytes: restored=%q err=%v", restored, err)
 	}
 }
 
