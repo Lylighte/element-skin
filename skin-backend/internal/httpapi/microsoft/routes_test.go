@@ -1,6 +1,7 @@
 package microsoft_test
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/httpapi/microsoft"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -65,5 +67,48 @@ func TestMicrosoftRoutesAuthURLAndCallbackValidationExactResponses(t *testing.T)
 	h.GetProfile(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Invalid or expired token") {
 		t.Fatalf("missing profile token mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMicrosoftRoutesSettingsFailuresAndDefaultRedirectConsumeStateExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.SiteURL = ""
+	states := util.NewInMemoryStateStore()
+	cache := redisstore.NewMemoryStore()
+	cache.Err = errors.New("settings cache unavailable")
+	h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: cache}, func(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc {
+		return next
+	}, states)
+
+	req := httptest.NewRequest(http.MethodGet, "/microsoft/auth-url", nil)
+	rec := httptest.NewRecorder()
+	h.AuthURL(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" || states.Len() != 0 {
+		t.Fatalf("auth URL settings failure mismatch: status=%d body=%q states=%d", rec.Code, rec.Body.String(), states.Len())
+	}
+
+	microsoft.SeedStateForTest(states, "settings-failure-state", map[string]any{
+		"kind": microsoft.TestStateKindOAuth, "user_id": "user-id",
+	}, time.Minute)
+	req = httptest.NewRequest(http.MethodGet, "/microsoft/callback?code=code&state=settings-failure-state", nil)
+	rec = httptest.NewRecorder()
+	h.Callback(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" || states.Len() != 0 {
+		t.Fatalf("callback settings failure should consume state: status=%d body=%q states=%d", rec.Code, rec.Body.String(), states.Len())
+	}
+
+	healthyCache := redisstore.NewMemoryStore()
+	h = microsoft.New(cfg, db, settings.Settings{DB: db, Redis: healthyCache}, func(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc {
+		return next
+	}, states)
+	microsoft.SeedStateForTest(states, "default-site-state", map[string]any{
+		"kind": microsoft.TestStateKindOAuth, "user_id": "user-id",
+	}, time.Minute)
+	req = httptest.NewRequest(http.MethodGet, "/microsoft/callback?code=code&state=default-site-state", nil)
+	rec = httptest.NewRecorder()
+	h.Callback(rec, req)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://localhost:5173/dashboard/roles?error=auth_failed" {
+		t.Fatalf("empty site URL fallback mismatch: status=%d location=%q", rec.Code, rec.Header().Get("Location"))
 	}
 }
