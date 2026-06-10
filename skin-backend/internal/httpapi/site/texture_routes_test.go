@@ -9,12 +9,15 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/site"
 	sitesvc "element-skin/backend/internal/service/site"
+	texturesvc "element-skin/backend/internal/service/texture"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -341,6 +344,74 @@ func TestTextureRoutesUploadApplyFailureKeepsUploadedLibraryRow(t *testing.T) {
 	foreign, err := db.Profiles.GetByID(req.Context(), foreignProfile.ID)
 	if err != nil || foreign == nil || foreign.SkinHash != nil {
 		t.Fatalf("failed foreign apply must not mutate foreign profile: profile=%#v err=%v", foreign, err)
+	}
+}
+
+func TestTextureUploadRemovesNewFileWhenDatabaseInsertFails(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-texture-db-fail@test.com", "Password123", "SiteTextureDBFail", false)
+	if _, err := db.Pool.Exec(t.Context(), `ALTER TABLE user_textures ADD CONSTRAINT reject_test_upload CHECK (FALSE)`); err != nil {
+		t.Fatal(err)
+	}
+
+	req := textureMultipartRequest(t, "/me/textures", map[string]string{
+		"texture_type": "skin",
+	}, "file", "skin.png", routePNG(t, 64, 64))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec := httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("database upload failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if count, err := db.Textures.CountForUser(t.Context(), user.ID); err != nil || count != 0 {
+		t.Fatalf("failed database insert must leave no user texture row: count=%d err=%v", count, err)
+	}
+	entries, err := os.ReadDir(cfg.TexturesDir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("failed database insert must remove the newly-created texture file: entries=%#v err=%v", entries, err)
+	}
+}
+
+func TestTextureUploadKeepsNewFileWhenAnotherDatabaseReferenceExists(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	owner := testutil.CreateUser(t, db, "site-texture-existing-owner@test.com", "Password123", "SiteTextureExistingOwner", false)
+	uploader := testutil.CreateUser(t, db, "site-texture-existing-uploader@test.com", "Password123", "SiteTextureExistingUploader", false)
+	data := routePNG(t, 64, 64)
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := texturesvc.TexturePixelHash(img)
+	if err := db.Textures.AddToLibrary(t.Context(), owner.ID, hash, "skin", "Existing Reference", false, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(t.Context(), `ALTER TABLE user_textures ADD CONSTRAINT reject_test_duplicate_upload CHECK (FALSE) NOT VALID`); err != nil {
+		t.Fatal(err)
+	}
+
+	req := textureMultipartRequest(t, "/me/textures", map[string]string{
+		"texture_type": "skin",
+	}, "file", "skin.png", data)
+	req = req.WithContext(shared.WithUser(req.Context(), uploader.ID, false))
+	rec := httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("duplicate reference upload failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(cfg.TexturesDir, hash+".png")); err != nil {
+		t.Fatalf("failed upload must keep a file referenced by another library row: %v", err)
+	}
+	if info, err := db.Textures.GetInfo(t.Context(), owner.ID, hash, "skin"); err != nil || info == nil {
+		t.Fatalf("existing texture reference must remain: info=%#v err=%v", info, err)
+	}
+	if count, err := db.Textures.CountForUser(t.Context(), uploader.ID); err != nil || count != 0 {
+		t.Fatalf("failed uploader must gain no texture row: count=%d err=%v", count, err)
 	}
 }
 

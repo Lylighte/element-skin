@@ -28,24 +28,43 @@ func NewTextureStorage(dir string) (*TextureStorage, error) {
 }
 
 func (s *TextureStorage) ProcessAndSave(data []byte, textureType string) (string, error) {
+	hash, _, err := s.ProcessAndSaveTracked(data, textureType)
+	return hash, err
+}
+
+func (s *TextureStorage) ProcessAndSaveTracked(data []byte, textureType string) (string, bool, error) {
 	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
-		return "", fmt.Errorf("Image must be PNG format")
+		return "", false, fmt.Errorf("Image must be PNG format")
 	}
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if !validTextureDimensions(w, h, strings.EqualFold(textureType, "cape")) {
-		return "", fmt.Errorf("invalid texture dimensions")
+		return "", false, fmt.Errorf("invalid texture dimensions")
 	}
 	hash := TexturePixelHash(img)
 	var out bytes.Buffer
 	if err := png.Encode(&out, img); err != nil {
-		return "", err
+		return "", false, err
 	}
-	if err := os.WriteFile(filepath.Join(s.Dir, hash+".png"), out.Bytes(), 0o644); err != nil {
-		return "", err
+	path := filepath.Join(s.Dir, hash+".png")
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if os.IsExist(err) {
+		return hash, false, nil
 	}
-	return hash, nil
+	if err != nil {
+		return "", false, err
+	}
+	if _, err := file.Write(out.Bytes()); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return "", false, err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", false, err
+	}
+	return hash, true, nil
 }
 
 func (s *TextureStorage) DeleteFile(hash string) error {

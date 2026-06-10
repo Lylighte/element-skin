@@ -53,12 +53,17 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	hash, err := storage.ProcessAndSave(data, textureType)
+	hash, created, err := storage.ProcessAndSaveTracked(data, textureType)
 	if err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: err.Error()})
 		return
 	}
 	if err := h.db.Textures.AddToLibrary(req.Context(), tok.UserID, hash, textureType, "", false, profilestore.NormalizeModel(req.FormValue("model"))); err != nil {
+		if created {
+			if inUse, checkErr := h.db.Textures.Exists(req.Context(), hash, textureType); checkErr == nil && !inUse {
+				_ = storage.DeleteFile(hash)
+			}
+		}
 		util.Error(w, err)
 		return
 	}
