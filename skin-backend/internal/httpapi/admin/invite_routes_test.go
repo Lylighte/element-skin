@@ -95,3 +95,19 @@ func TestInviteRoutesRejectInvalidInputsExactly(t *testing.T) {
 		t.Fatalf("duplicate invite should not mutate existing row: invite=%#v err=%v", existing, err)
 	}
 }
+
+func TestInviteRoutesDeleteMissingInviteIsIdempotent(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	h := admin.New(testutil.TestConfig(), db, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/admin/invites/missing-invite", nil)
+	req.SetPathValue("code", "missing-invite")
+	rec := httptest.NewRecorder()
+	h.DeleteInvite(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("missing invite delete should be idempotent: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if invite, err := db.Invites.Get(req.Context(), "missing-invite"); err != nil || invite != nil {
+		t.Fatalf("idempotent delete must not create a row: invite=%#v err=%v", invite, err)
+	}
+}
