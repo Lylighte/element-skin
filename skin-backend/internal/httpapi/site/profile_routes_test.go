@@ -185,3 +185,45 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 		t.Fatalf("unrelated profile should remain unchanged: profile=%#v err=%v", stillExisting, err)
 	}
 }
+
+func TestProfileRoutesRejectForeignTextureClearsWithoutMutation(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	owner := testutil.CreateUser(t, db, "site-profile-clear-owner@test.com", "Password123", "SiteProfileClearOwner", false)
+	other := testutil.CreateUser(t, db, "site-profile-clear-other@test.com", "Password123", "SiteProfileClearOther", false)
+	profile := testutil.CreateProfile(t, db, owner.ID, "site_profile_foreign_clear", "ForeignClearRole")
+	skin := "foreign_clear_skin"
+	cape := "foreign_clear_cape"
+	if err := db.Profiles.UpdateSkin(t.Context(), profile.ID, &skin); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Profiles.UpdateCape(t.Context(), profile.ID, &cape); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		call func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "skin", call: h.ClearProfileSkin},
+		{name: "cape", call: h.ClearProfileCape},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodDelete, "/me/profiles/"+profile.ID+"/"+tc.name, nil)
+			req.SetPathValue("pid", profile.ID)
+			req = req.WithContext(shared.WithUser(req.Context(), other.ID, false))
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"not allowed\"}\n" {
+				t.Fatalf("foreign %s clear mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	unchanged, err := db.Profiles.GetByID(t.Context(), profile.ID)
+	if err != nil || unchanged == nil || unchanged.SkinHash == nil || *unchanged.SkinHash != skin ||
+		unchanged.CapeHash == nil || *unchanged.CapeHash != cape {
+		t.Fatalf("foreign clears must preserve both textures: profile=%#v err=%v", unchanged, err)
+	}
+}

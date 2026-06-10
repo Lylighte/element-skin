@@ -154,3 +154,44 @@ func TestAccountRoutesRejectConflictsAndWrongOldPasswordExactly(t *testing.T) {
 		t.Fatalf("wrong old password should not change hash: user=%#v err=%v", unchanged, err)
 	}
 }
+
+func TestAccountRoutesRejectMissingPrincipalAndMalformedPayloadsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	rec := httptest.NewRecorder()
+	h.Me(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+		t.Fatalf("me without principal mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/me", nil)
+	rec = httptest.NewRecorder()
+	h.DeleteMe(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+		t.Fatalf("delete without principal mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	for _, tc := range []struct {
+		name string
+		call func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "update me", call: h.UpdateMe},
+		{name: "change password", call: h.ChangePassword},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/me", strings.NewReader(`{`))
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+				t.Fatalf("malformed payload mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	if count, err := db.Users.Count(t.Context()); err != nil || count != 0 {
+		t.Fatalf("rejected account requests must not mutate users: count=%d err=%v", count, err)
+	}
+}
