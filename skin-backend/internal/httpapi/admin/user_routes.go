@@ -227,6 +227,10 @@ func (h Handler) ResetUserPassword(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
 		return
 	}
+	if err := h.redis.DeleteYggTokensByUser(req.Context(), userID); err != nil {
+		util.Error(w, err)
+		return
+	}
 	if err := h.redis.InvalidateAuthUser(req.Context(), userID); err != nil {
 		util.Error(w, err)
 		return
