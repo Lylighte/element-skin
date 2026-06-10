@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const firstSuperAdminLockID int64 = 0x454C454D454E54
+
 type Store struct {
 	Pool *pgxpool.Pool
 }
@@ -50,6 +52,19 @@ func (s Store) CreateWithProfile(ctx context.Context, u model.User, p model.Prof
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if u.IsSuperAdmin {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, firstSuperAdminLockID); err != nil {
+			return err
+		}
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE is_super_admin=TRUE)`).Scan(&exists); err != nil {
+			return err
+		}
+		if exists {
+			u.IsAdmin = false
+			u.IsSuperAdmin = false
+		}
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO users (id,email,password,is_admin,is_super_admin,display_name,avatar_hash,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		u.ID, u.Email, u.Password, u.IsAdmin, u.IsSuperAdmin, u.DisplayName, u.AvatarHash, u.CreatedAt); err != nil {
 		return err

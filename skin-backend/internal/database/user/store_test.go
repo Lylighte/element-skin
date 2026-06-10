@@ -3,6 +3,8 @@ package user_test
 import (
 	"context"
 	"errors"
+	"strconv"
+	"sync"
 	"testing"
 
 	"element-skin/backend/internal/database/invite"
@@ -81,6 +83,63 @@ func TestStoreCreateUpdateDeleteAndInviteExhaustion(t *testing.T) {
 	}
 	if deleted, err := store.Delete(ctx, u.ID); err != nil || deleted {
 		t.Fatalf("delete missing user should return false: deleted=%v err=%v", deleted, err)
+	}
+}
+
+func TestCreateWithProfileSerializesCompetingInitialSuperAdmins(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	store := user.Store{Pool: db.Pool}
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+
+	for i := 0; i < 2; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			id := "initial_super_" + strconv.Itoa(i)
+			errs <- store.CreateWithProfile(context.Background(),
+				model.User{
+					ID:           id,
+					Email:        id + "@test.com",
+					Password:     "hash",
+					DisplayName:  "InitialSuper" + strconv.Itoa(i),
+					IsAdmin:      true,
+					IsSuperAdmin: true,
+				},
+				model.Profile{
+					ID:           id + "_profile",
+					UserID:       id,
+					Name:         "InitialSuperProfile" + strconv.Itoa(i),
+					TextureModel: "default",
+				},
+				"",
+				"",
+			)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("both competing first registrations should succeed, got %v", err)
+		}
+	}
+	var users, admins, superAdmins int
+	if err := db.Pool.QueryRow(context.Background(), `
+		SELECT COUNT(*),
+		       COUNT(*) FILTER (WHERE is_admin=TRUE),
+		       COUNT(*) FILTER (WHERE is_super_admin=TRUE)
+		FROM users
+	`).Scan(&users, &admins, &superAdmins); err != nil {
+		t.Fatal(err)
+	}
+	if users != 2 || admins != 1 || superAdmins != 1 {
+		t.Fatalf("competing initial registrations must create two users and exactly one super admin: users=%d admins=%d super_admins=%d", users, admins, superAdmins)
 	}
 }
 
