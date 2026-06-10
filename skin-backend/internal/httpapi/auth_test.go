@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -90,4 +91,68 @@ func TestAuthUsesRedisCachedUserStateOnCacheHit(t *testing.T) {
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "admin required") {
 		t.Fatalf("cached non-admin state should override newer DB admin state until invalidated: status=%d body=%q", rec.Code, rec.Body.String())
 	}
+}
+
+func TestAuthFailsClosedWhenColdCacheCannotBePopulated(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	user := testutil.CreateUser(t, db, "auth-cache-write@test.com", "Password123", "AuthCacheWrite", false)
+	cache := &authCacheWriteFailStore{Store: redisstore.NewMemoryStore()}
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, false, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("cold-cache write failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if cache.setCalls != 1 {
+		t.Fatalf("auth middleware should attempt one cache population, calls=%d", cache.setCalls)
+	}
+	if _, err := cache.Store.GetAuthUser(t.Context(), user.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("failed cache population must not leave a partial entry, got %v", err)
+	}
+}
+
+func TestAuthRejectsBannedUserOnColdCacheAndCachesBanState(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	user := testutil.CreateUser(t, db, "auth-banned-cold@test.com", "Password123", "AuthBannedCold", false)
+	bannedUntil := time.Now().Add(time.Hour).UnixMilli()
+	if err := db.Users.Ban(t.Context(), user.ID, bannedUntil); err != nil {
+		t.Fatal(err)
+	}
+	cache := redisstore.NewMemoryStore()
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, false, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"user is banned\"}\n" {
+		t.Fatalf("cold-cache banned user mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	cached, err := cache.GetAuthUser(t.Context(), user.ID)
+	if err != nil || cached.BannedUntil == nil || *cached.BannedUntil != bannedUntil || !cached.Banned(time.Now()) {
+		t.Fatalf("ban state should be cached exactly: cached=%#v err=%v", cached, err)
+	}
+}
+
+type authCacheWriteFailStore struct {
+	redisstore.Store
+	setCalls int
+}
+
+func (s *authCacheWriteFailStore) SetAuthUser(context.Context, redisstore.AuthUser, time.Duration) error {
+	s.setCalls++
+	return errors.New("cache write failed")
 }
