@@ -93,6 +93,23 @@ func TestTextureStorageHashStabilityAndAlphaZero(t *testing.T) {
 	}
 }
 
+func TestProcessAndSaveTrackedReportsOnlyTheCreatingWrite(t *testing.T) {
+	storage, err := NewTextureStorage(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := pngBytes(t, 64, 64, color.RGBA{90, 40, 180, 255})
+
+	firstHash, firstCreated, err := storage.ProcessAndSaveTracked(data, "skin")
+	if err != nil || firstHash == "" || !firstCreated {
+		t.Fatalf("first tracked save should create the file: hash=%q created=%v err=%v", firstHash, firstCreated, err)
+	}
+	secondHash, secondCreated, err := storage.ProcessAndSaveTracked(data, "skin")
+	if err != nil || secondHash != firstHash || secondCreated {
+		t.Fatalf("second tracked save should reuse the content-addressed file: first=%q second=%q created=%v err=%v", firstHash, secondHash, secondCreated, err)
+	}
+}
+
 func TestTextureStorageValidCapeAndInvalidInputs(t *testing.T) {
 	storage, err := NewTextureStorage(t.TempDir())
 	if err != nil {
