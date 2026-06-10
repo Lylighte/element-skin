@@ -272,6 +272,78 @@ func TestTextureRoutesRejectInvalidInputsWithExactErrors(t *testing.T) {
 	}
 }
 
+func TestTextureRoutesRejectMalformedUploadsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-texture-upload-errors@test.com", "Password123", "SiteTextureUploadErrors", false)
+
+	req := httptest.NewRequest(http.MethodPost, "/me/textures", strings.NewReader("not multipart"))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=missing")
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec := httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid multipart form\"}\n" {
+		t.Fatalf("malformed upload multipart mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = textureMultipartRequest(t, "/me/textures", map[string]string{"texture_type": "skin"}, "not_file", "skin.png", routePNG(t, 64, 64))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"file is required"`) {
+		t.Fatalf("missing upload file mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = textureMultipartRequest(t, "/textures/upload", map[string]string{"texture_type": "skin"}, "file", "skin.png", routePNG(t, 64, 64))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.UploadAndApplyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"uuid and texture_type are required\"}\n" {
+		t.Fatalf("upload apply missing uuid mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	if count, err := db.Textures.CountForUser(req.Context(), user.ID); err != nil || count != 0 {
+		t.Fatalf("invalid upload attempts should not persist texture rows: count=%d err=%v", count, err)
+	}
+}
+
+func TestTextureRoutesUploadApplyFailureKeepsUploadedLibraryRow(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-texture-apply-owner@test.com", "Password123", "SiteTextureApplyOwner", false)
+	other := testutil.CreateUser(t, db, "site-texture-apply-foreign@test.com", "Password123", "SiteTextureApplyForeign", false)
+	foreignProfile := testutil.CreateProfile(t, db, other.ID, "site_texture_foreign_apply", "SiteTextureForeignApply")
+
+	req := textureMultipartRequest(t, "/textures/upload", map[string]string{
+		"uuid":         foreignProfile.ID,
+		"texture_type": "skin",
+		"model":        "slim",
+	}, "file", "skin.png", routePNGWithColor(t, 64, 64, color.RGBA{R: 20, G: 180, B: 120, A: 255}))
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec := httptest.NewRecorder()
+	h.UploadAndApplyTexture(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"Profile not yours\"}\n" {
+		t.Fatalf("upload apply foreign profile mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	page, err := db.Textures.ListForUser(req.Context(), user.ID, "skin", 10, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := page["items"].([]map[string]any)
+	if len(items) != 1 || items[0]["model"] != "slim" {
+		t.Fatalf("upload is persisted before apply failure, so library row should remain: %#v", page)
+	}
+	foreign, err := db.Profiles.GetByID(req.Context(), foreignProfile.ID)
+	if err != nil || foreign == nil || foreign.SkinHash != nil {
+		t.Fatalf("failed foreign apply must not mutate foreign profile: profile=%#v err=%v", foreign, err)
+	}
+}
+
 func TestTextureRoutesDeleteMissingWardrobeRowDoesNotClearAppliedProfile(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
