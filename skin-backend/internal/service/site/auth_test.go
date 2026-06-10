@@ -110,6 +110,9 @@ func TestAuthRegisterConsumesVerificationAndInviteExactly(t *testing.T) {
 	if user, err := db.Users.GetByEmail(ctx, "second-register@test.com"); err != nil || user != nil {
 		t.Fatalf("exhausted invite must not create user: user=%#v err=%v", user, err)
 	}
+	if stored, err := svc.Redis.GetVerificationCode(ctx, "second-register@test.com", "register"); err != nil || stored != "SECOND12" {
+		t.Fatalf("failed registration must preserve the verification code for retry: code=%q err=%v", stored, err)
+	}
 }
 
 func TestAuthRejectsInvalidCredentialsAndRegistrationIdentityConflicts(t *testing.T) {
