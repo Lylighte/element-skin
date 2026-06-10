@@ -1,11 +1,13 @@
 package site_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/redisstore"
@@ -253,6 +255,54 @@ func TestSessionRoutesRejectMalformedAndIncompletePayloadsWithoutMutation(t *tes
 	if count, err := db.Users.Count(t.Context()); err != nil || count != 0 {
 		t.Fatalf("rejected session requests must not create users: count=%d err=%v", count, err)
 	}
+}
+
+func TestSessionRoutesFailClosedOnRateLimitConfigurationAndStoreErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	user := testutil.CreateUser(t, db, "rate-limit-failure@test.com", "Password123", "RateLimitFailure", false)
+
+	if err := db.Settings.Set(t.Context(), "rate_limit_auth_attempts", "not-an-int"); err != nil {
+		t.Fatal(err)
+	}
+	cache := redisstore.NewMemoryStore()
+	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	req := httptest.NewRequest(http.MethodPost, "/site-login", strings.NewReader(`{"email":"rate-limit-failure@test.com","password":"Password123"}`))
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"user_id":"`+user.ID+`"`) {
+		t.Fatalf("invalid rate-limit integer should fall back to default: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	if err := db.Settings.Set(t.Context(), "rate_limit_auth_attempts", "5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.InvalidateSettings(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	failedUser := testutil.CreateUser(t, db, "rate-limit-store-failure@test.com", "Password123", "RateLimitStoreFailure", false)
+	failingCache := &rateLimitFailRedis{Store: cache}
+	h = site.NewWithRedis(cfg, db, failingCache, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	req = httptest.NewRequest(http.MethodPost, "/site-login", strings.NewReader(`{"email":"rate-limit-store-failure@test.com","password":"Password123"}`))
+	rec = httptest.NewRecorder()
+	h.Login(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("rate-limit store failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var refreshCount int
+	err := db.Pool.QueryRow(t.Context(), `SELECT COUNT(*) FROM site_refresh_tokens WHERE user_id=$1`, failedUser.ID).Scan(&refreshCount)
+	if err != nil || refreshCount != 0 {
+		t.Fatalf("failed-closed login must not issue sessions: count=%d err=%v", refreshCount, err)
+	}
+}
+
+type rateLimitFailRedis struct {
+	redisstore.Store
+}
+
+func (r *rateLimitFailRedis) HitRateLimit(context.Context, string, int, time.Duration) (redisstore.RateLimitResult, error) {
+	return redisstore.RateLimitResult{}, errors.New("redis unavailable")
 }
 
 func cookieValue(t *testing.T, cookies []*http.Cookie, name string) string {

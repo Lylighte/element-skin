@@ -140,6 +140,43 @@ func TestCarouselRoutesDeleteInvalidOrMissingFileExactly(t *testing.T) {
 	}
 }
 
+func TestCarouselRoutesCacheFailureKeepsCompletedFileMutation(t *testing.T) {
+	cfg := testutil.TestConfig()
+	cfg.CarouselDir = t.TempDir()
+	cache := &carouselInvalidateFailRedis{Store: testutil.NewMemoryRedis()}
+	h := admin.NewWithRedis(cfg, nil, cache, nil)
+
+	req := carouselUploadRequest(t, "slide.png", carouselPNG(t))
+	rec := httptest.NewRecorder()
+	h.UploadCarousel(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("upload cache failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	entries, err := os.ReadDir(cfg.CarouselDir)
+	if err != nil || len(entries) != 1 || filepath.Ext(entries[0].Name()) != ".png" {
+		t.Fatalf("upload is written before cache invalidation, entries=%#v err=%v", entries, err)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/admin/carousel/"+entries[0].Name(), nil)
+	req.SetPathValue("filename", entries[0].Name())
+	rec = httptest.NewRecorder()
+	h.DeleteCarousel(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("delete cache failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(cfg.CarouselDir, entries[0].Name())); !os.IsNotExist(err) {
+		t.Fatalf("delete occurs before cache invalidation, stat err=%v", err)
+	}
+}
+
+type carouselInvalidateFailRedis struct {
+	redisstore.Store
+}
+
+func (r *carouselInvalidateFailRedis) InvalidatePublicCarousel(context.Context) error {
+	return errors.New("redis invalidate failed")
+}
+
 func carouselUploadRequest(t *testing.T, filename string, data []byte) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
