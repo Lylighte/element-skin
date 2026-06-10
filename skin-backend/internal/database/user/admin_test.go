@@ -65,3 +65,18 @@ func TestAdminTransferSuperAdminAndProtectSuperAdminToggle(t *testing.T) {
 		t.Fatalf("transfer from non-super admin should fail with no rows, got %v", err)
 	}
 }
+
+func TestTransferSuperAdminRollsBackWhenTargetDoesNotExist(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := user.Store{Pool: db.Pool}
+	superAdmin := testutil.CreateUser(t, db, "domain-transfer-rollback@test.com", "Password123", "TransferRollback", true, true)
+
+	if err := store.TransferSuperAdmin(ctx, superAdmin.ID, "missing-target"); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("missing target should return pgx.ErrNoRows, got %v", err)
+	}
+	unchanged, err := store.GetByID(ctx, superAdmin.ID)
+	if err != nil || unchanged == nil || !unchanged.IsAdmin || !unchanged.IsSuperAdmin {
+		t.Fatalf("failed transfer must roll back source demotion: user=%#v err=%v", unchanged, err)
+	}
+}

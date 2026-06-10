@@ -9,6 +9,7 @@ import (
 
 	"element-skin/backend/internal/app"
 	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -92,4 +93,28 @@ func TestRefreshCleanupLoopSurvivesCleanupError(t *testing.T) {
 	if cleaner.calls.Load() < 2 {
 		t.Fatalf("cleanup loop should continue after errors, calls=%d", cleaner.calls.Load())
 	}
+}
+
+func TestNewWithDBAndRedisClosesRedisWhenSignerInitializationFails(t *testing.T) {
+	cfg := testutil.TestConfig()
+	cfg.PrivateKeyPath = t.TempDir() + "/missing-private.pem"
+	cache := &closeTrackingStore{Store: redisstore.NewMemoryStore()}
+
+	application, err := app.NewWithDBAndRedis(cfg, nil, cache)
+	if err == nil || application != nil {
+		t.Fatalf("missing signing key should fail app construction: app=%#v err=%v", application, err)
+	}
+	if !cache.closed {
+		t.Fatal("failed app construction must close the already-open Redis store")
+	}
+}
+
+type closeTrackingStore struct {
+	redisstore.Store
+	closed bool
+}
+
+func (s *closeTrackingStore) Close() error {
+	s.closed = true
+	return s.Store.Close()
 }
