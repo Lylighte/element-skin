@@ -23,6 +23,13 @@ func (y Yggdrasil) Join(ctx context.Context, access, profileID, serverID, ip str
 	if t.ProfileID == nil || *t.ProfileID != profileID {
 		return yggErr(403, "ForbiddenOperationException", "Invalid token.")
 	}
+	owned, err := y.DB.Profiles.VerifyOwnership(ctx, t.UserID, profileID)
+	if err != nil {
+		return err
+	}
+	if !owned {
+		return yggErr(403, "ForbiddenOperationException", "Invalid token.")
+	}
 	return y.Redis.SetYggSession(ctx, model.Session{ServerID: serverID, AccessToken: access, IP: &ip, CreatedAt: database.NowMS()}, joinSessionTTL)
 }
 
@@ -51,7 +58,7 @@ func (y Yggdrasil) HasJoined(ctx context.Context, username, serverID string) (ma
 	if err != nil {
 		return nil, 0, err
 	}
-	if p == nil || p.Name != username {
+	if p == nil || p.UserID != t.UserID || p.Name != username {
 		return nil, 204, nil
 	}
 	if banned, err := y.DB.Users.IsBanned(ctx, p.UserID); err != nil {

@@ -98,6 +98,11 @@ func (y Yggdrasil) Refresh(ctx context.Context, accessToken, clientToken, select
 	if clientToken != "" && clientToken != t.ClientToken {
 		return nil, yggErr(403, "ForbiddenOperationException", "Invalid token.")
 	}
+	if ok, err := y.tokenProfileOwned(ctx, t); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, yggErr(403, "ForbiddenOperationException", "Invalid token.")
+	}
 	newProfile := t.ProfileID
 	var selected map[string]any
 	if selectedID != "" {
@@ -156,6 +161,11 @@ func (y Yggdrasil) Validate(ctx context.Context, access, client string) error {
 	if (client != "" && client != t.ClientToken) || database.NowMS()-t.CreatedAt > int64(tokenTTL/time.Millisecond) {
 		return yggErr(403, "ForbiddenOperationException", "Invalid token.")
 	}
+	if ok, err := y.tokenProfileOwned(ctx, t); err != nil {
+		return err
+	} else if !ok {
+		return yggErr(403, "ForbiddenOperationException", "Invalid token.")
+	}
 	return nil
 }
 
@@ -164,7 +174,22 @@ func (y Yggdrasil) Token(ctx context.Context, access string) (model.Token, error
 	if errors.Is(err, redisstore.ErrCacheMiss) {
 		return model.Token{}, yggErr(401, "Unauthorized", "Invalid token")
 	}
-	return token, err
+	if err != nil {
+		return model.Token{}, err
+	}
+	if ok, err := y.tokenProfileOwned(ctx, token); err != nil {
+		return model.Token{}, err
+	} else if !ok {
+		return model.Token{}, yggErr(401, "Unauthorized", "Invalid token")
+	}
+	return token, nil
+}
+
+func (y Yggdrasil) tokenProfileOwned(ctx context.Context, token model.Token) (bool, error) {
+	if token.ProfileID == nil {
+		return true, nil
+	}
+	return y.DB.Profiles.VerifyOwnership(ctx, token.UserID, *token.ProfileID)
 }
 
 func (y Yggdrasil) Invalidate(ctx context.Context, access string) error {

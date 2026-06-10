@@ -242,3 +242,44 @@ func TestYggdrasilValidateRefreshSignoutAndInvalidateEdgeCases(t *testing.T) {
 		t.Fatalf("signout should reject bad credentials, got %v", err)
 	}
 }
+
+func TestYggdrasilRejectsBoundTokenAfterProfileIDIsReassigned(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	originalOwner := testutil.CreateUser(t, db, "ygg-stale-owner@test.com", "Password123", "YggStaleOwner", false)
+	newOwner := testutil.CreateUser(t, db, "ygg-stale-new-owner@test.com", "Password123", "YggStaleNewOwner", false)
+	profile := testutil.CreateProfile(t, db, originalOwner.ID, "ygg_reassigned_profile", "YggOriginalRole")
+	redis := testutil.NewMemoryRedis()
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: redis}
+	token := model.Token{
+		AccessToken: "stale_reassigned_access",
+		ClientToken: "stale_reassigned_client",
+		UserID:      originalOwner.ID,
+		ProfileID:   &profile.ID,
+		CreatedAt:   database.NowMS(),
+	}
+	if err := redis.SetYggToken(ctx, token, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.Profiles.DeleteCascade(ctx, profile.ID); err != nil || !ok {
+		t.Fatalf("delete original profile: ok=%v err=%v", ok, err)
+	}
+	if err := db.Profiles.Create(ctx, model.Profile{
+		ID:           profile.ID,
+		UserID:       newOwner.ID,
+		Name:         "YggReassignedRole",
+		TextureModel: "default",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ygg.Validate(ctx, token.AccessToken, token.ClientToken); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+		t.Fatalf("validate must reject a token whose profile ID now belongs to another user, got %v", err)
+	}
+	if _, err := ygg.Token(ctx, token.AccessToken); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+		t.Fatalf("token lookup must reject reassigned profile ownership, got %v", err)
+	}
+	if _, err := ygg.Refresh(ctx, token.AccessToken, token.ClientToken, "", false); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+		t.Fatalf("refresh must reject reassigned profile ownership, got %v", err)
+	}
+}
