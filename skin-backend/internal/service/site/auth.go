@@ -77,6 +77,7 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 	if err != nil {
 		return "", err
 	}
+	verifiedEmail := false
 	if enabled == "true" {
 		if code == "" {
 			return "", util.HTTPError{Status: 400, Detail: "Verification code required"}
@@ -88,7 +89,7 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 		if !ok {
 			return "", util.HTTPError{Status: 400, Detail: "Invalid or expired verification code"}
 		}
-		defer s.Redis.DeleteVerificationCode(ctx, email, "register")
+		verifiedEmail = true
 	}
 	requireInvite, err := settings.Get(ctx, "require_invite", "false")
 	if err != nil {
@@ -158,6 +159,9 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 			return "", util.HTTPError{Status: 400, Detail: "invite code has no remaining uses"}
 		}
 		return "", err
+	}
+	if verifiedEmail {
+		_ = s.Redis.DeleteVerificationCode(ctx, email, "register")
 	}
 	return userID, nil
 }
