@@ -297,6 +297,53 @@ func TestTextureRoutesDeleteCapeClearsOnlyCape(t *testing.T) {
 	}
 }
 
+func TestTextureDeleteRejectsTokenAfterProfileIDIsReassigned(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	h := yggdrasil.New(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg, Redis: redis})
+	originalOwner := testutil.CreateUser(t, db, "ygg-route-stale-owner@test.com", "Password123", "YggRouteStaleOwner", false)
+	newOwner := testutil.CreateUser(t, db, "ygg-route-new-owner@test.com", "Password123", "YggRouteNewOwner", false)
+	profile := testutil.CreateProfile(t, db, originalOwner.ID, "ygg_route_reassigned", "YggRouteOriginal")
+	token := model.Token{
+		AccessToken: "stale_route_access",
+		ClientToken: "stale_route_client",
+		UserID:      originalOwner.ID,
+		ProfileID:   &profile.ID,
+		CreatedAt:   time.Now().UnixMilli(),
+	}
+	if err := redis.SetYggToken(context.Background(), token, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.Profiles.DeleteCascade(context.Background(), profile.ID); err != nil || !ok {
+		t.Fatalf("delete original profile: ok=%v err=%v", ok, err)
+	}
+	skin := "new_owner_skin_must_remain"
+	if err := db.Profiles.Create(context.Background(), model.Profile{
+		ID:           profile.ID,
+		UserID:       newOwner.ID,
+		Name:         "YggRouteReassigned",
+		TextureModel: "slim",
+		SkinHash:     &skin,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/user/profile/"+profile.ID+"/skin", nil)
+	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	req.SetPathValue("uuid", profile.ID)
+	req.SetPathValue("texture_type", "skin")
+	rec := httptest.NewRecorder()
+	h.DeleteTexture(rec, req)
+	if rec.Code != http.StatusUnauthorized || rec.Body.String() != "{\"error\":\"Unauthorized\",\"errorMessage\":\"Invalid token\"}\n" {
+		t.Fatalf("stale reassigned-profile token response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	unchanged, err := db.Profiles.GetByID(context.Background(), profile.ID)
+	if err != nil || unchanged == nil || unchanged.UserID != newOwner.ID || unchanged.SkinHash == nil || *unchanged.SkinHash != skin {
+		t.Fatalf("rejected stale token must preserve the new owner's skin: profile=%#v err=%v", unchanged, err)
+	}
+}
+
 func testPNG(t *testing.T, w, h int) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))

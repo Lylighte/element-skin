@@ -3,6 +3,7 @@ package yggdrasil_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -167,5 +168,55 @@ func TestYggdrasilHasJoinedRejectsBannedUserExactly(t *testing.T) {
 	}
 	if body != nil || status != 0 {
 		t.Fatalf("banned hasJoined should not return a success body/status: status=%d body=%#v", status, body)
+	}
+}
+
+func TestYggdrasilSessionRejectsReassignedProfileOwnership(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	originalOwner := testutil.CreateUser(t, db, "ygg-session-stale-owner@test.com", "Password123", "YggSessionStaleOwner", false)
+	newOwner := testutil.CreateUser(t, db, "ygg-session-new-owner@test.com", "Password123", "YggSessionNewOwner", false)
+	profile := testutil.CreateProfile(t, db, originalOwner.ID, "ygg_session_reassigned", "YggSessionOriginal")
+	redis := testutil.NewMemoryRedis()
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: redis}
+	token := model.Token{
+		AccessToken: "stale_session_access",
+		ClientToken: "stale_session_client",
+		UserID:      originalOwner.ID,
+		ProfileID:   &profile.ID,
+		CreatedAt:   database.NowMS(),
+	}
+	if err := redis.SetYggToken(ctx, token, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.Profiles.DeleteCascade(ctx, profile.ID); err != nil || !ok {
+		t.Fatalf("delete original profile: ok=%v err=%v", ok, err)
+	}
+	if err := db.Profiles.Create(ctx, model.Profile{
+		ID:           profile.ID,
+		UserID:       newOwner.ID,
+		Name:         "YggSessionReassigned",
+		TextureModel: "default",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ygg.Join(ctx, token.AccessToken, profile.ID, "server_reassigned", "127.0.0.1"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+		t.Fatalf("join must reject a profile ID reassigned to another user, got %v", err)
+	}
+	if _, err := redis.GetYggSession(ctx, "server_reassigned"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("rejected reassigned-profile join must not create a session, got %v", err)
+	}
+
+	if err := redis.SetYggSession(ctx, model.Session{
+		ServerID:    "server_existing_before_reassignment",
+		AccessToken: token.AccessToken,
+		CreatedAt:   database.NowMS(),
+	}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	body, status, err := ygg.HasJoined(ctx, "YggSessionReassigned", "server_existing_before_reassignment")
+	if err != nil || status != http.StatusNoContent || body != nil {
+		t.Fatalf("hasJoined must not authenticate the new owner through the old owner's token: status=%d body=%#v err=%v", status, body, err)
 	}
 }
