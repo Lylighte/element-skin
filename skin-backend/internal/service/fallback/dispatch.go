@@ -3,7 +3,6 @@ package fallback
 import (
 	"context"
 	"sort"
-	"sync"
 )
 
 func (f Fallback) enabledEndpoints(ctx context.Context, kind string) ([]map[string]any, error) {
@@ -48,19 +47,15 @@ func (f Fallback) dispatch(ctx context.Context, eps []map[string]any, strategy s
 		err  error
 	}
 	ch := make(chan result, len(eps))
-	var wg sync.WaitGroup
 	for _, ep := range eps {
 		ep := ep
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
 			resp, err := call(ep)
 			ch <- result{resp: resp, err: err}
 		}()
 	}
-	wg.Wait()
-	close(ch)
-	for r := range ch {
+	for range eps {
+		r := <-ch
 		if r.err != nil {
 			continue
 		}
