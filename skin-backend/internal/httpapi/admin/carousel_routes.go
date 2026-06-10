@@ -47,11 +47,13 @@ func (h Handler) UploadCarousel(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	filename := id + ext
-	if err := os.WriteFile(filepath.Join(h.cfg.CarouselDir, filename), data, 0o644); err != nil {
+	path := filepath.Join(h.cfg.CarouselDir, filename)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		util.Error(w, err)
 		return
 	}
 	if err := h.redis.InvalidatePublicCarousel(req.Context()); err != nil {
+		_ = os.Remove(path)
 		util.Error(w, err)
 		return
 	}
@@ -64,12 +66,32 @@ func (h Handler) DeleteCarousel(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid filename"})
 		return
 	}
-	err := os.Remove(filepath.Join(h.cfg.CarouselDir, filename))
+	path := filepath.Join(h.cfg.CarouselDir, filename)
+	var original []byte
+	var mode os.FileMode
+	if info, err := os.Stat(path); err == nil {
+		original, err = os.ReadFile(path)
+		if err != nil {
+			util.Error(w, err)
+			return
+		}
+		mode = info.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		util.Error(w, err)
+		return
+	}
+	err := os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
 		util.Error(w, err)
 		return
 	}
 	if err := h.redis.InvalidatePublicCarousel(req.Context()); err != nil {
+		if original != nil {
+			if restoreErr := os.WriteFile(path, original, mode); restoreErr != nil {
+				util.Error(w, restoreErr)
+				return
+			}
+		}
 		util.Error(w, err)
 		return
 	}
