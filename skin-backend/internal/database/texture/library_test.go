@@ -42,6 +42,19 @@ func TestPublicLibraryAndWardrobeCopyVisibilityRules(t *testing.T) {
 	}
 }
 
+func TestParsePublicLibrarySortNormalizesSupportedValueAndFallsBack(t *testing.T) {
+	for _, raw := range []string{"most_used", " MOST_USED ", "Most_Used"} {
+		if got := texture.ParsePublicLibrarySort(raw); got != texture.PublicLibrarySortMostUsed {
+			t.Fatalf("ParsePublicLibrarySort(%q)=%q, want %q", raw, got, texture.PublicLibrarySortMostUsed)
+		}
+	}
+	for _, raw := range []string{"", "latest", " Latest ", "popular", "most-used"} {
+		if got := texture.ParsePublicLibrarySort(raw); got != texture.PublicLibrarySortLatest {
+			t.Fatalf("ParsePublicLibrarySort(%q)=%q, want %q", raw, got, texture.PublicLibrarySortLatest)
+		}
+	}
+}
+
 func TestPublicLibrarySortsByLatestAndMostUsed(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
