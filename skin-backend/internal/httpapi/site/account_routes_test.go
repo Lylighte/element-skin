@@ -11,6 +11,7 @@ import (
 
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/site"
+	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/redisstore"
 	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
@@ -78,6 +79,9 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID, IsAdmin: false}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
+	if err := redis.SetYggToken(t.Context(), model.Token{AccessToken: "account_change_password_ygg", UserID: user.ID, CreatedAt: time.Now().UnixMilli()}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 
 	req = httptest.NewRequest(http.MethodPost, "/me/password", strings.NewReader(`{"old_password":"Password123","new_password":"NewPassword123"}`))
 	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
@@ -92,6 +96,9 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	if got, err := db.Tokens.GetRefresh(t.Context(), util.HashRefreshToken(refresh)); err != nil || got != nil {
 		t.Fatalf("change password should revoke existing refresh tokens: refresh=%#v err=%v", got, err)
 	}
+	if _, err := redis.GetYggToken(t.Context(), "account_change_password_ygg"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("change password should revoke existing ygg tokens, got %v", err)
+	}
 }
 
 func TestAccountRoutesDeleteMeRemovesUserAndInvalidatesCacheExactly(t *testing.T) {
@@ -102,6 +109,9 @@ func TestAccountRoutesDeleteMeRemovesUserAndInvalidatesCacheExactly(t *testing.T
 	user := testutil.CreateUser(t, db, "site-delete-me@test.com", "Password123", "SiteDeleteMe", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_delete_me_profile", "SiteDeleteMeProfile")
 	if err := redis.SetAuthUser(context.Background(), redisstore.AuthUser{ID: user.ID, IsAdmin: false}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := redis.SetYggToken(t.Context(), model.Token{AccessToken: "delete_me_ygg", UserID: user.ID, CreatedAt: time.Now().UnixMilli()}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,6 +130,9 @@ func TestAccountRoutesDeleteMeRemovesUserAndInvalidatesCacheExactly(t *testing.T
 	}
 	if _, err := redis.GetAuthUser(context.Background(), user.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("delete me should invalidate auth cache, got %v", err)
+	}
+	if _, err := redis.GetYggToken(t.Context(), "delete_me_ygg"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("delete me should revoke existing ygg tokens, got %v", err)
 	}
 }
 

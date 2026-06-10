@@ -79,5 +79,8 @@ func (s Site) ChangePassword(ctx context.Context, userID, oldPassword, newPasswo
 	if err := s.DB.Users.UpdatePassword(ctx, userID, hash); err != nil {
 		return err
 	}
-	return s.DB.Tokens.DeleteRefreshByUser(ctx, userID)
+	if err := s.DB.Tokens.DeleteRefreshByUser(ctx, userID); err != nil {
+		return err
+	}
+	return s.Redis.DeleteYggTokensByUser(ctx, userID)
 }

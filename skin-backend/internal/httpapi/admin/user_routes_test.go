@@ -12,6 +12,7 @@ import (
 
 	"element-skin/backend/internal/httpapi/admin"
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -274,6 +275,9 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 	assertTargetCacheMiss(t, "unban user")
 
 	cacheTarget(t)
+	if err := redis.SetYggToken(t.Context(), model.Token{AccessToken: "admin_reset_ygg", UserID: target.ID, CreatedAt: time.Now().UnixMilli()}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"AdminCachePassword123"}`))
 	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
 	rec = httptest.NewRecorder()
@@ -282,6 +286,9 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 		t.Fatalf("reset user password response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	assertTargetCacheMiss(t, "reset user password")
+	if _, err := redis.GetYggToken(t.Context(), "admin_reset_ygg"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("admin reset password should revoke target ygg tokens, got %v", err)
+	}
 }
 
 func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
@@ -349,6 +356,9 @@ func TestUserRoutesDeleteUserAndInvalidateAuthCacheExactly(t *testing.T) {
 	if err := redis.SetAuthUser(context.Background(), redisstore.AuthUser{ID: target.ID, IsAdmin: false}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
+	if err := redis.SetYggToken(t.Context(), model.Token{AccessToken: "admin_delete_ygg", UserID: target.ID, CreatedAt: time.Now().UnixMilli()}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID, nil)
 	req.SetPathValue("user_id", target.ID)
@@ -366,6 +376,9 @@ func TestUserRoutesDeleteUserAndInvalidateAuthCacheExactly(t *testing.T) {
 	}
 	if _, err := redis.GetAuthUser(context.Background(), target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("delete user should invalidate auth cache, got %v", err)
+	}
+	if _, err := redis.GetYggToken(t.Context(), "admin_delete_ygg"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("delete user should revoke existing ygg tokens, got %v", err)
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID, nil)

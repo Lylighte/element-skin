@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/httpapi/site"
+	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/redisstore"
 	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
@@ -189,6 +190,9 @@ func TestSessionRoutesVerificationAndResetPasswordExactFlow(t *testing.T) {
 	if err := redis.InvalidateSettings(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	if err := redis.SetYggToken(t.Context(), model.Token{AccessToken: "reset_password_ygg", UserID: user.ID, CreatedAt: time.Now().UnixMilli()}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	req = httptest.NewRequest(http.MethodPost, "/verification-code", strings.NewReader(`{"email":"reset-flow@test.com","type":"reset"}`))
 	rec = httptest.NewRecorder()
 	h.SendVerificationCode(rec, req)
@@ -212,6 +216,9 @@ func TestSessionRoutesVerificationAndResetPasswordExactFlow(t *testing.T) {
 	}
 	if _, err := redis.GetVerificationCode(t.Context(), "reset-flow@test.com", "reset"); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("reset password should delete verification code, got %v", err)
+	}
+	if _, err := redis.GetYggToken(t.Context(), "reset_password_ygg"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("reset password should revoke existing ygg tokens, got %v", err)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/verification-code", strings.NewReader(`{"email":"reset-flow@test.com","type":"bad"}`))

@@ -198,6 +198,9 @@ func (s Site) DeleteProfileByID(ctx context.Context, profileID string) error {
 }
 
 func (s Site) DeleteUser(ctx context.Context, userID string) (bool, error) {
+	if err := s.Redis.DeleteYggTokensByUser(ctx, userID); err != nil {
+		return false, err
+	}
 	textures, err := s.DB.Textures.ListForUser(ctx, userID, "", 10000, nil, "")
 	if err != nil {
 		return false, err
