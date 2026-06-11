@@ -62,6 +62,7 @@ _deps.bind_db(db)
 
 union_backend = UnionBackend(db, config, crypto)
 site_backend.set_union_backend(union_backend)
+admin_backend.set_union_backend(union_backend)
 
 
 async def _refresh_cleanup_loop(db, interval_seconds: int = 3600):

@@ -1,4 +1,5 @@
 from typing import Any, Dict
+import asyncio
 import time
 import secrets
 import os
@@ -15,6 +16,11 @@ class AdminBackend:
     def __init__(self, db: Database, config: Config):
         self.db = db
         self.config = config
+        self._union_backend = None
+
+    def set_union_backend(self, union_backend):
+        """Set Union backend for profile sync hooks."""
+        self._union_backend = union_backend
 
     # ========== Other Methods ==========
 
@@ -51,6 +57,13 @@ class AdminBackend:
             raise HTTPException(status_code=404, detail="user not found")
         if user_row.is_admin and is_admin_action:
             raise HTTPException(status_code=403, detail="cannot delete admin user")
+
+        # Union sync: fire-and-forget on user deletion for each profile
+        if self._union_backend:
+            profiles = await self.db.user.get_profiles_by_user(user_id)
+            for p in profiles:
+                asyncio.create_task(self._union_backend.sync_profile_delete(p.id))
+
         await self.db.user.delete(user_id)
         return True
 

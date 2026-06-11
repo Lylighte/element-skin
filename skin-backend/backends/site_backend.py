@@ -486,6 +486,13 @@ class SiteBackend:
         if user_row.is_admin and is_admin_action:
             raise HTTPException(status_code=403, detail="cannot delete admin user")
 
+        # Union sync: fire-and-forget on user deletion for each profile
+        if self._union_backend:
+            import asyncio
+            profiles = await self.db.user.get_profiles_by_user(user_id)
+            for p in profiles:
+                asyncio.create_task(self._union_backend.sync_profile_delete(p.id))
+
         await self.db.user.delete(user_id)
         return True
 
