@@ -107,15 +107,38 @@ func (s Site) ResetPassword(ctx context.Context, email, newPassword, code string
 	if err != nil {
 		return err
 	}
+	ttl, err := settings.Int(ctx, "email_verify_ttl", 300)
+	if err != nil {
+		return err
+	}
+	consumed, err := s.Redis.ConsumeVerificationCode(ctx, email, "reset", code)
+	if err != nil {
+		return err
+	}
+	if !consumed {
+		return util.HTTPError{Status: 400, Detail: "Invalid or expired verification code"}
+	}
+	restoreCode := func() {
+		_, _ = s.Redis.SetVerificationCodeIfAbsent(
+			ctx,
+			email,
+			"reset",
+			code,
+			time.Duration(ttl)*time.Second,
+		)
+	}
 	if err := s.Redis.DeleteYggTokensByUser(ctx, user.ID); err != nil {
+		restoreCode()
 		return err
 	}
 	updated, err := s.DB.Users.UpdatePasswordAndRevokeRefresh(ctx, user.ID, hash)
 	if err != nil {
+		restoreCode()
 		return err
 	}
 	if !updated {
+		restoreCode()
 		return util.HTTPError{Status: 404, Detail: "User not found"}
 	}
-	return s.Redis.DeleteVerificationCode(ctx, email, "reset")
+	return nil
 }

@@ -109,6 +109,25 @@ func TestNewWithDBAndRedisClosesRedisWhenSignerInitializationFails(t *testing.T)
 	}
 }
 
+func TestAppCloseReleasesDatabaseAndRedis(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cache := &closeTrackingStore{Store: redisstore.NewMemoryStore()}
+	application, err := app.NewWithDBAndRedis(cfg, db, cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	application.Close()
+
+	if !cache.closed {
+		t.Fatal("App.Close must close Redis")
+	}
+	if err := db.Pool.Ping(context.Background()); err == nil {
+		t.Fatal("App.Close must close the database pool")
+	}
+}
+
 type closeTrackingStore struct {
 	redisstore.Store
 	closed bool

@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	dbfallback "element-skin/backend/internal/database/fallback"
 	fallbacksvc "element-skin/backend/internal/service/fallback"
@@ -98,6 +101,77 @@ func TestFallbackSkipsEndpointRequestAlreadyInFlight(t *testing.T) {
 	}
 	if resp != nil || calls != 2 {
 		t.Fatalf("completed request mark should be released for later attempts: resp=%#v calls=%d", resp, calls)
+	}
+}
+
+func TestFallbackConcurrentIdenticalRequestsMakeOneOutboundCall(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	var calls atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		_, _ = w.Write([]byte(`{"id":"single-call","name":"ConcurrentPlayer"}`))
+	}))
+	defer server.Close()
+	if err := db.Fallbacks.SaveEndpoints(ctx, []dbfallback.Endpoint{{
+		Priority: 1, SessionURL: server.URL, AccountURL: server.URL, ServicesURL: server.URL, CacheTTL: 60,
+		EnableProfile: true,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	fb := newFallback(db, server.Client())
+
+	type result struct {
+		body string
+		err  error
+	}
+	const attempts = 12
+	begin := make(chan struct{})
+	results := make(chan result, attempts)
+	var wg sync.WaitGroup
+	for range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-begin
+			response, err := fb.GetProfile(context.Background(), "concurrent-profile", true)
+			if response == nil {
+				results <- result{err: err}
+				return
+			}
+			results <- result{body: string(response.Body), err: err}
+		}()
+	}
+	close(begin)
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("fallback request did not reach the outbound server")
+	}
+
+	for range attempts - 1 {
+		select {
+		case result := <-results:
+			if result.err != nil || result.body != "" {
+				t.Fatalf("duplicate in-flight request result=%#v; want nil miss", result)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("duplicate fallback calls did not return while the single outbound request was blocked; calls=%d", calls.Load())
+		}
+	}
+	close(release)
+	wg.Wait()
+	final := <-results
+	if final.err != nil || final.body != `{"id":"single-call","name":"ConcurrentPlayer"}` {
+		t.Fatalf("winning fallback response=%#v; want exact remote payload", final)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("concurrent identical fallback requests made %d outbound calls; want exactly 1", calls.Load())
 	}
 }
 
