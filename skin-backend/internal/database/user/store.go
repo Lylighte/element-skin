@@ -168,14 +168,36 @@ func (s Store) Delete(ctx context.Context, id string) (bool, error) {
 		return false, err
 	}
 	defer tx.Rollback(ctx)
+	var one int
+	err = tx.QueryRow(ctx, `SELECT 1 FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
 	for _, q := range []string{
 		`DELETE FROM profiles WHERE user_id=$1`,
 		`DELETE FROM site_refresh_tokens WHERE user_id=$1`,
+		`DELETE FROM user_textures
+		 WHERE (hash,texture_type) IN (
+			SELECT skin_hash,texture_type FROM skin_library WHERE uploader=$1
+		 )`,
+		`DELETE FROM skin_library WHERE uploader=$1`,
 		`DELETE FROM user_textures WHERE user_id=$1`,
 	} {
 		if _, err := tx.Exec(ctx, q, id); err != nil {
 			return false, err
 		}
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE skin_library sl
+		SET usage_count=(
+			SELECT COUNT(*) FROM user_textures ut
+			WHERE ut.hash=sl.skin_hash AND ut.texture_type=sl.texture_type
+		)
+	`); err != nil {
+		return false, err
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id=$1`, id)
 	if err != nil {

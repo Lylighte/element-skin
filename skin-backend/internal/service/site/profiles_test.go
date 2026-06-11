@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
 )
 
 func TestProfilesCreateListAndClearTextureExactState(t *testing.T) {
@@ -240,6 +241,41 @@ func TestDeleteUserRecountsSharedLibraryButDeletesUploadedTextures(t *testing.T)
 	}
 	if info, err := db.Textures.GetInfo(ctx, other.ID, "delete_user_uploaded_skin", "skin"); err != nil || info != nil {
 		t.Fatalf("deleting uploader should remove other users' wardrobe copies: info=%#v err=%v", info, err)
+	}
+}
+
+func TestPublicLibraryRejectsIncompleteAndCrossSortCursors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+
+	for _, tc := range []struct {
+		name   string
+		cursor string
+		sort   string
+	}{
+		{
+			name: "latest cursor missing hash",
+			cursor: util.EncodeCursor(map[string]any{
+				"last_created_at": int64(1234),
+			}),
+			sort: "latest",
+		},
+		{
+			name: "latest cursor reused for most used",
+			cursor: util.EncodeCursor(map[string]any{
+				"last_created_at": int64(1234),
+				"last_skin_hash":  "cursor_hash",
+			}),
+			sort: "most_used",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := svc.PublicLibrary(ctx, tc.cursor, 10, "skin", "", tc.sort)
+			if result != nil || !httpError(err, 400, "Invalid cursor") {
+				t.Fatalf("PublicLibrary result=%#v err=%#v; want nil and exact invalid cursor", result, err)
+			}
+		})
 	}
 }
 
