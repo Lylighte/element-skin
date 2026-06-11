@@ -179,3 +179,65 @@ async def test_union_security_level_not_authenticated(client):
     resp = await client.get("/union/security/level")
     # Union routes use cookie-based auth; missing cookie returns 401
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_union_inbound_rate_limit_exceeded(client, db_session):
+    """Test that 101st request within 60s returns 429."""
+    from unittest.mock import patch, AsyncMock
+    from routes_reference import rate_limiter, union_backend
+
+    # Clear rate limiter state to start fresh
+    rate_limiter._attempts.clear()
+
+    # Mock Union signature verification to succeed, and is_update_enabled to
+    # return False so the handler returns immediately without real work
+    with patch.object(union_backend, "verify_union_request_inbound", return_value=None), \
+         patch.object(union_backend, "is_update_enabled", new_callable=AsyncMock) as mock_update:
+        mock_update.return_value = False
+
+        url = "/api/union/member/updatelist"
+        headers = {
+            "X-Message-Signature": "valid_sig",
+            "X-Message-Timestamp": "1000000000",
+            "X-Message-Nonce": "test_nonce_rl",
+        }
+
+        # Send 100 rapid requests — all should succeed
+        for i in range(100):
+            resp = await client.post(url, headers=headers)
+            assert resp.status_code == 200, f"Request {i + 1} failed: {resp.text}"
+
+        # 101st request — should be rate limited
+        resp = await client.post(url, headers=headers)
+        assert resp.status_code == 429
+        assert "Rate limit exceeded" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_union_inbound_invalid_signature_does_not_consume_rate_limit(client, db_session):
+    """Test that invalid signature requests return 401 and do NOT consume rate limit."""
+    from unittest.mock import patch, AsyncMock
+    from routes_reference import rate_limiter, union_backend
+
+    # Clear rate limiter state to start fresh
+    rate_limiter._attempts.clear()
+
+    # Send 100 requests with invalid signature — all should 401 at
+    # verify_union_request, never reaching rate_limiter.check()
+    for i in range(100):
+        resp = await client.post("/api/union/member/updatelist")
+        assert resp.status_code == 401
+
+    # Now send a valid (mocked) request — should succeed, not 429, because
+    # the invalid-signature requests never consumed the rate limit
+    with patch.object(union_backend, "verify_union_request_inbound", return_value=None), \
+         patch.object(union_backend, "is_update_enabled", new_callable=AsyncMock) as mock_update:
+        mock_update.return_value = False
+
+        resp = await client.post("/api/union/member/updatelist", headers={
+            "X-Message-Signature": "valid_sig",
+            "X-Message-Timestamp": "1000000000",
+            "X-Message-Nonce": "test_nonce_rl2",
+        })
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"

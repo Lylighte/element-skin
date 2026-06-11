@@ -39,18 +39,21 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     # ========================================================================
 
     @router.post("/api/union/member/updatelist")
-    async def union_update_list(_verified=Depends(verify_union_request)):
+    async def union_update_list(request: Request, _verified=Depends(verify_union_request)):
         """Union pushes updated server list."""
+        await rate_limiter.check(request, is_auth_endpoint=False)
         if not await union_backend.is_update_enabled():
             return {"ok": True, "message": "Updates from Union are disabled"}
         success = await union_backend.fetch_server_list()
         if not success:
             raise HTTPException(status_code=502, detail="Failed to fetch server list from Union")
+        rate_limiter.reset(request.client.host, request.url.path)
         return {"ok": True}
 
     @router.post("/api/union/member/updateprivatekey")
-    async def union_update_private_key(_verified=Depends(verify_union_request)):
+    async def union_update_private_key(request: Request, _verified=Depends(verify_union_request)):
         """Union pushes updated private key."""
+        await rate_limiter.check(request, is_auth_endpoint=False)
         if not await union_backend.is_update_enabled():
             return {"ok": True, "message": "Updates from Union are disabled"}
         success = await union_backend.fetch_private_key()
@@ -61,6 +64,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     @router.post("/api/union/member/updatebackendkey")
     async def union_update_backend_key(request: Request, _verified=Depends(verify_union_request)):
         """Union updates this member's authentication key."""
+        await rate_limiter.check(request, is_auth_endpoint=False)
         if not await union_backend.is_update_enabled():
             return {"ok": True, "message": "Updates from Union are disabled"}
         body = json.loads(getattr(request.state, "union_body", "{}"))
@@ -74,6 +78,7 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     @router.post("/api/union/member/sync")
     async def union_sync(request: Request, _verified=Depends(verify_union_request)):
         """Union triggers profile sync."""
+        await rate_limiter.check(request, is_auth_endpoint=False)
         body = json.loads(getattr(request.state, "union_body", "{}"))
         if isinstance(body, list):
             profile_list = body
@@ -85,11 +90,13 @@ def setup_routes(union_backend, rate_limiter, config: Config):
         success = await union_backend.sync_profiles()
         if not success:
             raise HTTPException(status_code=502, detail="Failed to sync profiles to Union")
+        rate_limiter.reset(request.client.host, request.url.path)
         return {"ok": True}
 
     @router.post("/api/union/member/remapuuid")
     async def union_remap_uuid(request: Request, _verified=Depends(verify_union_request)):
         """Union pushes UUID remappings."""
+        await rate_limiter.check(request, is_auth_endpoint=False)
         body = json.loads(getattr(request.state, "union_body", "{}"))
         remapped = body.get("remapped_uuid", {})
         if not remapped:
@@ -101,16 +108,19 @@ def setup_routes(union_backend, rate_limiter, config: Config):
     @router.post("/api/union/member/diagnose")
     async def union_diagnose(request: Request, _verified=Depends(verify_union_request)):
         """Diagnostic echo."""
+        await rate_limiter.check(request, is_auth_endpoint=False)
         body = json.loads(getattr(request.state, "union_body", "{}"))
         nonce = body.get("nonce", "")
         return {"nonce": nonce, "timestamp": time.time()}
 
     @router.get("/api/union/member/queryemail")
     async def union_query_email(
+        request: Request,
         username: str = Query(...),
         _verified=Depends(verify_union_request),
     ):
         """Union queries user email by player name (for blacklist)."""
+        await rate_limiter.check(request, is_auth_endpoint=False)
         email = await union_backend.get_email_by_username(username)
         if email:
             return {"email": email}
