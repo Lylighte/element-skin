@@ -2,6 +2,7 @@ package site_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"element-skin/backend/internal/util"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestProfilesCreateListAndClearTextureExactState(t *testing.T) {
@@ -578,6 +580,67 @@ func TestPrivateListsRejectIncompleteCursors(t *testing.T) {
 	}), 10, "skin")
 	if textureResult != nil || !httpError(err, 400, "Invalid cursor") {
 		t.Fatalf("ListMyTextures fractional cursor result=%#v err=%#v; want nil and exact invalid cursor", textureResult, err)
+	}
+}
+
+func TestSetProfileTextureSkipsExactNoOpWrites(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	user := testutil.CreateUser(t, db, "profile-noop@test.com", "Password123", "ProfileNoop", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "profile_noop_values", "ProfileNoopValues")
+	empty := testutil.CreateProfile(t, db, user.ID, "profile_noop_empty", "ProfileNoopEmpty")
+	skin := "same_skin_hash"
+	cape := "same_cape_hash"
+	if err := db.Profiles.UpdateSkin(ctx, profile.ID, &skin); err != nil {
+		t.Fatalf("seed skin: %v", err)
+	}
+	if err := db.Profiles.UpdateCape(ctx, profile.ID, &cape); err != nil {
+		t.Fatalf("seed cape: %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		CREATE FUNCTION reject_profile_noop_updates() RETURNS trigger AS $$
+		BEGIN
+			RAISE EXCEPTION 'profile update should not run' USING ERRCODE='23514';
+		END;
+		$$ LANGUAGE plpgsql;
+		CREATE TRIGGER reject_profile_noop_updates
+		BEFORE UPDATE ON profiles
+		FOR EACH ROW
+		WHEN (OLD.id IN ('profile_noop_values', 'profile_noop_empty'))
+		EXECUTE FUNCTION reject_profile_noop_updates();
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		profileID   string
+		textureType string
+		hash        *string
+	}{
+		{name: "same skin", profileID: profile.ID, textureType: "skin", hash: &skin},
+		{name: "same cape", profileID: profile.ID, textureType: "cape", hash: &cape},
+		{name: "already clear skin", profileID: empty.ID, textureType: "skin", hash: nil},
+		{name: "already clear cape", profileID: empty.ID, textureType: "cape", hash: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := svc.SetProfileTexture(ctx, tc.profileID, tc.textureType, tc.hash); err != nil {
+				t.Fatalf("exact no-op should skip database update: %v", err)
+			}
+		})
+	}
+
+	different := "different_skin_hash"
+	err := svc.SetProfileTexture(ctx, profile.ID, "skin", &different)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.Message != "profile update should not run" {
+		t.Fatalf("different skin error=%#v; want exact trigger failure", err)
+	}
+	got, err := db.Profiles.GetByID(ctx, profile.ID)
+	if err != nil || got == nil || got.SkinHash == nil || *got.SkinHash != skin ||
+		got.CapeHash == nil || *got.CapeHash != cape {
+		t.Fatalf("failed non-noop update changed profile: profile=%#v err=%v", got, err)
 	}
 }
 

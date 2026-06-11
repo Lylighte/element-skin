@@ -8,6 +8,7 @@ import (
 
 	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -80,6 +81,75 @@ func TestUserTextureLibraryCRUDAndPagination(t *testing.T) {
 	}
 	if deleted, err := store.DeleteFromLibrary(ctx, user.ID, "domain_texture_user_hash", "skin"); err != nil || deleted {
 		t.Fatalf("delete missing personal texture should return false: deleted=%v err=%v", deleted, err)
+	}
+}
+
+func TestUserTextureListCursorAdvancesAcrossEqualTimestampsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	user := testutil.CreateUser(t, db, "texture-user-cursor@test.com", "Password123", "TextureUserCursor", false)
+	for _, item := range []struct {
+		hash        string
+		textureType string
+		note        string
+	}{
+		{hash: "cursor_skin_a", textureType: "skin", note: "Skin A"},
+		{hash: "cursor_skin_b", textureType: "skin", note: "Skin B"},
+		{hash: "cursor_skin_c", textureType: "skin", note: "Skin C"},
+		{hash: "cursor_cape_z", textureType: "cape", note: "Cape Z"},
+	} {
+		if err := store.AddToLibrary(ctx, user.ID, item.hash, item.textureType, item.note, false, "default"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const createdAt int64 = 1700000000123
+	if _, err := db.Pool.Exec(ctx, `UPDATE user_textures SET created_at=$1 WHERE user_id=$2`, createdAt, user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := store.ListForUser(ctx, user.ID, "skin", 2, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstItems := first["items"].([]map[string]any)
+	next := first["next_key"].(map[string]any)
+	if len(firstItems) != 2 ||
+		firstItems[0]["hash"] != "cursor_skin_c" ||
+		firstItems[0]["note"] != "Skin C" ||
+		firstItems[0]["created_at"] != createdAt ||
+		firstItems[1]["hash"] != "cursor_skin_b" ||
+		first["has_next"] != true ||
+		first["page_size"] != 2 ||
+		next["last_created_at"] != createdAt ||
+		next["last_hash"] != "cursor_skin_b" ||
+		first["next_cursor"] != util.EncodeCursor(next) {
+		t.Fatalf("first texture cursor page mismatch: %#v", first)
+	}
+
+	cursorCreated := next["last_created_at"].(int64)
+	second, err := store.ListForUser(
+		ctx,
+		user.ID,
+		"skin",
+		2,
+		&cursorCreated,
+		next["last_hash"].(string),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondItems := second["items"].([]map[string]any)
+	secondNext, nextOK := second["next_key"].(map[string]any)
+	if len(secondItems) != 1 ||
+		secondItems[0]["hash"] != "cursor_skin_a" ||
+		secondItems[0]["note"] != "Skin A" ||
+		second["has_next"] != false ||
+		!nextOK ||
+		secondNext != nil ||
+		second["next_cursor"] != "" ||
+		second["page_size"] != 1 {
+		t.Fatalf("second texture cursor page mismatch: %#v", second)
 	}
 }
 
