@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,11 +58,23 @@ func TestRedisStoreCacheRoundTripsNormalizationAndTTL(t *testing.T) {
 	if got, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); err != nil || got != "ABC12345" {
 		t.Fatalf("normalized verification code=%q err=%v", got, err)
 	}
-	if err := store.DeleteVerificationCode(ctx, "USER@EXAMPLE.COM", "RESET"); err != nil {
-		t.Fatal(err)
+	if consumed, err := store.ConsumeVerificationCode(ctx, "USER@EXAMPLE.COM", "RESET", "wrong"); err != nil || consumed {
+		t.Fatalf("wrong verification consumption=%v err=%v, want false nil", consumed, err)
+	}
+	if consumed, err := store.ConsumeVerificationCode(ctx, "USER@EXAMPLE.COM", "RESET", "abc12345"); err != nil || !consumed {
+		t.Fatalf("matching verification consumption=%v err=%v, want true nil", consumed, err)
 	}
 	if _, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); !errors.Is(err, ErrCacheMiss) {
-		t.Fatalf("deleted verification code error=%v, want ErrCacheMiss", err)
+		t.Fatalf("consumed verification code error=%v, want ErrCacheMiss", err)
+	}
+	if set, err := store.SetVerificationCodeIfAbsent(ctx, "user@example.com", "reset", "NEWCODE1", time.Minute); err != nil || !set {
+		t.Fatalf("set missing verification code=%v err=%v, want true nil", set, err)
+	}
+	if set, err := store.SetVerificationCodeIfAbsent(ctx, "user@example.com", "reset", "OLDCODE1", time.Minute); err != nil || set {
+		t.Fatalf("set existing verification code=%v err=%v, want false nil", set, err)
+	}
+	if got, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); err != nil || got != "NEWCODE1" {
+		t.Fatalf("set-if-absent overwrote code=%q err=%v", got, err)
 	}
 
 	until := time.Now().Add(time.Hour).UnixMilli()
@@ -239,6 +252,55 @@ func TestRedisStoreRateLimitFallbackGuardAndPrefixDeletion(t *testing.T) {
 	}
 	if _, err := store.GetPublicCarousel(ctx); !errors.Is(err, ErrCacheMiss) {
 		t.Fatalf("invalidated carousel error=%v, want ErrCacheMiss", err)
+	}
+}
+
+func TestRedisStoreConcurrentRateLimitAllowsExactThreshold(t *testing.T) {
+	store, _ := newTestRedisStore(t)
+	const attempts = 25
+	const limit = 7
+	type result struct {
+		value RateLimitResult
+		err   error
+	}
+	start := make(chan struct{})
+	results := make(chan result, attempts)
+	var wg sync.WaitGroup
+	for range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			value, err := store.HitRateLimit(context.Background(), "concurrent-redis", limit, time.Minute)
+			results <- result{value: value, err: err}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	allowed := 0
+	rejected := 0
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("concurrent Redis rate limit failed: %v", result.err)
+		}
+		if result.value.Allowed {
+			allowed++
+		} else {
+			rejected++
+		}
+		if result.value.Remaining < 0 || result.value.Remaining > limit-1 ||
+			result.value.RetryAfter <= 0 || result.value.RetryAfter > time.Minute {
+			t.Fatalf("concurrent Redis rate limit returned invalid metadata: %#v", result.value)
+		}
+	}
+	if allowed != limit || rejected != attempts-limit {
+		t.Fatalf("concurrent Redis rate limit allowed=%d rejected=%d; want %d and %d", allowed, rejected, limit, attempts-limit)
+	}
+	final, err := store.HitRateLimit(context.Background(), "concurrent-redis", limit, time.Minute)
+	if err != nil || final.Allowed || final.Remaining != 0 {
+		t.Fatalf("final Redis rate-limit state=%#v err=%v; want rejected with zero remaining", final, err)
 	}
 }
 

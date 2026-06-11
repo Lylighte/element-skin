@@ -6,6 +6,8 @@ import (
 
 	"element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/testutil"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestStoreEndpointsDomainsAndWhitelist(t *testing.T) {
@@ -49,5 +51,22 @@ func TestStoreEndpointsDomainsAndWhitelist(t *testing.T) {
 	}
 	if err := store.RemoveWhitelistUser(ctx, "Alex", endpointID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEndpointNotFoundClassifierMatchesOnlyWhitelistForeignKey(t *testing.T) {
+	if !fallback.IsEndpointNotFound(&pgconn.PgError{
+		Code:           "23503",
+		ConstraintName: "whitelisted_users_endpoint_id_fkey",
+	}) {
+		t.Fatal("whitelist endpoint foreign-key violation should be classified")
+	}
+	for _, err := range []error{
+		&pgconn.PgError{Code: "23503", ConstraintName: "other_fkey"},
+		&pgconn.PgError{Code: "23505", ConstraintName: "whitelisted_users_endpoint_id_fkey"},
+	} {
+		if fallback.IsEndpointNotFound(err) {
+			t.Fatalf("unrelated database error was classified as missing endpoint: %#v", err)
+		}
 	}
 }

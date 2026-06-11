@@ -99,6 +99,63 @@ func TestMemoryStoreYggDeleteAndTrimExactLifecycle(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreYggIndexMutationsPreserveOriginalTTL(t *testing.T) {
+	ctx := context.Background()
+	start := time.UnixMilli(10_000)
+
+	deleteStore := NewMemoryStore()
+	deleteNow := start
+	deleteStore.now = func() time.Time { return deleteNow }
+	for i, access := range []string{"delete-old", "delete-new"} {
+		if err := deleteStore.SetYggToken(ctx, model.Token{
+			AccessToken: access,
+			UserID:      "delete-user",
+			CreatedAt:   int64(i + 1),
+		}, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deleteIndexKey := deleteStore.yggUserTokensKey("delete-user")
+	deleteExpiry := deleteStore.items[deleteIndexKey].expiresAt
+	deleteNow = deleteNow.Add(30 * time.Second)
+	if err := deleteStore.DeleteYggToken(ctx, "delete-old"); err != nil {
+		t.Fatal(err)
+	}
+	if got := deleteStore.items[deleteIndexKey].expiresAt; !got.Equal(deleteExpiry) {
+		t.Fatalf("single-token delete changed index expiry: got=%v want=%v", got, deleteExpiry)
+	}
+	deleteNow = deleteExpiry
+	if _, err := deleteStore.yggTokenIndex("delete-user"); !errors.Is(err, ErrCacheMiss) {
+		t.Fatalf("deleted-token index should expire at original boundary, got %v", err)
+	}
+
+	trimStore := NewMemoryStore()
+	trimNow := start
+	trimStore.now = func() time.Time { return trimNow }
+	for i, access := range []string{"trim-1", "trim-2", "trim-3"} {
+		if err := trimStore.SetYggToken(ctx, model.Token{
+			AccessToken: access,
+			UserID:      "trim-user",
+			CreatedAt:   int64(i + 1),
+		}, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	trimIndexKey := trimStore.yggUserTokensKey("trim-user")
+	trimExpiry := trimStore.items[trimIndexKey].expiresAt
+	trimNow = trimNow.Add(30 * time.Second)
+	if err := trimStore.TrimYggTokensByUser(ctx, "trim-user", 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := trimStore.items[trimIndexKey].expiresAt; !got.Equal(trimExpiry) {
+		t.Fatalf("token trim changed index expiry: got=%v want=%v", got, trimExpiry)
+	}
+	trimNow = trimExpiry
+	if _, err := trimStore.yggTokenIndex("trim-user"); !errors.Is(err, ErrCacheMiss) {
+		t.Fatalf("trimmed-token index should expire at original boundary, got %v", err)
+	}
+}
+
 func TestMemoryStorePrefixTTLAndErrorContracts(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()

@@ -3,6 +3,7 @@ package redisstore_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,6 +111,117 @@ func TestMemoryStoreVerificationRateLimitAndAuthCache(t *testing.T) {
 	}
 	if _, err := store.GetAuthUser(ctx, "u1"); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("invalidated auth cache should miss, got %v", err)
+	}
+}
+
+func TestMemoryStoreConcurrentRateLimitAllowsExactThreshold(t *testing.T) {
+	store := redisstore.NewMemoryStore()
+	const attempts = 25
+	const limit = 7
+	type result struct {
+		value redisstore.RateLimitResult
+		err   error
+	}
+	start := make(chan struct{})
+	results := make(chan result, attempts)
+	var wg sync.WaitGroup
+	for range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			value, err := store.HitRateLimit(context.Background(), "concurrent-memory", limit, time.Minute)
+			results <- result{value: value, err: err}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	allowed := 0
+	rejected := 0
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("concurrent memory rate limit failed: %v", result.err)
+		}
+		if result.value.Allowed {
+			allowed++
+		} else {
+			rejected++
+		}
+		if result.value.Remaining < 0 || result.value.Remaining > limit-1 || result.value.RetryAfter <= 0 {
+			t.Fatalf("concurrent memory rate limit returned invalid metadata: %#v", result.value)
+		}
+	}
+	if allowed != limit || rejected != attempts-limit {
+		t.Fatalf("concurrent memory rate limit allowed=%d rejected=%d; want %d and %d", allowed, rejected, limit, attempts-limit)
+	}
+	final, err := store.HitRateLimit(context.Background(), "concurrent-memory", limit, time.Minute)
+	if err != nil || final.Allowed || final.Remaining != 0 {
+		t.Fatalf("final memory rate-limit state=%#v err=%v; want rejected with zero remaining", final, err)
+	}
+}
+
+func TestMemoryStoreConsumesVerificationCodeExactlyOnce(t *testing.T) {
+	store := redisstore.NewMemoryStore()
+	ctx := context.Background()
+	const code = "ABC12345"
+	if err := store.SetVerificationCode(ctx, "User@Example.com", "reset", code, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if consumed, err := store.ConsumeVerificationCode(ctx, "user@example.com", "RESET", "wrong"); err != nil || consumed {
+		t.Fatalf("wrong code consumption = %v, %v; want false, nil", consumed, err)
+	}
+	if stored, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); err != nil || stored != code {
+		t.Fatalf("wrong code must remain stored: code=%q err=%v", stored, err)
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan bool, 2)
+	errs := make(chan error, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			consumed, err := store.ConsumeVerificationCode(ctx, "USER@example.com", "reset", "abc12345")
+			results <- consumed
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(errs)
+	successes := 0
+	for consumed := range results {
+		if consumed {
+			successes++
+		}
+	}
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent consumption failed: %v", err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful consumptions=%d, want exactly 1", successes)
+	}
+	if _, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("consumed code should miss, got %v", err)
+	}
+}
+
+func TestMemoryStoreSetsVerificationCodeOnlyWhenAbsent(t *testing.T) {
+	store := redisstore.NewMemoryStore()
+	ctx := context.Background()
+	if err := store.SetVerificationCode(ctx, "user@example.com", "reset", "NEWCODE1", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	set, err := store.SetVerificationCodeIfAbsent(ctx, "user@example.com", "reset", "OLDCODE1", time.Minute)
+	if err != nil || set {
+		t.Fatalf("set-if-absent with existing code = %v, %v; want false, nil", set, err)
+	}
+	if stored, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); err != nil || stored != "NEWCODE1" {
+		t.Fatalf("existing code was overwritten: code=%q err=%v", stored, err)
 	}
 }
 

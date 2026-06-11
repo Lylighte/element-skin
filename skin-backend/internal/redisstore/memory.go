@@ -66,6 +66,19 @@ func (s *MemoryStore) set(key string, value any, ttl time.Duration) error {
 	return nil
 }
 
+func (s *MemoryStore) setPreservingExpiration(key string, value any) error {
+	if s.Err != nil {
+		return s.Err
+	}
+	item, ok := s.items[key]
+	if !ok {
+		return s.set(key, value, 0)
+	}
+	item.value = cloneValue(value)
+	s.items[key] = item
+	return nil
+}
+
 func cloneValue(v any) any {
 	b, _ := json.Marshal(v)
 	var out any
@@ -172,6 +185,18 @@ func (s *MemoryStore) SetVerificationCode(_ context.Context, email, typ, code st
 	return s.set(s.verificationKey(email, typ), code, ttl)
 }
 
+func (s *MemoryStore) SetVerificationCodeIfAbsent(_ context.Context, email, typ, code string, ttl time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := s.verificationKey(email, typ)
+	if _, err := s.get(key); err == nil {
+		return false, nil
+	} else if err != ErrCacheMiss {
+		return false, err
+	}
+	return true, s.set(key, code, ttl)
+}
+
 func (s *MemoryStore) GetVerificationCode(_ context.Context, email, typ string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -181,6 +206,25 @@ func (s *MemoryStore) GetVerificationCode(_ context.Context, email, typ string) 
 	}
 	code, _ := v.(string)
 	return code, nil
+}
+
+func (s *MemoryStore) ConsumeVerificationCode(_ context.Context, email, typ, code string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := s.verificationKey(email, typ)
+	v, err := s.get(key)
+	if err == ErrCacheMiss {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	stored, _ := v.(string)
+	if !strings.EqualFold(stored, code) {
+		return false, nil
+	}
+	delete(s.items, key)
+	return true, nil
 }
 
 func (s *MemoryStore) DeleteVerificationCode(_ context.Context, email, typ string) error {
@@ -294,7 +338,7 @@ func (s *MemoryStore) deleteYggToken(token model.Token) error {
 		delete(s.items, s.yggUserTokensKey(token.UserID))
 		return nil
 	}
-	return s.set(s.yggUserTokensKey(token.UserID), index, 0)
+	return s.setPreservingExpiration(s.yggUserTokensKey(token.UserID), index)
 }
 
 func (s *MemoryStore) DeleteYggTokensByUser(_ context.Context, userID string) error {
@@ -351,7 +395,7 @@ func (s *MemoryStore) TrimYggTokensByUser(_ context.Context, userID string, keep
 		delete(s.items, s.yggTokenKey(ref.access))
 		delete(index, ref.access)
 	}
-	return s.set(s.yggUserTokensKey(userID), index, 0)
+	return s.setPreservingExpiration(s.yggUserTokensKey(userID), index)
 }
 
 func (s *MemoryStore) yggTokenIndex(userID string) (map[string]int64, error) {

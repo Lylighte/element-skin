@@ -2,9 +2,11 @@ package fallback
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,6 +26,13 @@ type Endpoint struct {
 
 type Store struct {
 	Pool *pgxpool.Pool
+}
+
+func IsEndpointNotFound(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == "23503" &&
+		pgErr.ConstraintName == "whitelisted_users_endpoint_id_fkey"
 }
 
 func (s Store) ListEndpoints(ctx context.Context) ([]map[string]any, error) {

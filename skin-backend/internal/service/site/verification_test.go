@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestVerificationSendAndVerifyExactStoredCode(t *testing.T) {
@@ -190,5 +193,129 @@ func TestResetPasswordPreservesCredentialsRefreshAndCodeWhenYggRevocationFails(t
 	}
 	if stored, err := cache.GetVerificationCode(ctx, user.Email, "reset"); err != nil || stored != code {
 		t.Fatalf("failed reset must preserve verification code: code=%q err=%v", stored, err)
+	}
+}
+
+func TestResetPasswordConcurrentCodeAllowsExactlyOneSuccess(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	user := testutil.CreateUser(t, db, "reset-once@test.com", "Password123", "ResetOnce", false)
+	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settings.InvalidateCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+	const code = "RESETONCE"
+	if err := svc.Redis.SetVerificationCode(ctx, user.Email, "reset", code, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		password string
+		err      error
+	}
+	start := make(chan struct{})
+	results := make(chan result, 2)
+	var wg sync.WaitGroup
+	for _, password := range []string{"ConcurrentPassword123", "OtherConcurrentPassword123"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			results <- result{password: password, err: svc.ResetPassword(ctx, user.Email, password, code)}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	var winner string
+	failures := 0
+	for result := range results {
+		if result.err == nil {
+			if winner != "" {
+				t.Fatalf("multiple password resets succeeded: %q and %q", winner, result.password)
+			}
+			winner = result.password
+			continue
+		}
+		if !httpError(result.err, 400, "Invalid or expired verification code") {
+			t.Fatalf("losing reset returned unexpected error: %#v", result.err)
+		}
+		failures++
+	}
+	if winner == "" || failures != 1 {
+		t.Fatalf("reset outcomes: winner=%q failures=%d, want one success and one exact rejection", winner, failures)
+	}
+	updated, err := db.Users.GetByID(ctx, user.ID)
+	if err != nil || updated == nil || !util.VerifyPassword(winner, updated.Password) {
+		t.Fatalf("stored password does not match sole winner %q: user=%#v err=%v", winner, updated, err)
+	}
+	for _, password := range []string{"ConcurrentPassword123", "OtherConcurrentPassword123"} {
+		if password != winner && util.VerifyPassword(password, updated.Password) {
+			t.Fatalf("stored password unexpectedly matches losing reset %q", password)
+		}
+	}
+	if _, err := svc.Redis.GetVerificationCode(ctx, user.Email, "reset"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("successful reset must consume code, got %v", err)
+	}
+}
+
+func TestResetPasswordRestoresCodeWhenDatabaseUpdateFails(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	user := testutil.CreateUser(t, db, "reset-db-fail@test.com", "Password123", "ResetDBFail", false)
+	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Settings.Set(ctx, "email_verify_ttl", "180"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settings.InvalidateCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+	const code = "RESETDB1"
+	const refreshHash = "reset_db_failure_refresh"
+	if err := svc.Redis.SetVerificationCode(ctx, user.Email, "reset", code, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Tokens.AddRefresh(ctx, refreshHash, user.ID, database.NowMS()+int64(time.Hour/time.Millisecond), database.NowMS()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		CREATE FUNCTION reject_test_password_update() RETURNS trigger AS $$
+		BEGIN
+			IF NEW.password <> OLD.password THEN
+				RAISE EXCEPTION 'test password update rejected'
+					USING ERRCODE = '23514', CONSTRAINT = 'users_password_reset_guard';
+			END IF;
+			RETURN NEW;
+		END;
+		$$ LANGUAGE plpgsql;
+		CREATE TRIGGER reject_test_password_update
+		BEFORE UPDATE OF password ON users
+		FOR EACH ROW EXECUTE FUNCTION reject_test_password_update()
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.ResetPassword(ctx, user.Email, "NewPassword123", code)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != "users_password_reset_guard" {
+		t.Fatalf("password update error=%#v, want exact users_password_reset_guard violation", err)
+	}
+	unchanged, err := db.Users.GetByID(ctx, user.ID)
+	if err != nil || unchanged == nil || !util.VerifyPassword("Password123", unchanged.Password) ||
+		util.VerifyPassword("NewPassword123", unchanged.Password) {
+		t.Fatalf("failed reset changed password: user=%#v err=%v", unchanged, err)
+	}
+	if refresh, err := db.Tokens.GetRefresh(ctx, refreshHash); err != nil || refresh == nil || refresh["user_id"] != user.ID {
+		t.Fatalf("failed reset changed refresh token: refresh=%#v err=%v", refresh, err)
+	}
+	if stored, err := svc.Redis.GetVerificationCode(ctx, user.Email, "reset"); err != nil || stored != code {
+		t.Fatalf("failed reset did not restore exact code: code=%q err=%v", stored, err)
 	}
 }
