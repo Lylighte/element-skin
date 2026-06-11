@@ -145,10 +145,12 @@ async def test_validate_fallback_normalizes_domains(db_session):
 
 @pytest.mark.asyncio
 async def test_public_settings_defaults(db_session):
-    """公开设置默认值取自同一 SETTING_DEFAULTS，无 fallback 时给 Mojang 兜底"""
+    """公开设置默认值取自同一 SETTING_DEFAULTS，无配置时 URL 不自行推导"""
     backend = SettingsBackend(db_session)
     pub = await backend.get_public_settings()
     assert pub["site_name"] == SETTING_DEFAULTS["site_name"]
+    assert pub["site_url"] == ""
+    assert pub["api_url"] == ""
     assert pub["allow_register"] is True
     assert pub["mojang_status_urls"]["session"] == "https://sessionserver.mojang.com"
 

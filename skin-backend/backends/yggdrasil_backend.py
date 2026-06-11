@@ -8,6 +8,7 @@ from utils.crypto import CryptoUtils
 from utils.typing import User, PlayerProfile, Token, Session, normalize_texture_model
 from utils.uuid_utils import generate_random_uuid
 from utils.password_utils import hash_password, verify_password
+from utils.public_urls import public_site_url
 from database_module import Database
 from services import TextureStorage, assert_texture_size
 
@@ -41,7 +42,7 @@ class YggdrasilBackend:
         self.SESSION_TTL = 30 * 1000  # 30秒 (用于join验证)
 
     def _site_url(self) -> str:
-        return self.config.get("server.site_url", "").rstrip("/") if self.config else ""
+        return public_site_url(self.config)
 
     def build_profile_json(self, profile: PlayerProfile, sign: bool = False) -> Dict:
         """构建角色 JSON，包含 textures 和签名。"""
@@ -115,9 +116,9 @@ class YggdrasilBackend:
             return {"id": p.id, "name": p.name}
         return None
 
-    async def build_metadata(self, default_site_url: str) -> Dict:
+    async def build_metadata(self) -> Dict:
         site_name = await self.db.setting.get("site_name", "Yggdrasil 皮肤站")
-        site_url = (self.config.get("server.site_url", default_site_url) if self.config else default_site_url).rstrip("/")
+        site_url = public_site_url(self.config)
         host = (
             site_url.replace("https://", "").replace("http://", "").split("/")[0]
             if site_url
