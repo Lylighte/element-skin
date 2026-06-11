@@ -61,16 +61,21 @@ type options struct {
 }
 
 func main() {
-	opts := parseFlags()
+	if code := run(parseFlags(), os.Stdout, os.Stderr); code != 0 {
+		os.Exit(code)
+	}
+}
+
+func run(opts options, stdout, stderr io.Writer) int {
 	steps, err := parseConcurrency(opts.concurrencyList)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
+		fmt.Fprintln(stderr, err)
+		return 2
 	}
 	target, err := buildURL(opts.target, opts.path)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
+		fmt.Fprintln(stderr, err)
+		return 2
 	}
 
 	client := newHTTPClient(1, opts.timeout, opts.insecureTLS)
@@ -78,19 +83,19 @@ func main() {
 	if opts.loginEmail != "" || opts.loginPassword != "" {
 		cookieHeader, err = login(client, opts.target, opts.loginPath, opts.loginEmail, opts.loginPassword)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "login:", err)
-			os.Exit(1)
+			fmt.Fprintln(stderr, "login:", err)
+			return 1
 		}
 	}
 
-	fmt.Printf("Target: %s %s\n", strings.ToUpper(opts.method), target)
-	fmt.Printf("Duration: %s per step, timeout: %s, failure threshold: %.2f%%", opts.duration, opts.timeout, opts.failThreshold)
+	fmt.Fprintf(stdout, "Target: %s %s\n", strings.ToUpper(opts.method), target)
+	fmt.Fprintf(stdout, "Duration: %s per step, timeout: %s, failure threshold: %.2f%%", opts.duration, opts.timeout, opts.failThreshold)
 	if opts.maxP95 > 0 {
-		fmt.Printf(", p95 threshold: %s", opts.maxP95)
+		fmt.Fprintf(stdout, ", p95 threshold: %s", opts.maxP95)
 	}
-	fmt.Println()
-	fmt.Println()
-	fmt.Printf("%8s %10s %10s %10s %8s %10s %10s %10s %10s %10s %s\n", "CONC", "REQS", "OK", "FAIL", "FAIL%", "RPS", "AVG", "P50", "P95", "P99", "STATUS")
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout)
+	fmt.Fprintf(stdout, "%8s %10s %10s %10s %8s %10s %10s %10s %10s %10s %s\n", "CONC", "REQS", "OK", "FAIL", "FAIL%", "RPS", "AVG", "P50", "P95", "P99", "STATUS")
 
 	summaries := make([]stepSummary, 0, len(steps))
 	for _, concurrency := range steps {
@@ -98,7 +103,7 @@ func main() {
 		summary := runStep(stepClient, target, opts, cookieHeader, concurrency)
 		stepClient.CloseIdleConnections()
 		summaries = append(summaries, summary)
-		fmt.Printf("%8d %10d %10d %10d %7.2f%% %10.1f %10s %10s %10s %10s %s\n",
+		fmt.Fprintf(stdout, "%8d %10d %10d %10d %7.2f%% %10.1f %10s %10s %10s %10s %s\n",
 			summary.Concurrency,
 			summary.Total,
 			summary.Success,
@@ -114,10 +119,11 @@ func main() {
 	}
 
 	if best, ok := bestCapacity(summaries, opts.failThreshold, opts.maxP95); ok {
-		fmt.Printf("\nSuggested capacity: %d concurrent requests under the configured threshold.\n", best)
+		fmt.Fprintf(stdout, "\nSuggested capacity: %d concurrent requests under the configured threshold.\n", best)
 	} else {
-		fmt.Println("\nSuggested capacity: none of the tested levels met the configured threshold.")
+		fmt.Fprintln(stdout, "\nSuggested capacity: none of the tested levels met the configured threshold.")
 	}
+	return 0
 }
 
 func parseFlags() options {
