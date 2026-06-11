@@ -479,3 +479,86 @@ async def test_user_self_delete_profile_not_owner(db_session, test_config, user_
     assert exc.value.status_code == 403
     # 角色未被删除
     assert await db_session.user.get_profile_by_id(pid) is not None
+
+
+# ========== Union sync hooks ==========
+
+
+@pytest.mark.asyncio
+async def test_create_profile_fires_sync_profile_add(db_session, test_config, user_factory):
+    """创建角色时 fire-and-forget 触发 sync_profile_add(name, profile_id)"""
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    user = await user_factory()
+
+    mock_union = AsyncMock()
+    backend.set_union_backend(mock_union)
+
+    created = await backend.create_profile(user.id, "UnionPlayer", "default")
+    pid = created["id"]
+
+    # 让 fire-and-forget 任务执行
+    await asyncio.sleep(0)
+
+    mock_union.sync_profile_add.assert_called_once_with("UnionPlayer", pid)
+
+
+@pytest.mark.asyncio
+async def test_rename_profile_fires_sync_profile_update(db_session, test_config, user_factory):
+    """重命名角色时 fire-and-forget 触发 sync_profile_update(pid, new_name)"""
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    user = await user_factory()
+
+    # 先创建一个角色（不带 union mock，避免干扰）
+    profile = await backend.create_profile(user.id, "OldUnionName", "default")
+    pid = profile["id"]
+
+    mock_union = AsyncMock()
+    backend.set_union_backend(mock_union)
+
+    await backend.update_profile(user.id, pid, "NewUnionName")
+    await asyncio.sleep(0)
+
+    mock_union.sync_profile_update.assert_called_once_with(pid, "NewUnionName")
+
+
+@pytest.mark.asyncio
+async def test_delete_profile_fires_sync_profile_delete(db_session, test_config, user_factory):
+    """删除角色时 fire-and-forget 触发 sync_profile_delete(pid)"""
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    user = await user_factory()
+
+    profile = await backend.create_profile(user.id, "DeleteUnion", "default")
+    pid = profile["id"]
+
+    mock_union = AsyncMock()
+    backend.set_union_backend(mock_union)
+
+    await backend.delete_profile(user.id, pid)
+    await asyncio.sleep(0)
+
+    mock_union.sync_profile_delete.assert_called_once_with(pid)
+
+
+@pytest.mark.asyncio
+async def test_sync_exception_does_not_block_create_profile(db_session, test_config, user_factory):
+    """Union 同步抛出异常时角色创建仍成功——fire-and-forget 失败静默"""
+    backend = SiteBackend(db_session, test_config, texture_storage)
+    user = await user_factory()
+
+    mock_union = AsyncMock()
+    mock_union.sync_profile_add.side_effect = Exception("Union unavailable")
+    backend.set_union_backend(mock_union)
+
+    # 不应因 sync 异常而抛出，角色仍创建成功
+    created = await backend.create_profile(user.id, "ResilientPlayer", "default")
+    assert created is not None
+    assert created["name"] == "ResilientPlayer"
+
+    # 确认 sync 被尝试调用（记录了调用）
+    await asyncio.sleep(0)
+    mock_union.sync_profile_add.assert_called_once()
+
+    # Profile 确实写入了 DB
+    profile = await db_session.user.get_profile_by_name("ResilientPlayer")
+    assert profile is not None
+    assert profile.name == "ResilientPlayer"
