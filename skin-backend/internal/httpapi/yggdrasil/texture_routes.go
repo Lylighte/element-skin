@@ -67,17 +67,16 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	if textureType == "skin" {
-		if err := h.site.SetProfileTexture(req.Context(), selectedProfile.ID, "skin", &hash); err != nil {
-			util.Error(w, err)
-			return
-		}
-		_ = h.db.Profiles.UpdateModel(req.Context(), selectedProfile.ID, profilestore.NormalizeModel(req.FormValue("model")))
-	} else if textureType == "cape" {
-		if err := h.site.SetProfileTexture(req.Context(), selectedProfile.ID, "cape", &hash); err != nil {
-			util.Error(w, err)
-			return
-		}
+	if err := h.site.ApplyTextureToProfileWithModel(
+		req.Context(),
+		tok.UserID,
+		selectedProfile.ID,
+		hash,
+		textureType,
+		profilestore.NormalizeModel(req.FormValue("model")),
+	); err != nil {
+		util.Error(w, err)
+		return
 	}
 	w.WriteHeader(204)
 }

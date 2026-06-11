@@ -1,13 +1,18 @@
 package admin_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"element-skin/backend/internal/httpapi/admin"
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func TestTextureRoutesRejectBadPublicValue(t *testing.T) {
@@ -122,6 +127,17 @@ func TestTextureRoutesRejectMalformedAndInvalidModelWithoutMutation(t *testing.T
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
 		t.Fatalf("texture list invalid cursor mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
+	for _, cursor := range []string{
+		util.EncodeCursor(map[string]any{"last_created_at": 1}),
+		util.EncodeCursor(map[string]any{"last_created_at": -1, "last_skin_hash": "hash"}),
+	} {
+		req = httptest.NewRequest(http.MethodGet, "/admin/textures?cursor="+cursor, nil)
+		rec = httptest.NewRecorder()
+		h.Textures(rec, req)
+		if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
+			t.Fatalf("texture list malformed cursor mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_model_hash", strings.NewReader(`{`))
 	req.SetPathValue("hash", "admin_model_hash")
@@ -212,5 +228,90 @@ func TestAdminTexturePatchRollsBackAllFieldsOnDatabaseFailure(t *testing.T) {
 		info["model"] != "default" ||
 		info["is_public"] != 1 {
 		t.Fatalf("failed admin patch changed texture: info=%#v err=%v", info, err)
+	}
+}
+
+func TestAdminTexturePatchReturnsNotFoundWhenLibraryRowIsDeletedAfterRead(t *testing.T) {
+	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
+	h := admin.New(testutil.TestConfig(), db, nil)
+	user := testutil.CreateUser(t, db, "admin-texture-delete-race@test.com", "Password123", "AdminTextureDeleteRace", false)
+	const hash = "admin_patch_delete_race"
+	if err := db.Textures.AddToLibrary(t.Context(), user.ID, hash, "skin", "Original", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := db.Pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(t.Context())
+	var one, lockHolderPID int
+	if err := tx.QueryRow(t.Context(), `
+		SELECT 1, pg_backend_pid()
+		FROM skin_library
+		WHERE skin_hash=$1 AND texture_type='skin'
+		FOR UPDATE
+	`, hash).Scan(&one, &lockHolderPID); err != nil {
+		t.Fatal(err)
+	}
+
+	result := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		req := httptest.NewRequest(http.MethodPatch, "/admin/textures/"+hash+"?type=skin", strings.NewReader(`{"note":"Must Not Persist"}`))
+		req.SetPathValue("hash", hash)
+		rec := httptest.NewRecorder()
+		h.UpdateTexture(rec, req)
+		result <- rec
+	}()
+	waitForBlockedTextureMutation(t, db.Pool, lockHolderPID, result)
+	if _, err := tx.Exec(t.Context(), `DELETE FROM skin_library WHERE skin_hash=$1 AND texture_type='skin'`, hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := <-result
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"Texture not found\"}\n" {
+		t.Fatalf("deleted texture patch should return exact not found: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	info, err := db.Textures.GetInfo(t.Context(), user.ID, hash, "skin")
+	if err != nil || info == nil || info["note"] != "Original" {
+		t.Fatalf("failed patch changed user texture: info=%#v err=%v", info, err)
+	}
+}
+
+func waitForBlockedTextureMutation(
+	t *testing.T,
+	db interface {
+		QueryRow(context.Context, string, ...any) pgx.Row
+	},
+	lockHolderPID int,
+	result <-chan *httptest.ResponseRecorder,
+) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		select {
+		case rec := <-result:
+			t.Fatalf("texture mutation completed before row-lock release: status=%d body=%q", rec.Code, rec.Body.String())
+		default:
+		}
+		var waiting bool
+		if err := db.QueryRow(t.Context(), `
+			SELECT EXISTS (
+				SELECT 1 FROM pg_stat_activity
+				WHERE $1 = ANY(pg_blocking_pids(pid))
+			)
+		`, lockHolderPID).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("texture mutation did not reach the expected row-lock wait")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

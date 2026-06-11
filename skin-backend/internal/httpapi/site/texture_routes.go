@@ -100,7 +100,7 @@ func (h Handler) UploadAndApplyTexture(w http.ResponseWriter, req *http.Request)
 		util.Error(w, err)
 		return
 	}
-	if err := h.site.ApplyTextureToProfile(req.Context(), shared.CurrentUserID(req), profileID, hash, textureType); err != nil {
+	if err := h.site.ApplyTextureToProfileWithModel(req.Context(), shared.CurrentUserID(req), profileID, hash, textureType, model); err != nil {
 		util.Error(w, err)
 		return
 	}

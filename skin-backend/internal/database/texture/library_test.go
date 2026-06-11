@@ -3,9 +3,12 @@ package texture_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/testutil"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func TestPublicLibraryAndWardrobeCopyVisibilityRules(t *testing.T) {
@@ -160,6 +163,170 @@ func TestUsageCountRecountAndUploaderDeleteSemantics(t *testing.T) {
 		if err != nil || info != nil {
 			t.Fatalf("DeleteLibraryTexture should remove wardrobe row for %s: info=%#v err=%v", userID, info, err)
 		}
+	}
+}
+
+func TestAddToWardrobeReturnsNotAddedAfterConcurrentLibraryDelete(t *testing.T) {
+	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	owner := testutil.CreateUser(t, db, "wardrobe-delete-race-owner@test.com", "Password123", "WardrobeDeleteRaceOwner", false)
+	collector := testutil.CreateUser(t, db, "wardrobe-delete-race-collector@test.com", "Password123", "WardrobeDeleteRaceCollector", false)
+	const hash = "wardrobe_delete_race"
+	if err := store.AddToLibrary(ctx, owner.ID, hash, "skin", "Delete Race", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	var one, lockHolderPID int
+	if err := tx.QueryRow(ctx, `
+		SELECT 1, pg_backend_pid()
+		FROM skin_library
+		WHERE skin_hash=$1 AND texture_type='skin'
+		FOR UPDATE
+	`, hash).Scan(&one, &lockHolderPID); err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		added bool
+		err   error
+	}
+	results := make(chan result, 1)
+	go func() {
+		added, err := store.AddToWardrobe(context.Background(), collector.ID, hash, "skin")
+		results <- result{added: added, err: err}
+	}()
+	waitForLibraryMutationBlock(t, db.Pool, lockHolderPID, results)
+	if _, err := tx.Exec(ctx, `DELETE FROM user_textures WHERE hash=$1 AND texture_type='skin'`, hash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM skin_library WHERE skin_hash=$1 AND texture_type='skin'`, hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	got := <-results
+	if got.err != nil || got.added {
+		t.Fatalf("wardrobe add after concurrent delete=%v, %v; want false, nil", got.added, got.err)
+	}
+	if info, err := store.GetInfo(ctx, collector.ID, hash, "skin"); err != nil || info != nil {
+		t.Fatalf("failed concurrent wardrobe add left personal row: info=%#v err=%v", info, err)
+	}
+	if exists, err := store.Exists(ctx, hash, "skin"); err != nil || exists {
+		t.Fatalf("deleted public library row exists=%v err=%v; want false, nil", exists, err)
+	}
+}
+
+func TestAddToLibraryRecreatesExactStateAfterConcurrentDelete(t *testing.T) {
+	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	owner := testutil.CreateUser(t, db, "upload-delete-race-owner@test.com", "Password123", "UploadDeleteRaceOwner", false)
+	const hash = "upload_delete_race"
+	if err := store.AddToLibrary(ctx, owner.ID, hash, "skin", "Old Upload", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	var one, lockHolderPID int
+	if err := tx.QueryRow(ctx, `
+		SELECT 1, pg_backend_pid()
+		FROM skin_library
+		WHERE skin_hash=$1 AND texture_type='skin'
+		FOR UPDATE
+	`, hash).Scan(&one, &lockHolderPID); err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan error, 1)
+	go func() {
+		results <- store.AddToLibrary(
+			context.Background(),
+			owner.ID,
+			hash,
+			"skin",
+			"Reuploaded",
+			false,
+			"slim",
+		)
+	}()
+	waitForLibraryMutationBlock(t, db.Pool, lockHolderPID, results)
+	if _, err := tx.Exec(ctx, `DELETE FROM user_textures WHERE hash=$1 AND texture_type='skin'`, hash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM skin_library WHERE skin_hash=$1 AND texture_type='skin'`, hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-results; err != nil {
+		t.Fatalf("reupload after concurrent delete failed: %v", err)
+	}
+	info, err := store.GetInfo(ctx, owner.ID, hash, "skin")
+	if err != nil || info == nil ||
+		info["note"] != "Reuploaded" ||
+		info["model"] != "slim" ||
+		info["is_public"] != 0 {
+		t.Fatalf("recreated personal texture=%#v err=%v; want exact reupload state", info, err)
+	}
+	var name, model string
+	var public int
+	var usage int64
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT name,model,is_public,usage_count
+		FROM skin_library
+		WHERE skin_hash=$1 AND texture_type='skin'
+	`, hash).Scan(&name, &model, &public, &usage); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Reuploaded" || model != "slim" || public != 0 || usage != 1 {
+		t.Fatalf("recreated library state=(%q,%q,%d,%d); want (Reuploaded,slim,0,1)", name, model, public, usage)
+	}
+}
+
+func waitForLibraryMutationBlock[T any](
+	t *testing.T,
+	db interface {
+		QueryRow(context.Context, string, ...any) pgx.Row
+	},
+	lockHolderPID int,
+	result <-chan T,
+) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		select {
+		case <-result:
+			t.Fatal("texture library mutation completed before row-lock release")
+		default:
+		}
+		var waiting bool
+		if err := db.QueryRow(t.Context(), `
+			SELECT EXISTS (
+				SELECT 1 FROM pg_stat_activity
+				WHERE $1 = ANY(pg_blocking_pids(pid))
+			)
+		`, lockHolderPID).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("texture library mutation did not reach the expected row-lock wait")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

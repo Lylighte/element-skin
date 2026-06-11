@@ -11,6 +11,14 @@ import (
 )
 
 func (s Site) ApplyTextureToProfile(ctx context.Context, userID, profileID, hash, textureType string) error {
+	return s.applyTextureToProfile(ctx, userID, profileID, hash, textureType, nil)
+}
+
+func (s Site) ApplyTextureToProfileWithModel(ctx context.Context, userID, profileID, hash, textureType, skinModel string) error {
+	return s.applyTextureToProfile(ctx, userID, profileID, hash, textureType, &skinModel)
+}
+
+func (s Site) applyTextureToProfile(ctx context.Context, userID, profileID, hash, textureType string, skinModel *string) error {
 	owns, err := s.DB.Textures.VerifyOwnership(ctx, userID, hash, textureType)
 	if err != nil {
 		return err
@@ -34,8 +42,11 @@ func (s Site) ApplyTextureToProfile(ctx context.Context, userID, profileID, hash
 	}
 	switch strings.ToLower(textureType) {
 	case "skin":
-		model, _ := info["model"].(string)
-		return s.DB.Profiles.UpdateSkinAndModel(ctx, profileID, &hash, profile.NormalizeModel(model))
+		modelName, _ := info["model"].(string)
+		if skinModel != nil {
+			modelName = *skinModel
+		}
+		return profileUpdateError(s.DB.Profiles.UpdateSkinAndModel(ctx, profileID, &hash, profile.NormalizeModel(modelName)))
 	case "cape":
 		return s.SetProfileTexture(ctx, profileID, "cape", &hash)
 	default:
@@ -97,7 +108,7 @@ func (s Site) DeleteTexture(ctx context.Context, userID, hash, textureType strin
 		return err
 	}
 	if exists && uploader == userID {
-		return s.DB.Textures.DeleteLibraryTexture(ctx, hash, textureType)
+		return textureNotFoundError(s.DB.Textures.DeleteLibraryTexture(ctx, hash, textureType))
 	}
 	deleted, err := s.DB.Textures.DeleteFromLibrary(ctx, userID, hash, textureType)
 	if err != nil {
@@ -106,7 +117,7 @@ func (s Site) DeleteTexture(ctx context.Context, userID, hash, textureType strin
 	if !deleted {
 		return util.HTTPError{Status: 404, Detail: "Texture not found"}
 	}
-	return s.DB.Textures.RecountUsage(ctx, hash, textureType)
+	return nil
 }
 
 func textureNotFoundError(err error) error {
@@ -121,15 +132,12 @@ func textureCursor(cursor, hashKey string) (*int64, string, error) {
 	if err != nil || m == nil {
 		return nil, "", err
 	}
-	var created *int64
-	switch v := m["last_created_at"].(type) {
-	case float64:
-		x := int64(v)
-		created = &x
-	case int64:
-		created = &v
+	value, ok := util.CursorInt64(m["last_created_at"])
+	h, hashOK := m[hashKey].(string)
+	if !ok || !hashOK || h == "" {
+		return nil, "", errors.New("invalid cursor")
 	}
-	h, _ := m[hashKey].(string)
+	created := &value
 	return created, h, nil
 }
 
@@ -138,22 +146,19 @@ func publicLibraryCursor(cursor string) (*int64, string, *int64, error) {
 	if err != nil || m == nil {
 		return nil, "", nil, err
 	}
-	var created *int64
-	switch v := m["last_created_at"].(type) {
-	case float64:
-		x := int64(v)
-		created = &x
-	case int64:
-		created = &v
+	createdValue, ok := util.CursorInt64(m["last_created_at"])
+	h, hashOK := m["last_skin_hash"].(string)
+	if !ok || !hashOK || h == "" {
+		return nil, "", nil, errors.New("invalid cursor")
 	}
+	created := &createdValue
 	var usage *int64
-	switch v := m["last_usage_count"].(type) {
-	case float64:
-		x := int64(v)
-		usage = &x
-	case int64:
-		usage = &v
+	if rawUsage, exists := m["last_usage_count"]; exists {
+		usageValue, ok := util.CursorInt64(rawUsage)
+		if !ok {
+			return nil, "", nil, errors.New("invalid cursor")
+		}
+		usage = &usageValue
 	}
-	h, _ := m["last_skin_hash"].(string)
 	return created, h, usage, nil
 }
