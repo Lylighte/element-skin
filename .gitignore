@@ -63,6 +63,7 @@ node_modules/
 
 .gemini/
 .sisyphus/
+.omo/
 skills/
 .playwright-mcp/
 refer
