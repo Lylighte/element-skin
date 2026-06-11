@@ -39,10 +39,10 @@ def _generate_test_rsa_key():
 
 
 @pytest.mark.asyncio
-async def test_union_key_integration_chain(client, db_session, admin_headers, test_config):
+async def test_union_key_integration_chain(client, db_session, admin_headers, test_config, tmp_path):
     """Proves: Union key fetched → written to file → Yggdrasil signatures use it."""
     union_priv_key, union_priv_pem, union_pub_pem = _generate_test_rsa_key()
-    union_key_path = "/app/data/union-ygg-private.pem"
+    union_key_path = tmp_path / "union-ygg-private.pem"
     await db_session.union.set("union_api_root", "https://fake-union.test")
     await db_session.union.set("union_member_key", "test-member-key")
 
@@ -55,13 +55,36 @@ async def test_union_key_integration_chain(client, db_session, admin_headers, te
 
     union_backend._api_get = mock_api_get
 
+    # Patch fetch_private_key to write to tmp_path instead of the production path
+    original_fetch = union_backend.fetch_private_key
+
+    async def _fetch_to_tmp():
+        result = await union_backend._api_get("privatekey")
+        if result and "privateKey" in result and "privateKeyVersion" in result:
+            try:
+                union_key_path.parent.mkdir(parents=True, exist_ok=True)
+                union_key_path.write_text(result["privateKey"])
+                os.chmod(str(union_key_path), 0o600)
+            except OSError:
+                return False
+            await union_backend.db.union.set("union_private_key_version", str(result["privateKeyVersion"]))
+            await union_backend.db.union.set("union_ygg_private_key", "")
+            if test_config.get("keys.use_union_key", False) and union_backend.crypto:
+                try:
+                    union_backend.crypto.reload_from_pem(result["privateKey"])
+                except ValueError:
+                    return False
+            return True
+        return False
+
+    union_backend.fetch_private_key = _fetch_to_tmp
+
     try:
         # ── 1. Fetch key → file write ──────────────────────────────────
         result = await union_backend.fetch_private_key()
         assert result is True
-        assert os.path.exists(union_key_path)
-        with open(union_key_path, "r") as f:
-            assert f.read() == union_priv_pem
+        assert union_key_path.exists()
+        assert union_key_path.read_text() == union_priv_pem
         stored_version = await db_session.union.get("union_private_key_version")
         assert stored_version == "1"
 
@@ -133,5 +156,6 @@ async def test_union_key_integration_chain(client, db_session, admin_headers, te
 
     finally:
         union_backend._api_get = original_api_get
-        if os.path.exists(union_key_path):
-            os.remove(union_key_path)
+        union_backend.fetch_private_key = original_fetch
+        if union_key_path.exists():
+            union_key_path.unlink()

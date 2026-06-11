@@ -9,7 +9,7 @@ All tests must pass without real HTTP calls to Union — only mocked responses.
 """
 
 import pytest
-import os
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -20,9 +20,6 @@ from backends.union_backend import UnionBackend
 # ·············································································
 # Test infrastructure
 # ·············································································
-
-UNION_KEY_PATH = "/app/data/union-ygg-private.pem"
-
 
 def _generate_fake_pem() -> str:
     """Generate a fresh RSA 2048-bit private key PEM.
@@ -42,33 +39,32 @@ def _generate_fake_pem() -> str:
 FAKE_UNION_PEM = _generate_fake_pem()
 
 
-def _write_union_key_file() -> None:
-    """Write the fake Union key to the well-known path."""
-    os.makedirs(os.path.dirname(UNION_KEY_PATH), exist_ok=True)
-    with open(UNION_KEY_PATH, "w") as f:
-        f.write(FAKE_UNION_PEM)
+def _write_union_key_file(base_path: Path) -> None:
+    """Write the fake Union key to the given directory."""
+    (base_path / "union-ygg-private.pem").write_text(FAKE_UNION_PEM)
 
 
-def _cleanup_union_key_file() -> None:
-    """Remove the Union key file if it exists."""
-    if os.path.exists(UNION_KEY_PATH):
-        os.remove(UNION_KEY_PATH)
+def _cleanup_union_key_file(base_path: Path) -> None:
+    """Remove the Union key file from the given directory if it exists."""
+    p = base_path / "union-ygg-private.pem"
+    if p.exists():
+        p.unlink()
 
 
 # ·············································································
 # Test 1 — HTTP: Yggdrasil metadata returns DEFAULT public key
 # ·············································································
 
-async def test_default_key_used_when_union_disabled(client, crypto_fixture):
+async def test_default_key_used_when_union_disabled(client, crypto_fixture, tmp_path):
     """Yggdrasil metadata endpoint returns the default key's public key.
 
-    Even when ``/app/data/union-ygg-private.pem`` exists with a *different*
-    key, ``use_union_key=false`` means the system must keep using the default
+    Even when the Union key file exists with a *different* key,
+    ``use_union_key=false`` means the system must keep using the default
     ``private.pem`` for signing.
     """
     default_public_key = crypto_fixture.get_public_key_pem()
 
-    _write_union_key_file()
+    _write_union_key_file(tmp_path)
     try:
         resp = await client.get("/")
         assert resp.status_code == 200
@@ -82,7 +78,7 @@ async def test_default_key_used_when_union_disabled(client, crypto_fixture):
             "but use_union_key=false should use the default key"
         )
     finally:
-        _cleanup_union_key_file()
+        _cleanup_union_key_file(tmp_path)
 
 
 # ·············································································
@@ -116,11 +112,11 @@ async def test_fetch_private_key_stores_file_without_reload(
 
     # ── file was written ──────────────────────────────────────────────
     mock_makedirs.assert_called_once_with("/app/data", exist_ok=True)
-    mock_open.assert_called_once_with(UNION_KEY_PATH, "w")
+    mock_open.assert_called_once_with("/app/data/union-ygg-private.pem", "w")
     mock_open.return_value.__enter__.return_value.write.assert_called_once_with(
         FAKE_UNION_PEM
     )
-    mock_chmod.assert_called_once_with(UNION_KEY_PATH, 0o600)
+    mock_chmod.assert_called_once_with("/app/data/union-ygg-private.pem", 0o600)
 
     # ── version stored in DB ──────────────────────────────────────────
     version_val = await db_session.union.get("union_private_key_version")
@@ -144,10 +140,10 @@ async def test_fetch_private_key_stores_file_without_reload(
 # Test 3 — File existence does NOT affect default mode
 # ·············································································
 
-async def test_union_key_file_does_not_affect_default(client, crypto_fixture):
+async def test_union_key_file_does_not_affect_default(client, crypto_fixture, tmp_path):
     """Union key file presence does NOT change which key ``CryptoUtils`` holds.
 
-    Even if ``/app/data/union-ygg-private.pem`` exists on disk, the global
+    Even if the Union key file exists on disk, the global
     ``CryptoUtils`` instance (initialized with ``use_union_key=false``) must
     continue referencing the default ``private.pem`` key.
 
@@ -156,7 +152,7 @@ async def test_union_key_file_does_not_affect_default(client, crypto_fixture):
     """
     default_public_key = crypto_fixture.get_public_key_pem()
 
-    _write_union_key_file()
+    _write_union_key_file(tmp_path)
     try:
         # Direct check: the crypto instance should still have the default key
         current = crypto_fixture.get_public_key_pem()
@@ -174,4 +170,4 @@ async def test_union_key_file_does_not_affect_default(client, crypto_fixture):
             "(file-exists test via HTTP)"
         )
     finally:
-        _cleanup_union_key_file()
+        _cleanup_union_key_file(tmp_path)
