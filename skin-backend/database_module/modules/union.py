@@ -25,12 +25,75 @@ class UnionModule:
         return self._cache.copy()
 
     async def remap_uuids(self, remapped: dict[str, str]):
-        """Apply UUID remapping: updates profiles.id to new UUID values."""
-        for old_uuid, new_uuid in remapped.items():
-            await self.db.execute(
-                "UPDATE profiles SET id = $1 WHERE id = $2",
-                new_uuid, old_uuid,
+        """Apply UUID remapping: updates profiles.id and cascades to tokens.profile_id.
+
+        All updates run in a single transaction (all-or-nothing).
+        Handles overlapping chains (A→B→C) via dependency-aware ordering.
+        Rejects UUID collisions where new_uuid already exists and is not
+        itself being remapped away.
+        """
+        if not remapped:
+            return
+
+        remapped = {k: v for k, v in remapped.items() if k != v}
+        if not remapped:
+            return
+
+        old_uuids = set(remapped.keys())
+        new_uuids = set(remapped.values())
+
+        # ── pre-check: UUID collision ─────────────────────────────────
+        for new_uuid in new_uuids:
+            if new_uuid in old_uuids:
+                continue  # being remapped away → safe
+            exists = await self.db.fetchval(
+                "SELECT 1 FROM profiles WHERE id = $1", new_uuid,
             )
+            if exists:
+                raise ValueError(
+                    f"UUID collision: target {new_uuid} already exists in profiles"
+                )
+
+        # ── dependency graph (only edges where new is also an old) ───
+        depends_on: dict[str, str] = {
+            old: new for old, new in remapped.items() if new in old_uuids
+        }
+
+        # ── topological sort with cycle detection ────────────────────
+        processed: set[str] = set()
+        visiting: set[str] = set()
+        ordered: list[str] = []
+
+        def add_entry(old: str):
+            if old in processed:
+                return
+            if old in visiting:
+                raise ValueError(
+                    f"UUID remap cycle detected involving {old}"
+                )
+            visiting.add(old)
+            if old in depends_on:
+                add_entry(depends_on[old])
+            visiting.discard(old)
+            processed.add(old)
+            ordered.append(old)
+
+        for old in remapped:
+            add_entry(old)
+
+        # ── single DB transaction ────────────────────────────────────
+        async with self.db.get_conn() as conn:
+            async with conn.transaction():
+                for old_uuid in ordered:
+                    new_uuid = remapped[old_uuid]
+                    await conn.execute(
+                        "UPDATE profiles SET id = $1 WHERE id = $2",
+                        new_uuid, old_uuid,
+                    )
+                    await conn.execute(
+                        "UPDATE tokens SET profile_id = $1 WHERE profile_id = $2",
+                        new_uuid, old_uuid,
+                    )
 
     async def get_email_by_username(self, username: str) -> str | None:
         """Get user email by player/character name (for blacklist lookup)."""
