@@ -75,11 +75,24 @@ func TestTextureRoutesUploadAndUploadApplyExactResponses(t *testing.T) {
 		t.Fatalf("upload texture should persist library row: info=%#v err=%v", info, err)
 	}
 
+	applyData := routePNGWithColor(t, 64, 64, color.RGBA{R: 200, G: 80, B: 120, A: 255})
+	storage, err := texturesvc.NewTextureStorage(cfg.TexturesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preexistingHash, _, err := storage.ProcessAndSaveTracked(applyData, "skin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Textures.AddToLibrary(req.Context(), user.ID, preexistingHash, "skin", "Existing model", false, "default"); err != nil {
+		t.Fatal(err)
+	}
+
 	req = textureMultipartRequest(t, "/textures/upload", map[string]string{
 		"uuid":         profile.ID,
 		"texture_type": "skin",
-		"model":        "default",
-	}, "file", "apply.png", routePNGWithColor(t, 64, 64, color.RGBA{R: 200, G: 80, B: 120, A: 255}))
+		"model":        "slim",
+	}, "file", "apply.png", applyData)
 	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
 	rec = httptest.NewRecorder()
 	h.UploadAndApplyTexture(rec, req)
@@ -88,7 +101,7 @@ func TestTextureRoutesUploadAndUploadApplyExactResponses(t *testing.T) {
 	}
 	appliedHash := jsonStringField(t, rec.Body.String(), "hash")
 	applied, err := db.Profiles.GetByID(req.Context(), profile.ID)
-	if err != nil || applied == nil || applied.SkinHash == nil || *applied.SkinHash != appliedHash || applied.TextureModel != "default" {
+	if appliedHash != preexistingHash || err != nil || applied == nil || applied.SkinHash == nil || *applied.SkinHash != appliedHash || applied.TextureModel != "slim" {
 		t.Fatalf("upload and apply should update profile: profile=%#v hash=%q err=%v", applied, appliedHash, err)
 	}
 }
@@ -243,6 +256,18 @@ func TestTextureRoutesRejectInvalidInputsWithExactErrors(t *testing.T) {
 	}
 	if count, err := db.Textures.CountForUser(req.Context(), user.ID); err != nil || count != 0 {
 		t.Fatalf("invalid upload apply should not persist texture rows: count=%d err=%v", count, err)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/me/textures/missing_hash/add?texture_type=skin", nil)
+	req.SetPathValue("hash", "missing_hash")
+	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	rec = httptest.NewRecorder()
+	h.AddTexture(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"Texture not found in library\"}\n" {
+		t.Fatalf("add missing texture mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if count, err := db.Textures.CountForUser(req.Context(), user.ID); err != nil || count != 0 {
+		t.Fatalf("failed wardrobe add should not persist texture rows: count=%d err=%v", count, err)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/me/textures/missing_hash/apply", strings.NewReader(`{"profile_id":"`+profile.ID+`","texture_type":"skin"}`))

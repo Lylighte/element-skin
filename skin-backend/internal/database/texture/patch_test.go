@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/testutil"
@@ -92,6 +93,92 @@ func TestAdminPatchUpdatesOwnerAndWardrobeWithoutChangingWardrobeMarker(t *testi
 	}
 	if err := store.AdminPatch(ctx, "missing_hash", "skin", texture.Patch{Note: &note}); !errors.Is(err, texture.ErrNotFound) {
 		t.Fatalf("missing library texture error = %v; want ErrNotFound", err)
+	}
+}
+
+func TestUpdateForUserReturnsNotFoundAfterConcurrentLibraryDelete(t *testing.T) {
+	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	owner := testutil.CreateUser(t, db, "texture-patch-delete-race@test.com", "Password123", "TexturePatchDeleteRace", false)
+	profile := testutil.CreateProfile(t, db, owner.ID, "texture_patch_delete_race_profile", "TexturePatchRace")
+	const hash = "texture_patch_delete_race"
+	if err := store.AddToLibrary(ctx, owner.ID, hash, "skin", "Original", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Profiles.UpdateSkin(ctx, profile.ID, ptr(hash)); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	var one, lockHolderPID int
+	if err := tx.QueryRow(ctx, `
+		SELECT 1, pg_backend_pid()
+		FROM skin_library
+		WHERE skin_hash=$1 AND texture_type='skin'
+		FOR UPDATE
+	`, hash).Scan(&one, &lockHolderPID); err != nil {
+		t.Fatal(err)
+	}
+
+	modelName := "slim"
+	result := make(chan error, 1)
+	go func() {
+		result <- store.UpdateForUser(
+			context.Background(),
+			owner.ID,
+			hash,
+			"skin",
+			texture.Patch{Model: &modelName},
+		)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		select {
+		case err := <-result:
+			t.Fatalf("texture update completed before delete lock was released: %v", err)
+		default:
+		}
+		var waiting bool
+		if err := db.Pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM pg_stat_activity
+				WHERE $1 = ANY(pg_blocking_pids(pid))
+			)
+		`, lockHolderPID).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("texture update did not reach the expected library row-lock wait")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM user_textures WHERE hash=$1 AND texture_type='skin'`, hash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM skin_library WHERE skin_hash=$1 AND texture_type='skin'`, hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-result; !errors.Is(err, texture.ErrNotFound) {
+		t.Fatalf("update after concurrent library delete error=%v; want ErrNotFound", err)
+	}
+	if info, err := store.GetInfo(ctx, owner.ID, hash, "skin"); err != nil || info != nil {
+		t.Fatalf("concurrent delete should leave no personal texture: info=%#v err=%v", info, err)
+	}
+	gotProfile, err := db.Profiles.GetByID(ctx, profile.ID)
+	if err != nil || gotProfile == nil || gotProfile.TextureModel != "default" {
+		t.Fatalf("failed concurrent update changed profile model: profile=%#v err=%v", gotProfile, err)
 	}
 }
 

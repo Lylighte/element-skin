@@ -23,6 +23,9 @@ func (s Store) AddToLibrary(ctx context.Context, userID, hash, textureType, note
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := lockLibraryTexture(ctx, tx, hash, textureType); err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
 	created := time.Now().UnixMilli()
 	pub := 0
 	if isPublic {
@@ -199,6 +202,12 @@ func (s Store) DeleteFromLibrary(ctx context.Context, userID, hash, textureType 
 		return false, err
 	}
 	defer tx.Rollback(ctx)
+	if err := lockLibraryTexture(ctx, tx, hash, textureType); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
 	var one int
 	err = tx.QueryRow(ctx, `SELECT 1 FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3`, userID, hash, textureType).Scan(&one)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -208,6 +217,16 @@ func (s Store) DeleteFromLibrary(ctx context.Context, userID, hash, textureType 
 		return false, err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type=$3`, userID, hash, textureType); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE skin_library
+		SET usage_count=(
+			SELECT COUNT(*) FROM user_textures
+			WHERE hash=$1 AND texture_type=$2
+		)
+		WHERE skin_hash=$1 AND texture_type=$2
+	`, hash, textureType); err != nil {
 		return false, err
 	}
 	return true, tx.Commit(ctx)
@@ -231,6 +250,9 @@ func (s Store) DeleteLibraryTexture(ctx context.Context, hash, textureType strin
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := lockLibraryTexture(ctx, tx, hash, textureType); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM user_textures WHERE hash=$1 AND texture_type=$2`, hash, textureType); err != nil {
 		return err
 	}

@@ -116,7 +116,7 @@ func (s Store) AddToWardrobe(ctx context.Context, userID, hash, textureType stri
 		where += ` AND texture_type=$2`
 		args = append(args, textureType)
 	}
-	err = tx.QueryRow(ctx, `SELECT texture_type,model,uploader,name,is_public FROM skin_library WHERE `+where+` ORDER BY CASE WHEN texture_type='skin' THEN 0 ELSE 1 END LIMIT 1`, args...).Scan(&selectedType, &model, &uploader, &name, &pub)
+	err = tx.QueryRow(ctx, `SELECT texture_type,model,uploader,name,is_public FROM skin_library WHERE `+where+` ORDER BY CASE WHEN texture_type='skin' THEN 0 ELSE 1 END LIMIT 1 FOR UPDATE`, args...).Scan(&selectedType, &model, &uploader, &name, &pub)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

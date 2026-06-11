@@ -3,6 +3,7 @@ package texture_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"element-skin/backend/internal/database/texture"
@@ -160,5 +161,74 @@ func TestAdminTextureListPaginatesWithCursor(t *testing.T) {
 	secondItems := second["items"].([]map[string]any)
 	if len(secondItems) != 1 || secondItems[0]["hash"] == firstItems[0]["hash"] || second["has_next"] != false {
 		t.Fatalf("second admin texture page should advance cursor: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestConcurrentAdminPerUserDeletesKeepExactUsageCount(t *testing.T) {
+	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	owner := testutil.CreateUser(t, db, "admin-delete-concurrent-owner@test.com", "Password123", "AdminDeleteConcurrentOwner", false)
+	first := testutil.CreateUser(t, db, "admin-delete-concurrent-first@test.com", "Password123", "AdminDeleteConcurrentFirst", false)
+	second := testutil.CreateUser(t, db, "admin-delete-concurrent-second@test.com", "Password123", "AdminDeleteConcurrentSecond", false)
+	const hash = "admin_delete_concurrent_usage"
+	if err := store.AddToLibrary(ctx, owner.ID, hash, "skin", "Admin Concurrent Usage", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []string{first.ID, second.ID} {
+		if added, err := store.AddToWardrobe(ctx, userID, hash, "skin"); err != nil || !added {
+			t.Fatalf("add wardrobe for %q = %v, %v; want true, nil", userID, added, err)
+		}
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		CREATE FUNCTION delay_concurrent_admin_texture_delete() RETURNS trigger AS $$
+		BEGIN
+			IF OLD.hash = 'admin_delete_concurrent_usage' THEN
+				PERFORM pg_sleep(0.2);
+			END IF;
+			RETURN OLD;
+		END;
+		$$ LANGUAGE plpgsql;
+		CREATE TRIGGER delay_concurrent_admin_texture_delete
+		BEFORE DELETE ON user_textures
+		FOR EACH ROW EXECUTE FUNCTION delay_concurrent_admin_texture_delete();
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, userID := range []string{first.ID, second.ID} {
+		userID := userID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			results <- store.AdminDelete(context.Background(), hash, "skin", userID, false)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	for err := range results {
+		if err != nil {
+			t.Fatalf("concurrent admin per-user delete failed: %v", err)
+		}
+	}
+	for _, userID := range []string{first.ID, second.ID} {
+		if owned, err := store.VerifyOwnership(ctx, userID, hash, "skin"); err != nil || owned {
+			t.Fatalf("admin-deleted user %q ownership=%v err=%v; want false, nil", userID, owned, err)
+		}
+	}
+	var usage int64
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT usage_count FROM skin_library
+		WHERE skin_hash=$1 AND texture_type='skin'
+	`, hash).Scan(&usage); err != nil {
+		t.Fatal(err)
+	}
+	if usage != 1 {
+		t.Fatalf("usage_count after concurrent admin deletes=%d; want exact owner-only count 1", usage)
 	}
 }

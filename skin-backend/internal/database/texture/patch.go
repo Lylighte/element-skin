@@ -2,9 +2,6 @@ package texture
 
 import (
 	"context"
-	"errors"
-
-	"github.com/jackc/pgx/v5"
 )
 
 type Patch struct {
@@ -19,6 +16,9 @@ func (s Store) UpdateForUser(ctx context.Context, userID, hash, textureType stri
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := lockLibraryTexture(ctx, tx, hash, textureType); err != nil {
+		return err
+	}
 	tag, err := tx.Exec(ctx, `
 		UPDATE user_textures SET
 			note=CASE WHEN $1 THEN $2 ELSE note END,
@@ -66,11 +66,7 @@ func (s Store) AdminPatch(ctx context.Context, hash, textureType string, patch P
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var one int
-	if err := tx.QueryRow(ctx, `SELECT 1 FROM skin_library WHERE skin_hash=$1 AND texture_type=$2`, hash, textureType).Scan(&one); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
-		}
+	if err := lockLibraryTexture(ctx, tx, hash, textureType); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
