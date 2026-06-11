@@ -1,11 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"flag"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +31,187 @@ func TestParseConcurrency(t *testing.T) {
 	}
 	if _, err := parseConcurrency("0"); err == nil {
 		t.Fatal("zero concurrency should fail")
+	}
+	if _, err := parseConcurrency(" , "); err == nil || err.Error() != "at least one concurrency level is required" {
+		t.Fatalf("empty concurrency error=%v; want exact required-level error", err)
+	}
+}
+
+func TestParseFlagsAppliesEveryCommandLineOverrideExactly(t *testing.T) {
+	oldCommandLine := flag.CommandLine
+	oldArgs := os.Args
+	t.Cleanup(func() {
+		flag.CommandLine = oldCommandLine
+		os.Args = oldArgs
+	})
+	flag.CommandLine = flag.NewFlagSet("loadtest-test", flag.ContinueOnError)
+	flag.CommandLine.SetOutput(io.Discard)
+	os.Args = []string{
+		"loadtest",
+		"-target=https://backend.example/base",
+		"-path=/admin/users?limit=7",
+		"-method=patch",
+		`-body={"name":"Updated"}`,
+		"-content-type=application/merge-patch+json",
+		"-concurrency=2,4,8",
+		"-duration=3s",
+		"-timeout=750ms",
+		"-fail-threshold=2.5",
+		"-max-p95=125ms",
+		"-login-email=load@example.com",
+		"-login-password=Secret123",
+		"-login-path=/custom-login",
+		"-cookie=access=abc; refresh=def",
+		"-insecure=true",
+	}
+
+	got := parseFlags()
+	want := options{
+		target:          "https://backend.example/base",
+		path:            "/admin/users?limit=7",
+		method:          "patch",
+		body:            `{"name":"Updated"}`,
+		contentType:     "application/merge-patch+json",
+		concurrencyList: "2,4,8",
+		duration:        3 * time.Second,
+		timeout:         750 * time.Millisecond,
+		failThreshold:   2.5,
+		maxP95:          125 * time.Millisecond,
+		loginEmail:      "load@example.com",
+		loginPassword:   "Secret123",
+		loginPath:       "/custom-login",
+		cookieHeader:    "access=abc; refresh=def",
+		insecureTLS:     true,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parsed options mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestRunReturnsExactConfigurationAndLoginErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		opts       options
+		wantCode   int
+		wantStderr string
+	}{
+		{
+			name:       "invalid concurrency",
+			opts:       options{concurrencyList: "1,bad"},
+			wantCode:   2,
+			wantStderr: "invalid concurrency level \"bad\"\n",
+		},
+		{
+			name:       "invalid target",
+			opts:       options{concurrencyList: "1", target: "missing-scheme", path: "/probe"},
+			wantCode:   2,
+			wantStderr: "target must include scheme and host\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := run(tc.opts, &stdout, &stderr)
+			if code != tc.wantCode || stdout.Len() != 0 || stderr.String() != tc.wantStderr {
+				t.Fatalf("run result: code=%d stdout=%q stderr=%q; want code=%d empty stdout stderr=%q",
+					code, stdout.String(), stderr.String(), tc.wantCode, tc.wantStderr)
+			}
+		})
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	var stdout, stderr bytes.Buffer
+	code := run(options{
+		target:          server.URL,
+		path:            "/probe",
+		method:          http.MethodGet,
+		concurrencyList: "1",
+		duration:        time.Millisecond,
+		timeout:         time.Second,
+		loginEmail:      "user@example.com",
+		loginPassword:   "wrong",
+		loginPath:       "/login",
+	}, &stdout, &stderr)
+	if code != 1 || stdout.Len() != 0 || stderr.String() != "login: unexpected status 401\n" {
+		t.Fatalf("login failure: code=%d stdout=%q stderr=%q; want exact login exit", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunReportsSuccessfulAndFailedCapacityExactly(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		status         int
+		maxP95         time.Duration
+		wantSuggestion string
+		wantStatus     string
+	}{
+		{
+			name:           "successful capacity",
+			status:         http.StatusNoContent,
+			maxP95:         time.Hour,
+			wantSuggestion: "Suggested capacity: 1 concurrent requests under the configured threshold.",
+			wantStatus:     "204:",
+		},
+		{
+			name:           "no acceptable capacity",
+			status:         http.StatusInternalServerError,
+			wantSuggestion: "Suggested capacity: none of the tested levels met the configured threshold.",
+			wantStatus:     "500:",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if req.Method != http.MethodPost || req.URL.Path != "/api/probe" ||
+					req.Header.Get("Content-Type") != "application/json" ||
+					req.Header.Get("Cookie") != "session=load" {
+					t.Fatalf("run request mismatch: method=%s path=%s content-type=%q cookie=%q",
+						req.Method, req.URL.Path, req.Header.Get("Content-Type"), req.Header.Get("Cookie"))
+				}
+				body, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(body) != `{"probe":true}` {
+					t.Fatalf("run request body=%q; want exact probe JSON", body)
+				}
+				calls.Add(1)
+				w.WriteHeader(tc.status)
+				if tc.status >= 400 {
+					_, _ = w.Write([]byte("probe failed"))
+				}
+			}))
+			defer server.Close()
+
+			var stdout, stderr bytes.Buffer
+			code := run(options{
+				target:          server.URL + "/api",
+				path:            "/probe",
+				method:          http.MethodPost,
+				body:            `{"probe":true}`,
+				contentType:     "application/json",
+				concurrencyList: "1",
+				duration:        20 * time.Millisecond,
+				timeout:         time.Second,
+				failThreshold:   0,
+				maxP95:          tc.maxP95,
+				cookieHeader:    "session=load",
+			}, &stdout, &stderr)
+			output := stdout.String()
+			if code != 0 || stderr.Len() != 0 || calls.Load() <= 0 ||
+				!strings.Contains(output, "Target: POST "+server.URL+"/api/probe\n") ||
+				!strings.Contains(output, "failure threshold: 0.00%") ||
+				!strings.Contains(output, tc.wantStatus) ||
+				!strings.Contains(output, tc.wantSuggestion) {
+				t.Fatalf("run output mismatch: code=%d calls=%d stderr=%q stdout=%q",
+					code, calls.Load(), stderr.String(), output)
+			}
+			if tc.maxP95 > 0 && !strings.Contains(output, "p95 threshold: 1h0m0s") {
+				t.Fatalf("run output missing exact p95 threshold: %q", output)
+			}
+		})
 	}
 }
 
@@ -52,6 +239,9 @@ func TestBuildURL(t *testing.T) {
 	}
 	if _, err := buildURL("127.0.0.1:8000", "/me"); err == nil {
 		t.Fatal("target without scheme should fail")
+	}
+	if _, err := buildURL("http://127.0.0.1:8000", "://bad path"); err == nil {
+		t.Fatal("invalid request path should fail")
 	}
 }
 
@@ -112,6 +302,187 @@ func TestSummarize(t *testing.T) {
 	if summary.P50 != 20*time.Millisecond || summary.P95 != 30*time.Millisecond {
 		t.Fatalf("unexpected percentiles: p50=%s p95=%s", summary.P50, summary.P95)
 	}
+	if summary.FirstError != "status 500" || summary.Statuses[200] != 1 || summary.Statuses[204] != 1 || summary.Statuses[500] != 1 {
+		t.Fatalf("unexpected failure/status summary: %#v", summary)
+	}
+}
+
+func TestLoginSendsExactCredentialsAndReturnsCookieHeader(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		calls.Add(1)
+		if req.Method != http.MethodPost || req.URL.Path != "/api/site-login" {
+			t.Fatalf("login request=%s %s; want POST /api/site-login", req.Method, req.URL.Path)
+		}
+		if req.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("login content type=%q; want application/json", req.Header.Get("Content-Type"))
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != `{"email":"load@example.com","password":"Secret123"}` {
+			t.Fatalf("login body=%q; want exact credentials JSON", body)
+		}
+		http.SetCookie(w, &http.Cookie{Name: "access", Value: "access-value"})
+		http.SetCookie(w, &http.Cookie{Name: "refresh", Value: "refresh-value"})
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	cookies, err := login(server.Client(), server.URL+"/api", "/site-login", "load@example.com", "Secret123")
+	if err != nil || cookies != "access=access-value; refresh=refresh-value" {
+		t.Fatalf("login cookies=%q err=%v; want exact joined cookie header", cookies, err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("login calls=%d; want exactly 1", calls.Load())
+	}
+}
+
+func TestLoginRejectsStatusAndMissingCookiesExactly(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		status     int
+		wantDetail string
+	}{
+		{name: "unauthorized", status: http.StatusUnauthorized, wantDetail: "unexpected status 401"},
+		{name: "success without cookies", status: http.StatusOK, wantDetail: "login succeeded without cookies"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+			}))
+			defer server.Close()
+			cookies, err := login(server.Client(), server.URL, "/login", "user@example.com", "Password123")
+			if cookies != "" || err == nil || err.Error() != tc.wantDetail {
+				t.Fatalf("login result cookies=%q err=%v; want empty cookies and %q", cookies, err, tc.wantDetail)
+			}
+		})
+	}
+}
+
+func TestDoRequestForwardsExactRequestAndClassifiesResponse(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		call := calls.Add(1)
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if req.Method != http.MethodPatch ||
+			req.Header.Get("Content-Type") != "application/merge-patch+json" ||
+			req.Header.Get("Cookie") != "access=abc; refresh=def" ||
+			string(body) != `{"name":"Updated"}` {
+			t.Fatalf("request mismatch: method=%s content-type=%q cookie=%q body=%q",
+				req.Method, req.Header.Get("Content-Type"), req.Header.Get("Cookie"), body)
+		}
+		if call == 1 {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte("ignored success body"))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(strings.Repeat("x", 600)))
+	}))
+	defer server.Close()
+	opts := options{
+		method:      http.MethodPatch,
+		body:        `{"name":"Updated"}`,
+		contentType: "application/merge-patch+json",
+	}
+
+	success := doRequest(server.Client(), server.URL, opts, "access=abc; refresh=def")
+	if success.err != nil || success.status != http.StatusAccepted || success.detail != "" {
+		t.Fatalf("successful request result=%#v; want exact 202 success without detail", success)
+	}
+	failed := doRequest(server.Client(), server.URL, opts, "access=abc; refresh=def")
+	if failed.err != nil || failed.status != http.StatusInternalServerError || len(failed.detail) != 512 ||
+		failed.detail != strings.Repeat("x", 512) {
+		t.Fatalf("failed request result=%#v; want exact 500 and first 512 response bytes", failed)
+	}
+}
+
+func TestDoRequestReturnsConstructionAndTransportErrorsExactly(t *testing.T) {
+	malformed := doRequest(http.DefaultClient, "://bad-url", options{method: http.MethodGet}, "")
+	if malformed.err == nil || malformed.status != 0 || malformed.detail != "" {
+		t.Fatalf("malformed request result=%#v; want construction error only", malformed)
+	}
+
+	wantErr := errors.New("transport unavailable")
+	client := &http.Client{Transport: loadTestRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, wantErr
+	})}
+	failed := doRequest(client, "https://example.test/load", options{method: http.MethodGet}, "")
+	const wantDetail = `Get "https://example.test/load": transport unavailable`
+	if !errors.Is(failed.err, wantErr) || failed.status != 0 || failed.detail != wantDetail {
+		t.Fatalf("transport error result=%#v; want exact transport failure", failed)
+	}
+}
+
+func TestRunStepProducesExactSuccessfulSummaryInvariants(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet || req.Header.Get("Cookie") != "session=load" {
+			t.Fatalf("load request mismatch: method=%s cookie=%q", req.Method, req.Header.Get("Cookie"))
+		}
+		calls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	summary := runStep(
+		server.Client(),
+		server.URL,
+		options{method: http.MethodGet, duration: 25 * time.Millisecond},
+		"session=load",
+		3,
+	)
+	if summary.Concurrency != 3 || summary.Total <= 0 || summary.Total != int(calls.Load()) ||
+		summary.Success != summary.Total || summary.Failed != 0 || summary.FailurePct != 0 ||
+		summary.Statuses[http.StatusNoContent] != summary.Total || summary.FirstError != "" ||
+		summary.Wall < 25*time.Millisecond || summary.RPS <= 0 || summary.SuccessRPS != summary.RPS {
+		t.Fatalf("successful step summary violates exact invariants: %#v calls=%d", summary, calls.Load())
+	}
+}
+
+func TestSummarizeFailurePriorityEmptyInputAndFormatting(t *testing.T) {
+	summary := summarize(4, []requestResult{
+		{status: http.StatusBadGateway, latency: 3 * time.Millisecond, detail: "upstream unavailable"},
+		{latency: 5 * time.Millisecond, err: errors.New("dial failed"), detail: "dial failed"},
+	}, 2*time.Second)
+	if summary.Total != 2 || summary.Success != 0 || summary.Failed != 2 || summary.FailurePct != 100 ||
+		summary.RPS != 1 || summary.SuccessRPS != 0 || summary.Avg != 4*time.Millisecond ||
+		summary.P50 != 3*time.Millisecond || summary.P95 != 5*time.Millisecond ||
+		summary.FirstError != "upstream unavailable" || !reflect.DeepEqual(summary.Statuses, map[int]int{502: 1}) {
+		t.Fatalf("failure summary mismatch: %#v", summary)
+	}
+	empty := summarize(1, nil, 0)
+	if empty.Total != 0 || empty.RPS != 0 || empty.Avg != 0 || empty.P50 != 0 ||
+		empty.FirstError != "" || len(empty.Statuses) != 0 {
+		t.Fatalf("empty summary mismatch: %#v", empty)
+	}
+	if got := percentile([]time.Duration{time.Millisecond, 2 * time.Millisecond}, -10); got != time.Millisecond {
+		t.Fatalf("negative percentile=%s; want first sample", got)
+	}
+	if got := percentile([]time.Duration{time.Millisecond, 2 * time.Millisecond}, 200); got != 2*time.Millisecond {
+		t.Fatalf("oversized percentile=%s; want last sample", got)
+	}
+	if formatDuration(0) != "-" || formatDuration(1500*time.Microsecond) != "1.5ms" ||
+		formatDuration(1500*time.Millisecond) != "1.50s" {
+		t.Fatalf("duration formatting mismatch: zero=%q ms=%q sec=%q",
+			formatDuration(0), formatDuration(1500*time.Microsecond), formatDuration(1500*time.Millisecond))
+	}
+	if formatStatuses(nil) != "errors-only" ||
+		formatStatuses(map[int]int{500: 2, 200: 3}) != "200:3,500:2" {
+		t.Fatalf("status formatting mismatch: empty=%q values=%q",
+			formatStatuses(nil), formatStatuses(map[int]int{500: 2, 200: 3}))
+	}
+}
+
+type loadTestRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f loadTestRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestLoadTestConcurrency(t *testing.T) {
