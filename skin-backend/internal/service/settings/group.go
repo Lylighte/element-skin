@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/util"
 )
 
@@ -40,6 +42,7 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 	for _, key := range keys {
 		allowed[key] = true
 	}
+	pending := make(map[string]any, len(keys))
 	for key, value := range body {
 		if !allowed[key] {
 			continue
@@ -75,20 +78,27 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 			}
 			value = string(b)
 		}
-		if err := s.DB.Settings.Set(ctx, key, value); err != nil {
-			return err
-		}
+		pending[key] = value
 	}
+	var pendingFallbacks []fallback.Endpoint
+	saveFallbacks := false
 	if group == "fallback" {
 		if raw, ok := body["fallbacks"]; ok {
 			fallbacks, err := ValidateFallbackEndpoints(raw)
 			if err != nil {
 				return err
 			}
-			if err := s.DB.Fallbacks.SaveEndpoints(ctx, fallbacks); err != nil {
-				return err
-			}
+			pendingFallbacks = fallbacks
+			saveFallbacks = true
 		}
 	}
-	return nil
+	updates := make([]database.SettingUpdate, 0, len(pending))
+	for _, key := range keys {
+		value, ok := pending[key]
+		if !ok {
+			continue
+		}
+		updates = append(updates, database.SettingUpdate{Key: key, Value: value})
+	}
+	return s.DB.SaveSettingsGroup(ctx, updates, pendingFallbacks, saveFallbacks)
 }

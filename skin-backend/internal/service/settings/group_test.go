@@ -2,10 +2,14 @@ package settings_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestSettingsSaveGetRoundTripExactValues(t *testing.T) {
@@ -105,5 +109,121 @@ func TestSettingsRejectInvalidGroupAndProfileMode(t *testing.T) {
 	}
 	if err := settings.SaveGroup(context.Background(), "easter_eggs", map[string]any{"easter_eggs_enabled": []any{"missing"}}); err == nil {
 		t.Fatal("invalid easter egg should reject")
+	}
+}
+
+func TestSettingsInvalidFallbackGroupPreservesExistingConfiguration(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
+	if err := svc.SaveGroup(ctx, "fallback", map[string]any{
+		"fallback_strategy": "serial",
+		"fallbacks": []any{map[string]any{
+			"priority":         7,
+			"session_url":      "https://old-session.example",
+			"account_url":      "https://old-account.example",
+			"services_url":     "https://old-services.example",
+			"cache_ttl":        45,
+			"skin_domains":     "old-skins.example",
+			"enable_profile":   false,
+			"enable_hasjoined": true,
+			"enable_whitelist": true,
+			"note":             "existing",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.SaveGroup(ctx, "fallback", map[string]any{
+		"fallback_strategy": "parallel",
+		"fallbacks": []any{map[string]any{
+			"session_url":  "https://new-session.example",
+			"account_url":  "",
+			"services_url": "https://new-services.example",
+		}},
+	})
+	httpErr, ok := err.(util.HTTPError)
+	if !ok || httpErr.Status != 400 || httpErr.Detail != "fallback[1] urls are required" {
+		t.Fatalf("invalid fallback error = %#v, want exact 400 validation error", err)
+	}
+
+	strategy, err := db.Settings.Get(ctx, "fallback_strategy", "")
+	if err != nil || strategy != "serial" {
+		t.Fatalf("failed fallback save changed strategy: strategy=%q err=%v", strategy, err)
+	}
+	endpoints, err := db.Fallbacks.ListEndpoints(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(endpoints) != 1 {
+		t.Fatalf("failed fallback save changed endpoint count: %#v", endpoints)
+	}
+	got := endpoints[0]
+	if got["priority"] != 7 ||
+		got["session_url"] != "https://old-session.example" ||
+		got["account_url"] != "https://old-account.example" ||
+		got["services_url"] != "https://old-services.example" ||
+		got["cache_ttl"] != 45 ||
+		got["skin_domains"] != "old-skins.example" ||
+		got["enable_profile"] != false ||
+		got["enable_hasjoined"] != true ||
+		got["enable_whitelist"] != true ||
+		got["note"] != "existing" {
+		t.Fatalf("failed fallback save changed existing endpoint: %#v", got)
+	}
+}
+
+func TestSettingsFallbackDatabaseFailureRollsBackStrategyAndEndpoints(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
+	if err := svc.SaveGroup(ctx, "fallback", map[string]any{
+		"fallback_strategy": "serial",
+		"fallbacks": []any{map[string]any{
+			"priority":     1,
+			"session_url":  "https://stable-session.example",
+			"account_url":  "https://stable-account.example",
+			"services_url": "https://stable-services.example",
+			"cache_ttl":    60,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx,
+		`ALTER TABLE fallback_endpoints ADD CONSTRAINT reject_parallel_endpoint CHECK (note <> 'reject')`,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.SaveGroup(ctx, "fallback", map[string]any{
+		"fallback_strategy": "parallel",
+		"fallbacks": []any{map[string]any{
+			"priority":     2,
+			"session_url":  "https://rejected-session.example",
+			"account_url":  "https://rejected-account.example",
+			"services_url": "https://rejected-services.example",
+			"cache_ttl":    30,
+			"note":         "reject",
+		}},
+	})
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+		t.Fatalf("fallback database failure = %#v, want PostgreSQL 23514", err)
+	}
+	strategy, err := db.Settings.Get(ctx, "fallback_strategy", "")
+	if err != nil || strategy != "serial" {
+		t.Fatalf("failed transaction changed strategy: strategy=%q err=%v", strategy, err)
+	}
+	endpoints, err := db.Fallbacks.ListEndpoints(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(endpoints) != 1 ||
+		endpoints[0]["priority"] != 1 ||
+		endpoints[0]["session_url"] != "https://stable-session.example" ||
+		endpoints[0]["account_url"] != "https://stable-account.example" ||
+		endpoints[0]["services_url"] != "https://stable-services.example" ||
+		endpoints[0]["cache_ttl"] != 60 {
+		t.Fatalf("failed transaction changed endpoints: %#v", endpoints)
 	}
 }
