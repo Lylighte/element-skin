@@ -58,11 +58,16 @@ func (s Site) PublicLibrary(ctx context.Context, cursor string, limit int, typ, 
 	if err != nil {
 		return nil, util.HTTPError{Status: 400, Detail: "Invalid cursor"}
 	}
+	parsedSort := texture.ParsePublicLibrarySort(sort)
+	if cursor != "" && (lastCreated == nil || lastHash == "" ||
+		(parsedSort == texture.PublicLibrarySortMostUsed && lastUsage == nil)) {
+		return nil, util.HTTPError{Status: 400, Detail: "Invalid cursor"}
+	}
 	return s.DB.Textures.ListPublic(ctx, texture.PublicListOptions{
 		Limit:       limit,
 		TextureType: typ,
 		Query:       strings.TrimSpace(q),
-		Sort:        texture.ParsePublicLibrarySort(sort),
+		Sort:        parsedSort,
 		LastCreated: lastCreated,
 		LastHash:    lastHash,
 		LastUsage:   lastUsage,
@@ -201,42 +206,7 @@ func (s Site) DeleteUser(ctx context.Context, userID string) (bool, error) {
 	if err := s.Redis.DeleteYggTokensByUser(ctx, userID); err != nil {
 		return false, err
 	}
-	textures, err := s.DB.Textures.ListForUser(ctx, userID, "", 10000, nil, "")
-	if err != nil {
-		return false, err
-	}
-	recountAfterDelete := make([]map[string]string, 0)
-	ok, err := s.DB.Users.Delete(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-	for _, item := range textures["items"].([]map[string]any) {
-		hash, _ := item["hash"].(string)
-		textureType, _ := item["type"].(string)
-		if hash == "" || textureType == "" {
-			continue
-		}
-		uploader, exists, err := s.DB.Textures.LibraryUploader(ctx, hash, textureType)
-		if err != nil {
-			return false, err
-		}
-		if exists && uploader == userID {
-			if err := s.DB.Textures.DeleteLibraryTexture(ctx, hash, textureType); err != nil {
-				return false, err
-			}
-			continue
-		}
-		recountAfterDelete = append(recountAfterDelete, map[string]string{"hash": hash, "type": textureType})
-	}
-	if !ok {
-		return false, nil
-	}
-	for _, item := range recountAfterDelete {
-		if err := s.DB.Textures.RecountUsage(ctx, item["hash"], item["type"]); err != nil {
-			return false, err
-		}
-	}
-	return true, nil
+	return s.DB.Users.Delete(ctx, userID)
 }
 
 func (s Site) deleteProfile(ctx context.Context, profileID string) error {
