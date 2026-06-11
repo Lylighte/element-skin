@@ -10,6 +10,10 @@ import (
 var ErrUnsafeURL = errors.New("unsafe outbound URL")
 
 func ValidateOutboundURL(raw string) error {
+	return validateOutboundURL(raw, net.LookupIP)
+}
+
+func validateOutboundURL(raw string, lookupIP func(string) ([]net.IP, error)) error {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return ErrUnsafeURL
@@ -27,7 +31,7 @@ func ValidateOutboundURL(raw string) error {
 		}
 		return nil
 	}
-	addrs, err := net.LookupIP(host)
+	addrs, err := lookupIP(host)
 	if err != nil {
 		return err
 	}

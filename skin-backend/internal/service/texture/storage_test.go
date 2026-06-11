@@ -2,6 +2,7 @@ package texture
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -139,5 +140,51 @@ func TestTextureStorageValidCapeAndInvalidInputs(t *testing.T) {
 	}
 	if _, err := storage.ProcessAndSave(jpg.Bytes(), "skin"); err == nil || !strings.Contains(err.Error(), "PNG") {
 		t.Fatalf("jpeg should be rejected as non-png: %v", err)
+	}
+}
+
+func TestTextureStorageRejectsInvalidDirectoryWithoutLeavingFiles(t *testing.T) {
+	root := t.TempDir()
+	blockingFile := filepath.Join(root, "not-a-directory")
+	if err := os.WriteFile(blockingFile, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	storage, err := NewTextureStorage(filepath.Join(blockingFile, "textures"))
+	if storage != nil || err == nil {
+		t.Fatalf("NewTextureStorage()=%#v, %v; want nil and directory creation error", storage, err)
+	}
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) || pathErr.Op != "mkdir" || filepath.Clean(pathErr.Path) != filepath.Clean(blockingFile) {
+		t.Fatalf("directory error=%#v; want mkdir PathError for exact blocking path", err)
+	}
+	content, readErr := os.ReadFile(blockingFile)
+	if readErr != nil || string(content) != "keep" {
+		t.Fatalf("failed directory creation changed blocking file: content=%q err=%v", content, readErr)
+	}
+}
+
+func TestTextureStorageWriteFailureReturnsNoHashOrCreatedFile(t *testing.T) {
+	root := t.TempDir()
+	blockingFile := filepath.Join(root, "not-a-directory")
+	if err := os.WriteFile(blockingFile, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	storage := &TextureStorage{Dir: blockingFile}
+
+	hash, created, err := storage.ProcessAndSaveTracked(
+		pngBytes(t, 64, 64, color.RGBA{10, 20, 30, 255}),
+		"skin",
+	)
+	if hash != "" || created || err == nil {
+		t.Fatalf("write failure returned hash=%q created=%v err=%v; want empty, false, error", hash, created, err)
+	}
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) || pathErr.Op != "open" || filepath.Dir(pathErr.Path) != blockingFile {
+		t.Fatalf("write error=%#v; want open PathError below blocking path", err)
+	}
+	content, readErr := os.ReadFile(blockingFile)
+	if readErr != nil || string(content) != "keep" {
+		t.Fatalf("failed texture write changed blocking file: content=%q err=%v", content, readErr)
 	}
 }

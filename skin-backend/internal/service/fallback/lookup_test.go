@@ -3,6 +3,7 @@ package fallback_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -239,5 +240,85 @@ func TestFallbackLookupRoutesForwardExactRequests(t *testing.T) {
 		if seen[i] != want[i] {
 			t.Fatalf("request %d got %q want %q; all=%#v", i, seen[i], want[i], seen)
 		}
+	}
+}
+
+func TestFallbackSerialFailoverSkipsEmptyURLsAndRejectsMalformedBulk(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	fb := newFallback(db, nil)
+
+	if resp, err := fb.HasJoined(ctx, "Missing", "server", ""); err != nil || resp != nil {
+		t.Fatalf("unconfigured hasJoined fallback=%#v err=%v; want nil, nil", resp, err)
+	}
+	if resp, err := fb.GetProfile(ctx, "missing", true); err != nil || resp != nil {
+		t.Fatalf("unconfigured profile fallback=%#v err=%v; want nil, nil", resp, err)
+	}
+	if resp, err := fb.GetProfileByName(ctx, "Missing"); err != nil || resp != nil {
+		t.Fatalf("unconfigured account fallback=%#v err=%v; want nil, nil", resp, err)
+	}
+	if resp, err := fb.ServicesLookup(ctx, "Missing"); err != nil || resp != nil {
+		t.Fatalf("unconfigured services fallback=%#v err=%v; want nil, nil", resp, err)
+	}
+	if profiles, err := fb.BulkLookup(ctx, []string{"Missing"}); err != nil || profiles != nil {
+		t.Fatalf("unconfigured bulk fallback=%#v err=%v; want nil, nil", profiles, err)
+	}
+
+	var failedCalls, successCalls atomic.Int32
+	failed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		failedCalls.Add(1)
+		http.Error(w, "upstream failed", http.StatusBadGateway)
+	}))
+	defer failed.Close()
+	success := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		successCalls.Add(1)
+		switch req.URL.Path {
+		case "/session/minecraft/profile/failover-profile":
+			_, _ = w.Write([]byte(`{"id":"failover-profile","name":"Failover"}`))
+		case "/users/profiles/minecraft/AccountName":
+			_, _ = w.Write([]byte(`{"id":"account-id","name":"AccountName"}`))
+		case "/minecraft/profile/lookup/name/ServicesName":
+			_, _ = w.Write([]byte(`{"id":"services-id","name":"ServicesName"}`))
+		case "/profiles/minecraft":
+			_, _ = w.Write([]byte(`not-json`))
+		default:
+			t.Fatalf("unexpected success fallback path: %s", req.URL.Path)
+		}
+	}))
+	defer success.Close()
+	if err := db.Fallbacks.SaveEndpoints(ctx, []dbfallback.Endpoint{
+		{
+			Priority: 1, SessionURL: failed.URL, AccountURL: "", ServicesURL: "",
+			CacheTTL: 60, EnableProfile: true,
+		},
+		{
+			Priority: 2, SessionURL: success.URL, AccountURL: success.URL, ServicesURL: success.URL,
+			CacheTTL: 60, EnableProfile: true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fb = newFallback(db, success.Client())
+
+	profile, err := fb.GetProfile(ctx, "failover-profile", true)
+	if err != nil || profile == nil || string(profile.Body) != `{"id":"failover-profile","name":"Failover"}` {
+		t.Fatalf("serial profile failover=%#v err=%v; want exact second-endpoint response", profile, err)
+	}
+	account, err := fb.GetProfileByName(ctx, "AccountName")
+	if err != nil || account == nil || string(account.Body) != `{"id":"account-id","name":"AccountName"}` {
+		t.Fatalf("empty-account URL failover=%#v err=%v; want exact second-endpoint response", account, err)
+	}
+	services, err := fb.ServicesLookup(ctx, "ServicesName")
+	if err != nil || services == nil || string(services.Body) != `{"id":"services-id","name":"ServicesName"}` {
+		t.Fatalf("empty-services URL failover=%#v err=%v; want exact second-endpoint response", services, err)
+	}
+	profiles, err := fb.BulkLookup(ctx, []string{"Malformed"})
+	var syntaxErr *json.SyntaxError
+	if profiles != nil || !errors.As(err, &syntaxErr) || syntaxErr.Offset != 2 {
+		t.Fatalf("malformed bulk response=%#v err=%#v; want nil and JSON syntax error at offset 2", profiles, err)
+	}
+	if failedCalls.Load() != 1 || successCalls.Load() != 4 {
+		t.Fatalf("fallback calls: failed=%d success=%d; want 1 profile failure and 4 successful-endpoint calls",
+			failedCalls.Load(), successCalls.Load())
 	}
 }

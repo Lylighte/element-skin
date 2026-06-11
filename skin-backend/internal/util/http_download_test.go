@@ -67,6 +67,50 @@ func TestDownloadTextureBlocksRedirectToPrivateAddressBeforeRequest(t *testing.T
 	}
 }
 
+func TestDownloadTexturePreservesRedirectPolicyAndDependencyErrorsExactly(t *testing.T) {
+	redirectErr := errors.New("redirect rejected by caller")
+	requests := 0
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if req.URL.String() != "https://1.1.1.1/final" || len(via) != 1 {
+				t.Fatalf("redirect callback target=%q via=%d; want public final URL and one prior request", req.URL, len(via))
+			}
+			return redirectErr
+		},
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			requests++
+			response := textureResponse(http.StatusFound, "", 0)
+			response.Header.Set("Location", "https://1.1.1.1/final")
+			return response, nil
+		}),
+	}
+	data, err := DownloadTexture(client, "https://1.1.1.1/start", 1024)
+	if data != nil || !errors.Is(err, redirectErr) || requests != 1 {
+		t.Fatalf("redirect result data=%q err=%v requests=%d; want nil, caller error, one request", data, err, requests)
+	}
+
+	transportErr := errors.New("transport unavailable")
+	data, err = DownloadTexture(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, transportErr
+	})}, "https://1.1.1.1/texture", 1024)
+	if data != nil || !errors.Is(err, transportErr) {
+		t.Fatalf("transport result data=%q err=%v; want nil and exact dependency error", data, err)
+	}
+
+	readErr := errors.New("response body interrupted")
+	data, err = DownloadTexture(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode:    http.StatusOK,
+			ContentLength: -1,
+			Body:          io.NopCloser(errorReader{err: readErr}),
+			Header:        make(http.Header),
+		}, nil
+	})}, "https://1.1.1.1/texture", 1024)
+	if data != nil || !errors.Is(err, readErr) {
+		t.Fatalf("read result data=%q err=%v; want nil and exact body error", data, err)
+	}
+}
+
 func fileFakeClient(status int, contentLength int64, body []byte) *http.Client {
 	return &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -76,4 +120,12 @@ func fileFakeClient(status int, contentLength int64, body []byte) *http.Client {
 			Header:        make(http.Header),
 		}, nil
 	})}
+}
+
+type errorReader struct {
+	err error
+}
+
+func (r errorReader) Read([]byte) (int, error) {
+	return 0, r.err
 }

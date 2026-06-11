@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	dbfallback "element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/httpapi/yggdrasil"
 	fallbacksvc "element-skin/backend/internal/service/fallback"
 	"element-skin/backend/internal/service/settings"
@@ -35,6 +36,77 @@ func TestLookupRoutesNamesReturnExactLocalProfiles(t *testing.T) {
 	}
 	if len(body) != 1 || body[0]["id"] != profile.ID || body[0]["name"] != "YggLookupProfile" {
 		t.Fatalf("lookup names should include only existing profiles exactly: %#v", body)
+	}
+}
+
+func TestLookupNamesMergesLocalAndFallbackProfilesExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	user := testutil.CreateUser(t, db, "ygg-lookup-merge@test.com", "Password123", "YggLookupMerge", false)
+	local := testutil.CreateProfile(t, db, user.ID, "ygg_lookup_merge_local", "LocalPlayer")
+
+	fallbackCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		fallbackCalls++
+		if req.Method != http.MethodPost || req.URL.Path != "/profiles/minecraft" {
+			t.Fatalf("fallback request=%s %s; want POST /profiles/minecraft", req.Method, req.URL.Path)
+		}
+		if req.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("fallback content type=%q; want application/json", req.Header.Get("Content-Type"))
+		}
+		var names []string
+		if err := json.NewDecoder(req.Body).Decode(&names); err != nil {
+			t.Fatal(err)
+		}
+		if len(names) != 2 || names[0] != "RemoteOne" || names[1] != "remoteTwo" {
+			t.Fatalf("fallback names=%#v; want only exact missing local names", names)
+		}
+		_, _ = w.Write([]byte(`[{"id":"remote_one_id","name":"RemoteOne"},{"id":"remote_two_id","name":"remoteTwo"}]`))
+	}))
+	defer server.Close()
+	if err := db.Fallbacks.SaveEndpoints(t.Context(), []dbfallback.Endpoint{{
+		Priority:      1,
+		SessionURL:    server.URL,
+		AccountURL:    server.URL,
+		ServicesURL:   server.URL,
+		CacheTTL:      60,
+		EnableProfile: true,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	h := yggdrasil.New(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/profiles/minecraft",
+		strings.NewReader(`["RemoteOne","LocalPlayer","remoteTwo","LOCALPLAYER"]`),
+	)
+	rec := httptest.NewRecorder()
+	h.LookupNames(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("merged lookup status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var body []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body) != 3 ||
+		body[0]["id"] != local.ID ||
+		body[0]["name"] != local.Name ||
+		body[1]["id"] != "remote_one_id" ||
+		body[1]["name"] != "RemoteOne" ||
+		body[2]["id"] != "remote_two_id" ||
+		body[2]["name"] != "remoteTwo" ||
+		fallbackCalls != 1 {
+		t.Fatalf("merged lookup body=%#v calls=%d; want exact local then fallback results", body, fallbackCalls)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/profiles/minecraft", strings.NewReader(`[]`))
+	rec = httptest.NewRecorder()
+	h.LookupNames(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "[]\n" || fallbackCalls != 1 {
+		t.Fatalf("empty lookup status=%d body=%q calls=%d; want [] and no fallback", rec.Code, rec.Body.String(), fallbackCalls)
 	}
 }
 

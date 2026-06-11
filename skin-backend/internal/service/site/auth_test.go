@@ -117,6 +117,89 @@ func TestAuthRegisterConsumesVerificationAndInviteExactly(t *testing.T) {
 	}
 }
 
+func TestAuthRegisterRejectsMissingVerificationAndInviteInputsWithoutSideEffects(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Settings.Set(ctx, "require_invite", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settings.InvalidateCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name       string
+		email      string
+		username   string
+		invite     string
+		code       string
+		storedCode string
+		want       string
+	}{
+		{
+			name:     "verification code required",
+			email:    "register-code-required@test.com",
+			username: "RegisterCodeRequired",
+			invite:   "UNKNOWN",
+			want:     "Verification code required",
+		},
+		{
+			name:       "verification code invalid",
+			email:      "register-code-invalid@test.com",
+			username:   "RegisterCodeInvalid",
+			invite:     "UNKNOWN",
+			code:       "WRONG",
+			storedCode: "RIGHT123",
+			want:       "Invalid or expired verification code",
+		},
+		{
+			name:       "invite code required",
+			email:      "register-invite-required@test.com",
+			username:   "RegisterInviteRequired",
+			code:       "VALID123",
+			storedCode: "VALID123",
+			want:       "invite code required",
+		},
+		{
+			name:       "invite code invalid",
+			email:      "register-invite-invalid@test.com",
+			username:   "RegisterInviteInvalid",
+			invite:     "UNKNOWN",
+			code:       "VALID456",
+			storedCode: "VALID456",
+			want:       "invalid invite code",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.storedCode != "" {
+				if err := svc.Redis.SetVerificationCode(ctx, tc.email, "register", tc.storedCode, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			id, err := svc.Register(ctx, tc.email, "Password123", tc.username, tc.invite, tc.code)
+			if id != "" || !httpError(err, 400, tc.want) {
+				t.Fatalf("Register() id=%q err=%#v; want empty id and exact %q", id, err, tc.want)
+			}
+			if user, err := db.Users.GetByEmail(ctx, tc.email); err != nil || user != nil {
+				t.Fatalf("rejected registration created user=%#v err=%v", user, err)
+			}
+			if tc.storedCode != "" {
+				stored, err := svc.Redis.GetVerificationCode(ctx, tc.email, "register")
+				if err != nil || stored != tc.storedCode {
+					t.Fatalf("rejected registration changed code=%q err=%v; want %q", stored, err, tc.storedCode)
+				}
+			}
+		})
+	}
+	if count, err := db.Users.Count(ctx); err != nil || count != 0 {
+		t.Fatalf("rejected registrations left user count=%d err=%v; want 0", count, err)
+	}
+}
+
 func TestConcurrentRegistrationsConsumeSingleUseInviteExactlyOnce(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
