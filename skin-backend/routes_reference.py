@@ -9,7 +9,16 @@ from contextlib import asynccontextmanager
 import os
 import logging
 
+import logging
+
 from config_loader import config
+from utils.logging_config import setup_logging
+
+# 尽早配置日志（级别由 server.debug 驱动），使后续各模块的 logger 生效
+setup_logging(config.get("server.debug", False))
+
+logger = logging.getLogger(__name__)
+
 from database_module import Database
 from backends.yggdrasil_backend import YggdrasilBackend, YggdrasilError
 from backends.site_backend import SiteBackend
@@ -21,8 +30,8 @@ from services import TextureStorage
 from utils.crypto import CryptoUtils
 from utils.rate_limiter import RateLimiter
 from routers import yggdrasil_routes, site_routes, microsoft_routes, admin_routes, union_routes
-
-logger = logging.getLogger("routes_reference")
+from routers import deps as _deps
+from utils.public_urls import public_api_url
 
 # ========== 初始化核心组件 ==========
 db_dsn = config.get("database.dsn", "postgresql://elementskin:password@localhost:5432/elementskin")
@@ -46,19 +55,56 @@ ygg_backend = YggdrasilBackend(db, crypto, texture_storage, config)
 site_backend = SiteBackend(db, config, texture_storage)
 profile_import_backend = ProfileImportBackend(db, texture_storage)
 admin_backend = AdminBackend(db, config)
-settings_backend = SettingsBackend(db)
+settings_backend = SettingsBackend(db, config)
+
+# 让鉴权依赖能查库校验封禁/管理员实时状态
+_deps.bind_db(db)
+
 union_backend = UnionBackend(db, config, crypto)
 site_backend.set_union_backend(union_backend)
+
+
+async def _refresh_cleanup_loop(db, interval_seconds: int = 3600):
+    """周期清理过期 refresh token。单实例运行，进程内任务即可。
+
+    清理失败不应中断循环：记录后继续，等待下一轮。
+    """
+    import asyncio
+    import time
+
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            await db.user.delete_expired_refresh_tokens(int(time.time() * 1000))
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.warning("refresh token cleanup failed", exc_info=True)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    import asyncio
+    import time
+    from utils.jwt_utils import assert_jwt_secret_ok
+    # 启动期 fail-fast：JWT 密钥缺失/默认/过短即拒绝起服务，杜绝可伪造 token 的致命路径
+    assert_jwt_secret_ok()
     await db.connect()
     await db.init()
+    # 启动时清理一次过期的站点 refresh token
+    await db.user.delete_expired_refresh_tokens(int(time.time() * 1000))
+    # 周期性清理过期 refresh token：仅启动清一次会让过期行无限累积（每次登录/新设备一行）。
+    # 单实例约束下进程内 asyncio 任务即可，无需外部定时器。
+    cleanup_task = asyncio.create_task(_refresh_cleanup_loop(db))
     try:
         yield
     finally:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
         await db.close()
 
 
@@ -83,6 +129,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def authlib_injector_api_location_middleware(request: Request, call_next):
+    response = await call_next(request)
+    api_url = public_api_url(config)
+    if api_url:
+        response.headers["X-Authlib-Injector-API-Location"] = api_url
+    return response
 
 # # 统一路径结尾斜杠中间件
 # @app.middleware("http")
@@ -149,4 +204,6 @@ if __name__ == "__main__":
         reload=debug,
         loop="asyncio",
         log_level="info" if debug else "warning",
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )

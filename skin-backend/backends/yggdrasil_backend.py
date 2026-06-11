@@ -1,6 +1,7 @@
 import time
 import json
 import base64
+import logging
 from typing import Dict, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -8,8 +9,11 @@ from utils.crypto import CryptoUtils
 from utils.typing import User, PlayerProfile, Token, Session, normalize_texture_model
 from utils.uuid_utils import generate_random_uuid
 from utils.password_utils import hash_password, verify_password
+from utils.public_urls import public_site_url
 from database_module import Database
-from services import TextureStorage
+from services import TextureStorage, assert_texture_size
+
+logger = logging.getLogger(__name__)
 
 
 class YggdrasilError(Exception):
@@ -39,7 +43,7 @@ class YggdrasilBackend:
         self.SESSION_TTL = 30 * 1000  # 30秒 (用于join验证)
 
     def _site_url(self) -> str:
-        return self.config.get("server.site_url", "").rstrip("/") if self.config else ""
+        return public_site_url(self.config)
 
     def build_profile_json(self, profile: PlayerProfile, sign: bool = False) -> Dict:
         """构建角色 JSON，包含 textures 和签名。"""
@@ -113,9 +117,9 @@ class YggdrasilBackend:
             return {"id": p.id, "name": p.name}
         return None
 
-    async def build_metadata(self, default_site_url: str) -> Dict:
+    async def build_metadata(self) -> Dict:
         site_name = await self.db.setting.get("site_name", "Yggdrasil 皮肤站")
-        site_url = (self.config.get("server.site_url", default_site_url) if self.config else default_site_url).rstrip("/")
+        site_url = public_site_url(self.config)
         host = (
             site_url.replace("https://", "").replace("http://", "").split("/")[0]
             if site_url
@@ -358,12 +362,9 @@ class YggdrasilBackend:
         uuid = uuid.replace("-", "")
         token_data = await self._authorize_profile_owner(access_token, uuid)
 
-        max_size_kb_str = await self.db.setting.get("max_texture_size", "1024")
-        if len(file_bytes) > int(max_size_kb_str) * 1024:
-            raise IllegalArgumentException(f"Texture file too large.")
-
         try:
-            texture_hash = self.texture_storage.process_and_save(file_bytes, texture_type)
+            await assert_texture_size(self.db, file_bytes)
+            texture_hash = await self.texture_storage.process_and_save_async(file_bytes, texture_type)
             await self.db.texture.add_to_library(token_data.user_id, texture_hash, texture_type)
             if texture_type.lower() == "skin":
                 m_val = normalize_texture_model(model)
@@ -376,7 +377,7 @@ class YggdrasilBackend:
         except Exception as e:
             if isinstance(e, YggdrasilError):
                 raise
-            print(f"Texture processing error: {e}")
+            logger.warning("Texture processing error: %s", e)
             raise IllegalArgumentException("Failed to process texture")
 
     async def delete_texture(self, access_token: str, uuid: str, texture_type: str):

@@ -179,35 +179,51 @@ class TextureModule:
         only_public: bool = True,
         last_created_at: int | None = None,
         last_skin_hash: str | None = None,
+        query: str | None = None,
     ) -> dict:
-        """按created_at+skin_hash游标分页获取公开皮肤库材质"""
+        """按created_at+skin_hash游标分页获取公开皮肤库材质，支持按名称/hash/上传者搜索"""
         actual_limit = limit + 1
         conditions = []
         params = []
         p_idx = 1
 
         if only_public:
-            conditions.append("is_public = 1")
+            conditions.append("sl.is_public = 1")
 
         if texture_type:
-            conditions.append(f"texture_type = ${p_idx}")
+            conditions.append(f"sl.texture_type = ${p_idx}")
             params.append(texture_type)
             p_idx += 1
 
+        if query:
+            conditions.append(
+                f"(sl.skin_hash ILIKE ${p_idx} OR sl.name ILIKE ${p_idx} OR u.display_name ILIKE ${p_idx})"
+            )
+            params.append(f"%{query}%")
+            p_idx += 1
+
         if last_created_at is not None and last_skin_hash:
-            conditions.append(f"(created_at < ${p_idx} OR (created_at = ${p_idx} AND skin_hash < ${p_idx + 1}))")
+            conditions.append(
+                f"(sl.created_at < ${p_idx} OR (sl.created_at = ${p_idx} AND sl.skin_hash < ${p_idx + 1}))"
+            )
             params.extend([last_created_at, last_skin_hash])
             p_idx += 2
 
-        query = "SELECT skin_hash, texture_type, is_public, uploader, created_at, model, name FROM skin_library"
+        query_sql = """
+            SELECT sl.skin_hash, sl.texture_type, sl.is_public, sl.uploader,
+                   sl.created_at, sl.model, sl.name,
+                   u.display_name AS uploader_display_name
+            FROM skin_library sl
+            LEFT JOIN users u ON sl.uploader = u.id
+        """
         if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        
-        query += f" ORDER BY created_at DESC, skin_hash DESC LIMIT ${p_idx}"
+            query_sql += " WHERE " + " AND ".join(conditions)
+
+        query_sql += f" ORDER BY sl.created_at DESC, sl.skin_hash DESC LIMIT ${p_idx}"
         params.append(actual_limit)
 
-        rows = await self.db.fetch(query, *params)
-        
+        rows = await self.db.fetch(query_sql, *params)
+
         has_next = len(rows) > limit
         items = [
             {
@@ -217,17 +233,18 @@ class TextureModule:
                 "uploader": r[3],
                 "created_at": r[4],
                 "model": r[5],
-                "name": r[6]
+                "name": r[6],
+                "uploader_display_name": r[7] or "",
             }
             for r in rows[:limit]
         ]
-        
+
         next_key = None
         if has_next:
             last_row = rows[limit - 1]
             next_key = {
                 "last_created_at": last_row[4],
-                "last_skin_hash": last_row[0]
+                "last_skin_hash": last_row[0],
             }
 
         return {
@@ -344,7 +361,7 @@ class TextureModule:
             async with conn.transaction():
                 # 获取材质信息
                 row = await conn.fetchrow(
-                    "SELECT texture_type, model, uploader, name FROM skin_library WHERE skin_hash = $1", texture_hash
+                    "SELECT texture_type, model, uploader, name, is_public FROM skin_library WHERE skin_hash = $1", texture_hash
                 )
                 if not row:
                     return False
@@ -352,9 +369,15 @@ class TextureModule:
                 model = row[1]
                 uploader = row[2]
                 name = row[3] or ""
-            
+                src_is_public = row[4]
+
+                # 仅允许：公开材质（任何人可收藏）或自己上传的材质（可找回）。
+                # 拒绝他人的私有材质，避免越权读取。
+                if src_is_public != 1 and uploader != user_id:
+                    return False
+
                 created_at = int(time.time() * 1000)
-                
+
                 # 如果用户是上传者，则恢复为公开状态(1)，否则为收藏状态(2)
                 is_public = 1 if uploader == user_id else 2
                 

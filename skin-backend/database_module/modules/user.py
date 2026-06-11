@@ -3,6 +3,12 @@ from utils.typing import User, PlayerProfile, InviteCode, Token, Session
 import time
 import asyncpg
 
+
+class InviteExhaustedError(Exception):
+    """注册事务内邀请码已无剩余次数，用于回滚整笔建号事务。"""
+    pass
+
+
 class UserModule:
     def __init__(self, db: BaseDB):
         self.db = db
@@ -76,6 +82,7 @@ class UserModule:
             async with conn.transaction():
                 await conn.execute("DELETE FROM profiles WHERE user_id=$1", user_id)
                 await conn.execute("DELETE FROM tokens WHERE user_id=$1", user_id)
+                await conn.execute("DELETE FROM site_refresh_tokens WHERE user_id=$1", user_id)
                 await conn.execute("DELETE FROM user_textures WHERE user_id=$1", user_id)
                 await conn.execute("DELETE FROM users WHERE id=$1", user_id)
 
@@ -335,15 +342,56 @@ class UserModule:
             "INSERT INTO profiles (id, user_id, name, texture_model, skin_hash, cape_hash) VALUES ($1, $2, $3, $4, $5, $6)",
             profile.id, profile.user_id, profile.name, profile.texture_model, profile.skin_hash, profile.cape_hash,
         )
-            
-    async def delete_profile(self, profile_id: str) -> bool:
-        """删除角色（单表操作），返回是否成功"""
-        result = await self.db.execute("DELETE FROM profiles WHERE id=$1", profile_id)
-        return result is not None
 
-    async def delete_tokens_by_profile(self, profile_id: str):
-        """删除与角色关联的所有 tokens（单表操作）"""
-        await self.db.execute("DELETE FROM tokens WHERE profile_id=$1", profile_id)
+    async def create_user_with_profile(
+        self,
+        user: User,
+        profile: PlayerProfile,
+        invite_code: str | None = None,
+        used_by: str | None = None,
+    ) -> bool:
+        """事务内创建 user + profile（可选核销邀请），任一步失败整体回滚。
+
+        - 邮箱/角色名唯一冲突抛 asyncpg.UniqueViolationError，由上层转 400。
+        - invite_code 给定时，在同一事务内条件核销；无剩余次数抛
+          InviteExhaustedError 触发回滚，杜绝「建号成功但邀请超额」。
+        返回 True。
+        """
+        async with self.db.get_conn() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "INSERT INTO users (id, email, password, is_admin, display_name, avatar_hash) VALUES ($1, $2, $3, $4, $5, $6)",
+                    user.id, user.email, user.password, user.is_admin, user.display_name, user.avatar_hash,
+                )
+                await conn.execute(
+                    "INSERT INTO profiles (id, user_id, name, texture_model, skin_hash, cape_hash) VALUES ($1, $2, $3, $4, $5, $6)",
+                    profile.id, profile.user_id, profile.name, profile.texture_model, profile.skin_hash, profile.cape_hash,
+                )
+                if invite_code:
+                    updated = await conn.execute(
+                        "UPDATE invites SET used_count = used_count + 1 "
+                        "WHERE code=$1 AND (total_uses IS NULL OR used_count < total_uses)",
+                        invite_code,
+                    )
+                    if updated.split()[-1] == "0":
+                        raise InviteExhaustedError(invite_code)
+                    if used_by:
+                        await conn.execute(
+                            "UPDATE invites SET used_by=$1 WHERE code=$2 AND used_by IS NULL",
+                            used_by, invite_code,
+                        )
+        return True
+
+    async def delete_profile_cascade(self, profile_id: str) -> bool:
+        """事务内删除角色及其 Yggdrasil 游戏 token，避免孤儿 token。
+
+        返回是否真的删到角色行（token 可能本就为 0 条）。
+        """
+        async with self.db.get_conn() as conn:
+            async with conn.transaction():
+                await conn.execute("DELETE FROM tokens WHERE profile_id=$1", profile_id)
+                result = await conn.execute("DELETE FROM profiles WHERE id=$1", profile_id)
+        return result.split()[-1] != "0"
 
     async def verify_profile_ownership(self, user_id: str, profile_id: str) -> bool:
         val = await self.db.fetchval(
@@ -369,12 +417,15 @@ class UserModule:
         )
 
     async def update_profile_name(self, profile_id: str, name: str) -> bool:
-        """更新角色名，返回是否成功（不处理验证）"""
+        """更新角色名，返回是否真的更新到行（不处理验证）。
+
+        0 行更新（profile_id 不存在）返回 False；唯一冲突返回 False。
+        """
         try:
-            await self.db.execute("UPDATE profiles SET name=$1 WHERE id=$2", name, profile_id)
-            return True
+            result = await self.db.execute("UPDATE profiles SET name=$1 WHERE id=$2", name, profile_id)
         except asyncpg.exceptions.UniqueViolationError:
             return False
+        return result.split()[-1] != "0"
 
     async def search_profiles_by_names(self, names: list[str], limit: int = 20) -> list[PlayerProfile]:
         # asyncpg handle array nicely with ANY
@@ -442,8 +493,46 @@ class UserModule:
             user_id, keep,
         )
             
+    # ========== Site Refresh Tokens ==========
+    # 站点会话的 refresh token（不透明随机串，库中仅存 SHA-256 哈希）。
+    # 与 Yggdrasil 游戏令牌的 tokens 表完全无关。
+
+    async def add_refresh_token(self, token_hash: str, user_id: str, expires_at: int, created_at: int):
+        await self.db.execute(
+            "INSERT INTO site_refresh_tokens (token_hash, user_id, expires_at, created_at) VALUES ($1, $2, $3, $4)",
+            token_hash, user_id, expires_at, created_at,
+        )
+
+    async def get_refresh_token(self, token_hash: str):
+        return await self.db.fetchrow(
+            "SELECT token_hash, user_id, expires_at, created_at FROM site_refresh_tokens WHERE token_hash=$1",
+            token_hash,
+        )
+
+    async def delete_refresh_token(self, token_hash: str):
+        await self.db.execute("DELETE FROM site_refresh_tokens WHERE token_hash=$1", token_hash)
+
+    async def consume_refresh_token(self, token_hash: str):
+        """原子地删除并返回该 refresh token 行（DELETE ... RETURNING）。
+
+        返回被删行（含 user_id, expires_at, created_at）；若 token 不存在或已被
+        并发请求消费，返回 None。Postgres 对同一行的并发 DELETE 串行化，只有一个
+        事务能 RETURNING 出该行——「拿到行」即「唯一赢家」，轮换的单赢者语义即建于此。
+        """
+        return await self.db.fetchrow(
+            "DELETE FROM site_refresh_tokens WHERE token_hash=$1 "
+            "RETURNING token_hash, user_id, expires_at, created_at",
+            token_hash,
+        )
+
+    async def delete_refresh_tokens_by_user(self, user_id: str):
+        await self.db.execute("DELETE FROM site_refresh_tokens WHERE user_id=$1", user_id)
+
+    async def delete_expired_refresh_tokens(self, cutoff: int):
+        await self.db.execute("DELETE FROM site_refresh_tokens WHERE expires_at < $1", cutoff)
+
     # ========== Sessions ==========
-    
+
     async def add_session(self, session: Session):
         await self.db.execute(
             "INSERT INTO sessions (server_id, access_token, ip, created_at) VALUES ($1, $2, $3, $4)",
@@ -478,18 +567,6 @@ class UserModule:
             "INSERT INTO invites (code, created_at, total_uses, used_count, note) VALUES ($1, $2, $3, 0, $4)",
             code.code, code.created_at, code.total_uses, code.note,
         )
-
-    async def use_invite(self, code: str, used_by: str = None):
-        async with self.db.get_conn() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    "UPDATE invites SET used_count = used_count + 1 WHERE code=$1", code
-                )
-                if used_by:
-                    await conn.execute(
-                        "UPDATE invites SET used_by=$1 WHERE code=$2 AND used_by IS NULL",
-                        used_by, code
-                    )
 
     async def list_invites_cursor(self, limit: int = 15, last_created_at: int | None = None, last_code: str | None = None) -> dict:
         """按created_at+code游标分页获取邀请码列表（时序复合游标）"""

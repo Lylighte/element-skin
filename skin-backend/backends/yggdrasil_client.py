@@ -1,9 +1,13 @@
 import aiohttp
 import json
 import base64
+import logging
 from typing import Dict, Any
 
 from utils.http import download_texture as download_texture
+from utils.url_guard import validate_outbound_url
+
+logger = logging.getLogger(__name__)
 
 class YggdrasilClient:
     """Yggdrasil 协议客户端，用于从远程皮肤站获取信息"""
@@ -30,7 +34,8 @@ class YggdrasilClient:
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(self.auth_url, json=payload, timeout=10) as resp:
+            await validate_outbound_url(self.auth_url)
+            async with session.post(self.auth_url, json=payload, timeout=10, allow_redirects=False) as resp:
                 if resp.status == 200:
                     return await resp.json()
                 else:
@@ -47,7 +52,8 @@ class YggdrasilClient:
         """
         url = self.profile_url + uuid.replace("-", "")
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
+            await validate_outbound_url(url)
+            async with session.get(url, timeout=10, allow_redirects=False) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     return self._parse_textures(data)
@@ -100,7 +106,7 @@ class YggdrasilClient:
                 "capes": capes
             }
         except Exception as e:
-            print(f"Error parsing textures: {e}")
+            logger.warning("Error parsing textures: %s", e)
             return {
                 "id": profile_data.get("id"),
                 "name": profile_data.get("name"),

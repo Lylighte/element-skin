@@ -9,27 +9,27 @@ mkdir -p /app/frontend/static/carousel
 # --- 2. 释放前端编译产物 ---
 echo "正在释放前端静态文件到 /app/frontend..."
 
+# 若用户已自定义 favicon.ico，先备份到临时文件。
+# 注意：cp -rf 会覆盖目标里的 favicon.ico，因此备份必须在任何复制动作之前完成。
+USER_FAVICON=""
+if [ -f "/app/frontend/favicon.ico" ]; then
+    USER_FAVICON="$(mktemp)"
+    cp -f /app/frontend/favicon.ico "$USER_FAVICON"
+    echo "检测到自定义 favicon.ico，将在释放后保留。"
+fi
+
 # 保护 static 目录和 favicon.ico，仅清空其它的前端入口文件（index.html, assets 等）
 if [ -d "/app/frontend" ]; then
     find /app/frontend -mindepth 1 -maxdepth 1 ! -name 'static' ! -name 'favicon.ico' -exec rm -rf {} +
 fi
 
-# 复制新前端产物，但如果目标已存在 favicon.ico 则跳过它
-if [ -f "/app/frontend/favicon.ico" ]; then
-    echo "检测到已存在 favicon.ico，跳过覆盖。"
-    # 使用 rsync 或排除模式，这里用 cp 配合 find 较复杂，改用更通用的逻辑：
-    # 先复制所有，如果之前有备份则还原，或者直接排除
-    cp -rf /app/frontend_dist/* /app/frontend/
-    # 假设 dist 里也有 favicon.ico，如果想保留旧的，这里可以从某处恢复或在 cp 时排除
-    # 简单做法：如果 dist 里的 favicon.ico 和宿主机不一样，且用户想保留宿主机的，
-    # 可以在 cp 前备份，cp 后还原，或者使用更精确的 cp 命令。
-    # 这里我们采用 cp 完后如果不小心覆盖了，则提示（或者更优雅地在 cp 时排除）
-    # 由于标准 cp 不支持简单 exclude，我们先备份现有的 favicon.ico
-    mv /app/frontend/favicon.ico /app/frontend/favicon.ico.bak
-    cp -rf /app/frontend_dist/* /app/frontend/
-    mv /app/frontend/favicon.ico.bak /app/frontend/favicon.ico
-else
-    cp -rf /app/frontend_dist/* /app/frontend/
+# 复制新前端产物
+cp -rf /app/frontend_dist/* /app/frontend/
+
+# 还原用户自定义 favicon（覆盖 dist 中自带的默认值）
+if [ -n "$USER_FAVICON" ]; then
+    cp -f "$USER_FAVICON" /app/frontend/favicon.ico
+    rm -f "$USER_FAVICON"
 fi
 
 # --- 2.5 运行时路径替换 ---

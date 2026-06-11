@@ -4,6 +4,7 @@
 """
 
 import aiohttp
+import logging
 import urllib.parse
 from typing import Optional, Dict, Tuple
 
@@ -12,6 +13,12 @@ from fastapi import HTTPException
 from utils.profile_naming import generate_unique_profile_name
 from utils.typing import PlayerProfile, normalize_texture_model
 from utils.http import download_texture as download_texture
+from services import assert_texture_size, resolve_max_texture_bytes
+
+logger = logging.getLogger(__name__)
+
+# 出站请求统一超时（与 utils/http.py、yggdrasil_client.py 对齐），避免外部端点挂死拖垮连接
+_MS_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 
 class MicrosoftAuthService:
@@ -67,7 +74,7 @@ class MicrosoftAuthService:
             code: 从回调中获取的授权码
         返回: 令牌信息字典
         """
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=_MS_TIMEOUT) as session:
             data = {
                 "client_id": self.client_id,
                 "client_secret": self.client_secret,
@@ -92,7 +99,7 @@ class MicrosoftAuthService:
         Xbox Live 认证
         返回: (xbl_token, user_hash)
         """
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=_MS_TIMEOUT) as session:
             payload = {
                 "Properties": {
                     "AuthMethod": "RPS",
@@ -126,7 +133,7 @@ class MicrosoftAuthService:
         XSTS 认证
         返回: (xsts_token, user_hash)
         """
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=_MS_TIMEOUT) as session:
             payload = {
                 "Properties": {"SandboxId": "RETAIL", "UserTokens": [xbl_token]},
                 "RelyingParty": "rp://api.minecraftservices.com/",
@@ -165,7 +172,7 @@ class MicrosoftAuthService:
         Minecraft 认证
         返回: minecraft_access_token
         """
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=_MS_TIMEOUT) as session:
             payload = {"identityToken": f"XBL3.0 x={user_hash};{xsts_token}"}
 
             async with session.post(
@@ -182,7 +189,7 @@ class MicrosoftAuthService:
 
     async def check_game_ownership(self, mc_access_token: str) -> bool:
         """检查是否拥有 Minecraft Java 版"""
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=_MS_TIMEOUT) as session:
             async with session.get(
                 self.MC_ENTITLEMENTS_ENDPOINT,
                 headers={"Authorization": f"Bearer {mc_access_token}"},
@@ -204,7 +211,7 @@ class MicrosoftAuthService:
             "capes": [...]
         }
         """
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=_MS_TIMEOUT) as session:
             async with session.get(
                 self.MC_PROFILE_ENDPOINT,
                 headers={"Authorization": f"Bearer {mc_access_token}"},
@@ -340,10 +347,12 @@ class MicrosoftBackend:
         if not url:
             return None
         try:
-            data = await download_texture(url)
-            texture_hash = self.texture_storage.process_and_save(data, texture_type)
+            max_bytes = await resolve_max_texture_bytes(self.db)
+            data = await download_texture(url, max_bytes=max_bytes)
+            await assert_texture_size(self.db, data)
+            texture_hash = await self.texture_storage.process_and_save_async(data, texture_type)
             await self.db.texture.add_to_library(user_id, texture_hash, texture_type, note)
             return texture_hash
         except Exception as e:
-            print(f"Failed to download {texture_type}: {e}")
+            logger.warning("Failed to download %s: %s", texture_type, e)
             return None

@@ -13,11 +13,23 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from typing import Optional
 
-from utils.jwt_utils import get_cookie_settings
+from utils.jwt_utils import get_access_cookie_settings, get_refresh_cookie_settings
+from utils.pagination import clamp_limit
 from routers.deps import get_current_user
 from config_loader import Config
 
 router = APIRouter()
+
+
+def _set_session_cookies(response: JSONResponse, access_token: str, refresh_token: str) -> None:
+    """在响应上写入 access + refresh 两个 httponly cookie。"""
+    access_cookie = get_access_cookie_settings()
+    access_cookie["value"] = access_token
+    response.set_cookie(**access_cookie)
+
+    refresh_cookie = get_refresh_cookie_settings()
+    refresh_cookie["value"] = refresh_token
+    response.set_cookie(**refresh_cookie)
 
 
 def setup_routes(site_backend, profile_import_backend, settings_backend, rate_limiter, config: Config):
@@ -29,16 +41,18 @@ def setup_routes(site_backend, profile_import_backend, settings_backend, rate_li
         result = await site_backend.login(req.get("email"), req.get("password"))
         rate_limiter.reset(request.client.host, request.url.path)
 
-        cookie = get_cookie_settings()
-        cookie["value"] = result["token"]
-        response = JSONResponse(content={"user_id": result["user_id"]})
-        response.set_cookie(**cookie)
+        response = JSONResponse(content={"user_id": result["user_id"], "is_admin": result["is_admin"]})
+        _set_session_cookies(response, result["access_token"], result["refresh_token"])
         return response
 
     @router.post("/site-logout")
-    async def site_logout():
+    async def site_logout(request: Request):
+        raw_refresh = request.cookies.get("refresh_token")
+        if raw_refresh:
+            await site_backend.revoke_refresh_token(raw_refresh)
         response = JSONResponse(content={"ok": True})
-        response.delete_cookie("jwt", path="/")
+        response.delete_cookie("access_token", path="/")
+        response.delete_cookie("refresh_token", path="/")
         return response
 
     @router.post("/register")
@@ -83,12 +97,13 @@ def setup_routes(site_backend, profile_import_backend, settings_backend, rate_li
         return await site_backend.get_user_info(payload.get("sub"))
 
     @router.post("/me/refresh-token")
-    async def refresh_jwt(payload: dict = Depends(get_current_user)):
-        result = await site_backend.refresh_token(payload.get("sub"))
-        cookie = get_cookie_settings()
-        cookie["value"] = result["token"]
+    async def refresh_jwt(request: Request):
+        raw_refresh = request.cookies.get("refresh_token")
+        if not raw_refresh:
+            raise HTTPException(status_code=401, detail="not authenticated")
+        result = await site_backend.rotate_refresh_token(raw_refresh)
         response = JSONResponse(content={"is_admin": result["is_admin"]})
-        response.set_cookie(**cookie)
+        _set_session_cookies(response, result["access_token"], result["refresh_token"])
         return response
 
     @router.patch("/me")
@@ -200,7 +215,7 @@ def setup_routes(site_backend, profile_import_backend, settings_backend, rate_li
     ):
         """获取我的材质列表（仅支持游标分页）"""
         return await site_backend.list_my_textures(
-            payload.get("sub"), cursor, limit, texture_type
+            payload.get("sub"), cursor, clamp_limit(limit), texture_type
         )
 
     @router.get("/me/profiles")
@@ -210,7 +225,7 @@ def setup_routes(site_backend, profile_import_backend, settings_backend, rate_li
         payload: dict = Depends(get_current_user)
     ):
         """获取我的角色列表（仅支持游标分页）"""
-        return await site_backend.list_my_profiles(payload.get("sub"), cursor, limit)
+        return await site_backend.list_my_profiles(payload.get("sub"), cursor, clamp_limit(limit))
 
     @router.get("/me/textures/{hash}/{texture_type}")
     async def get_my_texture_detail(
@@ -251,10 +266,14 @@ def setup_routes(site_backend, profile_import_backend, settings_backend, rate_li
     async def get_skin_library(
         cursor: str | None = None,
         limit: int = 20,
-        texture_type: Optional[str] = None
+        texture_type: Optional[str] = None,
+        q: str | None = None,
     ):
-        """获取公开皮肤库（仅支持游标分页）"""
-        return await site_backend.get_public_skin_library(cursor, limit, texture_type)
+        """获取公开皮肤库（支持游标分页、类型过滤与名称搜索）"""
+        return await site_backend.get_public_skin_library(
+            cursor, clamp_limit(limit), texture_type,
+            query=q.strip() if q and q.strip() else None,
+        )
 
     @router.post("/me/textures/{hash}/apply")
     async def apply_texture_to_profile(

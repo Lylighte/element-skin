@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS tokens (
     created_at BIGINT NOT NULL
 );
 
+-- 创建站点 refresh token 表（与 Yggdrasil 游戏令牌的 tokens 表无关）
+-- 仅存 refresh token 的 SHA-256 哈希；access token 为无状态 JWT，不入库。
+-- 旧库升级：本表为新增表，CREATE TABLE IF NOT EXISTS 本身即迁移，无需 ALTER。
+CREATE TABLE IF NOT EXISTS site_refresh_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    expires_at BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
 -- 创建会话表
 CREATE TABLE IF NOT EXISTS sessions (
     server_id TEXT PRIMARY KEY,
@@ -138,8 +149,43 @@ CREATE TABLE IF NOT EXISTS union_nonces (
 );
 CREATE INDEX IF NOT EXISTS idx_union_nonces_created_at ON union_nonces (created_at);
 
+-- ========== 索引 ==========
+-- 全部使用 IF NOT EXISTS 保证幂等；这些索引服务于代码中已有的高频查询路径。
+
+-- profiles：按 user_id 查询角色 + 按 id 游标分页（get_profiles_by_user_cursor 等）
+CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles (user_id, id);
+
+-- tokens：按用户清理 / 按时间裁剪 / 保留最近 N 个（delete_expired_tokens、delete_surplus_tokens、
+-- delete_tokens_by_user 均以 user_id 为前缀，单个复合索引即可覆盖）
+CREATE INDEX IF NOT EXISTS idx_tokens_user_created ON tokens (user_id, created_at);
+-- tokens：按角色删除（delete_profile_cascade 事务内清 profile 的游戏 token）
+CREATE INDEX IF NOT EXISTS idx_tokens_profile_id ON tokens (profile_id);
+
+-- site_refresh_tokens：按用户批量撤销（改密/重置/删号）+ 按过期时间清理
+CREATE INDEX IF NOT EXISTS idx_site_refresh_user ON site_refresh_tokens (user_id);
+CREATE INDEX IF NOT EXISTS idx_site_refresh_expires ON site_refresh_tokens (expires_at);
+
+-- user_textures：用户衣柜按 (created_at, hash) 游标分页（get_for_user_cursor）
+-- 排序为 created_at DESC, hash DESC，全 DESC 可由升序复合索引反向扫描满足
+CREATE INDEX IF NOT EXISTS idx_user_textures_user_created_hash ON user_textures (user_id, created_at, hash);
+-- user_textures：按 hash + 类型的强删/剩余计数（delete_texture、剩余引用计数）
+-- 这些查询不带前导 user_id，PK 与上面的复合索引均以 user_id 打头无法服务 → 顺序扫
+CREATE INDEX IF NOT EXISTS idx_user_textures_hash_type ON user_textures (hash, texture_type);
+
+-- users.display_name：注册/改名时的唯一性校验热路径（is_display_name_taken）
+-- display_name 既非唯一也无索引，每次校验全表扫
+CREATE INDEX IF NOT EXISTS idx_users_display_name ON users (display_name);
+
+-- skin_library：公共皮肤库浏览（is_public 过滤 + 时序游标，get_from_library_cursor）
+CREATE INDEX IF NOT EXISTS idx_skin_library_public_created_hash ON skin_library (is_public, created_at, skin_hash);
+-- skin_library：管理员全量材质列表（无 is_public 过滤的时序游标，list_all_textures_cursor）
+CREATE INDEX IF NOT EXISTS idx_skin_library_created_hash ON skin_library (created_at, skin_hash);
+
+-- whitelisted_users：按 endpoint 列出白名单 / 缓存刷新（UNIQUE(username,endpoint_id) 前缀不匹配）
+CREATE INDEX IF NOT EXISTS idx_whitelisted_users_endpoint ON whitelisted_users (endpoint_id);
+
 -- 初始化默认设置
-INSERT INTO settings (key, value) VALUES 
+INSERT INTO settings (key, value) VALUES
 ('microsoft_client_id', ''),
 ('microsoft_client_secret', ''),
 ('microsoft_redirect_uri', 'http://localhost:8000/microsoft/callback'),

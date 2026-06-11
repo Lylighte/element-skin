@@ -56,20 +56,25 @@ async def test_password_strength_config(site_backend_fixture, db_session, passwo
     """
     # 开启强密码检查
     await db_session.setting.set("enable_strong_password_check", "true")
-    
+
+    # 邮箱/用户名需与密码解耦：密码可能含 `@` 等字符，直接拼进邮箱会被
+    # 邮箱格式校验拦截，掩盖本用例真正要测的「密码强度」分支。
+    import re as _re
+    slug = _re.sub(r"[^a-zA-Z0-9]", "", password) or "pw"
+
     if not is_valid:
         with pytest.raises(HTTPException) as exc:
             await site_backend_fixture.register(
-                email=f"test_{password}@t.com",
+                email=f"test_{slug}@t.com",
                 password=password,
-                username=f"User_{password}"
+                username=f"User_{slug}"
             )
         assert exc.value.status_code == 400
     else:
         # 应该成功
         uid = await site_backend_fixture.register(
-            email=f"test_{password}@t.com",
+            email=f"test_{slug}@t.com",
             password=password,
-            username=f"User_{password}"
+            username=f"User_{slug}"
         )
         assert uid is not None

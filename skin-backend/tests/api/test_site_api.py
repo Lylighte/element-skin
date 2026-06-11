@@ -17,21 +17,66 @@ async def test_api_site_login_success(client, user_factory):
     assert resp.status_code == 200
     data = resp.json()
     assert "user_id" in data
-    # token 现在通过 Set-Cookie header 返回
+    assert data["is_admin"] is False
+    # token 现在通过 Set-Cookie header 返回（access + refresh 两个）
     assert "set-cookie" in resp.headers
-    assert "jwt=" in resp.headers["set-cookie"]
+    set_cookie = resp.headers["set-cookie"]
+    assert "access_token=" in set_cookie
+    assert "refresh_token=" in set_cookie
 
 @pytest.mark.asyncio
 async def test_api_get_me_info(client, auth_headers):
     """测试获取当前用户信息接口"""
     resp = await client.get("/me", cookies=auth_headers["cookies"])
-    
+
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == auth_headers["X-User-ID"]
     assert "profile_count" in data
     assert "texture_count" in data
     assert "profiles" not in data
+
+
+@pytest.mark.asyncio
+async def test_banned_user_can_still_access_site_api(client, auth_headers, db_session):
+    """封禁仅限制通过 Yggdrasil 登录游戏，被封禁用户仍可正常访问主站。"""
+    user_id = auth_headers["X-User-ID"]
+    assert (await client.get("/me", cookies=auth_headers["cookies"])).status_code == 200
+
+    import time
+    await db_session.user.ban(user_id, int((time.time() + 3600) * 1000))
+
+    # 封禁后主站访问不受影响
+    resp = await client.get("/me", cookies=auth_headers["cookies"])
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_deleted_user_token_is_rejected(client, auth_headers, db_session):
+    """删号后旧 JWT 立即失效（401）。"""
+    user_id = auth_headers["X-User-ID"]
+    await db_session.user.delete(user_id)
+
+    resp = await client.get("/me", cookies=auth_headers["cookies"])
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_admin_token_loses_access_after_demotion(client, db_session, user_factory):
+    """携带 is_admin=true 的旧 JWT，在用户被降权后不应再通过 admin 校验。"""
+    from utils.jwt_utils import create_access_token
+
+    user = await user_factory(is_admin=True)
+    # 颁发一个 is_admin=True 的 token
+    token = create_access_token(user.id, is_admin=True)
+    cookies = {"access_token": token}
+
+    # 降权（DB 内 is_admin -> False）
+    await db_session.user.toggle_admin(user.id)
+
+    # 旧 token 仍声称 is_admin，但 deps 以 DB 为准，应拒绝管理员接口
+    resp = await client.get("/admin/users", cookies=cookies)
+    assert resp.status_code == 403
 
 @pytest.mark.asyncio
 async def test_api_get_me_profiles_paginated(client, auth_headers, db_session):
@@ -209,7 +254,7 @@ async def test_api_remote_ygg_import_flow(client, auth_headers, db_session):
     }
     
     with patch("backends.yggdrasil_client.YggdrasilClient.get_profile_with_textures", new_callable=AsyncMock) as mock_get_p, \
-         patch("backends.yggdrasil_client.download_texture", new_callable=AsyncMock) as mock_down:
+         patch("backends.profile_import_backend.download_texture", new_callable=AsyncMock) as mock_down:
         
         mock_get_p.return_value = mock_profile_data
         mock_down.return_value = b"fake_image_bytes"
@@ -263,3 +308,64 @@ async def test_api_add_texture_from_library_preserves_name(client, auth_headers,
     items = me_tex_resp.json()["items"]
     assert any(item["hash"] == tex_hash and item["note"] == tex_name for item in items)
 
+
+
+@pytest.mark.asyncio
+async def test_api_list_textures_limit_clamped(client, auth_headers, db_session):
+    """异常 limit（-1 / 0 / 超大）不应触发 500，且结果数量受 MAX_LIMIT 收敛。"""
+    from utils.pagination import MAX_LIMIT
+
+    user_id = auth_headers["X-User-ID"]
+    # 造 5 条材质，确保有数据可分页
+    for i in range(5):
+        await db_session.texture.add_to_library(
+            user_id, f"clamp_tex_{i}", "skin", note=f"t{i}", is_public=False, model="default"
+        )
+
+    for bad_limit in (-1, 0, 99999999):
+        resp = await client.get(
+            f"/me/textures?limit={bad_limit}", cookies=auth_headers["cookies"]
+        )
+        assert resp.status_code == 200, f"limit={bad_limit} 应返回 200，实际 {resp.status_code}"
+        items = resp.json()["items"]
+        assert len(items) <= MAX_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_api_public_skin_library_limit_clamped(client):
+    """公开皮肤库异常 limit 不触发 500。"""
+    for bad_limit in (-1, 0, 99999999):
+        resp = await client.get(f"/public/skin-library?limit={bad_limit}")
+        assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_api_public_skin_library_search_query(client, db_session, user_factory):
+    """/public/skin-library?q=... 走完整 HTTP 链路，验证 q 参数确实下达到 SQL。"""
+    alice = await user_factory(username="ApiSearchAlice")
+    bob = await user_factory(username="ApiSearchBob")
+
+    h_alice = "9" * 64
+    h_bob = "8" * 64
+    await db_session.texture.add_to_library(alice.id, h_alice, "skin", note="UniqueAlpha", is_public=True)
+    await db_session.texture.add_to_library(bob.id, h_bob, "skin", note="UniqueBeta", is_public=True)
+
+    # 按名称命中 alice 的材质
+    resp = await client.get("/public/skin-library", params={"q": "UniqueAlpha"})
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert [it["hash"] for it in items] == [h_alice]
+    assert items[0]["uploader_name"] == "ApiSearchAlice"
+
+    # 按上传者名命中 bob 的材质
+    resp = await client.get("/public/skin-library", params={"q": "ApiSearchBob"})
+    assert [it["hash"] for it in resp.json()["items"]] == [h_bob]
+
+    # q 仅含空白时等价于不传：两条都在
+    resp = await client.get("/public/skin-library", params={"q": "   "})
+    returned = {it["hash"] for it in resp.json()["items"]}
+    assert {h_alice, h_bob}.issubset(returned)
+
+    # 空集合
+    resp = await client.get("/public/skin-library", params={"q": "nothing_matches_xyz"})
+    assert resp.json()["items"] == []
