@@ -45,11 +45,11 @@ func TestRedisStoreCacheRoundTripsNormalizationAndTTL(t *testing.T) {
 	if err := store.SetPublicSettings(ctx, public, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetPublicCarousel(ctx, []string{"one.png", "two.png"}, time.Minute); err != nil {
+	if err := store.SetPublicHomepageMedia(ctx, []model.HomepageMedia{{ID: "one", Type: "image", StoragePath: "one.png"}, {ID: "two", Type: "image", StoragePath: "two.png"}}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := store.GetPublicCarousel(ctx); err != nil || len(got) != 2 || got[0] != "one.png" || got[1] != "two.png" {
-		t.Fatalf("carousel=%#v err=%v", got, err)
+	if got, err := store.GetPublicHomepageMedia(ctx); err != nil || len(got) != 2 || got[0].StoragePath != "one.png" || got[1].StoragePath != "two.png" {
+		t.Fatalf("homepage media=%#v err=%v", got, err)
 	}
 
 	if err := store.SetVerificationCode(ctx, " User@Example.com ", " RESET ", "ABC12345", time.Minute); err != nil {
@@ -107,8 +107,8 @@ func TestRedisStoreCacheRoundTripsNormalizationAndTTL(t *testing.T) {
 	if _, err := store.GetPublicSettings(ctx); !errors.Is(err, ErrCacheMiss) {
 		t.Fatalf("public settings should expire at TTL boundary, got %v", err)
 	}
-	if _, err := store.GetPublicCarousel(ctx); !errors.Is(err, ErrCacheMiss) {
-		t.Fatalf("carousel should expire at TTL boundary, got %v", err)
+	if _, err := store.GetPublicHomepageMedia(ctx); !errors.Is(err, ErrCacheMiss) {
+		t.Fatalf("homepage media should expire at TTL boundary, got %v", err)
 	}
 	if _, err := store.GetYggSession(ctx, session.ServerID); !errors.Is(err, ErrCacheMiss) {
 		t.Fatalf("session should expire at TTL boundary, got %v", err)
@@ -232,7 +232,7 @@ func TestRedisStoreRateLimitFallbackGuardAndPrefixDeletion(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.SetPublicCarousel(ctx, []string{"keep.png"}, time.Minute); err != nil {
+	if err := store.SetPublicHomepageMedia(ctx, []model.HomepageMedia{{ID: "keep", Type: "image", StoragePath: "keep.png"}}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.InvalidateSettings(ctx); err != nil {
@@ -244,14 +244,14 @@ func TestRedisStoreRateLimitFallbackGuardAndPrefixDeletion(t *testing.T) {
 			t.Fatalf("setting %s should be deleted by prefix, got %v", key, err)
 		}
 	}
-	if got, err := store.GetPublicCarousel(ctx); err != nil || len(got) != 1 || got[0] != "keep.png" {
-		t.Fatalf("prefix deletion must preserve unrelated keys: carousel=%#v err=%v", got, err)
+	if got, err := store.GetPublicHomepageMedia(ctx); err != nil || len(got) != 1 || got[0].StoragePath != "keep.png" {
+		t.Fatalf("prefix deletion must preserve unrelated keys: homepage media=%#v err=%v", got, err)
 	}
-	if err := store.InvalidatePublicCarousel(ctx); err != nil {
+	if err := store.InvalidatePublicHomepageMedia(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.GetPublicCarousel(ctx); !errors.Is(err, ErrCacheMiss) {
-		t.Fatalf("invalidated carousel error=%v, want ErrCacheMiss", err)
+	if _, err := store.GetPublicHomepageMedia(ctx); !errors.Is(err, ErrCacheMiss) {
+		t.Fatalf("invalidated homepage media error=%v, want ErrCacheMiss", err)
 	}
 }
 

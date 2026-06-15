@@ -127,3 +127,16 @@ export interface YggdrasilImportResult {
   failure_count: number
   failed: Array<{ profile_id: string; profile_name: string; detail: string }>
 }
+
+export interface HomepageMedia {
+  id: string
+  type: 'image' | 'panorama'
+  title: string
+  storage_path: string
+  config: Record<string, any>
+  sort_order: number
+  enabled: boolean
+  duration_ms: number
+  created_at: number
+  updated_at: number
+}

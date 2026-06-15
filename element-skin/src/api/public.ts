@@ -1,12 +1,12 @@
 import client from './client'
-import type { SiteSettings, Texture } from './types'
+import type { HomepageMedia, SiteSettings, Texture } from './types'
 
 export function getPublicSettings(): Promise<{ data: SiteSettings }> {
   return client.get('/public/settings')
 }
 
-export function getPublicCarousel(): Promise<{ data: string[] }> {
-  return client.get('/public/carousel')
+export function getPublicHomepageMedia(): Promise<{ data: HomepageMedia[] }> {
+  return client.get('/public/homepage-media')
 }
 
 export function getPublicSkinLibrary(params: {

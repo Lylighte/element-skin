@@ -16,7 +16,7 @@
 | Area | Scenario | Method | Path |
 | --- | --- | --- | --- |
 | Public home | `public-settings` | `GET` | `/public/settings` |
-| Public home | `public-carousel` | `GET` | `/public/carousel` |
+| Public home | `public-homepage-media` | `GET` | `/public/homepage-media` |
 | Public library | `public-library-search` | `GET` | `/public/skin-library?limit=20&q=Load` |
 | Authentication | `site-login` | `POST` | `/site-login` |
 | User center | `me` | `GET` | `/me` |
@@ -36,7 +36,7 @@
 | Area | Scenario | Concurrency | Requests | OK | Fail | Fail % | Successful req/s | Total req/s | Avg | P50 | P95 | P99 | Status | First Error |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | Public home | `public-settings` | 200 | 28097 | 28097 | 0 | 0.00 | 27913.0 | 27913.0 | 7.1ms | 6.4ms | 8.9ms | 12.4ms | `200:28097` | `` |
-| Public home | `public-carousel` | 200 | 29607 | 29607 | 0 | 0.00 | 29457.6 | 29457.6 | 6.7ms | 6.4ms | 8.5ms | 9.7ms | `200:29607` | `` |
+| Public home | `public-homepage-media` | 200 | 29607 | 29607 | 0 | 0.00 | 29457.6 | 29457.6 | 6.7ms | 6.4ms | 8.5ms | 9.7ms | `200:29607` | `` |
 | Public library | `public-library-search` | 200 | 16360 | 16360 | 0 | 0.00 | 16203.9 | 16203.9 | 12.1ms | 11.5ms | 17.2ms | 29.0ms | `200:16360` | `` |
 | Authentication | `site-login` | 200 | 350 | 350 | 0 | 0.00 | 303.8 | 303.8 | 621.7ms | 587.9ms | 1.10s | 1.11s | `200:350` | `` |
 | User center | `me` | 200 | 21698 | 21698 | 0 | 0.00 | 21564.5 | 21564.5 | 9.2ms | 8.9ms | 12.4ms | 16.7ms | `200:21698` | `` |

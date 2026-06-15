@@ -136,42 +136,35 @@ func (s *MemoryStore) InvalidatePublicSettings(context.Context) error {
 	return nil
 }
 
-func (s *MemoryStore) GetPublicCarousel(context.Context) ([]string, error) {
+func (s *MemoryStore) GetPublicHomepageMedia(context.Context) ([]model.HomepageMedia, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v, err := s.get(s.key("public", "carousel"))
+	v, err := s.get(s.key("public", "homepage-media"))
 	if err != nil {
 		return nil, err
 	}
-	raw, ok := v.([]any)
-	if ok {
-		out := make([]string, 0, len(raw))
-		for _, item := range raw {
-			if s, ok := item.(string); ok {
-				out = append(out, s)
-			}
-		}
-		return out, nil
+	b, _ := json.Marshal(v)
+	var out []model.HomepageMedia
+	_ = json.Unmarshal(b, &out)
+	if out == nil {
+		out = []model.HomepageMedia{}
 	}
-	if out, ok := v.([]string); ok {
-		return out, nil
-	}
-	return []string{}, nil
+	return out, nil
 }
 
-func (s *MemoryStore) SetPublicCarousel(_ context.Context, value []string, ttl time.Duration) error {
+func (s *MemoryStore) SetPublicHomepageMedia(_ context.Context, value []model.HomepageMedia, ttl time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.set(s.key("public", "carousel"), value, ttl)
+	return s.set(s.key("public", "homepage-media"), value, ttl)
 }
 
-func (s *MemoryStore) InvalidatePublicCarousel(context.Context) error {
+func (s *MemoryStore) InvalidatePublicHomepageMedia(context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.Err != nil {
 		return s.Err
 	}
-	delete(s.items, s.key("public", "carousel"))
+	delete(s.items, s.key("public", "homepage-media"))
 	return nil
 }
 

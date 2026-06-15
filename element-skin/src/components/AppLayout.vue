@@ -238,7 +238,7 @@ const adminNavLinks: NavLink[] = [
   { path: '/admin/settings', title: '站点设置', icon: Setting },
   { path: '/admin/email', title: '邮件服务', icon: Message },
   { path: '/admin/mojang', title: 'Fallback 服务', icon: Link },
-  { path: '/admin/carousel', title: '首页图片', icon: Picture },
+  { path: '/admin/homepage-media', title: '首页图片', icon: Picture },
   { path: '/admin/easter-eggs', title: '彩蛋列表', icon: MagicStick },
 ]
 
@@ -254,7 +254,7 @@ const adminNavItems = computed<NavLink[]>(() => [
   { type: 'group', index: 'admin-config-group', title: '更多设置', trigger: 'click', children: [
     { path: '/admin/email', title: '邮件服务', icon: Message },
     { path: '/admin/mojang', title: 'Fallback 服务', icon: Link },
-    { path: '/admin/carousel', title: '首页图片', icon: Picture },
+    { path: '/admin/homepage-media', title: '首页图片', icon: Picture },
     { path: '/admin/easter-eggs', title: '彩蛋列表', icon: MagicStick },
   ]},
 ])
@@ -265,7 +265,7 @@ const defaultOpeneds = computed(() => {
   if (['/admin/users', '/admin/roles', '/admin/textures'].some(p => path.startsWith(p))) {
     opened.push('admin-content-group')
   }
-  if (['/admin/email', '/admin/mojang', '/admin/carousel', '/admin/easter-eggs'].some(p => path.startsWith(p))) {
+  if (['/admin/email', '/admin/mojang', '/admin/homepage-media', '/admin/easter-eggs'].some(p => path.startsWith(p))) {
     opened.push('admin-config-group')
   }
   return opened

@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
 
-func TestRedisBackedPublicSettingsAndCarouselHTTP(t *testing.T) {
+func TestRedisBackedPublicSettingsAndHomepageMediaHTTP(t *testing.T) {
 	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	ctx := context.Background()
 	if err := db.Settings.Set(ctx, "site_name", "Redis Public"); err != nil {
@@ -40,12 +41,12 @@ func TestRedisBackedPublicSettingsAndCarouselHTTP(t *testing.T) {
 		t.Fatalf("public settings should refresh after invalidation: %d %s", refreshed.Code, refreshed.Body.String())
 	}
 
-	if err := redis.SetPublicCarousel(ctx, []string{"cached.png"}, time.Minute); err != nil {
+	if err := redis.SetPublicHomepageMedia(ctx, []model.HomepageMedia{{ID: "cached", Type: "image", StoragePath: "cached.png", Enabled: true}}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	carousel := doJSON(t, h, "GET", "/public/carousel", nil)
-	if carousel.Code != 200 || !strings.Contains(carousel.Body.String(), "cached.png") {
-		t.Fatalf("public carousel should be served from redis cache: %d %s", carousel.Code, carousel.Body.String())
+	homepageMedia := doJSON(t, h, "GET", "/public/homepage-media", nil)
+	if homepageMedia.Code != 200 || !strings.Contains(homepageMedia.Body.String(), "cached.png") {
+		t.Fatalf("public homepage media should be served from redis cache: %d %s", homepageMedia.Code, homepageMedia.Body.String())
 	}
 }
 

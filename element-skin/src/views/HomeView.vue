@@ -2,7 +2,7 @@
 import { provide, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { User } from '@element-plus/icons-vue'
-import { getPublicSettings, getPublicCarousel } from '@/api/public'
+import { getPublicSettings, getPublicHomepageMedia } from '@/api/public'
 import { getMe } from '@/api/me'
 import CanvasGlassButton from '@/components/common/CanvasGlassButton.vue'
 import { createHeroScene, heroSceneKey } from '@/composables/useHeroScene'
@@ -37,12 +37,12 @@ onMounted(async () => {
     console.warn('Failed to load site settings:', e)
   }
 
-  // 加载轮播图
+  // 加载首页媒体
   try {
-    const res = await getPublicCarousel()
-    scene.setImages(res.data.map(getCarouselUrl))
+    const res = await getPublicHomepageMedia()
+    scene.setMedia(res.data)
   } catch (e) {
-    console.warn('Failed to load carousel images:', e)
+    console.warn('Failed to load homepage media:', e)
   }
 
   // 检查登录状态（cookie 自动携带）
@@ -60,10 +60,6 @@ function goDashboard() { router.push('/dashboard') }
 function goLogin() { router.push('/login') }
 function goRegister() { router.push('/register') }
 
-function getCarouselUrl(filename: string) {
-  const base = import.meta.env.BASE_URL
-  return `${base}static/carousel/${filename}`.replace(/\/+/g, '/')
-}
 </script>
 
 <template>

@@ -47,12 +47,12 @@ func TestMemoryStoreCachesAndInvalidatesPublicData(t *testing.T) {
 	if again["site_name"] != "Cached" {
 		t.Fatalf("cache should return cloned data, got %#v", again)
 	}
-	if err := store.SetPublicCarousel(ctx, []string{"a.png"}, time.Minute); err != nil {
+	if err := store.SetPublicHomepageMedia(ctx, []model.HomepageMedia{{ID: "a", Type: "image", StoragePath: "a.png"}}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	carousel, err := store.GetPublicCarousel(ctx)
-	if err != nil || len(carousel) != 1 || carousel[0] != "a.png" {
-		t.Fatalf("carousel cache mismatch: %#v err=%v", carousel, err)
+	homepageMedia, err := store.GetPublicHomepageMedia(ctx)
+	if err != nil || len(homepageMedia) != 1 || homepageMedia[0].StoragePath != "a.png" {
+		t.Fatalf("homepage media cache mismatch: %#v err=%v", homepageMedia, err)
 	}
 	if err := store.InvalidatePublicSettings(ctx); err != nil {
 		t.Fatal(err)
@@ -60,11 +60,11 @@ func TestMemoryStoreCachesAndInvalidatesPublicData(t *testing.T) {
 	if _, err := store.GetPublicSettings(ctx); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("invalidated settings should miss, got %v", err)
 	}
-	if err := store.InvalidatePublicCarousel(ctx); err != nil {
+	if err := store.InvalidatePublicHomepageMedia(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.GetPublicCarousel(ctx); !errors.Is(err, redisstore.ErrCacheMiss) {
-		t.Fatalf("invalidated carousel should miss, got %v", err)
+	if _, err := store.GetPublicHomepageMedia(ctx); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("invalidated homepage media should miss, got %v", err)
 	}
 }
 
