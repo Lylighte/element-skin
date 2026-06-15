@@ -376,12 +376,12 @@ func normalizePanoramaConfig(raw map[string]any) (map[string]any, error) {
 		out[key] = v
 	}
 	out["faces"] = map[string]string{
-		"px": "panorama_0.png",
-		"nx": "panorama_1.png",
-		"py": "panorama_2.png",
-		"ny": "panorama_3.png",
-		"pz": "panorama_4.png",
-		"nz": "panorama_5.png",
+		"nz": "panorama_0.png",
+		"pz": "panorama_1.png",
+		"nx": "panorama_2.png",
+		"px": "panorama_3.png",
+		"py": "panorama_4.png",
+		"ny": "panorama_5.png",
 	}
 	return out, nil
 }
