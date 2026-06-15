@@ -18,17 +18,12 @@
       <div v-for="(item, index) in items" :key="item.id" class="surface-card media-row">
         <div class="preview">
           <el-image
-            v-if="item.type === 'image'"
-            :src="mediaUrl(item)"
+            :src="previewUrl(item)"
             fit="cover"
             class="preview-image"
-            :preview-src-list="[mediaUrl(item)]"
+            :preview-src-list="[previewUrl(item)]"
             preview-teleported
           />
-          <div v-else class="preview-panorama">
-            <el-icon><Box /></el-icon>
-            <span>Panorama</span>
-          </div>
         </div>
 
         <div class="media-main">
@@ -102,9 +97,14 @@ const panoramaFields = [
   { key: 'end_pitch', label: '结束 pitch', min: -89, max: 89 },
 ] as const
 
-function mediaUrl(item: HomepageMedia) {
+function mediaUrl(item: HomepageMedia, face?: string) {
   const base = import.meta.env.BASE_URL
-  return `${base}static/carousel/${item.storage_path}`.replace(/\/+/g, '/')
+  const suffix = face ? `${item.storage_path}/${face}` : item.storage_path
+  return `${base}static/carousel/${suffix}`.replace(/\/+/g, '/')
+}
+
+function previewUrl(item: HomepageMedia) {
+  return item.type === 'panorama' ? mediaUrl(item, 'panorama_0.png') : mediaUrl(item)
 }
 
 async function fetchItems() {
