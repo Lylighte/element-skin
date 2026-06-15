@@ -126,7 +126,6 @@ function normalizeItem(item: HomepageMedia): HomepageMedia {
       start_pitch: Number(item.config?.start_pitch ?? 0),
       end_yaw: Number(item.config?.end_yaw ?? 30),
       end_pitch: Number(item.config?.end_pitch ?? 0),
-      faces: item.config?.faces,
     }
   }
   return item

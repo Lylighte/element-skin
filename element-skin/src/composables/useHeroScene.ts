@@ -32,15 +32,6 @@ type PreparedMedia =
       texture: THREE.CubeTexture
     }
 
-const minecraftPanoramaFacesInThreeOrder = [
-  'panorama_3.png', // +X: right
-  'panorama_2.png', // -X: left
-  'panorama_4.png', // +Y: up
-  'panorama_5.png', // -Y: down
-  'panorama_1.png', // +Z: back
-  'panorama_0.png', // -Z: front
-]
-
 export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneController {
   const transition = options.transition ?? 900
   const overlay = options.overlay ?? 'rgba(0, 0, 0, 0.45)'
@@ -139,7 +130,16 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
   function prepare(item: HomepageMedia) {
     if (prepared.has(item.id)) return
     if (item.type === 'panorama') {
-      const urls = minecraftPanoramaFacesInThreeOrder.map((face) => mediaUrl(item, face))
+      // CubeTextureLoader expects +X, -X, +Y, -Y, +Z, -Z.
+      // Uploaded panorama files are front, right, back, left, up, down.
+      const urls = [
+        mediaUrl(item, 'panorama_1.png'),
+        mediaUrl(item, 'panorama_3.png'),
+        mediaUrl(item, 'panorama_4.png'),
+        mediaUrl(item, 'panorama_5.png'),
+        mediaUrl(item, 'panorama_2.png'),
+        mediaUrl(item, 'panorama_0.png'),
+      ]
       const texture = cubeLoader.load(urls)
       prepared.set(item.id, { item, kind: 'panorama', texture })
       return
