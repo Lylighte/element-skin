@@ -39,6 +39,10 @@
               <span>时长</span>
               <el-input-number v-model="item.duration_ms" :min="1000" :max="60000" :step="500" size="small" @change="saveItem(item)" />
             </label>
+            <label class="overlay-control">
+              <span>遮罩</span>
+              <el-slider v-model="item.config.overlay_opacity" :min="0" :max="0.9" :step="0.05" size="small" @change="saveItem(item)" />
+            </label>
             <el-switch v-model="item.enabled" active-text="启用" inactive-text="停用" @change="saveItem(item)" />
           </div>
 
@@ -120,8 +124,13 @@ async function fetchItems() {
 }
 
 function normalizeItem(item: HomepageMedia): HomepageMedia {
+  item.config = {
+    ...item.config,
+    overlay_opacity: Number(item.config?.overlay_opacity ?? 0.45),
+  }
   if (item.type === 'panorama') {
     item.config = {
+      ...item.config,
       start_yaw: Number(item.config?.start_yaw ?? 0),
       start_pitch: Number(item.config?.start_pitch ?? 0),
       yaw_speed_dps: Number(item.config?.yaw_speed_dps ?? 4),
@@ -161,9 +170,13 @@ async function saveItem(item: HomepageMedia) {
       title: item.title,
       enabled: item.enabled,
       duration_ms: item.duration_ms,
+      config: {
+        overlay_opacity: Number(item.config.overlay_opacity),
+      },
     }
     if (item.type === 'panorama') {
       body.config = {
+        ...body.config,
         start_yaw: Number(item.config.start_yaw),
         start_pitch: Number(item.config.start_pitch),
         yaw_speed_dps: Number(item.config.yaw_speed_dps),
@@ -221,6 +234,8 @@ onMounted(fetchItems)
 .media-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .media-head { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
 .controls, .panorama-controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.overlay-control { min-width: 180px; }
+.overlay-control :deep(.el-slider) { width: 120px; }
 label { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--color-text-secondary); }
 .row-actions { display: flex; gap: 8px; }
 .empty-placeholder { padding: 40px 0; }

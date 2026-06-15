@@ -70,7 +70,12 @@ func (h Handler) UploadHomepageImage(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-	item, path, err := h.newHomepageMedia(req, "image", header.Filename, ext, map[string]any{})
+	cfg, err := baseHomepageMediaConfig(req)
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	item, path, err := h.newHomepageMedia(req, "image", header.Filename, ext, cfg)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -184,11 +189,7 @@ func (h Handler) PatchHomepageMedia(w http.ResponseWriter, req *http.Request) {
 	}
 	patch := homepage.Patch{Title: body.Title, Enabled: body.Enabled, DurationMS: body.DurationMS, UpdatedAt: database.NowMS()}
 	if body.Config != nil {
-		if item.Type != "panorama" {
-			util.Error(w, util.HTTPError{Status: 400, Detail: "config is only supported for panorama"})
-			return
-		}
-		cfg, err := normalizePanoramaConfig(body.Config)
+		cfg, err := normalizeHomepageMediaConfig(item.Type, body.Config)
 		if err != nil {
 			util.Error(w, err)
 			return
@@ -346,7 +347,8 @@ func readPanoramaZip(data []byte) (map[string][]byte, error) {
 }
 
 func panoramaConfigFromForm(req *http.Request) (map[string]any, error) {
-	return normalizePanoramaConfig(map[string]any{
+	return normalizeHomepageMediaConfig("panorama", map[string]any{
+		"overlay_opacity": req.FormValue("overlay_opacity"),
 		"start_yaw":       req.FormValue("start_yaw"),
 		"start_pitch":     req.FormValue("start_pitch"),
 		"yaw_speed_dps":   req.FormValue("yaw_speed_dps"),
@@ -354,8 +356,25 @@ func panoramaConfigFromForm(req *http.Request) (map[string]any, error) {
 	})
 }
 
-func normalizePanoramaConfig(raw map[string]any) (map[string]any, error) {
+func baseHomepageMediaConfig(req *http.Request) (map[string]any, error) {
+	return normalizeHomepageMediaConfig("image", map[string]any{
+		"overlay_opacity": req.FormValue("overlay_opacity"),
+	})
+}
+
+func normalizeHomepageMediaConfig(typ string, raw map[string]any) (map[string]any, error) {
 	out := map[string]any{}
+	overlay, err := numberField(raw["overlay_opacity"], 0.45)
+	if err != nil {
+		return nil, util.HTTPError{Status: 400, Detail: "overlay_opacity must be a number"}
+	}
+	if overlay < 0 || overlay > 0.9 {
+		return nil, util.HTTPError{Status: 400, Detail: "overlay_opacity out of range"}
+	}
+	out["overlay_opacity"] = overlay
+	if typ != "panorama" {
+		return out, nil
+	}
 	defaults := map[string]float64{
 		"start_yaw":       0,
 		"start_pitch":     0,

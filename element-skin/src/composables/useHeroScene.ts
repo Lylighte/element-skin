@@ -17,7 +17,6 @@ export const heroSceneKey: InjectionKey<HeroSceneController> = Symbol('heroScene
 
 export interface HeroSceneOptions {
   transition?: number
-  overlay?: string
 }
 
 type PreparedMedia =
@@ -34,7 +33,6 @@ type PreparedMedia =
 
 export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneController {
   const transition = options.transition ?? 900
-  const overlay = options.overlay ?? 'rgba(0, 0, 0, 0.45)'
 
   let target: HTMLCanvasElement | null = null
   let renderer: THREE.WebGLRenderer | null = null
@@ -90,7 +88,7 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
   overlayCanvas.height = 2
   const overlayCtx = overlayCanvas.getContext('2d')
   if (overlayCtx) {
-    overlayCtx.fillStyle = overlay
+    overlayCtx.fillStyle = '#000'
     overlayCtx.fillRect(0, 0, 2, 2)
   }
   const overlayTexture = new THREE.CanvasTexture(overlayCanvas)
@@ -100,6 +98,7 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
     new THREE.MeshBasicMaterial({
       map: overlayTexture,
       transparent: true,
+      opacity: 0.45,
       depthTest: false,
       depthWrite: false,
     }),
@@ -232,6 +231,8 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
       }
     }
 
+    const overlayMaterial = overlayMesh.material as THREE.MeshBasicMaterial
+    overlayMaterial.opacity = currentItem ? numberConfig(currentItem, 'overlay_opacity', 0.45) : 0.45
     renderer.autoClear = false
     renderer.render(overlayScene, quadCamera)
     renderer.autoClear = true
