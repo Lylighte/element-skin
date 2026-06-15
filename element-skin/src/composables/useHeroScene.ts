@@ -24,11 +24,13 @@ type PreparedMedia =
       item: HomepageMedia
       kind: 'image'
       texture: THREE.Texture
+      ready: boolean
     }
   | {
       item: HomepageMedia
       kind: 'panorama'
       texture: THREE.CubeTexture
+      ready: boolean
     }
 
 export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneController {
@@ -36,7 +38,7 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
 
   let target: HTMLCanvasElement | null = null
   let renderer: THREE.WebGLRenderer | null = null
-  let dpr = Math.max(window.devicePixelRatio || 1, 1)
+  let dpr = sceneDpr()
   let cssW = 1
   let cssH = 1
 
@@ -101,6 +103,7 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
   const prepared = new Map<string, PreparedMedia>()
   const textureLoader = new THREE.TextureLoader()
   const cubeLoader = new THREE.CubeTextureLoader()
+  let lastImageFitId: string | null = null
 
   let current = 0
   let next = 0
@@ -131,13 +134,27 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
         mediaUrl(item, 'panorama_2.png'),
         mediaUrl(item, 'panorama_0.png'),
       ]
-      const texture = cubeLoader.load(urls)
-      prepared.set(item.id, { item, kind: 'panorama', texture })
+      const entry: PreparedMedia = {
+        item,
+        kind: 'panorama',
+        texture: cubeLoader.load(urls, () => {
+          entry.ready = true
+        }),
+        ready: false,
+      }
+      prepared.set(item.id, entry)
       return
     }
-    const texture = textureLoader.load(mediaUrl(item))
-    texture.colorSpace = THREE.SRGBColorSpace
-    prepared.set(item.id, { item, kind: 'image', texture })
+    const entry: PreparedMedia = {
+      item,
+      kind: 'image',
+      texture: textureLoader.load(mediaUrl(item), () => {
+        entry.ready = true
+      }),
+      ready: false,
+    }
+    entry.texture.colorSpace = THREE.SRGBColorSpace
+    prepared.set(item.id, entry)
   }
 
   function resize() {
@@ -145,11 +162,12 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
     const rect = target.getBoundingClientRect()
     cssW = Math.max(Math.ceil(rect.width), 1)
     cssH = Math.max(Math.ceil(rect.height), 1)
-    dpr = Math.max(window.devicePixelRatio || 1, 1)
+    dpr = sceneDpr()
     renderer.setPixelRatio(dpr)
     renderer.setSize(cssW, cssH, false)
     camera.aspect = cssW / cssH
     camera.updateProjectionMatrix()
+    lastImageFitId = null
   }
 
   function renderPrepared(entry: PreparedMedia, now: number, alpha: number, startedAt: number) {
@@ -171,12 +189,15 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
       const material = imageMesh.material as THREE.MeshBasicMaterial
       material.map = entry.texture
       material.opacity = alpha
-      fitImageMesh(entry.texture)
+      fitImageMesh(entry)
       renderer.render(imageScene, quadCamera)
     }
   }
 
-  function fitImageMesh(texture: THREE.Texture) {
+  function fitImageMesh(entry: PreparedMedia) {
+    if (lastImageFitId === entry.item.id) return
+    lastImageFitId = entry.item.id
+    const texture = entry.texture
     const image = texture.image as HTMLImageElement | undefined
     const iw = image?.naturalWidth || image?.width || 16
     const ih = image?.naturalHeight || image?.height || 9
@@ -187,42 +208,48 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
 
   function render(now: number) {
     if (!renderer) return
+    let transitionAlpha = 0
+    const currentItem = media[current]
+    const currentEntry = currentItem ? prepared.get(currentItem.id) : null
+    const candidateNext = media.length > 1 ? (current + 1) % media.length : current
+    const candidateNextEntry = media[candidateNext] ? prepared.get(media[candidateNext].id) : null
+
     if (media.length > 0) {
       const active = media[current]
       const duration = Math.max(active?.duration_ms || 6000, 1000)
-      if (media.length > 1 && !transitioning && now - itemStart >= duration) {
-        next = (current + 1) % media.length
+      if (media.length > 1 && !transitioning && now - itemStart >= duration && candidateNextEntry?.ready) {
+        next = candidateNext
         transitioning = true
         transStart = now
+      }
+      if (transitioning) {
+        transitionAlpha = easeInOut(Math.min((now - transStart) / transition, 1))
       }
     }
 
     renderer.autoClear = true
     renderer.clear()
-    const currentItem = media[current]
-    const currentEntry = currentItem ? prepared.get(currentItem.id) : null
-    if (currentEntry) {
+    if (currentEntry?.ready) {
       renderPrepared(currentEntry, now, 1, itemStart)
     } else {
       renderFallback()
     }
 
     if (transitioning) {
-      const progress = easeInOut(Math.min((now - transStart) / transition, 1))
       const nextItem = media[next]
       const nextEntry = nextItem ? prepared.get(nextItem.id) : null
-      if (nextEntry) {
+      if (nextEntry?.ready) {
         renderer.autoClear = false
-        renderPrepared(nextEntry, now, progress, transStart)
-      }
-      if (progress >= 1) {
-        current = next
-        transitioning = false
-        itemStart = transStart
+        renderPrepared(nextEntry, now, transitionAlpha, transStart)
+        if (transitionAlpha >= 1) {
+          current = next
+          transitioning = false
+          itemStart = transStart
+        }
       }
     }
 
-    overlayMaterial.opacity = overlayOpacity(currentItem, transitioning ? media[next] : undefined, transitioning ? now : undefined)
+    overlayMaterial.opacity = overlayOpacity(currentItem, transitioning ? media[next] : undefined, transitionAlpha)
     renderer.autoClear = false
     renderer.render(overlayScene, quadCamera)
     renderer.autoClear = true
@@ -235,11 +262,10 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
     renderer.clear()
   }
 
-  function overlayOpacity(currentItem?: HomepageMedia, nextItem?: HomepageMedia, now?: number) {
+  function overlayOpacity(currentItem?: HomepageMedia, nextItem?: HomepageMedia, progress = 0) {
     const from = currentItem ? numberConfig(currentItem, 'overlay_opacity', 0.45) : 0.45
-    if (!transitioning || !nextItem || now === undefined) return from
+    if (!transitioning || !nextItem) return from
     const to = numberConfig(nextItem, 'overlay_opacity', 0.45)
-    const progress = easeInOut(Math.min((now - transStart) / transition, 1))
     return lerp(from, to, progress)
   }
 
@@ -314,6 +340,10 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
 function numberConfig(item: HomepageMedia, key: string, fallback: number) {
   const value = item.config?.[key]
   return typeof value === 'number' ? value : fallback
+}
+
+function sceneDpr() {
+  return Math.min(Math.max(window.devicePixelRatio || 1, 1), 1.5)
 }
 
 function lerp(a: number, b: number, t: number) {
