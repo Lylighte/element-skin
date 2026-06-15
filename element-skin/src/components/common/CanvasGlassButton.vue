@@ -24,6 +24,7 @@ let resizeObserver: ResizeObserver | null = null
 let unsubscribe: (() => void) | null = null
 let rafId = 0
 let disposed = false
+let lastSceneDraw = 0
 
 const bleed = computed(() => Math.ceil(props.blur * 2))
 const canvasStyle = computed(() => ({
@@ -41,6 +42,13 @@ function requestDraw() {
   if (disposed) return
   cancelAnimationFrame(rafId)
   rafId = requestAnimationFrame(drawGlass)
+}
+
+function requestSceneDraw() {
+  const now = performance.now()
+  if (now - lastSceneDraw < 33) return
+  lastSceneDraw = now
+  drawGlass()
 }
 
 function drawFallback(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -94,10 +102,8 @@ function drawGlass() {
 
 onMounted(() => {
   requestDraw()
-  // The scene notifies from inside its own rAF frame with the background
-  // already painted, so draw synchronously here for zero-frame drift…
-  unsubscribe = scene?.subscribe(drawGlass) ?? null
-  // …and debounce the button-local triggers (move / resize) via rAF.
+  unsubscribe = scene?.subscribe(requestSceneDraw) ?? null
+  // Debounce button-local triggers (move / resize) via rAF.
   window.addEventListener('resize', requestDraw)
   window.addEventListener('scroll', requestDraw, { passive: true })
   if (window.ResizeObserver && rootRef.value) {
