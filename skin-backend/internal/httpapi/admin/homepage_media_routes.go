@@ -347,30 +347,33 @@ func readPanoramaZip(data []byte) (map[string][]byte, error) {
 
 func panoramaConfigFromForm(req *http.Request) (map[string]any, error) {
 	return normalizePanoramaConfig(map[string]any{
-		"start_yaw":   req.FormValue("start_yaw"),
-		"start_pitch": req.FormValue("start_pitch"),
-		"end_yaw":     req.FormValue("end_yaw"),
-		"end_pitch":   req.FormValue("end_pitch"),
+		"start_yaw":       req.FormValue("start_yaw"),
+		"start_pitch":     req.FormValue("start_pitch"),
+		"yaw_speed_dps":   req.FormValue("yaw_speed_dps"),
+		"pitch_speed_dps": req.FormValue("pitch_speed_dps"),
 	})
 }
 
 func normalizePanoramaConfig(raw map[string]any) (map[string]any, error) {
 	out := map[string]any{}
 	defaults := map[string]float64{
-		"start_yaw":   0,
-		"start_pitch": 0,
-		"end_yaw":     30,
-		"end_pitch":   0,
+		"start_yaw":       0,
+		"start_pitch":     0,
+		"yaw_speed_dps":   4,
+		"pitch_speed_dps": 0,
 	}
 	for key, fallback := range defaults {
 		v, err := numberField(raw[key], fallback)
 		if err != nil {
 			return nil, util.HTTPError{Status: 400, Detail: key + " must be a number"}
 		}
-		if strings.Contains(key, "pitch") && (v < -89 || v > 89) {
+		if key == "start_pitch" && (v < -89 || v > 89) {
 			return nil, util.HTTPError{Status: 400, Detail: key + " out of range"}
 		}
-		if strings.Contains(key, "yaw") && (v < -360 || v > 360) {
+		if key == "start_yaw" && (v < -360 || v > 360) {
+			return nil, util.HTTPError{Status: 400, Detail: key + " out of range"}
+		}
+		if strings.Contains(key, "speed") && (v < -90 || v > 90) {
 			return nil, util.HTTPError{Status: 400, Detail: key + " out of range"}
 		}
 		out[key] = v
