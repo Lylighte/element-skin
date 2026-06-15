@@ -42,6 +42,9 @@ func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 	if item.Type != "image" || item.DurationMS != 6000 || item.SortOrder != 0 || !item.Enabled || item.StoragePath != item.ID+".png" {
 		t.Fatalf("image upload item mismatch: %#v", item)
 	}
+	if got, ok := item.Config["overlay_opacity"].(float64); !ok || got != 0.45 {
+		t.Fatalf("image default overlay_opacity=%#v want 0.45 in %#v", item.Config["overlay_opacity"], item.Config)
+	}
 	if _, err := os.Stat(filepath.Join(cfg.CarouselDir, item.StoragePath)); err != nil {
 		t.Fatalf("uploaded image should exist: %v", err)
 	}
@@ -49,7 +52,7 @@ func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 		t.Fatalf("image upload must invalidate public homepage media cache, got %v", err)
 	}
 
-	body := strings.NewReader(`{"title":"Hero","enabled":false,"duration_ms":7000}`)
+	body := strings.NewReader(`{"title":"Hero","enabled":false,"duration_ms":7000,"config":{"overlay_opacity":0.62}}`)
 	req := httptest.NewRequest(http.MethodPatch, "/admin/homepage-media/"+item.ID, body)
 	req.SetPathValue("id", item.ID)
 	rec = httptest.NewRecorder()
@@ -60,6 +63,9 @@ func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 	patched := decodeMedia(t, rec.Body.Bytes())
 	if patched.Title != "Hero" || patched.Enabled || patched.DurationMS != 7000 {
 		t.Fatalf("patched image mismatch: %#v", patched)
+	}
+	if got, ok := patched.Config["overlay_opacity"].(float64); !ok || got != 0.62 {
+		t.Fatalf("patched image overlay_opacity=%#v want 0.62 in %#v", patched.Config["overlay_opacity"], patched.Config)
 	}
 
 	rec = httptest.NewRecorder()
@@ -112,7 +118,7 @@ func TestHomepageMediaPanoramaUploadUsesGeneratedStandardZipAndYawPitchConfig(t 
 		t.Fatal(err)
 	}
 	for key, value := range map[string]string{
-		"start_yaw": "-45", "start_pitch": "5", "yaw_speed_dps": "6", "pitch_speed_dps": "-1.5", "duration_ms": "11000",
+		"overlay_opacity": "0.3", "start_yaw": "-45", "start_pitch": "5", "yaw_speed_dps": "6", "pitch_speed_dps": "-1.5", "duration_ms": "11000",
 	} {
 		if err := writer.WriteField(key, value); err != nil {
 			t.Fatal(err)
@@ -133,7 +139,7 @@ func TestHomepageMediaPanoramaUploadUsesGeneratedStandardZipAndYawPitchConfig(t 
 	if item.Type != "panorama" || item.DurationMS != 11000 || item.StoragePath != item.ID {
 		t.Fatalf("panorama item mismatch: %#v", item)
 	}
-	for key, want := range map[string]float64{"start_yaw": -45, "start_pitch": 5, "yaw_speed_dps": 6, "pitch_speed_dps": -1.5} {
+	for key, want := range map[string]float64{"overlay_opacity": 0.3, "start_yaw": -45, "start_pitch": 5, "yaw_speed_dps": 6, "pitch_speed_dps": -1.5} {
 		if got, ok := item.Config[key].(float64); !ok || got != want {
 			t.Fatalf("panorama config %s=%#v want %v in %#v", key, item.Config[key], want, item.Config)
 		}
@@ -212,6 +218,29 @@ func TestHomepageMediaRejectsInvalidPanoramaInputsExactly(t *testing.T) {
 	h.UploadHomepagePanorama(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"yaw_speed_dps out of range\"}\n" {
 		t.Fatalf("yaw speed range mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	body.Reset()
+	writer = multipart.NewWriter(&body)
+	part, err = writer.CreateFormFile("file", "panorama.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(standardPanoramaZip(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("overlay_opacity", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/admin/homepage-media/panorama", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec = httptest.NewRecorder()
+	h.UploadHomepagePanorama(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"overlay_opacity out of range\"}\n" {
+		t.Fatalf("overlay range mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
