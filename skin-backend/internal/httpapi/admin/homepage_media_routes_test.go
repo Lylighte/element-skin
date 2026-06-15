@@ -112,7 +112,7 @@ func TestHomepageMediaPanoramaUploadUsesGeneratedStandardZipAndYawPitchConfig(t 
 		t.Fatal(err)
 	}
 	for key, value := range map[string]string{
-		"start_yaw": "-45", "start_pitch": "5", "end_yaw": "45", "end_pitch": "-10", "duration_ms": "11000",
+		"start_yaw": "-45", "start_pitch": "5", "yaw_speed_dps": "6", "pitch_speed_dps": "-1.5", "duration_ms": "11000",
 	} {
 		if err := writer.WriteField(key, value); err != nil {
 			t.Fatal(err)
@@ -133,7 +133,7 @@ func TestHomepageMediaPanoramaUploadUsesGeneratedStandardZipAndYawPitchConfig(t 
 	if item.Type != "panorama" || item.DurationMS != 11000 || item.StoragePath != item.ID {
 		t.Fatalf("panorama item mismatch: %#v", item)
 	}
-	for key, want := range map[string]float64{"start_yaw": -45, "start_pitch": 5, "end_yaw": 45, "end_pitch": -10} {
+	for key, want := range map[string]float64{"start_yaw": -45, "start_pitch": 5, "yaw_speed_dps": 6, "pitch_speed_dps": -1.5} {
 		if got, ok := item.Config[key].(float64); !ok || got != want {
 			t.Fatalf("panorama config %s=%#v want %v in %#v", key, item.Config[key], want, item.Config)
 		}
@@ -189,6 +189,29 @@ func TestHomepageMediaRejectsInvalidPanoramaInputsExactly(t *testing.T) {
 	h.UploadHomepagePanorama(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"start_pitch out of range\"}\n" {
 		t.Fatalf("pitch range mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	body.Reset()
+	writer = multipart.NewWriter(&body)
+	part, err = writer.CreateFormFile("file", "panorama.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(standardPanoramaZip(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("yaw_speed_dps", "91"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/admin/homepage-media/panorama", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec = httptest.NewRecorder()
+	h.UploadHomepagePanorama(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"yaw_speed_dps out of range\"}\n" {
+		t.Fatalf("yaw speed range mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

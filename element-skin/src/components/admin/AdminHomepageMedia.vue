@@ -93,8 +93,8 @@ const loading = ref(false)
 const panoramaFields = [
   { key: 'start_yaw', label: '起始 yaw', min: -360, max: 360 },
   { key: 'start_pitch', label: '起始 pitch', min: -89, max: 89 },
-  { key: 'end_yaw', label: '结束 yaw', min: -360, max: 360 },
-  { key: 'end_pitch', label: '结束 pitch', min: -89, max: 89 },
+  { key: 'yaw_speed_dps', label: 'yaw 速度', min: -90, max: 90 },
+  { key: 'pitch_speed_dps', label: 'pitch 速度', min: -90, max: 90 },
 ] as const
 
 function mediaUrl(item: HomepageMedia, face?: string) {
@@ -124,8 +124,8 @@ function normalizeItem(item: HomepageMedia): HomepageMedia {
     item.config = {
       start_yaw: Number(item.config?.start_yaw ?? 0),
       start_pitch: Number(item.config?.start_pitch ?? 0),
-      end_yaw: Number(item.config?.end_yaw ?? 30),
-      end_pitch: Number(item.config?.end_pitch ?? 0),
+      yaw_speed_dps: Number(item.config?.yaw_speed_dps ?? 4),
+      pitch_speed_dps: Number(item.config?.pitch_speed_dps ?? 0),
     }
   }
   return item
@@ -166,8 +166,8 @@ async function saveItem(item: HomepageMedia) {
       body.config = {
         start_yaw: Number(item.config.start_yaw),
         start_pitch: Number(item.config.start_pitch),
-        end_yaw: Number(item.config.end_yaw),
-        end_pitch: Number(item.config.end_pitch),
+        yaw_speed_dps: Number(item.config.yaw_speed_dps),
+        pitch_speed_dps: Number(item.config.pitch_speed_dps),
       }
     }
     const res = await patchHomepageMedia(item.id, body)

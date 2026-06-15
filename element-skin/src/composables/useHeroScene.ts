@@ -133,8 +133,8 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
       // CubeTextureLoader expects +X, -X, +Y, -Y, +Z, -Z.
       // Uploaded panorama files are front, right, back, left, up, down.
       const urls = [
-        mediaUrl(item, 'panorama_1.png'),
         mediaUrl(item, 'panorama_3.png'),
+        mediaUrl(item, 'panorama_1.png'),
         mediaUrl(item, 'panorama_4.png'),
         mediaUrl(item, 'panorama_5.png'),
         mediaUrl(item, 'panorama_2.png'),
@@ -164,14 +164,13 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
   function renderPrepared(entry: PreparedMedia, now: number, alpha: number, startedAt: number) {
     if (!renderer) return
     if (entry.kind === 'panorama') {
-      const duration = Math.max(entry.item.duration_ms || 9000, 1000)
-      const local = Math.min(Math.max((now - startedAt) / duration, 0), 1)
       const startYaw = numberConfig(entry.item, 'start_yaw', 0)
       const startPitch = numberConfig(entry.item, 'start_pitch', 0)
-      const endYaw = numberConfig(entry.item, 'end_yaw', 30)
-      const endPitch = numberConfig(entry.item, 'end_pitch', 0)
-      const yaw = THREE.MathUtils.degToRad(lerp(startYaw, endYaw, easeInOut(local)))
-      const pitch = THREE.MathUtils.degToRad(lerp(startPitch, endPitch, easeInOut(local)))
+      const yawSpeed = numberConfig(entry.item, 'yaw_speed_dps', 4)
+      const pitchSpeed = numberConfig(entry.item, 'pitch_speed_dps', 0)
+      const elapsed = (now - startedAt) / 1000
+      const yaw = THREE.MathUtils.degToRad(startYaw + yawSpeed * elapsed)
+      const pitch = THREE.MathUtils.degToRad(startPitch + pitchSpeed * elapsed)
       camera.rotation.set(pitch, yaw, 0, 'YXZ')
       panoramaUniforms.envMap.value = entry.texture
       panoramaUniforms.opacity.value = alpha
@@ -316,10 +315,6 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
 function numberConfig(item: HomepageMedia, key: string, fallback: number) {
   const value = item.config?.[key]
   return typeof value === 'number' ? value : fallback
-}
-
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t
 }
 
 function easeInOut(t: number) {
