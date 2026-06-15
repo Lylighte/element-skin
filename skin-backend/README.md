@@ -97,7 +97,7 @@ paths used by the current frontend and Yggdrasil clients.
   request only on Redis auth-cache misses. Admin/user mutations invalidate the
   auth cache; Redis errors fail protected requests instead of falling back to
   stale or database-only behavior.
-- `/public/settings` and `/public/carousel` are served through Redis caches.
+- `/public/settings` and `/public/homepage-media` are served through Redis caches.
   Cache misses rebuild from PostgreSQL/filesystem, while Redis command failures
   fail the request instead of silently falling back.
 - Verification codes, rate-limit counters, and auth snapshots are temporary

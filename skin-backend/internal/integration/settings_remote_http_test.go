@@ -144,22 +144,24 @@ func TestSettingsGroupsAndRemoteYggImportHTTP(t *testing.T) {
 		t.Fatalf("whitelist should be empty: %s", listWL.Body.String())
 	}
 
-	carouselEmpty := doJSON(t, h, "GET", "/public/carousel", nil)
-	if carouselEmpty.Code != 200 || carouselEmpty.Body.String() == "" {
-		t.Fatalf("public carousel should return an array: %d %s", carouselEmpty.Code, carouselEmpty.Body.String())
+	homepageEmpty := doJSON(t, h, "GET", "/public/homepage-media", nil)
+	if homepageEmpty.Code != 200 || homepageEmpty.Body.String() == "" {
+		t.Fatalf("public homepage media should return an array: %d %s", homepageEmpty.Code, homepageEmpty.Body.String())
 	}
-	carouselUpload := doMultipart(t, h, "POST", "/admin/carousel", nil, "file", "banner.png", pngTexture(t, 64, 64), adminCookie)
-	if carouselUpload.Code != 200 {
-		t.Fatalf("carousel upload status=%d body=%s", carouselUpload.Code, carouselUpload.Body.String())
+	homepageUpload := doMultipart(t, h, "POST", "/admin/homepage-media/image", nil, "file", "banner.png", pngTexture(t, 64, 64), adminCookie)
+	if homepageUpload.Code != 200 {
+		t.Fatalf("homepage media upload status=%d body=%s", homepageUpload.Code, homepageUpload.Body.String())
 	}
-	filename := parseJSON(t, carouselUpload)["filename"].(string)
-	carouselList := doJSON(t, h, "GET", "/public/carousel", nil)
-	if !strings.Contains(carouselList.Body.String(), filename) {
-		t.Fatalf("carousel list missing uploaded filename %q: %s", filename, carouselList.Body.String())
+	uploadedMedia := parseJSON(t, homepageUpload)
+	mediaID := uploadedMedia["id"].(string)
+	storagePath := uploadedMedia["storage_path"].(string)
+	homepageList := doJSON(t, h, "GET", "/public/homepage-media", nil)
+	if !strings.Contains(homepageList.Body.String(), storagePath) {
+		t.Fatalf("homepage media list missing uploaded storage path %q: %s", storagePath, homepageList.Body.String())
 	}
-	carouselDelete := doJSON(t, h, "DELETE", "/admin/carousel/"+filename, nil, adminCookie)
-	if carouselDelete.Code != 200 {
-		t.Fatalf("carousel delete status=%d body=%s", carouselDelete.Code, carouselDelete.Body.String())
+	homepageDelete := doJSON(t, h, "DELETE", "/admin/homepage-media/"+mediaID, nil, adminCookie)
+	if homepageDelete.Code != 200 {
+		t.Fatalf("homepage media delete status=%d body=%s", homepageDelete.Code, homepageDelete.Body.String())
 	}
 
 	getProfiles := doJSON(t, h, "POST", "/remote-ygg/get-profiles", map[string]any{"profiles": []any{map[string]any{"id": "remote_1", "name": "RemoteOne"}}}, userCookie)

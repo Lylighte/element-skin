@@ -165,7 +165,7 @@ func TestMemoryStorePrefixTTLAndErrorContracts(t *testing.T) {
 	if err := store.SetSetting(ctx, "site_name", "A", time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetPublicCarousel(ctx, []string{"one.png"}, 0); err != nil {
+	if err := store.SetPublicHomepageMedia(ctx, []model.HomepageMedia{{ID: "one", Type: "image", StoragePath: "one.png"}}, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.DeleteByPrefix(ctx, "settings:"); err != nil {
@@ -174,8 +174,8 @@ func TestMemoryStorePrefixTTLAndErrorContracts(t *testing.T) {
 	if _, err := store.GetSetting(ctx, "site_name"); !errors.Is(err, ErrCacheMiss) {
 		t.Fatalf("prefixed delete should remove matching settings key, got %v", err)
 	}
-	if carousel, err := store.GetPublicCarousel(ctx); err != nil || len(carousel) != 1 || carousel[0] != "one.png" {
-		t.Fatalf("prefixed delete should not remove unrelated carousel cache: %#v err=%v", carousel, err)
+	if homepageMedia, err := store.GetPublicHomepageMedia(ctx); err != nil || len(homepageMedia) != 1 || homepageMedia[0].StoragePath != "one.png" {
+		t.Fatalf("prefixed delete should not remove unrelated homepage media cache: %#v err=%v", homepageMedia, err)
 	}
 
 	if err := store.SetVerificationCode(ctx, "ttl@example.com", "register", "12345678", time.Second); err != nil {

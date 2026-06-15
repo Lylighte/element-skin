@@ -129,7 +129,7 @@ func TestRealBackendLoad(t *testing.T) {
 func defaultLoadScenarios(seed loadSeed, userCookie, adminCookie string, prepareYggHasJoined func(testing.TB)) []loadScenario {
 	return []loadScenario{
 		{Area: "Public home", Name: "public-settings", Method: http.MethodGet, Path: "/public/settings"},
-		{Area: "Public home", Name: "public-carousel", Method: http.MethodGet, Path: "/public/carousel"},
+		{Area: "Public home", Name: "public-homepage-media", Method: http.MethodGet, Path: "/public/homepage-media"},
 		{Area: "Public library", Name: "public-library-search", Method: http.MethodGet, Path: "/public/skin-library?limit=20&q=Load"},
 		{Area: "Authentication", Name: "site-login", Method: http.MethodPost, Path: "/site-login", Body: fmt.Sprintf(`{"email":%q,"password":"Password123"}`, seed.User.Email)},
 		{Area: "Yggdrasil", Name: "ygg-metadata", Method: http.MethodGet, Path: "/"},

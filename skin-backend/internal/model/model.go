@@ -45,3 +45,16 @@ type Invite struct {
 	UsedCount int
 	Note      string
 }
+
+type HomepageMedia struct {
+	ID          string         `json:"id"`
+	Type        string         `json:"type"`
+	Title       string         `json:"title"`
+	StoragePath string         `json:"storage_path"`
+	Config      map[string]any `json:"config"`
+	SortOrder   int            `json:"sort_order"`
+	Enabled     bool           `json:"enabled"`
+	DurationMS  int            `json:"duration_ms"`
+	CreatedAt   int64          `json:"created_at"`
+	UpdatedAt   int64          `json:"updated_at"`
+}

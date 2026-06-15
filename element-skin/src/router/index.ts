@@ -18,7 +18,7 @@ import AdminSettings from '@/components/admin/AdminSettings.vue'
 import AdminUserList from '@/components/admin/AdminUserList.vue'
 import AdminInviteList from '@/components/admin/AdminInviteList.vue'
 import AdminMojang from '@/components/admin/AdminMojang.vue'
-import AdminCarousel from '@/components/admin/AdminCarousel.vue'
+import AdminHomepageMedia from '@/components/admin/AdminHomepageMedia.vue'
 import AdminEmail from '@/components/admin/AdminEmail.vue'
 import AdminEasterEggs from '@/components/admin/AdminEasterEggs.vue'
 import AdminTexturesList from '@/components/admin/AdminTexturesList.vue'
@@ -79,9 +79,9 @@ const router = createRouter({
           component: AdminInviteList,
         },
         {
-          path: 'carousel',
-          name: 'admin-carousel',
-          component: AdminCarousel,
+          path: 'homepage-media',
+          name: 'admin-homepage-media',
+          component: AdminHomepageMedia,
         },
         {
           path: 'easter-eggs',

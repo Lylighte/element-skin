@@ -45,9 +45,9 @@ type Store interface {
 	GetPublicSettings(context.Context) (map[string]any, error)
 	SetPublicSettings(context.Context, map[string]any, time.Duration) error
 	InvalidatePublicSettings(context.Context) error
-	GetPublicCarousel(context.Context) ([]string, error)
-	SetPublicCarousel(context.Context, []string, time.Duration) error
-	InvalidatePublicCarousel(context.Context) error
+	GetPublicHomepageMedia(context.Context) ([]model.HomepageMedia, error)
+	SetPublicHomepageMedia(context.Context, []model.HomepageMedia, time.Duration) error
+	InvalidatePublicHomepageMedia(context.Context) error
 	SetVerificationCode(context.Context, string, string, string, time.Duration) error
 	SetVerificationCodeIfAbsent(context.Context, string, string, string, time.Duration) (bool, error)
 	GetVerificationCode(context.Context, string, string) (string, error)
@@ -195,20 +195,20 @@ func (s *RedisStore) InvalidatePublicSettings(ctx context.Context) error {
 	return s.client.Del(ctx, s.key("public", "settings")).Err()
 }
 
-func (s *RedisStore) GetPublicCarousel(ctx context.Context) ([]string, error) {
-	var out []string
-	if err := s.getJSON(ctx, s.key("public", "carousel"), &out); err != nil {
+func (s *RedisStore) GetPublicHomepageMedia(ctx context.Context) ([]model.HomepageMedia, error) {
+	var out []model.HomepageMedia
+	if err := s.getJSON(ctx, s.key("public", "homepage-media"), &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (s *RedisStore) SetPublicCarousel(ctx context.Context, value []string, ttl time.Duration) error {
-	return s.setJSON(ctx, s.key("public", "carousel"), value, ttl)
+func (s *RedisStore) SetPublicHomepageMedia(ctx context.Context, value []model.HomepageMedia, ttl time.Duration) error {
+	return s.setJSON(ctx, s.key("public", "homepage-media"), value, ttl)
 }
 
-func (s *RedisStore) InvalidatePublicCarousel(ctx context.Context) error {
-	return s.client.Del(ctx, s.key("public", "carousel")).Err()
+func (s *RedisStore) InvalidatePublicHomepageMedia(ctx context.Context) error {
+	return s.client.Del(ctx, s.key("public", "homepage-media")).Err()
 }
 
 func (s *RedisStore) verificationKey(email, typ string) string {

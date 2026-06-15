@@ -3,10 +3,15 @@ package database
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database/fallback"
+	"element-skin/backend/internal/database/homepage"
 	"element-skin/backend/internal/database/invite"
 	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/database/setting"
@@ -14,6 +19,7 @@ import (
 	"element-skin/backend/internal/database/token"
 	"element-skin/backend/internal/database/user"
 	"element-skin/backend/internal/database/verification"
+	"element-skin/backend/internal/model"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,6 +34,7 @@ type DB struct {
 	Settings      setting.Store
 	Invites       invite.Store
 	Fallbacks     fallback.Store
+	HomepageMedia homepage.Store
 	Verifications verification.Store
 }
 
@@ -46,6 +53,10 @@ func Open(ctx context.Context, cfg config.Config) (*DB, error) {
 		pool.Close()
 		return nil, err
 	}
+	if err := db.MigrateHomepageMediaFiles(ctx, cfg.CarouselDir); err != nil {
+		pool.Close()
+		return nil, err
+	}
 	return db, nil
 }
 
@@ -59,6 +70,7 @@ func New(pool *pgxpool.Pool) *DB {
 		Settings:      setting.Store{Pool: pool},
 		Invites:       invite.Store{Pool: pool},
 		Fallbacks:     fallback.Store{Pool: pool},
+		HomepageMedia: homepage.Store{Pool: pool},
 		Verifications: verification.Store{Pool: pool},
 	}
 }
@@ -85,3 +97,58 @@ func (db *DB) ResetPublicSchema(ctx context.Context) error {
 func NowMS() int64 { return time.Now().UnixMilli() }
 
 func IsNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
+
+func (db *DB) MigrateHomepageMediaFiles(ctx context.Context, dir string) error {
+	var count int64
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM homepage_media`).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var names []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		switch strings.ToLower(filepath.Ext(name)) {
+		case ".png", ".jpg", ".jpeg", ".webp":
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	now := NowMS()
+	for i, name := range names {
+		id := strings.TrimSuffix(name, filepath.Ext(name))
+		if id == "" {
+			continue
+		}
+		if err := db.HomepageMedia.Create(ctx, modelHomepageImage(id, name, i, now)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func modelHomepageImage(id, filename string, order int, now int64) model.HomepageMedia {
+	return model.HomepageMedia{
+		ID:          id,
+		Type:        "image",
+		Title:       filename,
+		StoragePath: filename,
+		Config:      map[string]any{},
+		SortOrder:   order,
+		Enabled:     true,
+		DurationMS:  6000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+}

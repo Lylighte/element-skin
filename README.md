@@ -30,7 +30,7 @@
 - **✅ 正版登录支持**: 集成 Mojang 官方认证服务，允许正版用户直接使用 Minecraft 账号登录。
 - **✅ 皮肤管理**: 支持皮肤/披风上传，集成 SkinView3D 提供丝滑的 3D 实时预览。
 - **✅ 完善的用户系统**: 包含邮箱验证、注册验证码、密码找回流程（支持 SMTP）。
-- **✅ 强大的管理后台**: 响应式设计，支持用户管理、邀请码机制、轮播图配置及邮件服务测试。
+- **✅ 强大的管理后台**: 响应式设计，支持用户管理、邀请码机制、首页媒体配置及邮件服务测试。
 - **✅ 安全与防护**: 内置 API 速率限制 (Rate Limiting) 及多种安全防护机制。
 - **✅ 灵活部署**: 既支持 Docker 一键部署，也支持复杂的子目录 (Sub-path) 架构。
 
@@ -38,7 +38,7 @@
 
 ## 🚀 Docker 部署指南 (推荐)
 
-项目现在默认使用 **PostgreSQL 18 + Redis** 并支持自动化初始化。PostgreSQL 保存用户、设置、材质元数据等持久化数据；Redis 负责公开配置/轮播缓存、邮件验证码、限流数据和短期用户鉴权缓存等临时状态。
+项目现在默认使用 **PostgreSQL 18 + Redis** 并支持自动化初始化。PostgreSQL 保存用户、设置、材质元数据等持久化数据；Redis 负责公开配置/首页媒体缓存、邮件验证码、限流数据和短期用户鉴权缓存等临时状态。
 
 ### 1. 准备配置文件
 
@@ -84,7 +84,7 @@ services:
         condition: service_healthy
     volumes:
       - ./config.yaml:/app/config.yaml:ro
-      - ./frontend:/app/frontend           # 前端、皮肤、轮播图全部在这里
+      - ./frontend:/app/frontend           # 前端、皮肤、首页媒体全部在这里
       - ./data:/app/data                   # 密钥文件
     ports:
       - "8000:8000"
@@ -391,7 +391,7 @@ LOADTEST_ENABLE=1 LOADTEST_CONCURRENCY=200 LOADTEST_DURATION=1s go test ./cmd/lo
 | 场景 | Go 成功 req/s | Python 成功 req/s | 提升 | Go P95 | Python P95 |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Public settings | 26105.8 | 1913.7 | 13.6x | 9.1ms | 200.3ms |
-| Public carousel | 30420.8 | 2138.0 | 14.2x | 8.2ms | 113.4ms |
+| Public homepage media | 30420.8 | 2138.0 | 14.2x | 8.2ms | 113.4ms |
 | Public skin library search | 16894.7 | 777.9 | 21.7x | 17.0ms | 552.6ms |
 | Site login | 305.6 | 42.1 | 7.3x | 695.7ms | 4.58s |
 | Yggdrasil metadata | 32938.5 | 2694.4 | 12.2x | 7.5ms | 110.9ms |

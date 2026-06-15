@@ -16,7 +16,7 @@
 | Area | Scenario | Method | Path |
 | --- | --- | --- | --- |
 | Public home | `public-settings` | `GET` | `/public/settings` |
-| Public home | `public-carousel` | `GET` | `/public/carousel` |
+| Public home | `public-homepage-media` | `GET` | `/public/homepage-media` |
 | Public library | `public-library-search` | `GET` | `/public/skin-library?limit=20&q=Load` |
 | Authentication | `site-login` | `POST` | `/site-login` |
 | Yggdrasil | `ygg-metadata` | `GET` | `/` |
@@ -42,7 +42,7 @@
 | Area | Scenario | Concurrency | Requests | OK | Fail | Fail % | Successful req/s | Total req/s | Avg | P50 | P95 | P99 | Status | First Error |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | Public home | `public-settings` | 200 | 26259 | 26259 | 0 | 0.00 | 26105.8 | 26105.8 | 7.6ms | 6.2ms | 9.1ms | 13.0ms | `200:26259` | `` |
-| Public home | `public-carousel` | 200 | 30569 | 30569 | 0 | 0.00 | 30420.8 | 30420.8 | 6.5ms | 6.2ms | 8.2ms | 9.5ms | `200:30569` | `` |
+| Public home | `public-homepage-media` | 200 | 30569 | 30569 | 0 | 0.00 | 30420.8 | 30420.8 | 6.5ms | 6.2ms | 8.2ms | 9.5ms | `200:30569` | `` |
 | Public library | `public-library-search` | 200 | 17082 | 17082 | 0 | 0.00 | 16894.7 | 16894.7 | 11.6ms | 11.3ms | 17.0ms | 36.0ms | `200:17082` | `` |
 | Authentication | `site-login` | 200 | 387 | 387 | 0 | 0.00 | 305.6 | 305.6 | 612.3ms | 598.0ms | 695.7ms | 1.13s | `200:387` | `` |
 | Yggdrasil | `ygg-metadata` | 200 | 33094 | 33094 | 0 | 0.00 | 32938.5 | 32938.5 | 6.0ms | 5.8ms | 7.5ms | 8.5ms | `200:33094` | `` |
@@ -70,7 +70,7 @@ The same harness shape was run in Python on `dev:reports/python-concurrency-load
 | Scenario | Go successful req/s | Python successful req/s | Go uplift | Go p95 | Python p95 | Python fail % |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `public-settings` | 26105.8 | 1913.7 | 13.6x | 9.1ms | 200.3ms | 0.00 |
-| `public-carousel` | 30420.8 | 2138.0 | 14.2x | 8.2ms | 113.4ms | 0.00 |
+| `public-homepage-media` | 30420.8 | 2138.0 | 14.2x | 8.2ms | 113.4ms | 0.00 |
 | `public-library-search` | 16894.7 | 777.9 | 21.7x | 17.0ms | 552.6ms | 0.00 |
 | `site-login` | 305.6 | 42.1 | 7.3x | 695.7ms | 4.58s | 0.00 |
 | `ygg-metadata` | 32938.5 | 2694.4 | 12.2x | 7.5ms | 110.9ms | 0.00 |

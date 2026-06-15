@@ -1,12 +1,10 @@
 import type { InjectionKey } from 'vue'
+import * as THREE from 'three'
+import type { HomepageMedia } from '@/api/types'
 
-// A single source-of-truth background renderer.
-// One requestAnimationFrame loop draws the crossfade onto the background
-// canvas; glass buttons subscribe and copy a blurred crop of that exact
-// frame, so the buttons can never drift from or jump ahead of the background.
 export interface HeroSceneController {
   setTarget(canvas: HTMLCanvasElement | null): void
-  setImages(urls: string[]): void
+  setMedia(items: HomepageMedia[]): void
   subscribe(fn: () => void): () => void
   getCanvas(): HTMLCanvasElement | null
   getDpr(): number
@@ -18,146 +16,227 @@ export interface HeroSceneController {
 export const heroSceneKey: InjectionKey<HeroSceneController> = Symbol('heroScene')
 
 export interface HeroSceneOptions {
-  interval?: number
   transition?: number
   overlay?: string
 }
 
+type PreparedMedia =
+  | {
+      item: HomepageMedia
+      kind: 'image'
+      texture: THREE.Texture
+    }
+  | {
+      item: HomepageMedia
+      kind: 'panorama'
+      texture: THREE.CubeTexture
+    }
+
 export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneController {
-  const interval = options.interval ?? 5000
-  const transition = options.transition ?? 800
+  const transition = options.transition ?? 900
   const overlay = options.overlay ?? 'rgba(0, 0, 0, 0.45)'
 
   let target: HTMLCanvasElement | null = null
-  let ctx: CanvasRenderingContext2D | null = null
+  let renderer: THREE.WebGLRenderer | null = null
   let dpr = Math.max(window.devicePixelRatio || 1, 1)
-  let cssW = 0
-  let cssH = 0
+  let cssW = 1
+  let cssH = 1
 
-  let images: string[] = []
-  const loaded = new Map<string, HTMLImageElement>()
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 10)
+  const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+  const imageScene = new THREE.Scene()
+  const imageMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+    }),
+  )
+  imageScene.add(imageMesh)
+  const panoramaUniforms = {
+    envMap: { value: null as THREE.CubeTexture | null },
+    opacity: { value: 1 },
+  }
+  const panoramaMaterial = new THREE.ShaderMaterial({
+    uniforms: panoramaUniforms,
+    vertexShader: `
+      varying vec3 vWorldDirection;
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldDirection = normalize(worldPosition.xyz - cameraPosition);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform samplerCube envMap;
+      uniform float opacity;
+      varying vec3 vWorldDirection;
+      void main() {
+        gl_FragColor = vec4(textureCube(envMap, vWorldDirection).rgb, opacity);
+      }
+    `,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.BackSide,
+    transparent: true,
+  })
+  const panoramaMesh = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10), panoramaMaterial)
+  scene.add(panoramaMesh)
+  const overlayCanvas = document.createElement('canvas')
+  overlayCanvas.width = 2
+  overlayCanvas.height = 2
+  const overlayCtx = overlayCanvas.getContext('2d')
+  if (overlayCtx) {
+    overlayCtx.fillStyle = overlay
+    overlayCtx.fillRect(0, 0, 2, 2)
+  }
+  const overlayTexture = new THREE.CanvasTexture(overlayCanvas)
+  const overlayScene = new THREE.Scene()
+  const overlayMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    new THREE.MeshBasicMaterial({
+      map: overlayTexture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  )
+  overlayScene.add(overlayMesh)
+
+  let media: HomepageMedia[] = []
+  const prepared = new Map<string, PreparedMedia>()
+  const textureLoader = new THREE.TextureLoader()
+  const cubeLoader = new THREE.CubeTextureLoader()
 
   let current = 0
   let next = 0
   let transitioning = false
   let transStart = 0
-  let lastSwitch = 0
-
-  let dirty = true
+  let itemStart = performance.now()
   let rafId = 0
   let running = false
   let listenersBound = false
   const consumers = new Set<() => void>()
 
-  function loadImage(url: string) {
-    if (loaded.has(url)) return
-    const img = new Image()
-    img.onload = () => {
-      if (img.naturalWidth > 0) {
-        loaded.set(url, img)
-        dirty = true
-      }
+  function mediaUrl(item: HomepageMedia, face?: string) {
+    const base = import.meta.env.BASE_URL
+    const suffix = face ? `${item.storage_path}/${face}` : item.storage_path
+    return `${base}static/carousel/${suffix}`.replace(/\/+/g, '/')
+  }
+
+  function prepare(item: HomepageMedia) {
+    if (prepared.has(item.id)) return
+    if (item.type === 'panorama') {
+      const faces = item.config?.faces ?? {}
+      const urls = ['px', 'nx', 'py', 'ny', 'pz', 'nz'].map((key) =>
+        mediaUrl(item, faces[key] || `panorama_${['px', 'nx', 'py', 'ny', 'pz', 'nz'].indexOf(key)}.png`),
+      )
+      const texture = cubeLoader.load(urls)
+      prepared.set(item.id, { item, kind: 'panorama', texture })
+      return
     }
-    img.src = url
-  }
-
-  function preload() {
-    for (const url of images) loadImage(url)
-  }
-
-  function ready(index: number): HTMLImageElement | null {
-    const url = images[index]
-    if (!url) return null
-    return loaded.get(url) ?? null
+    const texture = textureLoader.load(mediaUrl(item))
+    texture.colorSpace = THREE.SRGBColorSpace
+    prepared.set(item.id, { item, kind: 'image', texture })
   }
 
   function resize() {
-    if (!target) return
+    if (!target || !renderer) return
     const rect = target.getBoundingClientRect()
-    const w = Math.max(Math.ceil(rect.width), 1)
-    const h = Math.max(Math.ceil(rect.height), 1)
+    cssW = Math.max(Math.ceil(rect.width), 1)
+    cssH = Math.max(Math.ceil(rect.height), 1)
     dpr = Math.max(window.devicePixelRatio || 1, 1)
-    const pw = Math.ceil(w * dpr)
-    const ph = Math.ceil(h * dpr)
-    if (target.width !== pw || target.height !== ph) {
-      target.width = pw
-      target.height = ph
+    renderer.setPixelRatio(dpr)
+    renderer.setSize(cssW, cssH, false)
+    camera.aspect = cssW / cssH
+    camera.updateProjectionMatrix()
+  }
+
+  function renderPrepared(entry: PreparedMedia, now: number, alpha: number, startedAt: number) {
+    if (!renderer) return
+    if (entry.kind === 'panorama') {
+      const duration = Math.max(entry.item.duration_ms || 9000, 1000)
+      const local = Math.min(Math.max((now - startedAt) / duration, 0), 1)
+      const startYaw = numberConfig(entry.item, 'start_yaw', 0)
+      const startPitch = numberConfig(entry.item, 'start_pitch', 0)
+      const endYaw = numberConfig(entry.item, 'end_yaw', 30)
+      const endPitch = numberConfig(entry.item, 'end_pitch', 0)
+      const yaw = THREE.MathUtils.degToRad(lerp(startYaw, endYaw, easeInOut(local)))
+      const pitch = THREE.MathUtils.degToRad(lerp(startPitch, endPitch, easeInOut(local)))
+      camera.rotation.set(pitch, yaw, 0, 'YXZ')
+      panoramaUniforms.envMap.value = entry.texture
+      panoramaUniforms.opacity.value = alpha
+      panoramaMaterial.needsUpdate = true
+      renderer.render(scene, camera)
+    } else {
+      camera.rotation.set(0, 0, 0)
+      const material = imageMesh.material as THREE.MeshBasicMaterial
+      material.map = entry.texture
+      material.opacity = alpha
+      fitImageMesh(entry.texture)
+      renderer.render(imageScene, quadCamera)
     }
-    cssW = w
-    cssH = h
-    dirty = true
   }
 
-  // Cover-fit an image into the viewport-sized canvas (mirrors object-fit: cover).
-  function drawCover(c: CanvasRenderingContext2D, img: HTMLImageElement) {
-    const scale = Math.max(cssW / img.naturalWidth, cssH / img.naturalHeight)
-    const dw = img.naturalWidth * scale
-    const dh = img.naturalHeight * scale
-    const dx = (cssW - dw) / 2
-    const dy = (cssH - dh) / 2
-    c.drawImage(img, dx, dy, dw, dh)
-  }
-
-  function easeInOut(t: number) {
-    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+  function fitImageMesh(texture: THREE.Texture) {
+    const image = texture.image as HTMLImageElement | undefined
+    const iw = image?.naturalWidth || image?.width || 16
+    const ih = image?.naturalHeight || image?.height || 9
+    const view = cssW / cssH
+    const img = iw / ih
+    imageMesh.scale.set(img > view ? img / view : 1, img > view ? 1 : view / img, 1)
   }
 
   function render(now: number) {
-    if (!ctx || !target) return
-
-    // Advance the crossfade state machine on the shared clock.
-    let progress = 0
-    if (images.length > 1) {
-      if (!transitioning && now - lastSwitch >= interval) {
-        next = (current + 1) % images.length
-        if (ready(next)) {
-          transitioning = true
-          transStart = now
-        } else {
-          lastSwitch = now // wait for the image, retry next interval
-        }
-      }
-      if (transitioning) {
-        progress = Math.min((now - transStart) / transition, 1)
-        if (progress >= 1) {
-          current = next
-          transitioning = false
-          lastSwitch = now
-        }
-        dirty = true
+    if (!renderer) return
+    if (media.length > 0) {
+      const active = media[current]
+      const duration = Math.max(active?.duration_ms || 6000, 1000)
+      if (media.length > 1 && !transitioning && now - itemStart >= duration) {
+        next = (current + 1) % media.length
+        transitioning = true
+        transStart = now
       }
     }
 
-    if (!dirty) return
-    dirty = false
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, cssW, cssH)
-
-    const base = ready(current)
-    if (base) {
-      ctx.globalAlpha = 1
-      drawCover(ctx, base)
-      if (transitioning) {
-        const incoming = ready(next)
-        if (incoming) {
-          ctx.globalAlpha = easeInOut(progress)
-          drawCover(ctx, incoming)
-          ctx.globalAlpha = 1
-        }
-      }
+    renderer.autoClear = true
+    renderer.clear()
+    const currentItem = media[current]
+    const currentEntry = currentItem ? prepared.get(currentItem.id) : null
+    if (currentEntry) {
+      renderPrepared(currentEntry, now, 1, itemStart)
     } else {
-      const g = ctx.createLinearGradient(0, 0, cssW, cssH)
-      g.addColorStop(0, '#1a1a1a')
-      g.addColorStop(1, '#333333')
-      ctx.fillStyle = g
-      ctx.fillRect(0, 0, cssW, cssH)
+      renderFallback()
     }
 
-    ctx.fillStyle = overlay
-    ctx.fillRect(0, 0, cssW, cssH)
+    if (transitioning) {
+      const progress = easeInOut(Math.min((now - transStart) / transition, 1))
+      const nextItem = media[next]
+      const nextEntry = nextItem ? prepared.get(nextItem.id) : null
+      if (nextEntry) {
+        renderer.autoClear = false
+        renderPrepared(nextEntry, now, progress, transStart)
+      }
+      if (progress >= 1) {
+        current = next
+        transitioning = false
+        itemStart = transStart
+      }
+    }
 
+    renderer.autoClear = false
+    renderer.render(overlayScene, quadCamera)
+    renderer.autoClear = true
     for (const fn of consumers) fn()
+  }
+
+  function renderFallback() {
+    if (!renderer) return
+    renderer.setClearColor(0x1a1a1a, 1)
+    renderer.clear()
   }
 
   function loop() {
@@ -181,17 +260,22 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
   return {
     setTarget(canvas) {
       target = canvas
-      ctx = canvas?.getContext('2d') ?? null
-      if (canvas) resize()
+      if (renderer) {
+        renderer.dispose()
+        renderer = null
+      }
+      if (canvas) {
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
+        resize()
+      }
     },
-    setImages(urls) {
-      images = urls.slice()
+    setMedia(items) {
+      media = items.filter((item) => item.enabled)
+      for (const item of media) prepare(item)
       current = 0
       next = 0
       transitioning = false
-      lastSwitch = performance.now()
-      preload()
-      dirty = true
+      itemStart = performance.now()
     },
     subscribe(fn) {
       consumers.add(fn)
@@ -203,7 +287,7 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
       if (running) return
       running = true
       bindListeners()
-      lastSwitch = performance.now()
+      itemStart = performance.now()
       rafId = requestAnimationFrame(loop)
     },
     stop() {
@@ -214,9 +298,24 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
       this.stop()
       unbindListeners()
       consumers.clear()
-      loaded.clear()
+      for (const entry of prepared.values()) entry.texture.dispose()
+      prepared.clear()
+      renderer?.dispose()
+      renderer = null
       target = null
-      ctx = null
     },
   }
+}
+
+function numberConfig(item: HomepageMedia, key: string, fallback: number) {
+  const value = item.config?.[key]
+  return typeof value === 'number' ? value : fallback
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t
+}
+
+function easeInOut(t: number) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
 }

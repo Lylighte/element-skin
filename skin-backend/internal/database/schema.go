@@ -103,6 +103,19 @@ CREATE TABLE IF NOT EXISTS verification_codes (
     PRIMARY KEY(email, type)
 );
 
+CREATE TABLE IF NOT EXISTS homepage_media (
+    id TEXT PRIMARY KEY,
+    media_type TEXT NOT NULL CHECK (media_type IN ('image', 'panorama')),
+    title TEXT NOT NULL DEFAULT '',
+    storage_path TEXT NOT NULL,
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    sort_order INTEGER NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    duration_ms INTEGER NOT NULL DEFAULT 6000,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+);
+
 ALTER TABLE skin_library DROP CONSTRAINT IF EXISTS skin_library_pkey;
 ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash, texture_type);
 ALTER TABLE skin_library ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DEFAULT 0;
@@ -150,6 +163,7 @@ CREATE INDEX IF NOT EXISTS idx_skin_library_public_created_hash ON skin_library 
 CREATE INDEX IF NOT EXISTS idx_skin_library_created_hash ON skin_library (created_at, skin_hash);
 CREATE INDEX IF NOT EXISTS idx_skin_library_public_usage_created_hash ON skin_library (is_public, usage_count DESC, created_at DESC, skin_hash DESC);
 CREATE INDEX IF NOT EXISTS idx_whitelisted_users_endpoint ON whitelisted_users (endpoint_id);
+CREATE INDEX IF NOT EXISTS idx_homepage_media_public_order ON homepage_media (enabled, sort_order, id);
 
 INSERT INTO settings (key, value) VALUES
 ('microsoft_client_id', ''),

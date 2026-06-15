@@ -17,7 +17,7 @@ database:
   max_connections: 20
 
 # Redis 配置
-# Redis 是验证码、限流、公开设置/轮播缓存和短期鉴权缓存的必需依赖
+# Redis 是验证码、限流、公开设置/首页媒体缓存和短期鉴权缓存的必需依赖
 redis:
   addr: "127.0.0.1:6379"
   password: ""
@@ -30,7 +30,7 @@ redis:
 textures:
   directory: "textures"
 
-# 轮播图配置
+# 首页媒体存储配置（目录名沿用 carousel，避免迁移成本）
 carousel:
   directory: "carousel"
 
