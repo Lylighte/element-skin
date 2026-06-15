@@ -138,22 +138,6 @@ func TestHomepageMediaPanoramaUploadUsesGeneratedStandardZipAndYawPitchConfig(t 
 			t.Fatalf("panorama config %s=%#v want %v in %#v", key, item.Config[key], want, item.Config)
 		}
 	}
-	faces, ok := item.Config["faces"].(map[string]any)
-	if !ok {
-		t.Fatalf("panorama faces should be a map, got %#v", item.Config["faces"])
-	}
-	for key, want := range map[string]string{
-		"nz": "panorama_0.png",
-		"pz": "panorama_1.png",
-		"nx": "panorama_2.png",
-		"px": "panorama_3.png",
-		"py": "panorama_4.png",
-		"ny": "panorama_5.png",
-	} {
-		if faces[key] != want {
-			t.Fatalf("panorama face mapping %s=%#v want %q in %#v", key, faces[key], want, faces)
-		}
-	}
 	for _, name := range []string{
 		"panorama_0.png",
 		"panorama_1.png",
