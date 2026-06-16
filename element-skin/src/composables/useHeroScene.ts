@@ -129,6 +129,7 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
         }
         color = mix(color, vec3(0.0), clamp(overlayOpacity, 0.0, 1.0));
         gl_FragColor = vec4(color, 1.0);
+        #include <colorspace_fragment>
       }
     `,
     depthTest: false,
