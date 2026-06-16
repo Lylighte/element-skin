@@ -47,14 +47,19 @@ type Invite struct {
 }
 
 type HomepageMedia struct {
-	ID          string         `json:"id"`
-	Type        string         `json:"type"`
-	Title       string         `json:"title"`
-	StoragePath string         `json:"storage_path"`
-	Config      map[string]any `json:"config"`
-	SortOrder   int            `json:"sort_order"`
-	Enabled     bool           `json:"enabled"`
-	DurationMS  int            `json:"duration_ms"`
-	CreatedAt   int64          `json:"created_at"`
-	UpdatedAt   int64          `json:"updated_at"`
+	ID                  string  `json:"id"`
+	Type                string  `json:"type"`
+	Title               string  `json:"title"`
+	StoragePath         string  `json:"storage_path"`
+	OverlayOpacityLight float64 `json:"overlay_opacity_light"`
+	OverlayOpacityDark  float64 `json:"overlay_opacity_dark"`
+	StartYaw            float64 `json:"start_yaw"`
+	StartPitch          float64 `json:"start_pitch"`
+	YawSpeedDPS         float64 `json:"yaw_speed_dps"`
+	PitchSpeedDPS       float64 `json:"pitch_speed_dps"`
+	SortOrder           int     `json:"sort_order"`
+	Enabled             bool    `json:"enabled"`
+	DurationMS          int     `json:"duration_ms"`
+	CreatedAt           int64   `json:"created_at"`
+	UpdatedAt           int64   `json:"updated_at"`
 }

@@ -25,12 +25,12 @@ func TestPublicRoutesHomepageMediaListsEnabledItemsFromDBExactly(t *testing.T) {
 	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
 	now := database.NowMS()
 	if err := db.HomepageMedia.Create(context.Background(), model.HomepageMedia{
-		ID: "disabled", Type: "image", Title: "Disabled", StoragePath: "disabled.webp", Config: map[string]any{}, SortOrder: 0, Enabled: false, DurationMS: 6000, CreatedAt: now, UpdatedAt: now,
+		ID: "disabled", Type: "image", Title: "Disabled", StoragePath: "disabled.webp", OverlayOpacityLight: 0.45, OverlayOpacityDark: 0.45, YawSpeedDPS: 4, SortOrder: 0, Enabled: false, DurationMS: 6000, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.HomepageMedia.Create(context.Background(), model.HomepageMedia{
-		ID: "hero", Type: "image", Title: "Hero", StoragePath: "hero.webp", Config: map[string]any{}, SortOrder: 1, Enabled: true, DurationMS: 6000, CreatedAt: now, UpdatedAt: now,
+		ID: "hero", Type: "image", Title: "Hero", StoragePath: "hero.webp", OverlayOpacityLight: 0.45, OverlayOpacityDark: 0.45, YawSpeedDPS: 4, SortOrder: 1, Enabled: true, DurationMS: 6000, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
