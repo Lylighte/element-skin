@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { provide, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { User } from '@element-plus/icons-vue'
 import { getPublicSettings, getPublicHomepageMedia } from '@/api/public'
 import { getMe } from '@/api/me'
-import CanvasGlassButton from '@/components/common/CanvasGlassButton.vue'
 import { createHeroScene, heroSceneKey } from '@/composables/useHeroScene'
 
 const router = useRouter()
@@ -13,8 +11,7 @@ const siteSubtitle = ref(localStorage.getItem('site_subtitle_cache') || '简洁�
 const isLogged = ref(false)
 const bgCanvasRef = ref<HTMLCanvasElement | null>(null)
 
-// Single source-of-truth renderer for the hero background. The buttons sample
-// blurred crops from its canvas, so they stay in lockstep with the crossfade.
+// Single source-of-truth renderer for the fixed hero background.
 const scene = createHeroScene()
 provide(heroSceneKey, scene)
 
@@ -66,31 +63,26 @@ function goRegister() { router.push('/register') }
   <div class="home-container">
     <!-- Background is FIXED and outside of main content flow -->
     <canvas ref="bgCanvasRef" class="hero-bg-fixed" aria-hidden="true"></canvas>
-
+    <button
+      v-if="isLogged"
+      type="button"
+      class="home-fixed-button home-fixed-primary home-fixed-single probe-fade-in"
+      @click="goDashboard"
+    >
+      进入个人面板
+    </button>
+    <button v-else type="button" class="home-fixed-button home-fixed-primary probe-fade-in" @click="goLogin">
+      登录账号
+    </button>
+    <button v-if="!isLogged" type="button" class="home-fixed-button home-fixed-secondary probe-fade-in" @click="goRegister">
+      即刻注册
+    </button>
     <!-- Main Content -->
     <div class="hero-section">
       <div class="hero-content animate-fade-in">
         <h1 class="hero-title">{{ siteName }}</h1>
         <p class="hero-subtitle">{{ siteSubtitle }}</p>
-        <div class="hero-actions">
-          <CanvasGlassButton
-            v-if="isLogged"
-            class="hero-btn"
-            variant="primary"
-            @click="goDashboard"
-          >
-            <el-icon><User /></el-icon>
-            <span>进入个人面板</span>
-          </CanvasGlassButton>
-          <template v-else>
-            <CanvasGlassButton class="hero-btn" variant="primary" @click="goLogin">
-              登录账号
-            </CanvasGlassButton>
-            <CanvasGlassButton class="hero-btn" variant="secondary" @click="goRegister">
-              即刻注册
-            </CanvasGlassButton>
-          </template>
-        </div>
+        <div class="hero-actions"></div>
       </div>
     </div>
   </div>
@@ -99,10 +91,12 @@ function goRegister() { router.push('/register') }
 <style scoped>
 .home-container {
   width: 100%;
-  height: calc(100vh - var(--footer-height, 0px));
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  position: relative;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
 }
 
 /* FIXED Background logic — single canvas, drawn by the hero scene */
@@ -113,20 +107,103 @@ function goRegister() { router.push('/register') }
   display: block;
 }
 
+.home-fixed-button {
+  position: fixed;
+  top: calc(50vh + 44px);
+  z-index: 10;
+  width: 148px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 14px;
+  border: none;
+  background: var(--home-action-bg, rgba(255, 255, 255, 0.08));
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  box-shadow: inset 0 0 0 1px var(--home-action-ring, rgba(255, 255, 255, 0.38));
+  transition: top 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.home-fixed-button:hover {
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.18),
+    inset 0 0 0 1px var(--home-action-ring, rgba(255, 255, 255, 0.38)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.home-fixed-primary {
+  left: calc(50vw - 156px);
+  top: calc(50vh + 44px);
+  --home-action-ring: rgba(64, 158, 255, 0.45);
+  --home-action-bg: rgba(64, 158, 255, 0.16);
+}
+
+.home-fixed-single {
+  left: calc(50vw - 74px);
+}
+
+.home-fixed-secondary {
+  left: calc(50vw + 8px);
+  top: calc(50vh + 44px);
+  --home-action-ring: rgba(255, 255, 255, 0.34);
+  --home-action-bg: rgba(255, 255, 255, 0.12);
+}
+
+.home-fixed-primary:hover,
+.home-fixed-secondary:hover {
+  top: calc(50vh + 40px);
+}
+
+.probe-fade-in {
+  animation: homeActionFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes homeActionFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .hero-section {
-  position: relative; z-index: 1; flex: 1; display: flex; align-items: center; justify-content: center; color: #fff; padding: 0 20px;
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  padding: 64px 20px var(--footer-height, 0px);
+  min-height: 100vh;
 }
 
 .hero-content { text-align: center; max-width: 800px; }
 .hero-title { font-size: 56px; font-weight: 800; margin: 0 0 16px 0; letter-spacing: -1.5px; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
 .hero-subtitle { font-size: 20px; margin: 0 0 32px 0; opacity: 0.95; font-weight: 400; }
 
-.hero-actions { display: flex; gap: 16px; justify-content: center; }
-.hero-btn { height: 52px; padding: 0 36px; font-size: 16px; font-weight: 600; border-radius: 14px; }
+.hero-actions { display: none; }
 
 @media (max-width: 768px) {
   .hero-title { font-size: 36px; }
-  .hero-actions { flex-direction: column; gap: 12px; }
-  .hero-btn { width: 100%; }
+  .home-fixed-button {
+    left: 32px;
+    right: 32px;
+    width: auto;
+  }
+  .home-fixed-primary { top: calc(50vh + 36px); }
+  .home-fixed-single { left: 32px; }
+  .home-fixed-secondary { top: calc(50vh + 100px); }
+  .home-fixed-primary:hover { top: calc(50vh + 32px); }
+  .home-fixed-secondary:hover { top: calc(50vh + 96px); }
 }
 </style>

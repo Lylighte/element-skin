@@ -370,8 +370,13 @@ onUnmounted(() => {
 <style scoped>
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
 
-/* Home Mode Shell - Allow natural scrolling for global overlays */
-.is-home-layout { min-height: 100vh; position: relative; }
+/* Home Mode Shell */
+.is-home-layout {
+  min-height: 100vh;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
 
 .layout-header-wrap {
   padding: 0 20px; background: var(--color-header-background); backdrop-filter: blur(8px);
@@ -381,6 +386,7 @@ onUnmounted(() => {
 
 .is-home-layout .layout-header-wrap {
   position: fixed; top: 0; left: 0; right: 0; background: transparent; border-bottom: none; box-shadow: none; backdrop-filter: none;
+  z-index: 20;
 }
 
 /* Home Layout UI Enforcement - Scoped to .layout-header */
@@ -407,12 +413,12 @@ onUnmounted(() => {
 
 .is-home-layout .header-actions :deep(.el-button--primary) {
   background: rgba(64, 158, 255, 0.3) !important; border: 1px solid rgba(64, 158, 255, 0.4) !important;
-  color: #fff !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  color: #fff !important;
   border-radius: 8px;
 }
 .is-home-layout .hero-register-btn {
   background: rgba(255, 255, 255, 0.15) !important; border: 1px solid rgba(255, 255, 255, 0.25) !important;
-  color: #fff !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  color: #fff !important;
   border-radius: 8px; height: 32px; padding: 0 15px; font-size: 14px;
 }
 
@@ -440,7 +446,16 @@ onUnmounted(() => {
 .theme-toggle { font-size: 20px; border-radius: 8px; }
 
 .app-main { padding: 20px; flex: 1; display: flex; flex-direction: column; background-color: var(--color-background); transition: padding 0.3s ease; }
-.is-home-layout .app-main { padding: 0; flex: 1; height: 0; min-height: 0; }
+.is-home-layout .app-main {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  padding: 0;
+  flex: none;
+  height: 100vh;
+  min-height: 100vh;
+  background: transparent;
+}
 .is-auth-layout .app-main { padding: 0 !important; }
 
 /* Account */
