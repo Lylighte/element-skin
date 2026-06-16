@@ -41,24 +41,18 @@
       <el-card shadow="hover" class="surface-card">
         <div class="config-content">
           <p class="config-desc">
-            将下方的 API 地址复制到您的启动器，或直接拖动下方按钮到支持 authlib-injector 的启动器窗口中。
+            点击下方按钮复制 API 地址，或直接将其拖到支持 authlib-injector 的启动器窗口中。
           </p>
           <div class="config-actions">
-            <el-input v-model="apiUrl" readonly class="api-url-input">
-              <template #append>
-                <el-button @click="copyApiUrl">
-                  <el-icon><CopyDocument /></el-icon>
-                  <span>复制</span>
-                </el-button>
-              </template>
-            </el-input>
+            <el-input v-model="apiUrl" readonly class="api-url-input" />
             <a
               class="el-button el-button--primary drag-btn"
               :href="`authlib-injector:yggdrasil-server:${encodeURIComponent(apiUrl)}`"
-              title="拖动我到启动器"
+              title="点击复制，或拖到启动器"
+              @click.prevent="copyApiUrl"
             >
-              <el-icon><Pointer /></el-icon>
-              <span>拖到启动器</span>
+              <el-icon><CopyDocument /></el-icon>
+              <span>复制或拖到启动器</span>
             </a>
           </div>
         </div>
@@ -146,7 +140,7 @@ import { ref, onMounted } from 'vue'
 import { getPublicSettings, getPublicFallbackStatus } from '@/api/public'
 import { getMe } from '@/api/me'
 import {
-  Box, User, CopyDocument, Pointer,
+  Box, User, CopyDocument,
   Check, Loading, Warning, Refresh, CircleClose
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -393,15 +387,17 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 .api-url-input {
-  flex: 1 1 320px;
+  flex: 99 1 320px;
   min-width: 0;
 }
 .drag-btn {
+  flex: 1 1 240px;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: auto;
+  min-height: var(--el-component-size, 32px);
   padding: 0 16px;
   font-weight: 500;
   white-space: nowrap;
