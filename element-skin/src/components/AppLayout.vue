@@ -469,6 +469,8 @@ onUnmounted(() => {
 .account-meta h4 { margin:0; font-size:14px; font-weight:600; color: var(--color-heading); }
 .account-meta p { margin:4px 0 0; font-size:12px; color: var(--color-text-light); }
 .account-actions { display:flex; flex-direction:column; gap:8px; width: 100%; }
+.account-actions :deep(.el-button) { width: 100%; }
+.account-actions :deep(.el-button + .el-button) { margin-left: 0 !important; }
 
 .account-avatar.has-custom { background: transparent !important; }
 .account-avatar.has-custom :deep(img) { 
