@@ -34,10 +34,12 @@ const snowTargetSelector = [
   '.el-dialog',
   '.texture-card',
   '.role-card',
+  '.home-fixed-button',
   '.canvas-glass-button',
 ].join(',')
 
 const floatingSnowTargetSelector = [
+  '.home-fixed-button',
   '.canvas-glass-button',
 ].join(',')
 
