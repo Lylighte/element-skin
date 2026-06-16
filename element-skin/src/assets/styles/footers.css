@@ -74,8 +74,13 @@
   margin-top: 0;
 }
 
-/* 1. Home Variant: Transparent, stays in flow */
+/* 1. Home Variant: Transparent, fixed over the home scene */
 .footer-home {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
   background: transparent !important;
   color: #ffffff !important;
   border-top: none !important;
