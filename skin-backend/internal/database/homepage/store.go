@@ -2,7 +2,6 @@ package homepage
 
 import (
 	"context"
-	"encoding/json"
 
 	"element-skin/backend/internal/model"
 
@@ -15,15 +14,11 @@ type Store struct {
 }
 
 func (s Store) Create(ctx context.Context, item model.HomepageMedia) error {
-	cfg, err := json.Marshal(item.Config)
-	if err != nil {
-		return err
-	}
-	_, err = s.Pool.Exec(ctx, `
+	_, err := s.Pool.Exec(ctx, `
 		INSERT INTO homepage_media
-			(id, media_type, title, storage_path, config, sort_order, enabled, duration_ms, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-	`, item.ID, item.Type, item.Title, item.StoragePath, cfg, item.SortOrder, item.Enabled, item.DurationMS, item.CreatedAt, item.UpdatedAt)
+			(id, media_type, title, storage_path, overlay_opacity_light, overlay_opacity_dark, start_yaw, start_pitch, yaw_speed_dps, pitch_speed_dps, sort_order, enabled, duration_ms, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+	`, item.ID, item.Type, item.Title, item.StoragePath, item.OverlayOpacityLight, item.OverlayOpacityDark, item.StartYaw, item.StartPitch, item.YawSpeedDPS, item.PitchSpeedDPS, item.SortOrder, item.Enabled, item.DurationMS, item.CreatedAt, item.UpdatedAt)
 	return err
 }
 
@@ -34,7 +29,7 @@ func (s Store) NextSortOrder(ctx context.Context) (int, error) {
 }
 
 func (s Store) List(ctx context.Context, onlyEnabled bool) ([]model.HomepageMedia, error) {
-	sql := `SELECT id, media_type, title, storage_path, config, sort_order, enabled, duration_ms, created_at, updated_at FROM homepage_media`
+	sql := `SELECT id, media_type, title, storage_path, overlay_opacity_light, overlay_opacity_dark, start_yaw, start_pitch, yaw_speed_dps, pitch_speed_dps, sort_order, enabled, duration_ms, created_at, updated_at FROM homepage_media`
 	if onlyEnabled {
 		sql += ` WHERE enabled = TRUE`
 	}
@@ -56,40 +51,46 @@ func (s Store) List(ctx context.Context, onlyEnabled bool) ([]model.HomepageMedi
 }
 
 func (s Store) Get(ctx context.Context, id string) (model.HomepageMedia, error) {
-	row := s.Pool.QueryRow(ctx, `SELECT id, media_type, title, storage_path, config, sort_order, enabled, duration_ms, created_at, updated_at FROM homepage_media WHERE id=$1`, id)
+	row := s.Pool.QueryRow(ctx, `SELECT id, media_type, title, storage_path, overlay_opacity_light, overlay_opacity_dark, start_yaw, start_pitch, yaw_speed_dps, pitch_speed_dps, sort_order, enabled, duration_ms, created_at, updated_at FROM homepage_media WHERE id=$1`, id)
 	return scan(row)
 }
 
 type Patch struct {
-	Title      *string
-	Config     map[string]any
-	HasConfig  bool
-	Enabled    *bool
-	DurationMS *int
-	UpdatedAt  int64
+	Title               *string
+	OverlayOpacityLight *float64
+	OverlayOpacityDark  *float64
+	StartYaw            *float64
+	StartPitch          *float64
+	YawSpeedDPS         *float64
+	PitchSpeedDPS       *float64
+	Enabled             *bool
+	DurationMS          *int
+	UpdatedAt           int64
 }
 
 func (s Store) Patch(ctx context.Context, id string, patch Patch) (model.HomepageMedia, error) {
-	var cfg []byte
-	var err error
-	if patch.HasConfig {
-		cfg, err = json.Marshal(patch.Config)
-		if err != nil {
-			return model.HomepageMedia{}, err
-		}
-	}
 	row := s.Pool.QueryRow(ctx, `
 		UPDATE homepage_media SET
 			title = CASE WHEN $2 THEN $3 ELSE title END,
-			config = CASE WHEN $4 THEN $5 ELSE config END,
-			enabled = CASE WHEN $6 THEN $7 ELSE enabled END,
-			duration_ms = CASE WHEN $8 THEN $9 ELSE duration_ms END,
-			updated_at = $10
+			overlay_opacity_light = CASE WHEN $4 THEN $5 ELSE overlay_opacity_light END,
+			overlay_opacity_dark = CASE WHEN $6 THEN $7 ELSE overlay_opacity_dark END,
+			start_yaw = CASE WHEN $8 THEN $9 ELSE start_yaw END,
+			start_pitch = CASE WHEN $10 THEN $11 ELSE start_pitch END,
+			yaw_speed_dps = CASE WHEN $12 THEN $13 ELSE yaw_speed_dps END,
+			pitch_speed_dps = CASE WHEN $14 THEN $15 ELSE pitch_speed_dps END,
+			enabled = CASE WHEN $16 THEN $17 ELSE enabled END,
+			duration_ms = CASE WHEN $18 THEN $19 ELSE duration_ms END,
+			updated_at = $20
 		WHERE id=$1
-		RETURNING id, media_type, title, storage_path, config, sort_order, enabled, duration_ms, created_at, updated_at
+		RETURNING id, media_type, title, storage_path, overlay_opacity_light, overlay_opacity_dark, start_yaw, start_pitch, yaw_speed_dps, pitch_speed_dps, sort_order, enabled, duration_ms, created_at, updated_at
 	`, id,
 		patch.Title != nil, derefString(patch.Title),
-		patch.HasConfig, cfg,
+		patch.OverlayOpacityLight != nil, derefFloat64(patch.OverlayOpacityLight),
+		patch.OverlayOpacityDark != nil, derefFloat64(patch.OverlayOpacityDark),
+		patch.StartYaw != nil, derefFloat64(patch.StartYaw),
+		patch.StartPitch != nil, derefFloat64(patch.StartPitch),
+		patch.YawSpeedDPS != nil, derefFloat64(patch.YawSpeedDPS),
+		patch.PitchSpeedDPS != nil, derefFloat64(patch.PitchSpeedDPS),
 		patch.Enabled != nil, derefBool(patch.Enabled),
 		patch.DurationMS != nil, derefInt(patch.DurationMS),
 		patch.UpdatedAt,
@@ -118,7 +119,7 @@ func (s Store) Reorder(ctx context.Context, ids []string, updatedAt int64) error
 func (s Store) Delete(ctx context.Context, id string) (model.HomepageMedia, error) {
 	row := s.Pool.QueryRow(ctx, `
 		DELETE FROM homepage_media WHERE id=$1
-		RETURNING id, media_type, title, storage_path, config, sort_order, enabled, duration_ms, created_at, updated_at
+		RETURNING id, media_type, title, storage_path, overlay_opacity_light, overlay_opacity_dark, start_yaw, start_pitch, yaw_speed_dps, pitch_speed_dps, sort_order, enabled, duration_ms, created_at, updated_at
 	`, id)
 	return scan(row)
 }
@@ -129,17 +130,24 @@ type scanner interface {
 
 func scan(row scanner) (model.HomepageMedia, error) {
 	var item model.HomepageMedia
-	var raw []byte
-	if err := row.Scan(&item.ID, &item.Type, &item.Title, &item.StoragePath, &raw, &item.SortOrder, &item.Enabled, &item.DurationMS, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(
+		&item.ID,
+		&item.Type,
+		&item.Title,
+		&item.StoragePath,
+		&item.OverlayOpacityLight,
+		&item.OverlayOpacityDark,
+		&item.StartYaw,
+		&item.StartPitch,
+		&item.YawSpeedDPS,
+		&item.PitchSpeedDPS,
+		&item.SortOrder,
+		&item.Enabled,
+		&item.DurationMS,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	); err != nil {
 		return model.HomepageMedia{}, err
-	}
-	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &item.Config); err != nil {
-			return model.HomepageMedia{}, err
-		}
-	}
-	if item.Config == nil {
-		item.Config = map[string]any{}
 	}
 	return item, nil
 }
@@ -156,6 +164,13 @@ func derefBool(v *bool) bool {
 }
 
 func derefInt(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+func derefFloat64(v *float64) float64 {
 	if v == nil {
 		return 0
 	}

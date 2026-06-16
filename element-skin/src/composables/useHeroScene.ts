@@ -301,13 +301,9 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
     startedAt: number,
     target: THREE.Matrix3,
   ) {
-    const startYaw = numberConfig(item, 'start_yaw', 0)
-    const startPitch = numberConfig(item, 'start_pitch', 0)
-    const yawSpeed = numberConfig(item, 'yaw_speed_dps', 4)
-    const pitchSpeed = numberConfig(item, 'pitch_speed_dps', 0)
     const elapsed = (now - startedAt) / 1000
-    const yaw = THREE.MathUtils.degToRad(startYaw + yawSpeed * elapsed)
-    const pitch = THREE.MathUtils.degToRad(startPitch + pitchSpeed * elapsed)
+    const yaw = THREE.MathUtils.degToRad(item.start_yaw + item.yaw_speed_dps * elapsed)
+    const pitch = THREE.MathUtils.degToRad(item.start_pitch + item.pitch_speed_dps * elapsed)
     rotationEuler.set(pitch, yaw, 0, 'YXZ')
     rotationMatrix4.makeRotationFromEuler(rotationEuler)
     target.setFromMatrix4(rotationMatrix4)
@@ -320,9 +316,9 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
   }
 
   function overlayOpacity(currentItem?: HomepageMedia, nextItem?: HomepageMedia, progress = 0) {
-    const from = currentItem ? numberConfig(currentItem, 'overlay_opacity', 0.45) : 0.45
+    const from = currentItem ? overlayOpacityForTheme(currentItem) : 0
     if (!transitioning || !nextItem) return from
-    const to = numberConfig(nextItem, 'overlay_opacity', 0.45)
+    const to = overlayOpacityForTheme(nextItem)
     return lerp(from, to, progress)
   }
 
@@ -394,9 +390,10 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
   }
 }
 
-function numberConfig(item: HomepageMedia, key: string, fallback: number) {
-  const value = item.config?.[key]
-  return typeof value === 'number' ? value : fallback
+function overlayOpacityForTheme(item: HomepageMedia) {
+  return document.documentElement.classList.contains('dark')
+    ? item.overlay_opacity_dark
+    : item.overlay_opacity_light
 }
 
 function sceneDpr() {

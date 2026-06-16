@@ -140,15 +140,17 @@ func (db *DB) MigrateHomepageMediaFiles(ctx context.Context, dir string) error {
 
 func modelHomepageImage(id, filename string, order int, now int64) model.HomepageMedia {
 	return model.HomepageMedia{
-		ID:          id,
-		Type:        "image",
-		Title:       filename,
-		StoragePath: filename,
-		Config:      map[string]any{},
-		SortOrder:   order,
-		Enabled:     true,
-		DurationMS:  6000,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:                  id,
+		Type:                "image",
+		Title:               filename,
+		StoragePath:         filename,
+		OverlayOpacityLight: 0.45,
+		OverlayOpacityDark:  0.45,
+		YawSpeedDPS:         4,
+		SortOrder:           order,
+		Enabled:             true,
+		DurationMS:          6000,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 }

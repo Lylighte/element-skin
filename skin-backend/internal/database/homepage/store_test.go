@@ -89,7 +89,8 @@ func TestHomepageStorePatchReorderAndDeleteExactState(t *testing.T) {
 func testMedia(id string, order int, now int64) model.HomepageMedia {
 	return model.HomepageMedia{
 		ID: id, Type: "image", Title: id, StoragePath: id + ".png",
-		Config: map[string]any{}, SortOrder: order, Enabled: true, DurationMS: 6000, CreatedAt: now, UpdatedAt: now,
+		OverlayOpacityLight: 0.45, OverlayOpacityDark: 0.45, YawSpeedDPS: 4,
+		SortOrder: order, Enabled: true, DurationMS: 6000, CreatedAt: now, UpdatedAt: now,
 	}
 }
 

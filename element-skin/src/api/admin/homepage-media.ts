@@ -15,7 +15,20 @@ export function uploadHomepagePanorama(formData: FormData): Promise<{ data: Home
 
 export function patchHomepageMedia(
   id: string,
-  body: Partial<Pick<HomepageMedia, 'title' | 'enabled' | 'duration_ms' | 'config'>>,
+  body: Partial<
+    Pick<
+      HomepageMedia,
+      | 'title'
+      | 'enabled'
+      | 'duration_ms'
+      | 'overlay_opacity_light'
+      | 'overlay_opacity_dark'
+      | 'start_yaw'
+      | 'start_pitch'
+      | 'yaw_speed_dps'
+      | 'pitch_speed_dps'
+    >
+  >,
 ): Promise<{ data: HomepageMedia }> {
   return client.patch(`/admin/homepage-media/${id}`, body)
 }

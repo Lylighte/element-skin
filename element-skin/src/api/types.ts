@@ -133,7 +133,12 @@ export interface HomepageMedia {
   type: 'image' | 'panorama'
   title: string
   storage_path: string
-  config: Record<string, any>
+  overlay_opacity_light: number
+  overlay_opacity_dark: number
+  start_yaw: number
+  start_pitch: number
+  yaw_speed_dps: number
+  pitch_speed_dps: number
   sort_order: number
   enabled: boolean
   duration_ms: number
