@@ -61,7 +61,7 @@
 
     <section v-if="fallbackEntries.length" class="dashboard-section">
       <div class="section-header">
-        <h2>备用服务状态</h2>
+        <h2>服务状态</h2>
         <el-button @click="loadFallbackStatus" :loading="isChecking" size="small" text>
           <el-icon><Refresh /></el-icon>
           <span>刷新</span>
