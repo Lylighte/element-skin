@@ -79,7 +79,7 @@ function goRegister() { router.push('/register') }
     </button>
     <!-- Main Content -->
     <div class="hero-section">
-      <div class="hero-content animate-fade-in">
+      <div class="hero-content home-title-fade-in">
         <h1 class="hero-title">{{ siteName }}</h1>
         <p class="hero-subtitle">{{ siteSubtitle }}</p>
         <div class="hero-actions"></div>
@@ -166,6 +166,10 @@ function goRegister() { router.push('/register') }
   animation: homeActionFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.home-title-fade-in {
+  animation: homeActionFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 @keyframes homeActionFadeIn {
   from {
     opacity: 0;
@@ -176,18 +180,21 @@ function goRegister() { router.push('/register') }
 }
 
 .hero-section {
-  position: relative;
+  position: fixed;
+  inset: 0;
   z-index: 1;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   color: #fff;
-  padding: 64px 20px var(--footer-height, 0px);
-  min-height: 100vh;
+  pointer-events: none;
 }
 
-.hero-content { text-align: center; max-width: 800px; }
+.hero-content {
+  position: fixed;
+  left: 50%;
+  top: calc(50vh - 116px);
+  width: min(800px, calc(100vw - 40px));
+  transform: translateX(-50%);
+  text-align: center;
+}
 .hero-title { font-size: 56px; font-weight: 800; margin: 0 0 16px 0; letter-spacing: -1.5px; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
 .hero-subtitle { font-size: 20px; margin: 0 0 32px 0; opacity: 0.95; font-weight: 400; }
 
