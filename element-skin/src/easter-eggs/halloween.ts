@@ -225,6 +225,28 @@ export function start(): EasterEggCleanup {
     html.easter-egg-halloween .search-bar-container .el-input-group__append .el-button::after {
       content: none !important;
     }
+
+    html.easter-egg-halloween .is-home-layout .home-fixed-button {
+      color: #fff !important;
+      --home-action-ring: rgba(255, 145, 35, 0.58);
+      --home-action-bg: rgba(225, 96, 18, 0.18);
+      box-shadow:
+        inset 0 0 0 1px var(--home-action-ring),
+        inset 0 1px 0 rgba(255, 199, 101, 0.16) !important;
+    }
+
+    html.easter-egg-halloween .is-home-layout .home-fixed-button.home-fixed-primary {
+      --home-action-bg: rgba(225, 96, 18, 0.24);
+    }
+
+    html.easter-egg-halloween .is-home-layout .home-fixed-button:hover {
+      box-shadow:
+        0 0 0 3px rgba(255, 145, 35, 0.12),
+        0 14px 28px rgba(89, 42, 10, 0.22),
+        0 0 18px rgba(255, 122, 24, 0.14),
+        inset 0 0 0 1px var(--home-action-ring),
+        inset 0 1px 0 rgba(255, 199, 101, 0.18) !important;
+    }
   `)
 
   return () => style.remove()
