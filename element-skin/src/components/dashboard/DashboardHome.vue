@@ -89,33 +89,24 @@
             </div>
           </div>
 
-          <div class="fallback-current">
-            <div
-              v-for="api in API_ROWS"
-              :key="api.key"
-              class="fallback-current-cell"
-              :class="currentCellClass(entry, api.key)"
-            >
-              <span class="fallback-current-label">{{ api.label }}</span>
-              <span class="fallback-current-status">{{ currentStatusText(entry, api.key) }}</span>
-            </div>
-          </div>
-
           <div class="fallback-history">
             <div class="fallback-history-header">
               <span>近 24 小时</span>
               <span class="fallback-history-meta">{{ historyMeta(entry) }}</span>
             </div>
-            <div class="fallback-history-grid">
+            <div class="fallback-history-grid" ref="historyGridRef">
               <div
                 v-for="api in API_ROWS"
                 :key="api.key"
                 class="fallback-history-row"
               >
-                <span class="fallback-history-row-label">{{ api.label }}</span>
+                <div class="fallback-history-label" :class="`state-${currentStatus(entry, api.key)}`">
+                  <span class="fallback-history-state-dot" />
+                  <span class="fallback-history-row-label">{{ api.label }}</span>
+                </div>
                 <div class="fallback-history-track">
                   <span
-                    v-for="(bucket, idx) in hourlyBuckets(entry, api.key)"
+                    v-for="(bucket, idx) in buckets(entry, api.key)"
                     :key="idx"
                     class="fallback-history-cell"
                     :class="bucketClass(bucket)"
@@ -136,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { getPublicSettings, getPublicFallbackStatus } from '@/api/public'
 import { getMe } from '@/api/me'
 import {
@@ -205,17 +196,6 @@ function currentStatus(entry: FallbackStatusEntry, key: ApiKey): 'up' | 'down' |
   return value === 'up' ? 'up' : value === 'down' ? 'down' : 'unknown'
 }
 
-function currentCellClass(entry: FallbackStatusEntry, key: ApiKey) {
-  return `status-${currentStatus(entry, key)}`
-}
-
-function currentStatusText(entry: FallbackStatusEntry, key: ApiKey) {
-  const status = currentStatus(entry, key)
-  if (status === 'up') return '在线'
-  if (status === 'down') return '离线'
-  return '未探测'
-}
-
 function overallStatus(entry: FallbackStatusEntry) {
   if (!entry.latest) return 'unknown'
   const values: ApiKey[] = ['session', 'account', 'services']
@@ -239,40 +219,60 @@ function overallText(entry: FallbackStatusEntry) {
 }
 
 interface HourBucket {
-  hourLabel: string
+  startMs: number
+  endMs: number
   total: number
   up: number
   down: number
 }
 
-function hourlyBuckets(entry: FallbackStatusEntry, key: ApiKey): HourBucket[] {
+const HISTORY_MS = 24 * 3600_000
+const CELL_PITCH_PX = 12 // ~10px cell + 2px gap
+const MIN_BUCKETS = 12
+const MAX_BUCKETS = 144
+
+const historyGridRef = ref<HTMLElement[]>([])
+const bucketCount = ref(24)
+let resizeObserver: ResizeObserver | null = null
+
+function recomputeBucketCount() {
+  const grids = historyGridRef.value
+  if (!grids?.length) return
+  const track = grids[0]?.querySelector('.fallback-history-track') as HTMLElement | null
+  if (!track) return
+  const width = track.clientWidth
+  if (!width) return
+  const count = Math.min(MAX_BUCKETS, Math.max(MIN_BUCKETS, Math.floor(width / CELL_PITCH_PX)))
+  if (count !== bucketCount.value) bucketCount.value = count
+}
+
+function buckets(entry: FallbackStatusEntry, key: ApiKey): HourBucket[] {
+  const count = bucketCount.value
+  const bucketMs = HISTORY_MS / count
   const now = Date.now()
-  const buckets: HourBucket[] = []
-  for (let i = 23; i >= 0; i--) {
-    const start = new Date(now - i * 3600_000)
-    start.setMinutes(0, 0, 0)
-    buckets.push({
-      hourLabel: `${start.getHours().toString().padStart(2, '0')}:00`,
+  const baseMs = now - HISTORY_MS
+  const out: HourBucket[] = []
+  for (let i = 0; i < count; i++) {
+    out.push({
+      startMs: baseMs + i * bucketMs,
+      endMs: baseMs + (i + 1) * bucketMs,
       total: 0,
       up: 0,
       down: 0,
     })
   }
-  const baseHour = new Date(now)
-  baseHour.setMinutes(0, 0, 0)
-  const baseMs = baseHour.getTime() - 23 * 3600_000
   for (const tick of entry.history) {
     const t = new Date(tick.checked_at).getTime()
-    const idx = Math.floor((t - baseMs) / 3600_000)
-    if (idx < 0 || idx >= 24) continue
-    const bucket = buckets[idx]
+    const idx = Math.floor((t - baseMs) / bucketMs)
+    if (idx < 0 || idx >= count) continue
+    const bucket = out[idx]
     if (!bucket) continue
     const value = tick[key]
     bucket.total++
     if (value === 'up') bucket.up++
     else if (value === 'down') bucket.down++
   }
-  return buckets
+  return out
 }
 
 function bucketClass(bucket: HourBucket) {
@@ -282,9 +282,15 @@ function bucketClass(bucket: HourBucket) {
   return 'cell-mixed'
 }
 
+function formatTimeOfDay(ms: number) {
+  const d = new Date(ms)
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+}
+
 function bucketTitle(bucket: HourBucket) {
-  if (bucket.total === 0) return `${bucket.hourLabel} · 暂无探测`
-  return `${bucket.hourLabel} · ${bucket.total} 次探测 · 在线 ${bucket.up} / 离线 ${bucket.down}`
+  const range = `${formatTimeOfDay(bucket.startMs)}–${formatTimeOfDay(bucket.endMs)}`
+  if (bucket.total === 0) return `${range} · 暂无探测`
+  return `${range} · ${bucket.total} 次探测 · 在线 ${bucket.up} / 离线 ${bucket.down}`
 }
 
 function historyMeta(entry: FallbackStatusEntry) {
@@ -303,6 +309,26 @@ function historyMeta(entry: FallbackStatusEntry) {
 }
 
 // --- Lifecycle ---
+function attachResizeObserver() {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  const grids = historyGridRef.value
+  if (!grids?.length) return
+  resizeObserver = new ResizeObserver(() => recomputeBucketCount())
+  resizeObserver.observe(grids[0]!)
+}
+
+watch(fallbackEntries, async () => {
+  await nextTick()
+  attachResizeObserver()
+  recomputeBucketCount()
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
+
 onMounted(async () => {
   try {
     const res = await getPublicSettings()
@@ -462,32 +488,8 @@ onMounted(async () => {
 .overall-offline { background: rgba(245, 108, 108, 0.15); color: var(--el-color-danger); }
 .overall-unknown { background: rgba(144, 147, 153, 0.15); color: var(--el-color-info); }
 
-.fallback-current {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 18px;
-}
-.fallback-current-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  background: var(--color-background-soft);
-}
-.fallback-current-label { font-size: 12px; color: var(--color-text-light); font-weight: 600; }
-.fallback-current-status { font-size: 14px; font-weight: 600; }
-.status-up { border-color: var(--el-color-success-light-5); }
-.status-up .fallback-current-status { color: var(--el-color-success); }
-.status-down { border-color: var(--el-color-danger-light-5); }
-.status-down .fallback-current-status { color: var(--el-color-danger); }
-.status-unknown .fallback-current-status { color: var(--el-color-info); }
-
 .fallback-history {
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
+  padding-top: 4px;
 }
 .fallback-history-header {
   display: flex;
@@ -509,18 +511,39 @@ onMounted(async () => {
 }
 .fallback-history-row {
   display: grid;
-  grid-template-columns: 70px 1fr;
+  grid-template-columns: 92px 1fr;
   align-items: center;
   gap: 10px;
 }
-.fallback-history-row-label {
+.fallback-history-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
-  color: var(--color-text-light);
   font-weight: 600;
+  color: var(--color-text-light);
 }
+.fallback-history-row-label {
+  letter-spacing: 0.2px;
+}
+.fallback-history-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--el-color-info);
+  flex-shrink: 0;
+}
+.state-up { color: var(--el-color-success); }
+.state-up .fallback-history-state-dot { background: var(--el-color-success); }
+.state-down { color: var(--el-color-danger); }
+.state-down .fallback-history-state-dot { background: var(--el-color-danger); }
+.state-unknown { color: var(--el-color-info); }
+.state-unknown .fallback-history-state-dot { background: var(--el-color-info); }
+
 .fallback-history-track {
   display: grid;
-  grid-template-columns: repeat(24, 1fr);
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
   gap: 2px;
 }
 .fallback-history-cell {
@@ -540,12 +563,11 @@ onMounted(async () => {
   font-size: 11px;
   color: var(--color-text-light);
   margin-top: 6px;
-  padding-left: 80px;
+  padding-left: 102px;
 }
 
 @media (max-width: 768px) {
-  .fallback-current { grid-template-columns: 1fr; }
-  .fallback-history-row { grid-template-columns: 60px 1fr; }
-  .fallback-history-axis { padding-left: 70px; }
+  .fallback-history-row { grid-template-columns: 80px 1fr; }
+  .fallback-history-axis { padding-left: 90px; }
 }
 </style>
