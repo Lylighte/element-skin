@@ -195,9 +195,35 @@ export function start(): EasterEggCleanup {
     },
   })
 
-  const fireworks = startFireworks()
+  const fireworks = startDarkOnlyFireworks()
 
   return combineCleanups(fireworks, bursts, () => style.remove())
+}
+
+function startDarkOnlyFireworks(): EasterEggCleanup {
+  let cleanup: EasterEggCleanup | null = null
+
+  function sync(): void {
+    const shouldRun = document.documentElement.classList.contains('dark')
+    if (shouldRun && !cleanup) {
+      cleanup = startFireworks()
+      return
+    }
+    if (!shouldRun && cleanup) {
+      cleanup()
+      cleanup = null
+    }
+  }
+
+  const observer = new MutationObserver(sync)
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  sync()
+
+  return () => {
+    observer.disconnect()
+    cleanup?.()
+    cleanup = null
+  }
 }
 
 function startFireworks(): EasterEggCleanup {
