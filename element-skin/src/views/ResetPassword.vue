@@ -1,9 +1,13 @@
 <template>
-  <div class="flex items-center justify-center min-h-screen p-5 bg-screen-gradient transition-bg">
-    <div class="w-full max-w-440 bg-card rounded-3xl p-10 shadow-lg-soft animate-slide-up border">
+  <div
+    class="flex items-center justify-center min-h-screen p-5 bg-[var(--color-background-hero-light)] dark:bg-[var(--color-background-hero-dark)] transition-[background] duration-300"
+  >
+    <div
+      class="w-full max-w-[440px] bg-[var(--color-card-background)] rounded-2xl p-10 shadow-[0_8px_32px_rgba(0,0,0,0.1)] animate-slide-up border border-[var(--color-border)]"
+    >
       <div class="text-center mb-8">
-        <h1 class="m-0 mb-2 text-28 font-semibold text-heading">重置密码</h1>
-        <p class="m-0 text-sm text-light">输入您的邮箱并获取验证码以重置密码</p>
+        <h1 class="m-0 mb-2 text-[28px] font-semibold text-[var(--color-heading)]">重置密码</h1>
+        <p class="m-0 text-sm text-[var(--color-text-light)]">输入您的邮箱并获取验证码以重置密码</p>
       </div>
 
       <el-form :model="form" :rules="rules" ref="formRef" label-position="top" size="large">
@@ -20,7 +24,7 @@
               :disabled="countdown > 0"
               :loading="codeLoading"
               @click="sendCode"
-              class="h-12 min-w-120"
+              class="h-12 min-w-[120px]"
             >
               {{ countdown > 0 ? `${countdown}s` : '发送验证码' }}
             </el-button>

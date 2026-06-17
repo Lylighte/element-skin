@@ -117,7 +117,9 @@
 
               <section class="viewer-section" v-if="selectedItem.uploader_name">
                 <div class="viewer-section-label">上传者</div>
-                <div class="flex items-center gap-2 text-15 text-heading font-medium">
+                <div
+                  class="flex items-center gap-2 text-[15px] text-[var(--color-heading)] font-medium"
+                >
                   <el-icon><User /></el-icon>
                   <span>{{ selectedItem.uploader_name }}</span>
                 </div>
@@ -127,14 +129,17 @@
                 <el-button
                   type="primary"
                   size="large"
-                  class="btn-gradient btn-gradient-primary w-full rounded-2xl h-12"
+                  class="btn-gradient btn-gradient-primary w-full rounded-xl h-12"
                   @click="addToWardrobe(selectedItem)"
                   :disabled="!isLogged"
                 >
                   <el-icon><Plus /></el-icon>
                   <span class="ml-2">添加到我的衣柜</span>
                 </el-button>
-                <p v-if="!isLogged" class="text-center text-13 text-info mt-3">
+                <p
+                  v-if="!isLogged"
+                  class="text-center text-[13px] text-[var(--el-text-color-secondary)] mt-3"
+                >
                   登录后即可收藏此纹理
                 </p>
               </section>

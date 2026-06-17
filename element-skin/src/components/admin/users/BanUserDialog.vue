@@ -22,8 +22,10 @@
         <el-input-number v-model="customHours" :min="1" :max="8760" class="w-full" />
       </div>
 
-      <div class="text-13 text-light p-3 bg-mute rounded-md">
-        解封时间：<span class="font-bold text-primary">{{ untilLabel }}</span>
+      <div
+        class="text-[13px] text-[var(--color-text-light)] p-3 bg-[var(--color-background-mute)] rounded-md"
+      >
+        解封时间：<span class="font-bold text-[var(--el-color-primary)]">{{ untilLabel }}</span>
       </div>
     </div>
     <template #footer>

@@ -35,7 +35,7 @@
       </ActionBar>
     </div>
 
-    <div class="min-h-400" v-loading="loading" element-loading-background="transparent">
+    <div class="min-h-[400px]" v-loading="loading" element-loading-background="transparent">
       <div class="auto-grid" v-if="profiles.length > 0">
         <RoleCard
           v-for="(profile, index) in profiles"

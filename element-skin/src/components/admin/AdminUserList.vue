@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-1000 mx-auto py-5 animate-fade-in">
+  <div class="max-w-[1000px] mx-auto py-5 animate-fade-in">
     <PageHeader title="用户管理" subtitle="管理站内所有用户及其角色的状态与权限">
       <template #icon><UserFilled /></template>
       <template #actions>

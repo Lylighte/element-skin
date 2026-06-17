@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-1000 mx-auto py-5 animate-fade-in">
+  <div class="max-w-[1000px] mx-auto py-5 animate-fade-in">
     <PageHeader title="彩蛋列表" subtitle="配置服务端允许启用的节日彩蛋">
       <template #icon><MagicStick /></template>
       <template #actions>
@@ -19,7 +19,7 @@
       description="这里配置的是服务端允许启用的彩蛋。客户端还会结合本地日期和用户个人设置，三者都满足时才会 lazy import 对应效果。"
     />
 
-    <div class="grid grid-cols-auto-320 max-sm:grid-cols-1 gap-4">
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] max-sm:grid-cols-1 gap-4">
       <el-card
         v-for="egg in easterEggOptions"
         :key="egg.id"
@@ -33,14 +33,16 @@
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap mb-2">
-              <h3 class="m-0 text-17 font-bold text-heading">{{ egg.name }}</h3>
+              <h3 class="m-0 text-[17px] font-bold text-[var(--color-heading)]">{{ egg.name }}</h3>
               <el-tag v-if="enabledIds.includes(egg.id)" type="success" effect="light"
                 >已启用</el-tag
               >
               <el-tag v-else type="info" effect="plain">未启用</el-tag>
             </div>
-            <p class="m-0 mb-3 text-light leading-normal">{{ egg.description }}</p>
-            <div class="font-mono text-xs text-light">ID: {{ egg.id }}</div>
+            <p class="m-0 mb-3 text-[var(--color-text-light)] leading-normal">
+              {{ egg.description }}
+            </p>
+            <div class="font-mono text-xs text-[var(--color-text-light)]">ID: {{ egg.id }}</div>
           </div>
           <el-switch
             :model-value="enabledIds.includes(egg.id)"

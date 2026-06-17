@@ -74,7 +74,10 @@
                   size="small"
                   :class="[
                     'account-avatar',
-                    { 'bg-gradient-purple': !customAvatar, 'has-custom': !!customAvatar },
+                    {
+                      'bg-gradient-to-br from-[#b37feb] to-[#8553cf]': !customAvatar,
+                      'has-custom': !!customAvatar,
+                    },
                   ]"
                   :src="customAvatar || ''"
                 >
@@ -90,7 +93,10 @@
                   :size="48"
                   :class="[
                     'account-avatar',
-                    { 'bg-gradient-purple': !customAvatar, 'has-custom': !!customAvatar },
+                    {
+                      'bg-gradient-to-br from-[#b37feb] to-[#8553cf]': !customAvatar,
+                      'has-custom': !!customAvatar,
+                    },
                   ]"
                   :src="customAvatar || ''"
                 >

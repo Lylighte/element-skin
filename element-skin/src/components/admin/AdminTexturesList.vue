@@ -17,7 +17,7 @@
 
     <div class="flex items-center gap-4 mb-6 flex-wrap">
       <SearchBar
-        class="flex-1 min-w-260"
+        class="flex-1 min-w-[260px]"
         v-model="searchQuery"
         placeholder="搜索哈希、材质名或上传者"
         @clear="handleClearSearch"
@@ -109,7 +109,9 @@
             v-if="selectedItem.uploader_display_name || selectedItem.uploader_email"
           >
             <div class="viewer-section-label">上传者</div>
-            <div class="flex items-center gap-2 text-15 text-heading font-medium">
+            <div
+              class="flex items-center gap-2 text-[15px] text-[var(--color-heading)] font-medium"
+            >
               <span>{{
                 selectedItem.uploader_display_name || selectedItem.uploader_email || '未知'
               }}</span>

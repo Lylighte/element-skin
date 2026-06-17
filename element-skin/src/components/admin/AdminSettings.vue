@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-900 mx-auto py-5 animate-fade-in">
+  <div class="max-w-[900px] mx-auto py-5 animate-fade-in">
     <PageHeader title="站点设置" subtitle="管理站点基础配置、安全策略及第三方集成">
       <template #icon><Setting /></template>
       <template #actions>
@@ -13,7 +13,7 @@
     <el-card class="surface-card mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2 font-semibold text-heading">
+          <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
             <el-icon><Monitor /></el-icon>
             <span>基础设置</span>
           </div>
@@ -53,7 +53,7 @@
             <el-radio-button value="random">随机 UUID</el-radio-button>
             <el-radio-button value="offline">离线 UUID</el-radio-button>
           </el-radio-group>
-          <span class="text-xs text-light leading-normal mt-1 block ml-4"
+          <span class="text-xs text-[var(--color-text-light)] leading-normal mt-1 block ml-4"
             >默认使用随机 UUID（uuid4）；启用后按角色名生成离线 UUID。</span
           >
         </el-form-item>
@@ -133,7 +133,7 @@
     <el-card class="surface-card mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2 font-semibold text-heading">
+          <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
             <el-icon><Lock /></el-icon>
             <span>安全与速率限制</span>
           </div>
@@ -150,14 +150,14 @@
       <el-form label-position="top" :model="settings.security">
         <el-form-item label="强密码检查">
           <el-switch v-model="settings.security.enable_strong_password_check" />
-          <span class="text-xs text-light leading-normal mt-1 block ml-4"
+          <span class="text-xs text-[var(--color-text-light)] leading-normal mt-1 block ml-4"
             >启用后，用户注册或修改密码将执行严格的复杂度检查。</span
           >
         </el-form-item>
         <el-divider />
         <el-form-item label="身份验证速率限制">
           <el-switch v-model="settings.security.rate_limit_enabled" />
-          <span class="text-xs text-light leading-normal mt-1 block ml-4"
+          <span class="text-xs text-[var(--color-text-light)] leading-normal mt-1 block ml-4"
             >启用后将限制登录、重置密码等接口的尝试频率。</span
           >
         </el-form-item>
@@ -180,7 +180,7 @@
     <el-card class="surface-card mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2 font-semibold text-heading">
+          <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
             <el-icon><Key /></el-icon>
             <span>令牌与认证 (JWT)</span>
           </div>
@@ -197,7 +197,7 @@
       <el-form label-position="top" :model="settings.auth">
         <el-form-item label="令牌有效期 (天)">
           <el-input-number v-model="settings.auth.jwt_expire_days" :min="1" :max="365" />
-          <p class="text-xs text-light leading-normal mt-1 block">
+          <p class="text-xs text-[var(--color-text-light)] leading-normal mt-1 block">
             用户登录后，其身份令牌将在该天数后失效。
           </p>
         </el-form-item>
@@ -208,7 +208,7 @@
     <el-card class="surface-card mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2 font-semibold text-heading">
+          <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
             <el-icon><Link /></el-icon>
             <span>微软正版登录集成</span>
           </div>
