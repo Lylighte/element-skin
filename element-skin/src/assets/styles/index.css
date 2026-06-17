@@ -3,9 +3,6 @@
    apply app-wide. Do NOT @import these files inside component <style scoped>
    blocks — that re-emits and re-scopes them per component, bloating the bundle. */
 
-@layer theme, base, components, utilities;
-
-@import './tailwind.css';
 @import './animations.css' layer(components);
 @import './layout.css' layer(components);
 @import './cards.css' layer(components);
@@ -14,4 +11,4 @@
 @import './item-cards.css' layer(components);
 @import './item-viewer.css' layer(components);
 @import './footers.css' layer(components);
-@import './element-overrides.css' layer(components);
+@import './element-overrides.css';

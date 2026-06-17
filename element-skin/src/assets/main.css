@@ -1,4 +1,7 @@
-@import './base.css';
+@layer theme, base, components, utilities;
+
+@import './styles/tailwind.css';
+@import './base.css' layer(base);
 @import './styles/index.css';
 
 #app {

@@ -1,4 +1,4 @@
-/* Element Plus override layer. Keep framework-specific selectors here. */
+/* Element Plus overrides. Keep this file unlayered so it can override Element Plus CSS. */
 
 .el-tag__content {
   display: flex;
@@ -16,6 +16,11 @@
 
 .el-button {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.el-card {
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .dialog-viewer.el-dialog {
