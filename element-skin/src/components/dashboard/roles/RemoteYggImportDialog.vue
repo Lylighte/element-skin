@@ -1,9 +1,8 @@
 <template>
-  <el-dialog
+  <UiDialog
     v-model="visible"
     title="从外部皮肤站导入角色"
-    class="dialog-form dialog-ygg-import"
-    append-to-body
+    class="dialog-ygg-import"
     :before-close="beforeClose"
   >
     <div v-if="step === 'input'">
@@ -28,19 +27,19 @@
 
     <div v-else-if="step === 'select'">
       <p class="mb-4">请选择要导入的角色：</p>
-      <el-checkbox-group v-model="selectedProfiles" class="selection-list">
-        <el-checkbox
+      <el-checkbox-group v-model="selectedProfiles" class="flex w-full flex-col gap-3">
+        <UiOptionCard
           v-for="profile in profiles"
           :key="profile.id"
+          as="ElCheckbox"
           :value="profile.id"
           border
-          class="selection-item"
         >
-          <div class="selection-info">
-            <span class="title">{{ profile.name }}</span>
-            <span class="subtitle">{{ formatUUID(profile.id) }}</span>
+          <div class="ui-option-card__info">
+            <span class="ui-option-card__title">{{ profile.name }}</span>
+            <span class="ui-option-card__subtitle">{{ formatUUID(profile.id) }}</span>
           </div>
-        </el-checkbox>
+        </UiOptionCard>
       </el-checkbox-group>
     </div>
 
@@ -61,11 +60,13 @@
         </el-button>
       </div>
     </template>
-  </el-dialog>
+  </UiDialog>
 </template>
 
 <script setup lang="ts">
 import { formatUUID } from '@/utils/format'
+import UiDialog from '@/components/ui/UiDialog.vue'
+import UiOptionCard from '@/components/ui/UiOptionCard.vue'
 
 const visible = defineModel<boolean>('visible', { required: true })
 const apiUrl = defineModel<string>('apiUrl', { required: true })

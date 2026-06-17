@@ -24,7 +24,7 @@ Use this for page-header buttons and toolbar-style actions.
 
 ```vue
 <ActionBar full>
-  <el-button class="btn-gradient btn-gradient-primary">新建</el-button>
+  <UiButton variant="gradient-primary">新建</UiButton>
   <el-button>导入</el-button>
 </ActionBar>
 ```
@@ -46,8 +46,8 @@ Use this for buttons at the bottom of entity cards.
 
 ```vue
 <CardActions>
-  <el-button class="btn-gradient btn-gradient-danger">删除</el-button>
-  <el-button class="btn-soft-warning">清除</el-button>
+  <UiButton variant="gradient-danger">删除</UiButton>
+  <UiButton variant="soft-warning">清除</UiButton>
 </CardActions>
 ```
 

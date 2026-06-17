@@ -22,7 +22,7 @@
       @search="handleSearch"
     />
 
-    <el-card class="surface-card" shadow="never">
+    <UiCard shadow="never">
       <el-table :data="users" class="modern-table w-full" v-loading="loading">
         <el-table-column prop="display_name" label="用户名" min-width="150">
           <template #default="{ row }">
@@ -78,7 +78,7 @@
           @next="handleUsersNextPage"
         />
       </div>
-    </el-card>
+    </UiCard>
 
     <UserDetailDialog
       v-model:visible="userDetailDialogVisible"
@@ -128,6 +128,7 @@ import { ref, reactive, onMounted, watch, inject, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, UserFilled } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import UiCard from '@/components/ui/UiCard.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
 import UserDetailDialog from '@/components/admin/users/UserDetailDialog.vue'
 import ResetPasswordDialog from '@/components/admin/users/ResetPasswordDialog.vue'

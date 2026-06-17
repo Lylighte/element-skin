@@ -1,6 +1,6 @@
 <template>
   <div
-    class="surface-card hoverable animate-card-slide clickable-card texture-card"
+    class="animate-card-slide clickable-card texture-card"
     :style="{ '--delay-index': delayIndex }"
     @click="$emit('preview', texture)"
   >
@@ -100,6 +100,21 @@ const resolutionBadgeStyle = computed(() => {
 <style scoped>
 .texture-card {
   cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-card-background);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.texture-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 .card-clip {

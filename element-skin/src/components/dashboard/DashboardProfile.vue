@@ -7,7 +7,7 @@
       </div>
     </div>
 
-    <el-card class="max-w-[600px] mx-auto p-8 surface-card animate-card-slide profile-form-card">
+    <UiCard class="max-w-[600px] mx-auto p-8 animate-card-slide profile-form-card">
       <div class="flex items-center gap-4">
         <el-avatar
           :shape="customAvatar ? 'square' : 'circle'"
@@ -109,13 +109,12 @@
           </el-button>
         </div>
       </el-form>
-    </el-card>
+    </UiCard>
 
     <!-- 注销账号确认对话框 -->
-    <el-dialog
+    <UiDialog
       v-model="showDeleteDialog"
       title="确认注销账号"
-      class="dialog-form"
       :close-on-click-modal="false"
     >
       <el-alert
@@ -140,7 +139,7 @@
           确认注销
         </el-button>
       </template>
-    </el-dialog>
+    </UiDialog>
   </div>
 </template>
 
@@ -153,6 +152,8 @@ import { useAvatar } from '@/composables/useAvatar'
 import { changePassword, patchMe, deleteMe } from '@/api/me'
 import { isEasterEggDisabled, setEasterEggDisabled } from '@/easter-eggs'
 import type { User } from '@/api/types'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiDialog from '@/components/ui/UiDialog.vue'
 
 const { currentAvatarImg: customAvatar } = useAvatar()
 

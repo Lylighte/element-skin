@@ -8,35 +8,38 @@
         </div>
       </div>
       <ActionBar full>
-        <el-button
+        <UiButton
           size="large"
           @click="showYggImportDialog = true"
-          class="btn-gradient btn-gradient-warning role-header-button"
+          variant="gradient-warning"
+          class="role-header-button"
         >
           <el-icon><Download /></el-icon>
           <span class="ml-2">导入皮肤站角色</span>
-        </el-button>
-        <el-button
+        </UiButton>
+        <UiButton
           size="large"
           @click="startMicrosoftAuth"
-          class="btn-gradient btn-gradient-success role-header-button"
+          variant="gradient-success"
+          class="role-header-button"
         >
           <el-icon><Connection /></el-icon>
           <span class="ml-2">绑定正版角色</span>
-        </el-button>
-        <el-button
+        </UiButton>
+        <UiButton
           size="large"
           @click="showCreateRoleDialog = true"
-          class="btn-gradient btn-gradient-primary role-header-button"
+          variant="gradient-primary"
+          class="role-header-button"
         >
           <el-icon><Plus /></el-icon>
           <span class="ml-2">新建角色</span>
-        </el-button>
+        </UiButton>
       </ActionBar>
     </div>
 
     <div class="min-h-[400px]" v-loading="loading" element-loading-background="transparent">
-      <div class="auto-grid" v-if="profiles.length > 0">
+      <div class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6" v-if="profiles.length > 0">
         <RoleCard
           v-for="(profile, index) in profiles"
           :key="profile.id"
@@ -114,6 +117,7 @@ import type { Ref } from 'vue'
 import { Connection, Plus, Download } from '@element-plus/icons-vue'
 import ActionBar from '@/components/common/ActionBar.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import UiButton from '@/components/ui/UiButton.vue'
 import RoleCard from '@/components/dashboard/roles/RoleCard.vue'
 import RolePreviewDialog from '@/components/dashboard/roles/RolePreviewDialog.vue'
 import CreateRoleDialog from '@/components/dashboard/roles/CreateRoleDialog.vue'

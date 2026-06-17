@@ -24,17 +24,17 @@
         @search="handleSearch"
       />
       <div class="shrink-0">
-        <el-radio-group v-model="typeFilter" @change="handleTypeFilterChange" class="capsule-radio">
+        <UiSegmented v-model="typeFilter" @change="handleTypeFilterChange">
           <el-radio-button :value="null">全部</el-radio-button>
           <el-radio-button value="skin">皮肤</el-radio-button>
           <el-radio-button value="cape">披风</el-radio-button>
-        </el-radio-group>
+        </UiSegmented>
       </div>
     </div>
 
     <!-- Skeleton loading -->
-    <div v-if="isLoading" class="auto-grid">
-      <div v-for="n in 8" :key="n" class="surface-card skeleton-card">
+    <div v-if="isLoading" class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6">
+      <div v-for="n in 8" :key="n" class="skeleton-card">
         <div class="skeleton-preview"></div>
         <div class="skeleton-info">
           <div class="skeleton-line"></div>
@@ -44,7 +44,7 @@
     </div>
 
     <!-- Card grid -->
-    <div v-else-if="textures.length > 0" class="auto-grid">
+    <div v-else-if="textures.length > 0" class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6">
       <TextureCard
         v-for="(item, index) in textures"
         :key="item.hash"
@@ -69,8 +69,8 @@
           </div>
         </template>
         <template #actions="{ texture }">
-          <el-button class="btn-gradient btn-gradient-primary" @click="openPreview(texture)"
-            ><el-icon><Edit /></el-icon><span>编辑</span></el-button
+          <UiButton variant="gradient-primary" @click="openPreview(texture)"
+            ><el-icon><Edit /></el-icon><span>编辑</span></UiButton
           >
         </template>
       </TextureCard>
@@ -91,7 +91,7 @@
     </div>
 
     <!-- Preview dialog -->
-    <el-dialog v-model="showPreview" destroy-on-close class="dialog-viewer" append-to-body>
+    <UiDialog v-model="showPreview" destroy-on-close variant="viewer">
       <div class="viewer-layout" v-if="selectedItem">
         <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
         <div class="viewer-info-panel">
@@ -120,14 +120,13 @@
           <!-- model (skin only) -->
           <section class="viewer-section" v-if="selectedItem.type === 'skin'">
             <div class="viewer-section-label">模型选择</div>
-            <el-radio-group
+            <UiSegmented
               :model-value="selectedItem.model"
               @change="updateModel"
-              class="capsule-radio"
             >
               <el-radio-button value="default">Default</el-radio-button>
               <el-radio-button value="slim">Slim</el-radio-button>
-            </el-radio-group>
+            </UiSegmented>
           </section>
           <!-- public toggle -->
           <section class="viewer-section">
@@ -140,7 +139,7 @@
           </section>
         </div>
       </div>
-    </el-dialog>
+    </UiDialog>
   </div>
 </template>
 
@@ -152,6 +151,9 @@ import CursorPager from '@/components/common/CursorPager.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
 import TextureCard from '@/components/textures/TextureCard.vue'
 import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiDialog from '@/components/ui/UiDialog.vue'
+import UiSegmented from '@/components/ui/UiSegmented.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getAdminTextures, patchAdminTexture, deleteAdminTexture } from '@/api/admin/textures'
 import type { Texture } from '@/api/types'
@@ -344,6 +346,11 @@ onMounted(refreshTexturesFromFirst)
 /* Skeleton loading */
 .skeleton-card {
   pointer-events: none;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-card-background);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
 }
 .skeleton-preview {
   height: 280px;

@@ -20,10 +20,10 @@
     />
 
     <div class="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] max-sm:grid-cols-1 gap-4">
-      <el-card
+      <UiCard
         v-for="egg in easterEggOptions"
         :key="egg.id"
-        class="surface-card easter-egg-card"
+        class="easter-egg-card"
         :class="{ active: enabledIds.includes(egg.id) }"
         shadow="never"
       >
@@ -49,7 +49,7 @@
             @change="toggleEasterEgg(egg.id, Boolean($event))"
           />
         </div>
-      </el-card>
+      </UiCard>
     </div>
   </div>
 </template>
@@ -61,6 +61,7 @@ import { MagicStick, Refresh } from '@element-plus/icons-vue'
 import { getAdminSettingsGroup, saveAdminSettingsGroup } from '@/api/admin/settings'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { availableEasterEggs } from '@/easter-eggs'
+import UiCard from '@/components/ui/UiCard.vue'
 
 const easterEggOptions = availableEasterEggs()
 const enabledIds = ref<string[]>([])

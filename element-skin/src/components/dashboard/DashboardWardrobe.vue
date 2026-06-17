@@ -7,18 +7,18 @@
           <p>管理并应用您的皮肤与披风纹理</p>
         </div>
       </div>
-      <el-button
+      <UiButton
         @click="showUploadDialog = true"
         size="large"
-        class="btn-gradient btn-gradient-primary"
+        variant="gradient-primary"
       >
         <el-icon><Upload /></el-icon>
         <span class="ml-2">上传纹理</span>
-      </el-button>
+      </UiButton>
     </div>
 
     <div class="min-h-[400px]" v-loading="loading" element-loading-background="transparent">
-      <div class="auto-grid" v-if="textures.length > 0">
+      <div class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6" v-if="textures.length > 0">
         <TextureCard
           v-for="(tex, index) in textures"
           :key="tex.hash + tex.type"
@@ -49,7 +49,7 @@
       />
     </div>
 
-    <el-dialog v-model="showDetailDialog" destroy-on-close class="dialog-viewer" append-to-body>
+    <UiDialog v-model="showDetailDialog" destroy-on-close variant="viewer">
       <div class="viewer-layout" v-if="selectedTexture">
         <TexturePreviewStage :texture="selectedTexture" :textures-url="texturesUrl" />
 
@@ -82,14 +82,13 @@
 
             <section class="viewer-section" v-if="selectedTexture.type === 'skin'">
               <div class="viewer-section-label">模型选择</div>
-              <el-radio-group
+              <UiSegmented
                 v-model="selectedTexture.model"
                 @change="updateModel"
-                class="capsule-radio"
               >
                 <el-radio-button value="default">Default</el-radio-button>
                 <el-radio-button value="slim">Slim</el-radio-button>
-              </el-radio-group>
+              </UiSegmented>
             </section>
 
             <section
@@ -148,14 +147,13 @@
           </template>
         </div>
       </div>
-    </el-dialog>
+    </UiDialog>
 
     <!-- 上传对话框 -->
-    <el-dialog
+    <UiDialog
       v-model="showUploadDialog"
       title="上传纹理"
-      class="upload-dialog dialog-form"
-      append-to-body
+      class="texture-upload-panel"
     >
       <el-form label-width="100px" :model="uploadForm" class="upload-form">
         <el-form-item label="选择文件" class="upload-form-item">
@@ -204,7 +202,7 @@
           确认上传
         </el-button>
       </template>
-    </el-dialog>
+    </UiDialog>
   </div>
 </template>
 
@@ -217,6 +215,9 @@ import { Upload, UploadFilled, Edit } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import TextureCard from '@/components/textures/TextureCard.vue'
 import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiDialog from '@/components/ui/UiDialog.vue'
+import UiSegmented from '@/components/ui/UiSegmented.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getProfiles } from '@/api/profiles'
 import {
@@ -512,7 +513,7 @@ onMounted(() => {
 }
 
 /* Upload Dialog Styles */
-.upload-dialog :deep(.el-upload-dragger) {
+.texture-upload-panel :deep(.el-upload-dragger) {
   width: 100%;
 }
 .upload-wrapper {

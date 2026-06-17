@@ -86,7 +86,9 @@
                 <span class="account-name">{{ accountName }}</span>
               </div>
             </template>
-            <div class="account-panel surface-card">
+            <div
+              class="account-panel rounded-[16px] border border-[var(--color-border)] bg-[var(--color-card-background)] shadow-[0_4px_12px_rgba(0,0,0,0.05)]"
+            >
               <div class="account-header">
                 <el-avatar
                   :shape="customAvatar ? 'square' : 'circle'"
@@ -108,15 +110,15 @@
                 </div>
               </div>
               <div class="account-actions">
-                <el-button class="btn-outline" @click="go('/dashboard')">
+                <UiButton variant="outline" @click="go('/dashboard')">
                   <span>个人面板</span>
-                </el-button>
-                <el-button v-if="isAdmin" class="btn-outline" @click="go('/admin')">
+                </UiButton>
+                <UiButton v-if="isAdmin" variant="outline" @click="go('/admin')">
                   <span>管理面板</span>
-                </el-button>
-                <el-button class="btn-outline btn-outline-danger" @click="logout">
+                </UiButton>
+                <UiButton variant="outline-danger" @click="logout">
                   <span>退出登录</span>
-                </el-button>
+                </UiButton>
               </div>
             </div>
           </el-popover>
@@ -214,6 +216,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { useAvatar } from '@/composables/useAvatar'
+import UiButton from '@/components/ui/UiButton.vue'
 import {
   cleanupEasterEgg,
   installEasterEggDevTools,

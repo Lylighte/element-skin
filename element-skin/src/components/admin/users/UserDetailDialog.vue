@@ -1,11 +1,10 @@
 <template>
-  <el-dialog
+  <UiDialog
     v-model="visible"
     title=""
-    class="dialog-viewer"
     destroy-on-close
     align-center
-    append-to-body
+    variant="viewer"
   >
     <div v-if="user" class="user-detail-container">
       <div class="identity-panel mb-6">
@@ -146,13 +145,14 @@
         </el-tab-pane>
       </el-tabs>
     </div>
-  </el-dialog>
+  </UiDialog>
 </template>
 
 <script setup lang="ts">
 import { Warning, CircleCheck } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import type { Profile, User } from '@/api/types'
+import UiDialog from '@/components/ui/UiDialog.vue'
 
 const visible = defineModel<boolean>('visible', { required: true })
 

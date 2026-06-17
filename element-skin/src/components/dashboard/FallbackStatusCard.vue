@@ -1,5 +1,5 @@
 <template>
-  <el-card shadow="hover" class="surface-card fallback-status-card">
+  <UiCard shadow="hover" class="fallback-status-card">
     <div class="fallback-card-header">
       <div class="fallback-title-block">
         <span class="fallback-priority">#{{ entry.priority }}</span>
@@ -51,13 +51,14 @@
         >{{ label.text }}</span>
       </div>
     </div>
-  </el-card>
+  </UiCard>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Check, Loading, Warning, CircleClose } from '@element-plus/icons-vue'
 import type { FallbackStatusEntry } from '@/api/types'
+import UiCard from '@/components/ui/UiCard.vue'
 
 type ApiKey = 'session' | 'account' | 'services'
 const API_ROWS: { key: ApiKey; label: string }[] = [

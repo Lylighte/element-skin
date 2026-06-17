@@ -23,7 +23,7 @@
     />
 
     <div class="min-h-[400px]" v-loading="loading" element-loading-background="transparent">
-      <div class="auto-grid" v-if="profiles.length > 0">
+      <div class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6" v-if="profiles.length > 0">
         <AdminRoleCard
           v-for="(profile, index) in profiles"
           :key="profile.id"

@@ -1,6 +1,6 @@
 <template>
   <div
-    class="surface-card hoverable animate-card-slide clickable-card"
+    class="role-card animate-card-slide clickable-card"
     :style="{ '--delay-index': delayIndex }"
     @click="$emit('preview', profile)"
   >
@@ -27,34 +27,43 @@
       </div>
 
       <CardActions>
-        <el-button
-          class="btn-gradient btn-gradient-danger btn-icon-swap"
+        <UiButton
+          variant="gradient-danger"
+          icon-swap
           size="default"
           @click="$emit('delete', profile.id)"
         >
-          <span class="btn-label">删除</span>
-          <el-icon class="btn-icon"><Delete /></el-icon>
-        </el-button>
+          删除
+          <template #icon>
+            <el-icon><Delete /></el-icon>
+          </template>
+        </UiButton>
 
-        <el-button
+        <UiButton
           v-if="profile.skin_hash"
-          class="btn-soft-warning btn-icon-swap"
+          variant="soft-warning"
+          icon-swap
           size="default"
           @click="$emit('clear-skin', profile.id)"
         >
-          <span class="btn-label">皮肤</span>
-          <el-icon class="btn-icon"><Close /></el-icon>
-        </el-button>
+          皮肤
+          <template #icon>
+            <el-icon><Close /></el-icon>
+          </template>
+        </UiButton>
 
-        <el-button
+        <UiButton
           v-if="profile.cape_hash"
-          class="btn-soft-warning btn-icon-swap"
+          variant="soft-warning"
+          icon-swap
           size="default"
           @click="$emit('clear-cape', profile.id)"
         >
-          <span class="btn-label">披风</span>
-          <el-icon class="btn-icon"><Close /></el-icon>
-        </el-button>
+          披风
+          <template #icon>
+            <el-icon><Close /></el-icon>
+          </template>
+        </UiButton>
       </CardActions>
     </div>
   </div>
@@ -65,6 +74,7 @@ import { Close, Delete } from '@element-plus/icons-vue'
 import type { Profile } from '@/api/types'
 import SkinViewer from '@/components/SkinViewer.vue'
 import CardActions from '@/components/common/CardActions.vue'
+import UiButton from '@/components/ui/UiButton.vue'
 
 defineProps<{
   profile: Profile
@@ -111,6 +121,24 @@ defineEmits<{
 
 .clickable-card {
   cursor: pointer;
+}
+
+.role-card {
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-card-background);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.role-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 .card-clip {

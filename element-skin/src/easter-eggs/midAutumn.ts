@@ -201,7 +201,7 @@ export function start(): EasterEggCleanup {
     }
 
     html.dark.easter-egg-mid-autumn .el-button--primary,
-    html.dark.easter-egg-mid-autumn .btn-gradient-primary,
+    html.dark.easter-egg-mid-autumn .ui-button--gradient-primary,
     html.dark.easter-egg-mid-autumn .is-home-layout .home-fixed-button.home-fixed-primary,
     html.dark.easter-egg-mid-autumn .is-home-layout .header-actions .el-button--primary {
       background-image:
@@ -215,7 +215,7 @@ export function start(): EasterEggCleanup {
     }
 
     html.dark.easter-egg-mid-autumn .el-button--primary:hover,
-    html.dark.easter-egg-mid-autumn .btn-gradient-primary:hover:not(:disabled),
+    html.dark.easter-egg-mid-autumn .ui-button--gradient-primary:hover:not(:disabled),
     html.dark.easter-egg-mid-autumn .is-home-layout .home-fixed-button.home-fixed-primary:hover {
       border-color: rgba(255, 239, 183, 0.78) !important;
       box-shadow:
@@ -253,8 +253,7 @@ export function start(): EasterEggCleanup {
 
     html.dark.easter-egg-mid-autumn .search-bar-container .el-input__wrapper,
     html.dark.easter-egg-mid-autumn .sort-select .el-select__wrapper,
-    html.dark.easter-egg-mid-autumn .capsule-radio .el-radio-button__inner,
-    html.dark.easter-egg-mid-autumn .modern-radio .el-radio-button__inner {
+    html.dark.easter-egg-mid-autumn .ui-segmented .el-radio-button__inner {
       border-color: var(--mid-autumn-line-soft) !important;
       box-shadow: 0 0 0 1px var(--mid-autumn-line-soft) inset !important;
     }
@@ -263,19 +262,16 @@ export function start(): EasterEggCleanup {
     html.dark.easter-egg-mid-autumn .search-bar-container .el-input__wrapper.is-focus,
     html.dark.easter-egg-mid-autumn .sort-select .el-select__wrapper:hover,
     html.dark.easter-egg-mid-autumn .sort-select .el-select__wrapper.is-focused,
-    html.dark.easter-egg-mid-autumn .capsule-radio .el-radio-button__inner:hover,
-    html.dark.easter-egg-mid-autumn .modern-radio .el-radio-button__inner:hover {
+    html.dark.easter-egg-mid-autumn .ui-segmented .el-radio-button__inner:hover {
       border-color: var(--mid-autumn-line) !important;
       box-shadow: 0 0 0 1px var(--mid-autumn-line) inset !important;
     }
 
-    html.dark.easter-egg-mid-autumn .capsule-radio .el-radio-button:first-child .el-radio-button__inner,
-    html.dark.easter-egg-mid-autumn .modern-radio .el-radio-button:first-child .el-radio-button__inner {
+    html.dark.easter-egg-mid-autumn .ui-segmented .el-radio-button:first-child .el-radio-button__inner {
       border-left-color: var(--mid-autumn-line-soft) !important;
     }
 
-    html.dark.easter-egg-mid-autumn .capsule-radio .el-radio-button.is-active .el-radio-button__inner,
-    html.dark.easter-egg-mid-autumn .modern-radio .el-radio-button.is-active .el-radio-button__inner,
+    html.dark.easter-egg-mid-autumn .ui-segmented .el-radio-button.is-active .el-radio-button__inner,
     html.dark.easter-egg-mid-autumn .mobile-drawer .el-menu-item.is-active {
       background-color: rgba(229, 196, 104, 0.12) !important;
       border-color: var(--mid-autumn-primary) !important;
@@ -285,13 +281,11 @@ export function start(): EasterEggCleanup {
 
     html.dark.easter-egg-mid-autumn .sort-select .el-select__placeholder,
     html.dark.easter-egg-mid-autumn .sort-select .el-select__selected-item,
-    html.dark.easter-egg-mid-autumn .capsule-radio .el-radio-button__inner,
-    html.dark.easter-egg-mid-autumn .modern-radio .el-radio-button__inner {
+    html.dark.easter-egg-mid-autumn .ui-segmented .el-radio-button__inner {
       color: rgba(255, 247, 219, 0.72) !important;
     }
 
-    html.dark.easter-egg-mid-autumn .capsule-radio .el-radio-button.is-active .el-radio-button__inner,
-    html.dark.easter-egg-mid-autumn .modern-radio .el-radio-button.is-active .el-radio-button__inner {
+    html.dark.easter-egg-mid-autumn .ui-segmented .el-radio-button.is-active .el-radio-button__inner {
       color: var(--mid-autumn-primary) !important;
     }
 

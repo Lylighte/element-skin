@@ -5,8 +5,6 @@
 
 @import './animations.css' layer(components);
 @import './layout.css' layer(components);
-@import './cards.css' layer(components);
-@import './buttons.css' layer(components);
 @import './tags.css' layer(components);
 @import './item-cards.css' layer(components);
 @import './item-viewer.css' layer(components);
