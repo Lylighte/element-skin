@@ -129,7 +129,7 @@
                 <el-button
                   type="primary"
                   size="large"
-                  class="btn-gradient btn-gradient-primary w-full rounded-xl h-12"
+                  class="btn-gradient btn-gradient-primary w-full rounded-[12px] h-12"
                   @click="addToWardrobe(selectedItem)"
                   :disabled="!isLogged"
                 >
