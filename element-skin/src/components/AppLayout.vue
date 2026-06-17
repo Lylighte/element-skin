@@ -149,37 +149,18 @@
       <slot />
     </main>
 
-    <!-- Unified Footer -->
-    <footer
+    <AppFooter
       v-if="showFooter"
       ref="footerRef"
-      class="footer-container"
-      :class="isHome ? 'footer-home' : 'footer-standard'"
-    >
-      <div class="footer-content">
-        <div class="footer-row">
-          <span v-if="footerText" class="footer-text-item">{{ footerText }}</span>
-
-          <template v-if="filingIcp">
-            <span class="footer-separator">|</span>
-            <a :href="filingIcpLink || '#'" target="_blank" class="footer-link-item">{{
-              filingIcp
-            }}</a>
-          </template>
-
-          <template v-if="filingMps">
-            <span class="footer-separator">|</span>
-            <a :href="filingMpsLink || '#'" target="_blank" class="footer-link-item">
-              <img src="https://www.beian.gov.cn/img/ghs.png" class="filing-icon mr-1" />
-              {{ filingMps }}
-            </a>
-          </template>
-        </div>
-        <div class="footer-credits">
-          Powered by <a :href="repoUrl" target="_blank" class="footer-link-item">{{ repoLabel }}</a>
-        </div>
-      </div>
-    </footer>
+      :variant="isHome ? 'home' : 'standard'"
+      :footer-text="footerText"
+      :filing-icp="filingIcp"
+      :filing-icp-link="filingIcpLink"
+      :filing-mps="filingMps"
+      :filing-mps-link="filingMpsLink"
+      :repo-url="repoUrl"
+      :repo-label="repoLabel"
+    />
   </div>
 </template>
 
@@ -216,6 +197,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { useAvatar } from '@/composables/useAvatar'
+import AppFooter from '@/components/layout/AppFooter.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import {
   cleanupEasterEgg,
@@ -260,11 +242,11 @@ const filingIcpLink = ref('')
 const filingMps = ref('')
 const filingMpsLink = ref('')
 const footerHeight = ref(0)
-const footerRef = ref<HTMLElement | null>(null)
+const footerRef = ref<InstanceType<typeof AppFooter> | null>(null)
 
 const updateFooterHeight = () => {
   nextTick(() => {
-    if (footerRef.value) footerHeight.value = footerRef.value.offsetHeight
+    if (footerRef.value?.rootElement) footerHeight.value = footerRef.value.rootElement.offsetHeight
     else footerHeight.value = 0
   })
 }
@@ -463,7 +445,7 @@ onMounted(async () => {
   if (window.ResizeObserver) {
     resizeObserver = new ResizeObserver(() => updateFooterHeight())
     nextTick(() => {
-      if (footerRef.value) resizeObserver!.observe(footerRef.value)
+      if (footerRef.value?.rootElement) resizeObserver!.observe(footerRef.value.rootElement)
     })
   }
   window.addEventListener('resize', updateFooterHeight)
@@ -475,6 +457,54 @@ onUnmounted(() => {
   cleanupEasterEgg()
 })
 </script>
+
+<style>
+.app-shell :where(.page-header) {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.app-shell :where(.page-header-content h1) {
+  font-size: 32px;
+  margin: 0 0 8px 0;
+  background: linear-gradient(135deg, var(--color-heading) 0%, #409eff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.app-shell :where(.page-header-content p) {
+  margin: 0;
+  color: var(--color-text-light);
+  font-size: 16px;
+  transition: color 0.3s ease;
+}
+
+.app-shell :where(.page-header-actions) {
+  display: flex;
+  gap: 12px;
+}
+
+.app-shell :where(.form-tip) {
+  font-size: 12px;
+  color: var(--color-text-light);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.app-shell :where(.pagination-container) {
+  margin-top: 32px;
+  padding-bottom: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  animation: fadeIn 0.6s ease;
+}
+</style>
 
 <style scoped>
 .app-shell {

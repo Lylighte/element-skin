@@ -88,10 +88,10 @@ Rules:
 
 Pages still own `texturesUrl`, loading the resolution map, permissions, API
 calls, and dialog state. Use the card anywhere a grid renders a texture entity;
-do not duplicate `.item-card-preview` or card footer actions in a page.
+do not duplicate texture-card preview layout or card footer actions in a page.
 
 `textures/TexturePreviewStage.vue` owns the large dialog preview stage for a
-single texture. Use it inside `viewer-layout` dialogs instead of switching
+single texture. Use it inside `UiViewerLayout` dialogs instead of switching
 between `SkinViewer` and `CapeViewer` in page containers.
 
 ## Role Management Split

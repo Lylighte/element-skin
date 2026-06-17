@@ -4,9 +4,4 @@
    blocks — that re-emits and re-scopes them per component, bloating the bundle. */
 
 @import './animations.css' layer(components);
-@import './layout.css' layer(components);
-@import './tags.css' layer(components);
-@import './item-cards.css' layer(components);
-@import './item-viewer.css' layer(components);
-@import './footers.css' layer(components);
 @import './element-overrides.css';

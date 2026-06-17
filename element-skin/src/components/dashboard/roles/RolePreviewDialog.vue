@@ -1,7 +1,7 @@
 <template>
   <UiDialog v-model="visible" destroy-on-close variant="viewer">
-    <div class="viewer-layout" v-if="profile">
-      <div class="viewer-stage">
+    <UiViewerLayout v-if="profile">
+      <template #stage>
         <SkinViewer
           v-if="profile.skin_hash"
           :skinUrl="texturesUrl(profile.skin_hash)"
@@ -11,36 +11,64 @@
           :height="430"
         />
         <el-empty v-else description="未设置皮肤" />
-      </div>
+      </template>
 
-      <div class="viewer-info-panel">
-        <section class="viewer-section title-section">
-          <div class="viewer-title-row">
-            <el-button text circle class="title-edit-btn" @click="focusNameInput">
+      <div class="flex min-h-0 flex-1 flex-col">
+        <section class="border-b border-[var(--color-border)] py-3.5">
+          <div class="flex items-center gap-2 pr-12">
+            <el-button text circle class="title-action-button" @click="focusNameInput">
               <el-icon><Edit /></el-icon>
             </el-button>
             <el-input
               ref="nameInputRef"
               v-model="localName"
-              class="viewer-title-input"
+              class="title-input-field"
               placeholder="角色名称"
               @change="$emit('rename', localName)"
             />
           </div>
         </section>
 
-        <section class="viewer-section meta-section">
-          <div class="viewer-section-label">角色信息</div>
-          <div class="viewer-title-row">
-            <span class="meta-chip">模型: {{ profile.model || 'default' }}</span>
+        <section class="border-b border-[var(--color-border)] py-3.5">
+          <div
+            class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+          >
+            角色信息
           </div>
-          <div class="hash-label">UUID: {{ formatUUID(profile.id) }}</div>
-          <div class="hash-label" v-if="profile.skin_hash">皮肤 HASH: {{ profile.skin_hash }}</div>
-          <div class="hash-label" v-if="profile.cape_hash">披风 HASH: {{ profile.cape_hash }}</div>
+          <div class="flex items-center gap-2 pr-12">
+            <span
+              class="inline-flex h-7 max-w-full items-center rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 text-xs whitespace-nowrap text-[var(--color-text)] transition"
+              >模型: {{ profile.model || 'default' }}</span
+            >
+          </div>
+          <div
+            class="mt-3 break-all rounded bg-[var(--color-background-soft)] px-2 py-1 font-mono text-[11px] text-[var(--el-text-color-secondary)]"
+          >
+            UUID: {{ formatUUID(profile.id) }}
+          </div>
+          <div
+            class="mt-3 break-all rounded bg-[var(--color-background-soft)] px-2 py-1 font-mono text-[11px] text-[var(--el-text-color-secondary)]"
+            v-if="profile.skin_hash"
+          >
+            皮肤 HASH: {{ profile.skin_hash }}
+          </div>
+          <div
+            class="mt-3 break-all rounded bg-[var(--color-background-soft)] px-2 py-1 font-mono text-[11px] text-[var(--el-text-color-secondary)]"
+            v-if="profile.cape_hash"
+          >
+            披风 HASH: {{ profile.cape_hash }}
+          </div>
         </section>
 
-        <section class="viewer-section" v-if="profile.skin_hash || profile.cape_hash">
-          <div class="viewer-section-label">快捷操作</div>
+        <section
+          class="border-b border-[var(--color-border)] py-3.5"
+          v-if="profile.skin_hash || profile.cape_hash"
+        >
+          <div
+            class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+          >
+            快捷操作
+          </div>
           <div class="apply-row flex gap-2">
             <el-button
               v-if="profile.skin_hash"
@@ -72,7 +100,7 @@
           </div>
         </section>
 
-        <section class="viewer-section mt-auto">
+        <section class="mt-auto py-3.5">
           <el-button
             type="danger"
             plain
@@ -83,7 +111,7 @@
           </el-button>
         </section>
       </div>
-    </div>
+    </UiViewerLayout>
   </UiDialog>
 </template>
 
@@ -95,6 +123,7 @@ import type { Profile } from '@/api/types'
 import SkinViewer from '@/components/SkinViewer.vue'
 import { formatUUID } from '@/utils/format'
 import UiDialog from '@/components/ui/UiDialog.vue'
+import UiViewerLayout from '@/components/ui/UiViewerLayout.vue'
 
 const visible = defineModel<boolean>('visible', { required: true })
 const props = defineProps<{
@@ -129,5 +158,59 @@ function focusNameInput() {
 <style scoped>
 .apply-row .el-button {
   margin-left: 0 !important;
+}
+
+.title-action-button {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
+  flex-shrink: 0;
+}
+
+.title-action-button:hover {
+  background: var(--color-background-soft) !important;
+  color: var(--el-color-primary) !important;
+  transform: scale(1.1);
+}
+
+.title-action-button .el-icon {
+  font-size: 18px;
+  color: var(--color-text-light);
+}
+
+.title-action-button:hover .el-icon {
+  color: var(--el-color-primary);
+}
+
+.title-input-field {
+  flex: 1;
+}
+
+.title-input-field :deep(.el-input__wrapper) {
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+  transition: box-shadow 0.2s ease;
+}
+
+.title-input-field :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 2px 0 var(--el-color-primary) !important;
+  border-radius: 0 !important;
+}
+
+.title-input-field :deep(.el-input__inner) {
+  height: 48px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-heading);
+  line-height: 48px;
 }
 </style>

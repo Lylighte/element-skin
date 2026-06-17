@@ -57,10 +57,21 @@
         @preview="openPreview"
       >
         <template #info="{ texture }">
-          <div class="type-tag" :class="texture.type">
+          <div
+            class="inline-flex rounded-lg px-2.5 py-1 text-xs font-bold uppercase leading-none tracking-[0.5px]"
+            :class="
+              texture.type === 'skin'
+                ? 'bg-[rgba(64,158,255,0.1)] text-[#409eff]'
+                : 'bg-[rgba(103,194,58,0.1)] text-[#67c23a]'
+            "
+          >
             {{ texture.type === 'skin' ? '皮肤' : '披风' }}
           </div>
-          <div class="item-card-title">{{ texture.name || '未命名' }}</div>
+          <div
+            class="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold text-[var(--color-heading)]"
+          >
+            {{ texture.name || '未命名' }}
+          </div>
           <div
             class="texture-uploader"
             v-if="texture.uploader_display_name || texture.uploader_email"
@@ -92,23 +103,33 @@
 
     <!-- Preview dialog -->
     <UiDialog v-model="showPreview" destroy-on-close variant="viewer">
-      <div class="viewer-layout" v-if="selectedItem">
-        <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
-        <div class="viewer-info-panel">
+      <UiViewerLayout v-if="selectedItem">
+        <template #stage>
+          <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
+        </template>
+        <div class="flex min-h-0 flex-1 flex-col">
           <!-- name (editable) -->
-          <section class="viewer-section title-section">
+          <section class="border-b border-[var(--color-border)] py-3.5">
             <el-input v-model="previewNote" placeholder="未命名纹理" @blur="updatePreviewNote" />
           </section>
           <!-- hash (readonly) -->
-          <section class="viewer-section meta-section">
-            <span class="meta-chip hash">{{ selectedItem.hash }}</span>
+          <section class="border-b border-[var(--color-border)] py-3.5">
+            <span
+              class="inline-flex h-7 max-w-60 items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 font-mono text-xs text-[var(--color-text)] transition"
+            >
+              {{ selectedItem.hash }}
+            </span>
           </section>
           <!-- uploader -->
           <section
-            class="viewer-section"
+            class="border-b border-[var(--color-border)] py-3.5"
             v-if="selectedItem.uploader_display_name || selectedItem.uploader_email"
           >
-            <div class="viewer-section-label">上传者</div>
+            <div
+              class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+            >
+              上传者
+            </div>
             <div
               class="flex items-center gap-2 text-[15px] text-[var(--color-heading)] font-medium"
             >
@@ -118,8 +139,15 @@
             </div>
           </section>
           <!-- model (skin only) -->
-          <section class="viewer-section" v-if="selectedItem.type === 'skin'">
-            <div class="viewer-section-label">模型选择</div>
+          <section
+            class="border-b border-[var(--color-border)] py-3.5"
+            v-if="selectedItem.type === 'skin'"
+          >
+            <div
+              class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+            >
+              模型选择
+            </div>
             <UiSegmented
               :model-value="selectedItem.model"
               @change="updateModel"
@@ -129,16 +157,20 @@
             </UiSegmented>
           </section>
           <!-- public toggle -->
-          <section class="viewer-section">
-            <div class="viewer-section-label">公开状态</div>
+          <section class="border-b border-[var(--color-border)] py-3.5">
+            <div
+              class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+            >
+              公开状态
+            </div>
             <el-switch :model-value="selectedItem.is_public" @change="updateIsPublic" />
           </section>
           <!-- force delete -->
-          <section class="viewer-section border-b-0">
+          <section class="border-b-0 py-3.5">
             <el-button type="danger" plain @click="confirmForceDelete">强制下架</el-button>
           </section>
         </div>
-      </div>
+      </UiViewerLayout>
     </UiDialog>
   </div>
 </template>
@@ -154,6 +186,7 @@ import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
+import UiViewerLayout from '@/components/ui/UiViewerLayout.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getAdminTextures, patchAdminTexture, deleteAdminTexture } from '@/api/admin/textures'
 import type { Texture } from '@/api/types'

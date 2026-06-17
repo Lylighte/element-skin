@@ -183,7 +183,7 @@ export function start(): EasterEggCleanup {
     html.dark.easter-egg-mid-autumn .desktop-nav .el-menu-item:hover,
     html.dark.easter-egg-mid-autumn .desktop-nav .el-sub-menu__title:hover,
     html.dark.easter-egg-mid-autumn .logo:hover,
-    html.dark.easter-egg-mid-autumn .title-edit-btn:hover,
+    html.dark.easter-egg-mid-autumn .title-action-button:hover,
     html.dark.easter-egg-mid-autumn .footer-link-item:hover {
       color: var(--mid-autumn-primary) !important;
     }
@@ -330,7 +330,7 @@ export function start(): EasterEggCleanup {
       color: var(--mid-autumn-primary) !important;
     }
 
-    html.dark.easter-egg-mid-autumn .item-card-preview {
+    html.dark.easter-egg-mid-autumn .texture-card-preview {
       background-image:
         radial-gradient(circle at 78% 18%, rgba(255, 246, 210, 0.12), transparent 18%),
         linear-gradient(135deg, rgba(229, 196, 104, 0.05), transparent 42%),

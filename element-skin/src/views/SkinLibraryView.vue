@@ -92,30 +92,50 @@
           destroy-on-close
           variant="viewer"
         >
-          <div class="viewer-layout" v-if="selectedItem">
-            <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
+          <UiViewerLayout v-if="selectedItem">
+            <template #stage>
+              <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
+            </template>
 
-            <div class="viewer-info-panel">
-              <section class="viewer-section title-section">
-                <div class="viewer-title-row">
-                  <h2 class="viewer-display-title">{{ selectedItem.name || '未命名纹理' }}</h2>
+            <div class="flex min-h-0 flex-1 flex-col">
+              <section class="border-b border-[var(--color-border)] py-3.5">
+                <div class="flex items-center gap-2 pr-12">
+                  <h2
+                    class="m-0 bg-gradient-to-br from-[var(--color-heading)] to-[var(--el-text-color-secondary)] bg-clip-text text-2xl font-bold text-transparent"
+                  >
+                    {{ selectedItem.name || '未命名纹理' }}
+                  </h2>
                 </div>
               </section>
 
-              <section class="viewer-section meta-section">
-                <div class="viewer-title-row">
-                  <span class="meta-chip"
+              <section class="border-b border-[var(--color-border)] py-3.5">
+                <div class="flex items-center gap-2 pr-12">
+                  <span
+                    class="inline-flex h-7 max-w-full items-center rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 text-xs whitespace-nowrap text-[var(--color-text)] transition"
                     >{{ textureResolutions.get(selectedItem.hash) || '--' }}px</span
                   >
-                  <span class="meta-chip" :class="selectedItem.type">
+                  <span
+                    class="inline-flex h-7 max-w-full items-center rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 text-xs whitespace-nowrap text-[var(--color-text)] transition"
+                  >
                     {{ selectedItem.type === 'skin' ? '皮肤' : '披风' }}
                   </span>
                 </div>
-                <div class="hash-label">HASH: {{ selectedItem.hash }}</div>
+                <div
+                  class="mt-3 break-all rounded bg-[var(--color-background-soft)] px-2 py-1 font-mono text-[11px] text-[var(--el-text-color-secondary)]"
+                >
+                  HASH: {{ selectedItem.hash }}
+                </div>
               </section>
 
-              <section class="viewer-section" v-if="selectedItem.uploader_name">
-                <div class="viewer-section-label">上传者</div>
+              <section
+                class="border-b border-[var(--color-border)] py-3.5"
+                v-if="selectedItem.uploader_name"
+              >
+                <div
+                  class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+                >
+                  上传者
+                </div>
                 <div
                   class="flex items-center gap-2 text-[15px] text-[var(--color-heading)] font-medium"
                 >
@@ -124,7 +144,7 @@
                 </div>
               </section>
 
-              <section class="viewer-section mt-auto border-b-0">
+              <section class="mt-auto border-b-0 py-3.5">
                 <UiButton
                   type="primary"
                   size="large"
@@ -144,7 +164,7 @@
                 </p>
               </section>
             </div>
-          </div>
+          </UiViewerLayout>
         </UiDialog>
 
         <div class="pagination-container">
@@ -175,6 +195,7 @@ import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
+import UiViewerLayout from '@/components/ui/UiViewerLayout.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getPublicSkinLibrary } from '@/api/public'
 import { addToWardrobe as apiAddToWardrobe } from '@/api/textures'

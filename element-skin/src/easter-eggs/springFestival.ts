@@ -167,12 +167,12 @@ export function start(): EasterEggCleanup {
     }
 
     html.easter-egg-spring-festival .code-preview-box span,
-    html.easter-egg-spring-festival .title-edit-btn:hover,
+    html.easter-egg-spring-festival .title-action-button:hover,
     html.easter-egg-spring-festival .footer-link-item:hover {
       color: #e86b3c !important;
     }
 
-    html.easter-egg-spring-festival .item-card-preview {
+    html.easter-egg-spring-festival .texture-card-preview {
       background-image:
         repeating-linear-gradient(135deg, transparent 0 18px, rgba(232, 107, 60, 0.045) 19px 20px, transparent 21px 38px),
         var(--festival-preview-background, none);

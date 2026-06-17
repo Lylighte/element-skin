@@ -1,7 +1,7 @@
 <template>
   <UiDialog v-model="visible" destroy-on-close variant="viewer">
-    <div class="viewer-layout" v-if="profile">
-      <div class="viewer-stage">
+    <UiViewerLayout v-if="profile">
+      <template #stage>
         <SkinViewer
           v-if="profile.skin_hash"
           :skin-url="texturesUrl(profile.skin_hash)"
@@ -11,10 +11,10 @@
           :height="430"
         />
         <el-empty v-else description="未设置皮肤" />
-      </div>
+      </template>
 
-      <div class="viewer-info-panel">
-        <section class="viewer-section title-section">
+      <div class="flex min-h-0 flex-1 flex-col">
+        <section class="border-b border-[var(--color-border)] py-3.5">
           <el-input
             v-model="name"
             placeholder="角色名称"
@@ -23,8 +23,12 @@
           />
         </section>
 
-        <section class="viewer-section">
-          <div class="viewer-section-label">皮肤绑定</div>
+        <section class="border-b border-[var(--color-border)] py-3.5">
+          <div
+            class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+          >
+            皮肤绑定
+          </div>
           <el-input :model-value="profile.skin_hash || '未绑定'" disabled>
             <template #append>
               <el-button :disabled="!profile.skin_hash" @click="$emit('clear-skin')"
@@ -34,8 +38,12 @@
           </el-input>
         </section>
 
-        <section class="viewer-section">
-          <div class="viewer-section-label">披风绑定</div>
+        <section class="border-b border-[var(--color-border)] py-3.5">
+          <div
+            class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+          >
+            披风绑定
+          </div>
           <el-input :model-value="profile.cape_hash || '未绑定'" disabled>
             <template #append>
               <el-button :disabled="!profile.cape_hash" @click="$emit('clear-cape')"
@@ -45,13 +53,13 @@
           </el-input>
         </section>
 
-        <section class="viewer-section mt-auto">
+        <section class="mt-auto py-3.5">
           <el-button type="danger" plain class="w-full rounded-lg" @click="$emit('delete')">
             删除角色
           </el-button>
         </section>
       </div>
-    </div>
+    </UiViewerLayout>
   </UiDialog>
 </template>
 
@@ -59,6 +67,7 @@
 import type { Profile } from '@/api/types'
 import SkinViewer from '@/components/SkinViewer.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
+import UiViewerLayout from '@/components/ui/UiViewerLayout.vue'
 
 const visible = defineModel<boolean>('visible', { required: true })
 const name = defineModel<string>('name', { required: true })
