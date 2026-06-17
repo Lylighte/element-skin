@@ -10,7 +10,7 @@
     </PageHeader>
 
     <!-- Site Config -->
-    <el-card class="surface-card mb-6" shadow="never">
+    <UiCard class="mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
@@ -127,10 +127,10 @@
           </el-col>
         </el-row>
       </el-form>
-    </el-card>
+    </UiCard>
 
     <!-- Security Config -->
-    <el-card class="surface-card mb-6" shadow="never">
+    <UiCard class="mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
@@ -174,10 +174,10 @@
           </el-col>
         </el-row>
       </el-form>
-    </el-card>
+    </UiCard>
 
     <!-- Auth / JWT Config -->
-    <el-card class="surface-card mb-6" shadow="never">
+    <UiCard class="mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
@@ -202,10 +202,10 @@
           </p>
         </el-form-item>
       </el-form>
-    </el-card>
+    </UiCard>
 
     <!-- Microsoft Config -->
-    <el-card class="surface-card mb-6" shadow="never">
+    <UiCard class="mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
@@ -244,7 +244,7 @@
           />
         </el-form-item>
       </el-form>
-    </el-card>
+    </UiCard>
   </div>
 </template>
 
@@ -254,6 +254,7 @@ import { ElMessage } from 'element-plus'
 import { Refresh, Setting, Monitor, Lock, Key, Link } from '@element-plus/icons-vue'
 import { getAdminSettingsGroup, saveAdminSettingsGroup } from '@/api/admin/settings'
 import PageHeader from '@/components/common/PageHeader.vue'
+import UiCard from '@/components/ui/UiCard.vue'
 
 const settings = reactive({
   site: {

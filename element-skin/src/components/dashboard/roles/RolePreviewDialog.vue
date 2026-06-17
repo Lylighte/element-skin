@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" destroy-on-close class="dialog-viewer" append-to-body>
+  <UiDialog v-model="visible" destroy-on-close variant="viewer">
     <div class="viewer-layout" v-if="profile">
       <div class="viewer-stage">
         <SkinViewer
@@ -84,7 +84,7 @@
         </section>
       </div>
     </div>
-  </el-dialog>
+  </UiDialog>
 </template>
 
 <script setup lang="ts">
@@ -94,6 +94,7 @@ import { Edit } from '@element-plus/icons-vue'
 import type { Profile } from '@/api/types'
 import SkinViewer from '@/components/SkinViewer.vue'
 import { formatUUID } from '@/utils/format'
+import UiDialog from '@/components/ui/UiDialog.vue'
 
 const visible = defineModel<boolean>('visible', { required: true })
 const props = defineProps<{

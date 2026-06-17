@@ -28,7 +28,7 @@ interface SnowCapSpec {
 }
 
 const snowTargetSelector = [
-  '.surface-card',
+  '.ui-card',
   '.el-card',
   '.el-table',
   '.el-dialog',

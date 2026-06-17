@@ -10,7 +10,7 @@
       </template>
     </PageHeader>
 
-    <el-card class="surface-card" shadow="never">
+    <UiCard shadow="never">
       <el-table :data="invites" class="modern-table w-full">
         <el-table-column prop="code" label="邀请码" min-width="180">
           <template #default="{ row }">
@@ -60,22 +60,20 @@
           @next="handleNextPage"
         />
       </div>
-    </el-card>
+    </UiCard>
 
     <!-- Create Invite Dialog -->
-    <el-dialog
+    <UiDialog
       v-model="inviteDialogVisible"
       title="创建新邀请码"
-      class="dialog-form"
-      append-to-body
     >
       <div class="p-6">
         <el-form label-position="top">
           <el-form-item label="生成模式">
-            <el-radio-group v-model="inviteMode" class="capsule-radio">
+            <UiSegmented v-model="inviteMode">
               <el-radio-button value="auto">自动随机</el-radio-button>
               <el-radio-button value="manual">手动指定</el-radio-button>
-            </el-radio-group>
+            </UiSegmented>
           </el-form-item>
 
           <el-form-item v-if="inviteMode === 'manual'" label="邀请码文本">
@@ -137,7 +135,7 @@
           >
         </div>
       </template>
-    </el-dialog>
+    </UiDialog>
   </div>
 </template>
 
@@ -150,6 +148,9 @@ import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getAdminInvites, createAdminInvite, deleteAdminInvite } from '@/api/admin/invites'
 import type { Invite } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiDialog from '@/components/ui/UiDialog.vue'
+import UiSegmented from '@/components/ui/UiSegmented.vue'
 
 const invites = ref<Invite[]>([])
 const limit = 15

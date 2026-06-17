@@ -10,8 +10,7 @@ export function start(): EasterEggCleanup {
     }
 
     html.easter-egg-halloween .el-button,
-    html.easter-egg-halloween .btn-gradient,
-    html.easter-egg-halloween .btn-outline,
+    html.easter-egg-halloween .ui-button,
     html.easter-egg-halloween .home-fixed-button {
       position: relative;
       isolation: isolate;
@@ -25,8 +24,7 @@ export function start(): EasterEggCleanup {
     }
 
     html.easter-egg-halloween .el-button::before,
-    html.easter-egg-halloween .btn-gradient::before,
-    html.easter-egg-halloween .btn-outline::before,
+    html.easter-egg-halloween .ui-button::before,
     html.easter-egg-halloween .home-fixed-button::before {
       content: "";
       position: absolute;
@@ -42,8 +40,7 @@ export function start(): EasterEggCleanup {
     }
 
     html.easter-egg-halloween .el-button::after,
-    html.easter-egg-halloween .btn-gradient::after,
-    html.easter-egg-halloween .btn-outline::after,
+    html.easter-egg-halloween .ui-button::after,
     html.easter-egg-halloween .home-fixed-button::after {
       content: "";
       position: absolute;
@@ -64,10 +61,9 @@ export function start(): EasterEggCleanup {
         transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
-    html.easter-egg-halloween .el-button:not(.btn-icon-swap) > span,
+    html.easter-egg-halloween .el-button:not(.is-icon-swap) > span,
     html.easter-egg-halloween .el-button .el-button__text,
-    html.easter-egg-halloween .btn-gradient:not(.btn-icon-swap) > *,
-    html.easter-egg-halloween .btn-outline:not(.btn-icon-swap) > *,
+    html.easter-egg-halloween .ui-button:not(.is-icon-swap) > *,
     html.easter-egg-halloween .home-fixed-button > .home-fixed-label {
       position: relative;
       z-index: 2;
@@ -78,8 +74,7 @@ export function start(): EasterEggCleanup {
     }
 
     html.easter-egg-halloween .el-button:hover:not(:disabled),
-    html.easter-egg-halloween .btn-gradient:hover:not(:disabled),
-    html.easter-egg-halloween .btn-outline:hover:not(:disabled),
+    html.easter-egg-halloween .ui-button:hover:not(:disabled),
     html.easter-egg-halloween .home-fixed-button:hover:not(:disabled) {
       border-color: rgba(255, 145, 35, 0.58) !important;
       color: #fff !important;
@@ -90,23 +85,19 @@ export function start(): EasterEggCleanup {
     }
 
     html.easter-egg-halloween .el-button:hover:not(:disabled)::before,
-    html.easter-egg-halloween .btn-gradient:hover:not(:disabled)::before,
-    html.easter-egg-halloween .btn-outline:hover:not(:disabled)::before,
+    html.easter-egg-halloween .ui-button:hover:not(:disabled)::before,
     html.easter-egg-halloween .home-fixed-button:hover:not(:disabled)::before,
     html.easter-egg-halloween .el-button:focus-visible::before,
-    html.easter-egg-halloween .btn-gradient:focus-visible::before,
-    html.easter-egg-halloween .btn-outline:focus-visible::before,
+    html.easter-egg-halloween .ui-button:focus-visible::before,
     html.easter-egg-halloween .home-fixed-button:focus-visible::before {
       opacity: 1;
     }
 
     html.easter-egg-halloween .el-button:hover:not(:disabled)::after,
-    html.easter-egg-halloween .btn-gradient:hover:not(:disabled)::after,
-    html.easter-egg-halloween .btn-outline:hover:not(:disabled)::after,
+    html.easter-egg-halloween .ui-button:hover:not(:disabled)::after,
     html.easter-egg-halloween .home-fixed-button:hover:not(:disabled)::after,
     html.easter-egg-halloween .el-button:focus-visible::after,
-    html.easter-egg-halloween .btn-gradient:focus-visible::after,
-    html.easter-egg-halloween .btn-outline:focus-visible::after,
+    html.easter-egg-halloween .ui-button:focus-visible::after,
     html.easter-egg-halloween .home-fixed-button:focus-visible::after {
       opacity: 0.58;
       transform: translate(-50%, -50%) scale(1);

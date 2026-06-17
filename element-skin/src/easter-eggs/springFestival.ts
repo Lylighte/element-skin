@@ -99,7 +99,7 @@ export function start(): EasterEggCleanup {
     }
 
     html.easter-egg-spring-festival .el-button--primary,
-    html.easter-egg-spring-festival .btn-gradient-primary,
+    html.easter-egg-spring-festival .ui-button--gradient-primary,
     html.easter-egg-spring-festival .is-home-layout .home-fixed-button.home-fixed-primary,
     html.easter-egg-spring-festival .is-home-layout .header-actions .el-button--primary {
       background-image:
@@ -112,7 +112,7 @@ export function start(): EasterEggCleanup {
         inset 0 1px 0 rgba(255, 232, 150, 0.32) !important;
     }
 
-    html.easter-egg-spring-festival .btn-gradient-primary:hover:not(:disabled),
+    html.easter-egg-spring-festival .ui-button--gradient-primary:hover:not(:disabled),
     html.easter-egg-spring-festival .el-button--primary:hover,
     html.easter-egg-spring-festival .is-home-layout .home-fixed-button.home-fixed-primary:hover {
       box-shadow:
@@ -154,8 +154,7 @@ export function start(): EasterEggCleanup {
       color: #fff !important;
     }
 
-    html.easter-egg-spring-festival .capsule-radio .el-radio-button.is-active .el-radio-button__inner,
-    html.easter-egg-spring-festival .modern-radio .el-radio-button.is-active .el-radio-button__inner,
+    html.easter-egg-spring-festival .ui-segmented .el-radio-button.is-active .el-radio-button__inner,
     html.easter-egg-spring-festival .mobile-drawer .el-menu-item.is-active {
       background-color: rgba(232, 107, 60, 0.1) !important;
       border-color: #e86b3c !important;

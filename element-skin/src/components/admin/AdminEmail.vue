@@ -9,7 +9,7 @@
       </template>
     </PageHeader>
 
-    <el-card class="surface-card" shadow="never">
+    <UiCard shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
@@ -110,7 +110,7 @@
           </el-row>
         </div>
       </el-form>
-    </el-card>
+    </UiCard>
   </div>
 </template>
 
@@ -120,6 +120,7 @@ import { ElMessage } from 'element-plus'
 import { Refresh, Message, Postcard } from '@element-plus/icons-vue'
 import { getAdminSettingsGroup, saveAdminSettingsGroup } from '@/api/admin/settings'
 import PageHeader from '@/components/common/PageHeader.vue'
+import UiCard from '@/components/ui/UiCard.vue'
 
 const emailSettings = reactive({
   email_verify_enabled: false,

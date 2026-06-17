@@ -9,28 +9,36 @@
 
     <section class="flex flex-col gap-4 mb-8">
       <div class="grid grid-cols-2 max-sm:grid-cols-1 gap-4">
-        <el-card shadow="hover" class="surface-card">
-          <div class="stats-card-content">
-            <div class="stats-card-icon bg-gradient-to-br from-[#409eff] to-[#337ecc]">
+        <UiCard shadow="hover">
+          <div class="flex items-center p-5">
+            <div
+              class="mr-5 flex h-16 w-16 shrink-0 items-center justify-center rounded-[16px] text-[32px] text-white bg-gradient-to-br from-[#409eff] to-[#337ecc]"
+            >
               <el-icon><Box /></el-icon>
             </div>
-            <div class="stats-card-info">
-              <div class="stats-card-label">材质数量</div>
-              <div class="stats-card-value">{{ textureCount }}</div>
+            <div class="flex min-w-0 flex-col">
+              <div class="mb-1 text-sm font-medium text-[var(--color-text-light)]">材质数量</div>
+              <div class="text-[28px] font-bold leading-tight text-[var(--color-heading)]">
+                {{ textureCount }}
+              </div>
             </div>
           </div>
-        </el-card>
-        <el-card shadow="hover" class="surface-card">
-          <div class="stats-card-content">
-            <div class="stats-card-icon bg-gradient-to-br from-[#b37feb] to-[#8553cf]">
+        </UiCard>
+        <UiCard shadow="hover">
+          <div class="flex items-center p-5">
+            <div
+              class="mr-5 flex h-16 w-16 shrink-0 items-center justify-center rounded-[16px] text-[32px] text-white bg-gradient-to-br from-[#b37feb] to-[#8553cf]"
+            >
               <el-icon><User /></el-icon>
             </div>
-            <div class="stats-card-info">
-              <div class="stats-card-label">角色数量</div>
-              <div class="stats-card-value">{{ profileCount }}</div>
+            <div class="flex min-w-0 flex-col">
+              <div class="mb-1 text-sm font-medium text-[var(--color-text-light)]">角色数量</div>
+              <div class="text-[28px] font-bold leading-tight text-[var(--color-heading)]">
+                {{ profileCount }}
+              </div>
             </div>
           </div>
-        </el-card>
+        </UiCard>
       </div>
     </section>
 
@@ -38,7 +46,7 @@
       <div class="flex justify-between items-baseline gap-3">
         <h2 class="m-0 text-lg font-semibold text-[var(--color-heading)]">快速接入启动器</h2>
       </div>
-      <el-card shadow="hover" class="surface-card">
+      <UiCard shadow="hover">
         <div class="flex flex-col gap-4 py-1">
           <p class="text-sm text-[var(--color-text-light)] m-0 leading-normal">
             点击下方按钮复制 API 地址，或直接将其拖到支持 authlib-injector 的启动器窗口中。
@@ -56,7 +64,7 @@
             </a>
           </div>
         </div>
-      </el-card>
+      </UiCard>
     </section>
 
     <section v-if="fallbackEntries.length" class="flex flex-col gap-4 mb-0">
@@ -83,6 +91,7 @@ import { Box, User, CopyDocument, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FallbackStatusEntry } from '@/api/types'
 import FallbackStatusCard from './FallbackStatusCard.vue'
+import UiCard from '@/components/ui/UiCard.vue'
 
 const textureCount = ref(0)
 const profileCount = ref(0)

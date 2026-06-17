@@ -22,16 +22,16 @@
             @clear="handleClearSearch"
             @search="handleSearch"
           />
-          <el-radio-group
+          <UiSegmented
             v-model="filterType"
             @change="handleFilterChange"
             size="large"
-            class="capsule-radio"
+            class="skin-library-filter"
           >
             <el-radio-button value="">全部</el-radio-button>
             <el-radio-button value="skin">皮肤</el-radio-button>
             <el-radio-button value="cape">披风</el-radio-button>
-          </el-radio-group>
+          </UiSegmented>
           <el-select v-model="sortBy" @change="handleSortChange" size="large" class="sort-select">
             <el-option label="最新上传" value="latest" />
             <el-option label="最多使用" value="most_used" />
@@ -44,7 +44,7 @@
         v-loading="loading"
         element-loading-background="transparent"
       >
-        <div class="auto-grid" v-if="items.length > 0">
+        <div class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6" v-if="items.length > 0">
           <TextureCard
             v-for="(item, index) in items"
             :key="item.hash"
@@ -72,14 +72,14 @@
               </div>
             </template>
             <template #actions="{ texture }">
-              <el-button
-                class="btn-gradient btn-gradient-primary"
+              <UiButton
+                variant="gradient-primary"
                 @click="addToWardrobe(texture)"
                 :disabled="!isLogged"
               >
                 <el-icon><Plus /></el-icon>
                 <span>添加到衣柜</span>
-              </el-button>
+              </UiButton>
             </template>
           </TextureCard>
         </div>
@@ -87,11 +87,10 @@
         <el-empty v-else-if="!loading" description="库中暂无公开材质" />
 
         <!-- 预览对话框 -->
-        <el-dialog
+        <UiDialog
           v-model="showPreviewDialog"
           destroy-on-close
-          class="dialog-viewer"
-          append-to-body
+          variant="viewer"
         >
           <div class="viewer-layout" v-if="selectedItem">
             <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
@@ -126,16 +125,17 @@
               </section>
 
               <section class="viewer-section mt-auto border-b-0">
-                <el-button
+                <UiButton
                   type="primary"
                   size="large"
-                  class="btn-gradient btn-gradient-primary w-full rounded-[12px] h-12"
+                  variant="gradient-primary"
+                  class="w-full rounded-[12px] h-12"
                   @click="addToWardrobe(selectedItem)"
                   :disabled="!isLogged"
                 >
                   <el-icon><Plus /></el-icon>
                   <span class="ml-2">添加到我的衣柜</span>
-                </el-button>
+                </UiButton>
                 <p
                   v-if="!isLogged"
                   class="text-center text-[13px] text-[var(--el-text-color-secondary)] mt-3"
@@ -145,7 +145,7 @@
               </section>
             </div>
           </div>
-        </el-dialog>
+        </UiDialog>
 
         <div class="pagination-container">
           <CursorPager
@@ -172,6 +172,9 @@ import CursorPager from '@/components/common/CursorPager.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
 import TextureCard from '@/components/textures/TextureCard.vue'
 import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiDialog from '@/components/ui/UiDialog.vue'
+import UiSegmented from '@/components/ui/UiSegmented.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getPublicSkinLibrary } from '@/api/public'
 import { addToWardrobe as apiAddToWardrobe } from '@/api/textures'
@@ -405,7 +408,7 @@ onMounted(() => {
   flex: 0 0 180px;
 }
 
-.skin-library-container .capsule-radio {
+.skin-library-filter {
   flex: 0 1 auto;
   min-width: 0;
 }
@@ -422,15 +425,15 @@ onMounted(() => {
     min-width: 0;
   }
 
-  .skin-library-container .capsule-radio {
+  .skin-library-filter {
     flex: 1 1 260px;
   }
 
-  .skin-library-container .capsule-radio :deep(.el-radio-button) {
+  .skin-library-filter :deep(.el-radio-button) {
     flex: 1 1 0;
   }
 
-  .skin-library-container .capsule-radio :deep(.el-radio-button__inner) {
+  .skin-library-filter :deep(.el-radio-button__inner) {
     width: 100%;
   }
 

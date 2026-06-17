@@ -19,7 +19,7 @@
     </PageHeader>
 
     <!-- Global Strategy Card -->
-    <el-card class="surface-card mb-6" shadow="never">
+    <UiCard class="mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
@@ -29,7 +29,7 @@
         </div>
       </template>
       <div class="flex flex-col gap-4 py-2">
-        <el-radio-group v-model="settings.fallback_strategy" class="modern-radio">
+        <UiSegmented v-model="settings.fallback_strategy" variant="modern">
           <el-radio-button value="serial">
             <div class="flex items-center gap-2 font-medium">
               <el-icon><Sort /></el-icon>
@@ -42,7 +42,7 @@
               <span>并发请求</span>
             </div>
           </el-radio-button>
-        </el-radio-group>
+        </UiSegmented>
         <div
           class="text-[13px] text-[var(--color-text-light)] bg-[var(--color-background-soft)] py-3 px-4 rounded-lg border-l-4 border-l-[var(--el-color-primary)]"
         >
@@ -72,10 +72,10 @@
           />
         </div>
       </div>
-    </el-card>
+    </UiCard>
 
     <!-- Endpoints List -->
-    <el-card class="surface-card" shadow="never">
+    <UiCard shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
@@ -313,7 +313,7 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </UiCard>
   </div>
 </template>
 
@@ -339,6 +339,8 @@ import { getAdminSettingsGroup, saveAdminSettingsGroup } from '@/api/admin/setti
 import { getWhitelist, addWhitelistUser, removeWhitelistUser } from '@/api/admin/whitelist'
 import type { WhitelistEntry } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiSegmented from '@/components/ui/UiSegmented.vue'
 
 interface FallbackRow {
   id: number | null

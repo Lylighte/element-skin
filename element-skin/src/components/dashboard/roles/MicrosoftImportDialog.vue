@@ -1,25 +1,24 @@
 <template>
-  <el-dialog
+  <UiDialog
     v-model="visible"
     title="绑定正版角色"
-    class="dialog-form dialog-microsoft-login"
+    class="dialog-microsoft-login"
     :close-on-click-modal="false"
     :destroy-on-close="true"
     :before-close="beforeClose"
-    append-to-body
   >
     <div class="py-3">
       <div v-if="profile" class="flex flex-col items-center text-center">
-        <div class="selection-item is-checked cursor-default pointer-events-none">
-          <div class="selection-info">
-            <span class="title">{{ profile?.name }}</span>
-            <span class="subtitle">{{ formatUUID(profile?.id || '') }}</span>
+        <UiOptionCard class="is-checked cursor-default pointer-events-none">
+          <div class="ui-option-card__info">
+            <span class="ui-option-card__title">{{ profile?.name }}</span>
+            <span class="ui-option-card__subtitle">{{ formatUUID(profile?.id || '') }}</span>
           </div>
           <div class="ml-auto">
             <el-tag v-if="profile?.has_game" type="success" effect="dark">拥有游戏</el-tag>
             <el-tag v-else type="danger" effect="dark">无游戏权限</el-tag>
           </div>
-        </div>
+        </UiOptionCard>
       </div>
     </div>
 
@@ -36,11 +35,13 @@
         </el-button>
       </div>
     </template>
-  </el-dialog>
+  </UiDialog>
 </template>
 
 <script setup lang="ts">
 import { formatUUID } from '@/utils/format'
+import UiDialog from '@/components/ui/UiDialog.vue'
+import UiOptionCard from '@/components/ui/UiOptionCard.vue'
 
 const visible = defineModel<boolean>('visible', { required: true })
 
