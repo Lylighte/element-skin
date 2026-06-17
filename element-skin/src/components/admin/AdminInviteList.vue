@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-1000 mx-auto py-5 animate-fade-in">
+  <div class="max-w-[1000px] mx-auto py-5 animate-fade-in">
     <PageHeader title="邀请码管理" subtitle="创建并管理用于限制新用户注册的邀请码">
       <template #icon><Ticket /></template>
       <template #actions>
@@ -89,9 +89,11 @@
 
           <el-form-item v-else label="随机预览">
             <div
-              class="flex items-center justify-between bg-soft py-3 px-4 rounded-lg border-dashed-primary"
+              class="flex items-center justify-between bg-[var(--color-background-soft)] py-3 px-4 rounded-lg border border-dashed border-[var(--el-color-primary)]"
             >
-              <span class="font-mono text-lg font-bold text-primary">{{ previewInviteCode }}</span>
+              <span class="font-mono text-lg font-bold text-[var(--el-color-primary)]">{{
+                previewInviteCode
+              }}</span>
               <el-button link :icon="Refresh" @click="refreshPreview">换一个</el-button>
             </div>
           </el-form-item>

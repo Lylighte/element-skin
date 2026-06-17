@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-1040 mx-auto py-5 animate-fade-in">
+  <div class="max-w-[1040px] mx-auto py-5 animate-fade-in">
     <PageHeader title="首页图片" subtitle="管理静态图与 Panorama 的播放顺序、时长和镜头轨迹">
       <template #icon><PictureFilled /></template>
       <template #actions>

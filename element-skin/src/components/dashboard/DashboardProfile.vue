@@ -7,7 +7,7 @@
       </div>
     </div>
 
-    <el-card class="max-w-600 mx-auto p-8 surface-card animate-card-slide profile-form-card">
+    <el-card class="max-w-[600px] mx-auto p-8 surface-card animate-card-slide profile-form-card">
       <div class="flex items-center gap-4">
         <el-avatar
           :shape="customAvatar ? 'square' : 'circle'"
@@ -19,10 +19,12 @@
           {{ !customAvatar ? emailInitial : '' }}
         </el-avatar>
         <div>
-          <h3 class="m-0 text-lg font-semibold text-heading transition-colors">
+          <h3 class="m-0 text-lg font-semibold text-[var(--color-heading)] transition-colors">
             {{ user?.display_name || '未设置用户名' }}
           </h3>
-          <p class="mt-2 mb-0 text-13 text-light transition-colors">{{ user?.email }}</p>
+          <p class="mt-2 mb-0 text-[13px] text-[var(--color-text-light)] transition-colors">
+            {{ user?.email }}
+          </p>
         </div>
       </div>
 
@@ -36,11 +38,13 @@
         <div class="mt-2 text-sm">
           <p class="my-1">您的账号已被管理员封禁，暂时无法通过 Minecraft 客户端登录游戏。</p>
           <p class="my-1">但您仍可以正常访问皮肤站进行皮肤管理等操作。</p>
-          <p class="mt-2 mb-0 text-warning">
+          <p class="mt-2 mb-0 text-[var(--el-color-warning)]">
             <el-icon><Clock /></el-icon>
             <strong>封禁剩余时间：{{ formatBanRemaining() }}</strong>
           </p>
-          <p class="mt-1 mb-0 text-13 text-info">解封时间：{{ formatBanUntilTime() }}</p>
+          <p class="mt-1 mb-0 text-[13px] text-[var(--el-text-color-secondary)]">
+            解封时间：{{ formatBanUntilTime() }}
+          </p>
         </div>
       </el-alert>
 
@@ -121,8 +125,8 @@
         :closable="false"
         class="mb-5"
       />
-      <p class="text-sm text-info">
-        请输入 <strong class="text-danger">注销账号</strong> 来确认操作：
+      <p class="text-sm text-[var(--el-text-color-secondary)]">
+        请输入 <strong class="text-[var(--el-color-danger)]">注销账号</strong> 来确认操作：
       </p>
       <el-input v-model="deleteConfirmText" placeholder="请输入：注销账号" class="mt-3" />
       <template #footer>

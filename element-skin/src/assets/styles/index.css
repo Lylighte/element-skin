@@ -3,13 +3,15 @@
    apply app-wide. Do NOT @import these files inside component <style scoped>
    blocks — that re-emits and re-scopes them per component, bloating the bundle. */
 
-@import './animations.css';
-@import './layout.css';
-@import './cards.css';
-@import './buttons.css';
-@import './tags.css';
-@import './dialogs.css';
-@import './item-cards.css';
-@import './item-viewer.css';
-@import './footers.css';
-@import './utilities.css';
+@layer theme, base, components, utilities;
+
+@import './tailwind.css';
+@import './animations.css' layer(components);
+@import './layout.css' layer(components);
+@import './cards.css' layer(components);
+@import './buttons.css' layer(components);
+@import './tags.css' layer(components);
+@import './item-cards.css' layer(components);
+@import './item-viewer.css' layer(components);
+@import './footers.css' layer(components);
+@import './element-overrides.css' layer(components);

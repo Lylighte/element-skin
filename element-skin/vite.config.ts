@@ -3,6 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 
 import { defineConfig } from 'vite'
+import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
@@ -16,6 +17,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
+    tailwindcss(),
     vue(),
     vueDevTools(),
     {
@@ -33,7 +35,10 @@ export default defineConfig({
           if (staticMatch) {
             const [, type, filename] = staticMatch
             // 映射到后端目录
-            const filePath = path.resolve(__dirname, `../skin-backend/${type}/${filename.split('?')[0]}`)
+            const filePath = path.resolve(
+              __dirname,
+              `../skin-backend/${type}/${filename.split('?')[0]}`,
+            )
 
             if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
               res.setHeader('Content-Type', type === 'textures' ? 'image/png' : 'image/jpeg')
@@ -43,12 +48,12 @@ export default defineConfig({
           }
           next()
         })
-      }
-    }
+      },
+    },
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {
@@ -68,16 +73,17 @@ export default defineConfig({
       },
       // API routes that might conflict with frontend routes
       // When a browser refreshes on these paths, it should serve index.html instead of proxying to the backend
-      '^/(admin|register|reset-password|site-login|site-logout|me|public|microsoft|send-verification-code|remote-ygg|textures)': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        bypass: (req) => {
-          if (req.headers.accept?.indexOf('text/html') !== -1) {
-            return '/index.html';
-          }
-        }
-      },
-    }
+      '^/(admin|register|reset-password|site-login|site-logout|me|public|microsoft|send-verification-code|remote-ygg|textures)':
+        {
+          target: 'http://127.0.0.1:8000',
+          changeOrigin: true,
+          bypass: (req) => {
+            if (req.headers.accept?.indexOf('text/html') !== -1) {
+              return '/index.html'
+            }
+          },
+        },
+    },
   },
   build: {
     sourcemap: !isLowMemory,
@@ -90,8 +96,8 @@ export default defineConfig({
           'vendor-element': ['element-plus'],
           'vendor-utils': ['axios', 'vue', 'vue-router', 'pinia'],
           'vendor-render': ['three', 'skinview3d'],
-        }
-      }
-    }
-  }
+        },
+      },
+    },
+  },
 })

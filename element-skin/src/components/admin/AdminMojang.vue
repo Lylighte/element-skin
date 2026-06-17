@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-1100 mx-auto py-5 animate-fade-in">
+  <div class="max-w-[1100px] mx-auto py-5 animate-fade-in">
     <PageHeader
       title="Fallback 服务配置"
       subtitle="管理外部 Yggdrasil 或 Mojang API 的回退逻辑与白名单"
@@ -22,7 +22,7 @@
     <el-card class="surface-card mb-6" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2 font-semibold text-heading">
+          <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
             <el-icon><Setting /></el-icon>
             <span>全局调度策略</span>
           </div>
@@ -43,7 +43,9 @@
             </div>
           </el-radio-button>
         </el-radio-group>
-        <div class="text-13 text-light bg-soft py-3 px-4 rounded-lg border-l-4-primary">
+        <div
+          class="text-[13px] text-[var(--color-text-light)] bg-[var(--color-background-soft)] py-3 px-4 rounded-lg border-l-4 border-l-[var(--el-color-primary)]"
+        >
           <p v-if="settings.fallback_strategy === 'serial'">
             系统将按照列表优先级顺序逐个尝试 Fallback 端点，直到获得成功响应或遍历完所有服务。
           </p>
@@ -51,10 +53,12 @@
             系统将同时向所有启用的端点发起并发请求，并采用最快返回的有效响应，适用于追求高性能的场景。
           </p>
         </div>
-        <div class="flex items-center justify-between gap-4 py-3 px-4 bg-soft rounded-lg">
+        <div
+          class="flex items-center justify-between gap-4 py-3 px-4 bg-[var(--color-background-soft)] rounded-lg"
+        >
           <div class="flex flex-col gap-1">
-            <span class="font-semibold text-heading text-sm">健康探测周期</span>
-            <span class="text-xs text-light"
+            <span class="font-semibold text-[var(--color-heading)] text-sm">健康探测周期</span>
+            <span class="text-xs text-[var(--color-text-light)]"
               >后台每隔此秒数对所有端点发起一次探测，结果保留 24 小时</span
             >
           </div>
@@ -74,7 +78,7 @@
     <el-card class="surface-card" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2 font-semibold text-heading">
+          <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
             <el-icon><List /></el-icon>
             <span>Fallback 服务链</span>
           </div>
@@ -94,7 +98,9 @@
           <template #default="{ row }">
             <div class="expanded-wrapper">
               <div class="config-section">
-                <div class="text-13 font-semibold text-light mb-3 uppercase tracking-wide">
+                <div
+                  class="text-[13px] font-semibold text-[var(--color-text-light)] mb-3 uppercase tracking-wide"
+                >
                   API 接口定义
                 </div>
                 <div class="url-grid">
@@ -136,7 +142,9 @@
               </div>
 
               <div class="config-section mt-6">
-                <div class="text-13 font-semibold text-light mb-3 uppercase tracking-wide">
+                <div
+                  class="text-[13px] font-semibold text-[var(--color-text-light)] mb-3 uppercase tracking-wide"
+                >
                   功能与权限控制
                 </div>
                 <div class="features-panel">
@@ -144,8 +152,10 @@
                     <div class="flex items-start gap-3">
                       <el-switch v-model="row.enable_profile" />
                       <div class="flex flex-col">
-                        <span class="text-sm font-semibold text-heading">Profile 转发</span>
-                        <span class="text-11 text-light mt-1"
+                        <span class="text-sm font-semibold text-[var(--color-heading)]"
+                          >Profile 转发</span
+                        >
+                        <span class="text-[11px] text-[var(--color-text-light)] mt-1"
                           >允许向此端点查询 UUID 和皮肤材质</span
                         >
                       </div>
@@ -155,8 +165,10 @@
                     <div class="flex items-start gap-3">
                       <el-switch v-model="row.enable_hasjoined" />
                       <div class="flex flex-col">
-                        <span class="text-sm font-semibold text-heading">Auth 认证回退</span>
-                        <span class="text-11 text-light mt-1"
+                        <span class="text-sm font-semibold text-[var(--color-heading)]"
+                          >Auth 认证回退</span
+                        >
+                        <span class="text-[11px] text-[var(--color-text-light)] mt-1"
                           >本地验证失败后尝试以此端点验证 session</span
                         >
                       </div>
@@ -169,8 +181,10 @@
                         @change="(val: string | number | boolean) => onWhitelistToggle(row, val)"
                       />
                       <div class="flex flex-col">
-                        <span class="text-sm font-semibold text-heading">开启白名单</span>
-                        <span class="text-11 text-light mt-1"
+                        <span class="text-sm font-semibold text-[var(--color-heading)]"
+                          >开启白名单</span
+                        >
+                        <span class="text-[11px] text-[var(--color-text-light)] mt-1"
                           >仅允许特定玩家使用此端点进行验证</span
                         >
                       </div>
@@ -183,7 +197,9 @@
               <transition name="el-zoom-in-top">
                 <div v-if="row.enable_whitelist" class="whitelist-box mt-6">
                   <div class="section-header-small">
-                    <div class="text-13 font-semibold text-light mb-3 uppercase tracking-wide">
+                    <div
+                      class="text-[13px] font-semibold text-[var(--color-text-light)] mb-3 uppercase tracking-wide"
+                    >
                       端点白名单列表
                       <el-tag
                         v-if="hasWhitelistChanges(row)"

@@ -17,7 +17,7 @@
       </el-button>
     </div>
 
-    <div class="min-h-400" v-loading="loading" element-loading-background="transparent">
+    <div class="min-h-[400px]" v-loading="loading" element-loading-background="transparent">
       <div class="auto-grid" v-if="textures.length > 0">
         <TextureCard
           v-for="(tex, index) in textures"
@@ -104,7 +104,7 @@
                   :inactive-value="0"
                   @change="updateIsPublic"
                 />
-                <span class="text-13 text-info">
+                <span class="text-[13px] text-[var(--el-text-color-secondary)]">
                   {{
                     selectedTexture.is_public === 1
                       ? '公开（其他用户可在皮肤库看到）'

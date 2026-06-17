@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-900 mx-auto py-5 animate-fade-in">
+  <div class="max-w-[900px] mx-auto py-5 animate-fade-in">
     <PageHeader title="邮件服务设置" subtitle="配置 SMTP 服务器以启用注册验证、找回密码等通知功能">
       <template #icon><Message /></template>
       <template #actions>
@@ -12,7 +12,7 @@
     <el-card class="surface-card" shadow="never">
       <template #header>
         <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2 font-semibold text-heading">
+          <div class="flex items-center gap-2 font-semibold text-[var(--color-heading)]">
             <el-icon><Postcard /></el-icon>
             <span>SMTP 与验证配置</span>
           </div>
@@ -29,12 +29,16 @@
 
       <el-form label-position="top" :model="emailSettings">
         <div class="py-2">
-          <div class="text-sm font-semibold text-light mb-5 pl-3 border-l-4-primary">验证功能</div>
+          <div
+            class="text-sm font-semibold text-[var(--color-text-light)] mb-5 pl-3 border-l-4 border-l-[var(--el-color-primary)]"
+          >
+            验证功能
+          </div>
           <el-row :gutter="40">
             <el-col :xs="24" :sm="12">
               <el-form-item label="启用邮件验证">
                 <el-switch v-model="emailSettings.email_verify_enabled" />
-                <p class="text-xs text-light leading-normal mt-1">
+                <p class="text-xs text-[var(--color-text-light)] leading-normal mt-1">
                   开启后，用户注册和重置密码时必须通过邮件验证码确认身份。
                 </p>
               </el-form-item>
@@ -50,7 +54,9 @@
         <el-divider />
 
         <div class="py-2">
-          <div class="text-sm font-semibold text-light mb-5 pl-3 border-l-4-primary">
+          <div
+            class="text-sm font-semibold text-[var(--color-text-light)] mb-5 pl-3 border-l-4 border-l-[var(--el-color-primary)]"
+          >
             SMTP 服务器
           </div>
           <el-row :gutter="20">
@@ -96,7 +102,7 @@
                   v-model="emailSettings.smtp_sender"
                   placeholder="SkinServer <no-reply@example.com>"
                 />
-                <p class="text-xs text-light leading-normal mt-1">
+                <p class="text-xs text-[var(--color-text-light)] leading-normal mt-1">
                   发件人在邮件客户端中显示的名称及回复地址。
                 </p>
               </el-form-item>

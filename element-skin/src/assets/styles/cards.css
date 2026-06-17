@@ -5,7 +5,11 @@
   border: 1px solid var(--color-border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   background: var(--color-card-background);
-  transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
   overflow: hidden; /* Fix: Prevent background color bleed past rounded corners */
 }
 
@@ -49,7 +53,3 @@
   font-weight: 700;
   color: var(--color-heading);
 }
-
-/* Gradients for icons */
-.bg-gradient-blue { background: linear-gradient(135deg, #409eff, #337ecc); }
-.bg-gradient-purple { background: linear-gradient(135deg, #b37feb, #8553cf); }
