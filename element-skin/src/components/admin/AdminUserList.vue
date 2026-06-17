@@ -18,6 +18,7 @@
     <SearchBar
       v-model="searchQuery"
       placeholder="搜索用户名 / 邮箱 / 角色名"
+      class="mb-6"
       @clear="handleClearSearch"
       @search="handleSearch"
     />

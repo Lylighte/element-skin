@@ -50,38 +50,51 @@
     </div>
 
     <UiDialog v-model="showDetailDialog" destroy-on-close variant="viewer">
-      <div class="viewer-layout" v-if="selectedTexture">
-        <TexturePreviewStage :texture="selectedTexture" :textures-url="texturesUrl" />
+      <UiViewerLayout v-if="selectedTexture">
+        <template #stage>
+          <TexturePreviewStage :texture="selectedTexture" :textures-url="texturesUrl" />
+        </template>
 
-        <div class="viewer-info-panel" v-loading="isDetailLoading">
+        <div v-loading="isDetailLoading" class="flex min-h-0 flex-1 flex-col">
           <template v-if="selectedTexture">
-            <section class="viewer-section title-section">
-              <div class="viewer-title-row">
-                <el-button text circle class="title-edit-btn" @click="focusNoteInput">
+            <section class="border-b border-[var(--color-border)] py-3.5">
+              <div class="flex items-center gap-2 pr-12">
+                <el-button text circle class="title-action-button" @click="focusNoteInput">
                   <el-icon><Edit /></el-icon>
                 </el-button>
                 <el-input
                   ref="noteInputRef"
                   v-model="editingNoteValue"
                   placeholder="未命名纹理"
-                  class="viewer-title-input"
+                  class="title-input-field"
                   @blur="updateNote"
                   @keyup.enter="updateNote"
                 />
               </div>
             </section>
 
-            <section class="viewer-section meta-section">
-              <div class="viewer-title-row">
-                <span class="meta-chip"
+            <section class="border-b border-[var(--color-border)] py-3.5">
+              <div class="flex items-center gap-2 pr-12">
+                <span
+                  class="inline-flex h-7 max-w-full items-center rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 text-xs whitespace-nowrap text-[var(--color-text)] transition"
                   >{{ textureResolutions.get(selectedTexture.hash) || '--' }}px</span
                 >
-                <span class="meta-chip hash">{{ selectedTexture.hash }}</span>
+                <span
+                  class="inline-flex h-7 max-w-60 items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 font-mono text-xs text-[var(--color-text)] transition"
+                  >{{ selectedTexture.hash }}</span
+                >
               </div>
             </section>
 
-            <section class="viewer-section" v-if="selectedTexture.type === 'skin'">
-              <div class="viewer-section-label">模型选择</div>
+            <section
+              class="border-b border-[var(--color-border)] py-3.5"
+              v-if="selectedTexture.type === 'skin'"
+            >
+              <div
+                class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+              >
+                模型选择
+              </div>
               <UiSegmented
                 v-model="selectedTexture.model"
                 @change="updateModel"
@@ -92,10 +105,14 @@
             </section>
 
             <section
-              class="viewer-section"
+              class="border-b border-[var(--color-border)] py-3.5"
               v-if="!isDetailLoading && selectedTexture.is_public !== 2"
             >
-              <div class="viewer-section-label">公开状态</div>
+              <div
+                class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+              >
+                公开状态
+              </div>
               <div class="flex items-center gap-3">
                 <el-switch
                   v-model="selectedTexture.is_public"
@@ -113,8 +130,12 @@
               </div>
             </section>
 
-            <section class="viewer-section">
-              <div class="viewer-section-label">应用到角色</div>
+            <section class="border-b border-[var(--color-border)] py-3.5">
+              <div
+                class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+              >
+                应用到角色
+              </div>
               <div class="flex gap-2">
                 <el-select
                   v-model="applyForm.profile_id"
@@ -139,14 +160,14 @@
               </div>
             </section>
 
-            <section class="viewer-section mt-auto pb-0 border-b-0">
+            <section class="mt-auto border-b-0 py-3.5 pb-0">
               <el-button type="danger" plain class="w-full rounded-lg" @click="confirmDelete">
                 删除纹理
               </el-button>
             </section>
           </template>
         </div>
-      </div>
+      </UiViewerLayout>
     </UiDialog>
 
     <!-- 上传对话框 -->
@@ -218,6 +239,7 @@ import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
+import UiViewerLayout from '@/components/ui/UiViewerLayout.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getProfiles } from '@/api/profiles'
 import {
@@ -518,5 +540,59 @@ onMounted(() => {
 }
 .upload-wrapper {
   width: 100%;
+}
+
+.title-action-button {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
+  flex-shrink: 0;
+}
+
+.title-action-button:hover {
+  background: var(--color-background-soft) !important;
+  color: var(--el-color-primary) !important;
+  transform: scale(1.1);
+}
+
+.title-action-button .el-icon {
+  font-size: 18px;
+  color: var(--color-text-light);
+}
+
+.title-action-button:hover .el-icon {
+  color: var(--el-color-primary);
+}
+
+.title-input-field {
+  flex: 1;
+}
+
+.title-input-field :deep(.el-input__wrapper) {
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+  transition: box-shadow 0.2s ease;
+}
+
+.title-input-field :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 2px 0 var(--el-color-primary) !important;
+  border-radius: 0 !important;
+}
+
+.title-input-field :deep(.el-input__inner) {
+  height: 48px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-heading);
+  line-height: 48px;
 }
 </style>

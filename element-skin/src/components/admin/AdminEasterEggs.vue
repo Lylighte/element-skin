@@ -19,7 +19,9 @@
       description="这里配置的是服务端允许启用的彩蛋。客户端还会结合本地日期和用户个人设置，三者都满足时才会 lazy import 对应效果。"
     />
 
-    <div class="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] max-sm:grid-cols-1 gap-4">
+    <div
+      class="mt-6 grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] max-sm:grid-cols-1 gap-4"
+    >
       <UiCard
         v-for="egg in easterEggOptions"
         :key="egg.id"

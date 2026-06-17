@@ -6,7 +6,7 @@
   >
     <div class="card-clip">
       <div
-        class="item-card-preview"
+        class="texture-card-preview relative flex h-[280px] w-full items-center justify-center overflow-hidden"
         :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }"
       >
         <SkinViewer
@@ -26,20 +26,36 @@
         />
         <div
           v-if="texture.type === 'skin' && resolution"
-          class="floating-badge"
+          class="absolute right-2 top-2 z-10 rounded-md px-2.5 py-1 text-xs font-semibold text-white backdrop-blur"
           :style="resolutionBadgeStyle"
         >
           {{ resolution }}x
         </div>
       </div>
 
-      <div class="item-card-info texture-card-info">
+      <div
+        class="texture-card-info flex min-h-[82px] flex-col items-center gap-1.5 bg-[var(--color-card-background)] p-4 text-center"
+      >
         <slot name="info" :texture="texture">
-          <div v-if="showType" class="type-tag" :class="texture.type">
+          <div
+            v-if="showType"
+            class="inline-flex rounded-lg px-2.5 py-1 text-xs font-bold uppercase leading-none tracking-[0.5px]"
+            :class="
+              texture.type === 'skin'
+                ? 'bg-[rgba(64,158,255,0.1)] text-[#409eff]'
+                : 'bg-[rgba(103,194,58,0.1)] text-[#67c23a]'
+            "
+          >
             {{ texture.type === 'skin' ? '皮肤' : '披风' }}
           </div>
-          <div class="item-card-title">{{ title || '未命名纹理' }}</div>
-          <div v-if="subtitle" class="item-card-subtitle">{{ subtitle }}</div>
+          <div
+            class="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold text-[var(--color-heading)]"
+          >
+            {{ title || '未命名纹理' }}
+          </div>
+          <div v-if="subtitle" class="text-[13px] font-medium text-[var(--color-text-light)]">
+            {{ subtitle }}
+          </div>
         </slot>
       </div>
 
@@ -120,9 +136,5 @@ const resolutionBadgeStyle = computed(() => {
 .card-clip {
   border-radius: inherit;
   overflow: hidden;
-}
-
-.texture-card-info {
-  min-height: 82px;
 }
 </style>

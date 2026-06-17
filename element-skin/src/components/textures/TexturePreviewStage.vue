@@ -1,19 +1,12 @@
 <template>
-  <div class="viewer-stage">
-    <SkinViewer
-      v-if="texture.type === 'skin'"
-      :skin-url="texturesUrl(texture.hash)"
-      :model="texture.model || 'default'"
-      :width="width"
-      :height="height"
-    />
-    <CapeViewer
-      v-else
-      :cape-url="texturesUrl(texture.hash)"
-      :width="width"
-      :height="height"
-    />
-  </div>
+  <SkinViewer
+    v-if="texture.type === 'skin'"
+    :skin-url="texturesUrl(texture.hash)"
+    :model="texture.model || 'default'"
+    :width="width"
+    :height="height"
+  />
+  <CapeViewer v-else :cape-url="texturesUrl(texture.hash)" :width="width" :height="height" />
 </template>
 
 <script setup lang="ts">
