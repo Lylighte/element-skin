@@ -69,3 +69,8 @@ skills/
 refer
 .claude
 CLAUDE.md
+
+# Go backend build artifacts
+.gocache/
+.gomodcache/
+*.exe
