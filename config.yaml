@@ -29,7 +29,6 @@ carousel:
 server:
   host: "0.0.0.0"
   port: 8000
-  root_path: ""
   site_url: "http://yourdomain.com"
   api_url: "http://yourdomain.com/skinapi"
 

@@ -132,8 +132,6 @@ carousel:
 server:
   host: "0.0.0.0"
   port: 8000
-  # ⚠️ 如果前端部署在子目录, 这里也需要修改 (如 /skin/)
-  root_path: "/skinapi" 
   # ⚠️ 站点的外部访问地址
   site_url: "http://yourdomain.com" 
   # ⚠️ 后端 API 外部访问地址
