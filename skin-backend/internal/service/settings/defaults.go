@@ -35,7 +35,7 @@ var SettingDefaults = map[string]string{
 	"fallback_strategy":            "serial",
 	"fallback_services":            "[]",
 	"fallback_probe_interval":      "600",
-	"easter_eggs_enabled":          `["spring-festival","april-fools","dragon-boat","minecraft-anniversary","mid-autumn"]`,
+	"easter_eggs_enabled":          `[]`,
 }
 
 var settingsGroups = map[string][]string{
