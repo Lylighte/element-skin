@@ -12,4 +12,7 @@ func TestSettingDefaultsAndGroupsExposeCurrentFrontendGroups(t *testing.T) {
 			t.Fatalf("missing setting default %q", key)
 		}
 	}
+	if got := settings.SettingDefaults["easter_eggs_enabled"]; got != `[]` {
+		t.Fatalf("easter eggs should default to disabled, got %s", got)
+	}
 }
