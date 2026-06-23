@@ -1,7 +1,12 @@
 import { ref } from 'vue'
 import * as skinview3d from 'skinview3d'
 import { patchMe } from '@/api/me'
-import { appStorage } from '@/utils/storage'
+import {
+  avatarCacheKey,
+  canvasToBlob,
+  getCachedImageUrl,
+  setCachedImageUrl,
+} from '@/utils/renderCache'
 
 type SkinModel = 'default' | 'slim'
 
@@ -45,12 +50,14 @@ function _doGenerateAvatar(hash: string, model: SkinModel = 'default'): Promise<
     const textureUrl = `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
     viewer
       .loadSkin(textureUrl)
-      .then(() => {
+      .then(async () => {
         viewer.render()
-        const base64 = canvas.toDataURL()
-        appStorage.avatar.set(hash, base64)
+        const blob = await canvasToBlob(canvas)
+        const cachedUrl = blob
+          ? await setCachedImageUrl('avatar', avatarCacheKey(hash, model), blob)
+          : null
         viewer.dispose()
-        resolve(base64)
+        resolve(cachedUrl ?? canvas.toDataURL('image/png'))
       })
       .catch((e) => {
         console.error('Failed to generate avatar for hash', hash, e)
@@ -61,13 +68,13 @@ function _doGenerateAvatar(hash: string, model: SkinModel = 'default'): Promise<
 }
 
 /**
- * Get avatar image for any texture hash. Returns cached base64 from app storage
+ * Get avatar image for any texture hash. Returns cached render result from IndexedDB
  * instantly, or generates sequentially (WebGL instances serialized via a promise queue).
  */
-export function getAvatarForHash(hash: string | null | undefined, model: SkinModel = 'default'): Promise<string | null> {
+export async function getAvatarForHash(hash: string | null | undefined, model: SkinModel = 'default'): Promise<string | null> {
   if (!hash) return Promise.resolve(null)
 
-  const cached = appStorage.avatar.get(hash)
+  const cached = await getCachedImageUrl('avatar', avatarCacheKey(hash, model))
   if (cached) return Promise.resolve(cached)
 
   const task = _generationQueue.then(() => _doGenerateAvatar(hash, model))
@@ -84,7 +91,7 @@ export function useAvatar() {
     }
 
     avatarHash.value = hash
-    const cached = appStorage.avatar.get(hash)
+    const cached = await getCachedImageUrl('avatar', avatarCacheKey(hash, model))
     if (cached) {
       currentAvatarImg.value = cached
     } else {

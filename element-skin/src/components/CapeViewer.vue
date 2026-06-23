@@ -40,6 +40,12 @@ let globalCapeRenderLock: Promise<void> = Promise.resolve()
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as skinview3d from 'skinview3d'
 import { Loading } from '@element-plus/icons-vue'
+import {
+  canvasToBlob,
+  capeSnapshotCacheKey,
+  getCachedImageUrl,
+  setCachedImageUrl,
+} from '@/utils/renderCache'
 
 const props = withDefaults(
   defineProps<{
@@ -77,7 +83,18 @@ async function initViewer() {
 
   if (props.isStatic) {
     globalCapeRenderLock = globalCapeRenderLock.then(async () => {
+      const cacheKey = capeSnapshotCacheKey({
+        capeUrl: props.capeUrl,
+        width: props.width,
+        height: props.height,
+      })
+
       if (snapshotUrl.value) return
+      const cachedUrl = await getCachedImageUrl('viewer-snapshot', cacheKey)
+      if (cachedUrl) {
+        snapshotUrl.value = cachedUrl
+        return
+      }
 
       const tempCanvas = document.createElement('canvas')
       let staticViewer: skinview3d.SkinViewer | null = null
@@ -99,7 +116,9 @@ async function initViewer() {
 
         await staticViewer.loadCape(props.capeUrl, { backEquipment: 'cape' })
         staticViewer.render()
-        snapshotUrl.value = tempCanvas.toDataURL('image/png')
+        const blob = await canvasToBlob(tempCanvas)
+        const storedUrl = blob ? await setCachedImageUrl('viewer-snapshot', cacheKey, blob) : null
+        snapshotUrl.value = storedUrl ?? tempCanvas.toDataURL('image/png')
       } catch (e) {
         console.error('CapeViewer static render error:', e)
       } finally {
