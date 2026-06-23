@@ -413,6 +413,7 @@ async function fetchMe() {
 }
 
 onMounted(async () => {
+  appStorage.cleanupObsoleteKeys()
   initTheme()
   installEasterEggDevTools()
   void refreshEasterEgg()

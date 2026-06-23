@@ -2,29 +2,16 @@ export type ColorTheme = 'dark' | 'light'
 
 const SITE_NAME_FALLBACK = '皮肤站'
 const SITE_SUBTITLE_FALLBACK = '简洁、高效、现代的 Minecraft 皮肤 management 站'
-const AVATAR_CACHE_MAX_BYTES = 2 * 1024 * 1024
 
 const keys = {
   siteName: 'site_name_cache',
   siteSubtitle: 'site_subtitle_cache',
   enableSkinLibrary: 'enable_skin_library_cache',
   theme: 'theme',
-  avatarPrefix: 'avatar_cache_',
-  avatarManifest: 'avatar_cache_lru',
   easterEggDisabled: 'disableEasterEgg',
 } as const
 
-interface AvatarCacheEntry {
-  hash: string
-  size: number
-  accessedAt: number
-}
-
-interface AvatarCacheManifest {
-  version: 1
-  maxBytes: number
-  entries: AvatarCacheEntry[]
-}
+const obsoleteLocalStoragePrefixes = ['avatar_cache_'] as const
 
 function storage(kind: 'local' | 'session'): Storage | null {
   if (typeof window === 'undefined') return null
@@ -59,132 +46,26 @@ function remove(kind: 'local' | 'session', key: string): void {
   }
 }
 
-function now(): number {
-  return Date.now()
-}
-
-function avatarKey(hash: string): string {
-  return `${keys.avatarPrefix}${hash}`
-}
-
-function byteSize(value: string): number {
-  return value.length
-}
-
-function emptyAvatarManifest(): AvatarCacheManifest {
-  return { version: 1, maxBytes: AVATAR_CACHE_MAX_BYTES, entries: [] }
-}
-
-function discoverAvatarEntries(knownEntries: AvatarCacheEntry[]): AvatarCacheEntry[] {
+function removeLocalStorageByPrefix(prefix: string): void {
   const local = storage('local')
-  if (!local) return []
-  const knownHashes = new Set(knownEntries.map((entry) => entry.hash))
-  const discovered: AvatarCacheEntry[] = []
-
+  if (!local) return
   try {
+    const keysToRemove: string[] = []
     for (let i = 0; i < local.length; i++) {
       const key = local.key(i)
-      if (!key || key === keys.avatarManifest || !key.startsWith(keys.avatarPrefix)) continue
-      const hash = key.slice(keys.avatarPrefix.length)
-      if (!hash || knownHashes.has(hash)) continue
-      const value = getString('local', key)
-      if (value === null) continue
-      discovered.push({ hash, size: byteSize(value), accessedAt: 0 })
+      if (key?.startsWith(prefix)) keysToRemove.push(key)
     }
+    keysToRemove.forEach((key) => remove('local', key))
   } catch {
-    return []
+    // Best-effort cleanup only.
   }
-
-  return discovered
-}
-
-function readAvatarManifest(): AvatarCacheManifest {
-  const raw = getString('local', keys.avatarManifest)
-  if (!raw) {
-    const empty = emptyAvatarManifest()
-    return { ...empty, entries: discoverAvatarEntries(empty.entries) }
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<AvatarCacheManifest>
-    if (!Array.isArray(parsed.entries)) {
-      const empty = emptyAvatarManifest()
-      return { ...empty, entries: discoverAvatarEntries(empty.entries) }
-    }
-    const manifest: AvatarCacheManifest = {
-      version: 1,
-      maxBytes: AVATAR_CACHE_MAX_BYTES,
-      entries: parsed.entries
-        .filter((entry): entry is AvatarCacheEntry => {
-          return (
-            typeof entry?.hash === 'string' &&
-            typeof entry.size === 'number' &&
-            Number.isFinite(entry.size) &&
-            entry.size >= 0 &&
-            typeof entry.accessedAt === 'number' &&
-            Number.isFinite(entry.accessedAt)
-          )
-        })
-        .map((entry) => ({
-          hash: entry.hash,
-          size: entry.size,
-          accessedAt: entry.accessedAt,
-        })),
-    }
-    return { ...manifest, entries: [...manifest.entries, ...discoverAvatarEntries(manifest.entries)] }
-  } catch {
-    const empty = emptyAvatarManifest()
-    return { ...empty, entries: discoverAvatarEntries(empty.entries) }
-  }
-}
-
-function writeAvatarManifest(manifest: AvatarCacheManifest): void {
-  setString('local', keys.avatarManifest, JSON.stringify(manifest))
-}
-
-function avatarCacheTotal(entries: AvatarCacheEntry[]): number {
-  return entries.reduce((total, entry) => total + entry.size, 0)
-}
-
-function upsertAvatarEntry(
-  entries: AvatarCacheEntry[],
-  hash: string,
-  size: number,
-  accessedAt = now(),
-): AvatarCacheEntry[] {
-  return [
-    ...entries.filter((entry) => entry.hash !== hash),
-    {
-      hash,
-      size,
-      accessedAt,
-    },
-  ]
-}
-
-function pruneAvatarCache(manifest: AvatarCacheManifest, protectedHash?: string): AvatarCacheManifest {
-  const existingEntries = manifest.entries.filter((entry) => {
-    if (entry.hash === protectedHash) return true
-    if (getString('local', avatarKey(entry.hash)) !== null) return true
-    return false
-  })
-  const evictable = [...existingEntries]
-    .filter((entry) => entry.hash !== protectedHash)
-    .sort((a, b) => a.accessedAt - b.accessedAt)
-  const kept = [...existingEntries]
-  let total = avatarCacheTotal(kept)
-
-  for (const entry of evictable) {
-    if (total <= AVATAR_CACHE_MAX_BYTES) break
-    remove('local', avatarKey(entry.hash))
-    const idx = kept.findIndex((candidate) => candidate.hash === entry.hash)
-    if (idx >= 0) kept.splice(idx, 1)
-    total -= entry.size
-  }
-
-  return { version: 1, maxBytes: AVATAR_CACHE_MAX_BYTES, entries: kept }
 }
 
 export const appStorage = {
+  cleanupObsoleteKeys(): void {
+    obsoleteLocalStoragePrefixes.forEach(removeLocalStorageByPrefix)
+  },
+
   siteSettings: {
     getSiteName(fallback = SITE_NAME_FALLBACK): string {
       return getString('local', keys.siteName) || fallback
@@ -218,51 +99,6 @@ export const appStorage = {
     },
     hasUserPreference(): boolean {
       return this.get() !== null
-    },
-  },
-
-  avatar: {
-    get(hash: string): string | null {
-      const value = getString('local', avatarKey(hash))
-      if (value === null) return null
-
-      const manifest = readAvatarManifest()
-      const touched = {
-        ...manifest,
-        entries: upsertAvatarEntry(manifest.entries, hash, byteSize(value)),
-      }
-      writeAvatarManifest(pruneAvatarCache(touched, hash))
-      return value
-    },
-    set(hash: string, dataUrl: string): void {
-      const size = byteSize(dataUrl)
-      if (size > AVATAR_CACHE_MAX_BYTES) {
-        remove('local', avatarKey(hash))
-        const manifest = readAvatarManifest()
-        writeAvatarManifest({
-          ...manifest,
-          entries: manifest.entries.filter((entry) => entry.hash !== hash),
-        })
-        return
-      }
-
-      setString('local', avatarKey(hash), dataUrl)
-      if (getString('local', avatarKey(hash)) !== dataUrl) return
-
-      const manifest = readAvatarManifest()
-      const updated = {
-        ...manifest,
-        entries: upsertAvatarEntry(manifest.entries, hash, size),
-      }
-      writeAvatarManifest(pruneAvatarCache(updated, hash))
-    },
-    remove(hash: string): void {
-      remove('local', avatarKey(hash))
-      const manifest = readAvatarManifest()
-      writeAvatarManifest({
-        ...manifest,
-        entries: manifest.entries.filter((entry) => entry.hash !== hash),
-      })
     },
   },
 
