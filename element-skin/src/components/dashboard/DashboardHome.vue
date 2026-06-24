@@ -9,22 +9,22 @@
 
     <section class="flex flex-col gap-4 mb-8">
       <div class="grid grid-cols-2 max-sm:grid-cols-1 gap-4">
-        <el-card class="dashboard-stat-card" shadow="hover">
+        <UiCard class="dashboard-stat-card" shadow="hover">
           <div class="stat-card-content">
             <div class="stat-card-icon stat-card-icon-texture">
               <el-icon><Box /></el-icon>
             </div>
             <el-statistic title="材质数量" :value="textureCount" />
           </div>
-        </el-card>
-        <el-card class="dashboard-stat-card" shadow="hover">
+        </UiCard>
+        <UiCard class="dashboard-stat-card" shadow="hover">
           <div class="stat-card-content">
             <div class="stat-card-icon stat-card-icon-role">
               <el-icon><User /></el-icon>
             </div>
             <el-statistic title="角色数量" :value="profileCount" />
           </div>
-        </el-card>
+        </UiCard>
       </div>
     </section>
 
@@ -32,7 +32,7 @@
       <div class="flex justify-between items-baseline gap-3">
         <h2 class="m-0 text-lg font-semibold text-[var(--color-heading)]">快速接入启动器</h2>
       </div>
-      <el-card class="launcher-card" shadow="hover">
+      <UiCard class="launcher-card" shadow="hover">
         <div class="launcher-access">
           <p class="launcher-copy">
             点击下方按钮复制 API 地址，或直接将其拖到支持 authlib-injector 的启动器窗口中。
@@ -48,7 +48,7 @@
             <span>复制或拖到启动器</span>
           </a>
         </div>
-      </el-card>
+      </UiCard>
     </section>
 
     <section v-if="fallbackEntries.length" class="flex flex-col gap-4 mb-0">
@@ -75,6 +75,7 @@ import { Box, User, CopyDocument, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FallbackStatusEntry } from '@/api/types'
 import FallbackStatusCard from './FallbackStatusCard.vue'
+import UiCard from '@/components/ui/UiCard.vue'
 
 const textureCount = ref(0)
 const profileCount = ref(0)
@@ -152,10 +153,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.dashboard-stat-card {
-  border-radius: 8px;
-}
-
 .dashboard-stat-card :deep(.el-card__body) {
   padding: 24px 28px;
 }
@@ -203,10 +200,6 @@ onMounted(async () => {
   color: var(--color-heading);
   font-size: 30px;
   font-weight: 700;
-}
-
-.launcher-card {
-  border-radius: 8px;
 }
 
 .launcher-card :deep(.el-card__body) {
