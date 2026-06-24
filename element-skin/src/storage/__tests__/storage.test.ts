@@ -55,18 +55,28 @@ describe('appStorage', () => {
     expect(window.localStorage.getItem('disableEasterEgg')).toBeNull()
   })
 
-  it('cleans obsolete localStorage render cache keys without removing active preferences', () => {
+  it('cleans every unused localStorage key without removing active preferences', () => {
     window.localStorage.setItem('avatar_cache_old', 'large-old-avatar')
     window.localStorage.setItem('avatar_cache_lru', '{"entries":[]}')
+    window.localStorage.setItem('legacy_auth_state', 'stale')
+    window.localStorage.setItem('random_unused_key', 'stale')
     window.localStorage.setItem('site_name_cache', 'Kept Site')
+    window.localStorage.setItem('site_subtitle_cache', 'Kept Subtitle')
+    window.localStorage.setItem('enable_skin_library_cache', 'false')
     window.localStorage.setItem('theme', 'dark')
+    window.localStorage.setItem('disableEasterEgg', '1')
 
-    appStorage.cleanupObsoleteKeys()
+    appStorage.cleanupUnusedKeys()
 
     expect(window.localStorage.getItem('avatar_cache_old')).toBeNull()
     expect(window.localStorage.getItem('avatar_cache_lru')).toBeNull()
+    expect(window.localStorage.getItem('legacy_auth_state')).toBeNull()
+    expect(window.localStorage.getItem('random_unused_key')).toBeNull()
     expect(window.localStorage.getItem('site_name_cache')).toBe('Kept Site')
+    expect(window.localStorage.getItem('site_subtitle_cache')).toBe('Kept Subtitle')
+    expect(window.localStorage.getItem('enable_skin_library_cache')).toBe('false')
     expect(window.localStorage.getItem('theme')).toBe('dark')
+    expect(window.localStorage.getItem('disableEasterEgg')).toBe('1')
   })
 
   it('falls back without throwing when browser storage is unavailable', () => {
@@ -93,7 +103,7 @@ describe('appStorage', () => {
     expect(appStorage.theme.get()).toBeNull()
     expect(appStorage.easterEgg.isDisabled()).toBe(false)
     expect(() => appStorage.siteSettings.setSiteName('Ignored')).not.toThrow()
-    expect(() => appStorage.cleanupObsoleteKeys()).not.toThrow()
+    expect(() => appStorage.cleanupUnusedKeys()).not.toThrow()
 
     Object.defineProperty(window, 'localStorage', {
       configurable: true,

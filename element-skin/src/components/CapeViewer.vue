@@ -45,7 +45,7 @@ import {
   capeSnapshotCacheKey,
   getCachedImageUrl,
   setCachedImageUrl,
-} from '@/utils/renderCache'
+} from '@/storage/renderCache'
 
 const props = withDefaults(
   defineProps<{

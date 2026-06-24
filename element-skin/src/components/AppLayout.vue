@@ -197,7 +197,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { useAvatar } from '@/composables/useAvatar'
-import { appStorage } from '@/utils/storage'
+import { appStorage } from '@/storage'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import {
@@ -413,7 +413,7 @@ async function fetchMe() {
 }
 
 onMounted(async () => {
-  appStorage.cleanupObsoleteKeys()
+  appStorage.cleanupUnusedKeys()
   initTheme()
   installEasterEggDevTools()
   void refreshEasterEgg()

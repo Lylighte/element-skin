@@ -1,4 +1,4 @@
-import { indexedDbCache, type CacheBucket } from '@/utils/indexedDbCache'
+import { indexedDbCache, type CacheBucket } from '@/storage/indexedDbCache'
 
 const AVATAR_CACHE_MAX_BYTES = 2 * 1024 * 1024
 const VIEWER_SNAPSHOT_CACHE_MAX_BYTES = 20 * 1024 * 1024

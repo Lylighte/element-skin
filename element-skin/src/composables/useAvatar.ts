@@ -6,7 +6,7 @@ import {
   canvasToBlob,
   getCachedImageUrl,
   setCachedImageUrl,
-} from '@/utils/renderCache'
+} from '@/storage/renderCache'
 
 type SkinModel = 'default' | 'slim'
 
