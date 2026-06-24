@@ -9,36 +9,22 @@
 
     <section class="flex flex-col gap-4 mb-8">
       <div class="grid grid-cols-2 max-sm:grid-cols-1 gap-4">
-        <UiCard shadow="hover">
-          <div class="flex items-center p-5">
-            <div
-              class="mr-5 flex h-16 w-16 shrink-0 items-center justify-center rounded-[16px] text-[32px] text-white bg-gradient-to-br from-[#409eff] to-[#337ecc]"
-            >
+        <el-card class="dashboard-stat-card" shadow="hover">
+          <div class="stat-card-content">
+            <div class="stat-card-icon stat-card-icon-texture">
               <el-icon><Box /></el-icon>
             </div>
-            <div class="flex min-w-0 flex-col">
-              <div class="mb-1 text-sm font-medium text-[var(--color-text-light)]">材质数量</div>
-              <div class="text-[28px] font-bold leading-tight text-[var(--color-heading)]">
-                {{ textureCount }}
-              </div>
-            </div>
+            <el-statistic title="材质数量" :value="textureCount" />
           </div>
-        </UiCard>
-        <UiCard shadow="hover">
-          <div class="flex items-center p-5">
-            <div
-              class="mr-5 flex h-16 w-16 shrink-0 items-center justify-center rounded-[16px] text-[32px] text-white bg-gradient-to-br from-[#b37feb] to-[#8553cf]"
-            >
+        </el-card>
+        <el-card class="dashboard-stat-card" shadow="hover">
+          <div class="stat-card-content">
+            <div class="stat-card-icon stat-card-icon-role">
               <el-icon><User /></el-icon>
             </div>
-            <div class="flex min-w-0 flex-col">
-              <div class="mb-1 text-sm font-medium text-[var(--color-text-light)]">角色数量</div>
-              <div class="text-[28px] font-bold leading-tight text-[var(--color-heading)]">
-                {{ profileCount }}
-              </div>
-            </div>
+            <el-statistic title="角色数量" :value="profileCount" />
           </div>
-        </UiCard>
+        </el-card>
       </div>
     </section>
 
@@ -46,25 +32,23 @@
       <div class="flex justify-between items-baseline gap-3">
         <h2 class="m-0 text-lg font-semibold text-[var(--color-heading)]">快速接入启动器</h2>
       </div>
-      <UiCard shadow="hover">
-        <div class="flex flex-col gap-4 py-1">
-          <p class="text-sm text-[var(--color-text-light)] m-0 leading-normal">
+      <el-card class="launcher-card" shadow="hover">
+        <div class="launcher-access">
+          <p class="launcher-copy">
             点击下方按钮复制 API 地址，或直接将其拖到支持 authlib-injector 的启动器窗口中。
           </p>
-          <div class="flex gap-3 items-stretch flex-wrap">
-            <el-input v-model="apiUrl" readonly class="api-url-input" />
-            <a
-              class="el-button el-button--primary drag-btn inline-flex items-center justify-center gap-2 font-medium whitespace-nowrap"
-              :href="`authlib-injector:yggdrasil-server:${encodeURIComponent(apiUrl)}`"
-              title="点击复制，或拖到启动器"
-              @click.prevent="copyApiUrl"
-            >
-              <el-icon><CopyDocument /></el-icon>
-              <span>复制或拖到启动器</span>
-            </a>
-          </div>
+          <el-input v-model="apiUrl" readonly maxlength="256" class="api-url-input" />
+          <a
+            class="el-button el-button--primary drag-btn inline-flex items-center justify-center gap-2 font-medium whitespace-nowrap"
+            :href="`authlib-injector:yggdrasil-server:${encodeURIComponent(apiUrl)}`"
+            title="点击复制，或拖到启动器"
+            @click.prevent="copyApiUrl"
+          >
+            <el-icon><CopyDocument /></el-icon>
+            <span>复制或拖到启动器</span>
+          </a>
         </div>
-      </UiCard>
+      </el-card>
     </section>
 
     <section v-if="fallbackEntries.length" class="flex flex-col gap-4 mb-0">
@@ -91,7 +75,6 @@ import { Box, User, CopyDocument, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FallbackStatusEntry } from '@/api/types'
 import FallbackStatusCard from './FallbackStatusCard.vue'
-import UiCard from '@/components/ui/UiCard.vue'
 
 const textureCount = ref(0)
 const profileCount = ref(0)
@@ -169,19 +152,114 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.api-url-input {
-  flex: 99 1 320px;
-  min-width: 0;
+.dashboard-stat-card {
+  border-radius: 8px;
 }
+
+.dashboard-stat-card :deep(.el-card__body) {
+  padding: 24px 28px;
+}
+
+.stat-card-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  min-height: 108px;
+}
+
+.stat-card-icon {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 28px;
+}
+
+.stat-card-icon-texture {
+  background: #409eff;
+}
+
+.stat-card-icon-role {
+  background: #8e5ad8;
+}
+
+.dashboard-stat-card :deep(.el-statistic) {
+  min-width: 96px;
+}
+
+.dashboard-stat-card :deep(.el-statistic__head) {
+  margin-bottom: 8px;
+  color: var(--color-text-light);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dashboard-stat-card :deep(.el-statistic__content) {
+  color: var(--color-heading);
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.launcher-card {
+  border-radius: 8px;
+}
+
+.launcher-card :deep(.el-card__body) {
+  padding: 28px;
+}
+
+.launcher-access {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.launcher-copy {
+  max-width: 720px;
+  margin: 0;
+  color: var(--color-text-light);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.api-url-input {
+  width: min(760px, 100%);
+}
+
 .drag-btn {
-  flex: 1 1 240px;
   text-decoration: none;
-  min-height: var(--el-component-size, 32px);
-  padding: 0 16px;
+  min-width: 220px;
+  min-height: 40px;
+  padding: 0 20px;
   transition: transform 0.2s;
 }
+
 .drag-btn:hover {
   transform: translateY(-1px);
   color: white;
+}
+
+@media (max-width: 640px) {
+  .dashboard-stat-card :deep(.el-card__body),
+  .launcher-card :deep(.el-card__body) {
+    padding: 22px 18px;
+  }
+
+  .stat-card-content {
+    justify-content: flex-start;
+    min-height: 88px;
+  }
+
+  .drag-btn {
+    width: 100%;
+    min-width: 0;
+  }
 }
 </style>
