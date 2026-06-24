@@ -128,7 +128,7 @@ function goRegister() {
 
 .home-fixed-button {
   position: fixed;
-  top: calc(50vh + 44px);
+  top: calc(50vh + var(--home-center-offset, 32px) + 44px);
   z-index: 10;
   isolation: isolate;
   overflow: hidden;
@@ -179,7 +179,6 @@ function goRegister() {
 
 .home-fixed-primary {
   left: calc(50vw - 156px);
-  top: calc(50vh + 44px);
   --home-action-ring: rgba(64, 158, 255, 0.45);
   --home-action-bg: rgba(64, 158, 255, 0.16);
 }
@@ -191,14 +190,13 @@ function goRegister() {
 
 .home-fixed-secondary {
   left: calc(50vw + 8px);
-  top: calc(50vh + 44px);
   --home-action-ring: rgba(255, 255, 255, 0.34);
   --home-action-bg: rgba(255, 255, 255, 0.12);
 }
 
 .home-fixed-primary:hover,
 .home-fixed-secondary:hover {
-  top: calc(50vh + 40px);
+  top: calc(50vh + var(--home-center-offset, 32px) + 40px);
 }
 
 .probe-fade-in {
@@ -220,20 +218,24 @@ function goRegister() {
 
 .hero-section {
   position: fixed;
-  inset: 0;
+  top: var(--header-height, 64px);
+  right: 0;
+  bottom: var(--footer-height, 0px);
+  left: 0;
   z-index: 1;
   color: #fff;
   pointer-events: none;
 }
 
 .hero-content {
-  position: fixed;
+  position: absolute;
   left: 50%;
-  top: calc(50vh - 116px);
+  top: 50%;
   width: min(800px, calc(100vw - 40px));
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   text-align: center;
 }
+
 .hero-title {
   font-size: 56px;
   font-weight: 800;
@@ -256,21 +258,22 @@ function goRegister() {
     left: 32px;
     right: 32px;
     width: auto;
+    min-width: 0;
   }
   .home-fixed-primary {
-    top: calc(50vh + 36px);
+    top: calc(50vh + var(--home-center-offset, 32px) + 36px);
   }
   .home-fixed-single {
     left: 32px;
   }
   .home-fixed-secondary {
-    top: calc(50vh + 100px);
+    top: calc(50vh + var(--home-center-offset, 32px) + 100px);
   }
   .home-fixed-primary:hover {
-    top: calc(50vh + 32px);
+    top: calc(50vh + var(--home-center-offset, 32px) + 32px);
   }
   .home-fixed-secondary:hover {
-    top: calc(50vh + 96px);
+    top: calc(50vh + var(--home-center-offset, 32px) + 96px);
   }
 }
 </style>

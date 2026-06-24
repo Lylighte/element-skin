@@ -145,7 +145,13 @@
       </el-menu>
     </el-drawer>
 
-    <main class="app-main" :style="{ '--footer-height': footerHeight + 'px' }">
+    <main
+      class="app-main"
+      :style="{
+        '--footer-height': footerHeight + 'px',
+        '--home-center-offset': homeCenterOffset,
+      }"
+    >
       <slot />
     </main>
 
@@ -241,6 +247,8 @@ const filingMps = ref('')
 const filingMpsLink = ref('')
 const footerHeight = ref(0)
 const footerRef = ref<InstanceType<typeof AppFooter> | null>(null)
+const HOME_HEADER_HEIGHT = 64
+const homeCenterOffset = computed(() => `${(HOME_HEADER_HEIGHT - footerHeight.value) / 2}px`)
 
 const updateFooterHeight = () => {
   nextTick(() => {
@@ -651,6 +659,7 @@ onUnmounted(() => {
 }
 
 .app-main {
+  --header-height: 64px;
   padding: 20px;
   flex: 1;
   display: flex;
