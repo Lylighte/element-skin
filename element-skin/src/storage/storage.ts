@@ -3,7 +3,7 @@ export type ColorTheme = 'dark' | 'light'
 const SITE_NAME_FALLBACK = '皮肤站'
 const SITE_SUBTITLE_FALLBACK = '简洁、高效、现代的 Minecraft 皮肤 management 站'
 
-const keys = {
+const localStorageKeys = {
   siteName: 'site_name_cache',
   siteSubtitle: 'site_subtitle_cache',
   enableSkinLibrary: 'enable_skin_library_cache',
@@ -11,7 +11,7 @@ const keys = {
   easterEggDisabled: 'disableEasterEgg',
 } as const
 
-const obsoleteLocalStoragePrefixes = ['avatar_cache_'] as const
+const activeLocalStorageKeys = new Set<string>(Object.values(localStorageKeys))
 
 function storage(kind: 'local' | 'session'): Storage | null {
   if (typeof window === 'undefined') return null
@@ -46,14 +46,14 @@ function remove(kind: 'local' | 'session', key: string): void {
   }
 }
 
-function removeLocalStorageByPrefix(prefix: string): void {
+function cleanupUnusedLocalStorageKeys(): void {
   const local = storage('local')
   if (!local) return
   try {
     const keysToRemove: string[] = []
     for (let i = 0; i < local.length; i++) {
       const key = local.key(i)
-      if (key?.startsWith(prefix)) keysToRemove.push(key)
+      if (key && !activeLocalStorageKeys.has(key)) keysToRemove.push(key)
     }
     keysToRemove.forEach((key) => remove('local', key))
   } catch {
@@ -62,40 +62,40 @@ function removeLocalStorageByPrefix(prefix: string): void {
 }
 
 export const appStorage = {
-  cleanupObsoleteKeys(): void {
-    obsoleteLocalStoragePrefixes.forEach(removeLocalStorageByPrefix)
+  cleanupUnusedKeys(): void {
+    cleanupUnusedLocalStorageKeys()
   },
 
   siteSettings: {
     getSiteName(fallback = SITE_NAME_FALLBACK): string {
-      return getString('local', keys.siteName) || fallback
+      return getString('local', localStorageKeys.siteName) || fallback
     },
     setSiteName(value: string): void {
-      setString('local', keys.siteName, value)
+      setString('local', localStorageKeys.siteName, value)
     },
     getSiteSubtitle(fallback = SITE_SUBTITLE_FALLBACK): string {
-      return getString('local', keys.siteSubtitle) || fallback
+      return getString('local', localStorageKeys.siteSubtitle) || fallback
     },
     setSiteSubtitle(value: string): void {
-      setString('local', keys.siteSubtitle, value)
+      setString('local', localStorageKeys.siteSubtitle, value)
     },
     getEnableSkinLibrary(fallback = true): boolean {
-      const value = getString('local', keys.enableSkinLibrary)
+      const value = getString('local', localStorageKeys.enableSkinLibrary)
       if (value === null) return fallback
       return value === 'true'
     },
     setEnableSkinLibrary(value: boolean): void {
-      setString('local', keys.enableSkinLibrary, String(value))
+      setString('local', localStorageKeys.enableSkinLibrary, String(value))
     },
   },
 
   theme: {
     get(): ColorTheme | null {
-      const value = getString('local', keys.theme)
+      const value = getString('local', localStorageKeys.theme)
       return value === 'dark' || value === 'light' ? value : null
     },
     set(value: ColorTheme): void {
-      setString('local', keys.theme, value)
+      setString('local', localStorageKeys.theme, value)
     },
     hasUserPreference(): boolean {
       return this.get() !== null
@@ -104,14 +104,14 @@ export const appStorage = {
 
   easterEgg: {
     isDisabled(): boolean {
-      return getString('local', keys.easterEggDisabled) === '1'
+      return getString('local', localStorageKeys.easterEggDisabled) === '1'
     },
     setDisabled(disabled: boolean): void {
       if (disabled) {
-        setString('local', keys.easterEggDisabled, '1')
+        setString('local', localStorageKeys.easterEggDisabled, '1')
         return
       }
-      remove('local', keys.easterEggDisabled)
+      remove('local', localStorageKeys.easterEggDisabled)
     },
   },
 }

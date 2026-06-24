@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { getPublicSettings, getPublicHomepageMedia } from '@/api/public'
 import { getMe } from '@/api/me'
 import { createHeroScene } from '@/composables/useHeroScene'
-import { appStorage } from '@/utils/storage'
+import { appStorage } from '@/storage'
 import { User } from '@element-plus/icons-vue'
 
 const router = useRouter()

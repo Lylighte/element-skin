@@ -37,7 +37,7 @@ import {
   getCachedImageUrl,
   setCachedImageUrl,
   skinSnapshotCacheKey,
-} from '@/utils/renderCache'
+} from '@/storage/renderCache'
 
 const props = withDefaults(
   defineProps<{

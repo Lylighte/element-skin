@@ -1,5 +1,5 @@
 import type { Router } from 'vue-router'
-import { appStorage } from '@/utils/storage'
+import { appStorage } from '@/storage'
 
 export type EasterEggCleanup = () => void
 
