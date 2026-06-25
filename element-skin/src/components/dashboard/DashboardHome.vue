@@ -2,7 +2,7 @@
   <div class="flex flex-col animate-fade-in">
     <div class="page-header">
       <div class="page-header-content">
-        <h1>我的主页</h1>
+        <h1>仪表盘</h1>
         <p>这里汇总了您的资源数量、启动器接入入口与备用服务的健康状态</p>
       </div>
     </div>
