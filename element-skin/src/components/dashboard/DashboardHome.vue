@@ -50,10 +50,13 @@
     <section v-if="fallbackEntries.length" class="flex flex-col gap-4 mb-0">
       <div class="flex justify-between items-baseline gap-3">
         <h2 class="m-0 text-lg font-semibold text-[var(--color-heading)]">服务状态</h2>
-        <el-button @click="loadFallbackStatus" :loading="isChecking" size="small" text>
-          <el-icon><Refresh /></el-icon>
-          <span>刷新</span>
-        </el-button>
+        <div class="service-status-actions">
+          <span class="refresh-countdown">自动刷新 {{ refreshCountdown }}s</span>
+          <el-button @click="loadFallbackStatus" :loading="isChecking" size="small" text>
+            <el-icon><Refresh /></el-icon>
+            <span>刷新</span>
+          </el-button>
+        </div>
       </div>
 
       <div class="flex flex-col gap-4">
@@ -64,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { getPublicSettings, getPublicFallbackStatus } from '@/api/public'
 import { getMe } from '@/api/me'
 import { Box, User, CopyDocument, Refresh } from '@element-plus/icons-vue'
@@ -105,8 +108,12 @@ function copyApiUrl() {
 
 const fallbackEntries = ref<FallbackStatusEntry[]>([])
 const isChecking = ref(false)
+const STATUS_REFRESH_INTERVAL_SECONDS = 60
+const refreshCountdown = ref(STATUS_REFRESH_INTERVAL_SECONDS)
+let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadFallbackStatus() {
+  if (isChecking.value) return
   isChecking.value = true
   try {
     const res = await getPublicFallbackStatus()
@@ -117,7 +124,20 @@ async function loadFallbackStatus() {
     ElMessage.error('加载 Fallback 状态失败')
   } finally {
     isChecking.value = false
+    refreshCountdown.value = STATUS_REFRESH_INTERVAL_SECONDS
   }
+}
+
+function startStatusRefreshTimer() {
+  if (refreshTimer) clearInterval(refreshTimer)
+  refreshTimer = setInterval(() => {
+    if (isChecking.value) return
+    if (refreshCountdown.value <= 1) {
+      void loadFallbackStatus()
+      return
+    }
+    refreshCountdown.value -= 1
+  }, 1000)
 }
 
 onMounted(async () => {
@@ -135,6 +155,7 @@ onMounted(async () => {
   }
 
   await loadFallbackStatus()
+  startStatusRefreshTimer()
 
   try {
     const res = await getMe()
@@ -145,6 +166,11 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to load user stats', e)
   }
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  refreshTimer = null
 })
 </script>
 
@@ -226,6 +252,20 @@ onMounted(async () => {
   color: white;
 }
 
+.service-status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.refresh-countdown {
+  color: var(--color-text-light);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 @media (max-width: 640px) {
   .dashboard-stat-card :deep(.el-card__body),
   .launcher-card :deep(.el-card__body) {
@@ -247,6 +287,12 @@ onMounted(async () => {
   .drag-btn {
     width: 100%;
     min-width: 0;
+  }
+
+  .service-status-actions {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 4px;
   }
 }
 </style>
