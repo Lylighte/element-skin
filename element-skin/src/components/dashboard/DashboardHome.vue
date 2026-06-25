@@ -8,24 +8,21 @@
     </div>
 
     <section class="flex flex-col gap-4 mb-8">
-      <div class="grid grid-cols-2 max-sm:grid-cols-1 gap-4">
-        <UiCard class="dashboard-stat-card" shadow="hover">
-          <div class="stat-card-content">
-            <div class="stat-card-icon stat-card-icon-texture">
+      <UiCard class="dashboard-stat-card" shadow="hover">
+        <div class="stat-card-content">
+          <el-statistic title="材质数量" :value="textureCount">
+            <template #prefix>
               <el-icon><Box /></el-icon>
-            </div>
-            <el-statistic title="材质数量" :value="textureCount" />
-          </div>
-        </UiCard>
-        <UiCard class="dashboard-stat-card" shadow="hover">
-          <div class="stat-card-content">
-            <div class="stat-card-icon stat-card-icon-role">
+            </template>
+          </el-statistic>
+          <div class="stat-divider" aria-hidden="true"></div>
+          <el-statistic title="角色数量" :value="profileCount">
+            <template #prefix>
               <el-icon><User /></el-icon>
-            </div>
-            <el-statistic title="角色数量" :value="profileCount" />
-          </div>
-        </UiCard>
-      </div>
+            </template>
+          </el-statistic>
+        </div>
+      </UiCard>
     </section>
 
     <section class="flex flex-col gap-4 mb-8">
@@ -154,39 +151,20 @@ onMounted(async () => {
 
 <style scoped>
 .dashboard-stat-card :deep(.el-card__body) {
-  padding: 24px 28px;
+  padding: 26px 32px;
 }
 
 .stat-card-content {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 22px;
-  min-height: 108px;
-}
-
-.stat-card-icon {
-  display: inline-flex;
-  width: 56px;
-  height: 56px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 28px;
-}
-
-.stat-card-icon-texture {
-  background: #409eff;
-}
-
-.stat-card-icon-role {
-  background: #8e5ad8;
+  justify-content: space-around;
+  gap: 24px;
+  min-height: 96px;
 }
 
 .dashboard-stat-card :deep(.el-statistic) {
-  min-width: 96px;
+  min-width: 160px;
+  text-align: center;
 }
 
 .dashboard-stat-card :deep(.el-statistic__head) {
@@ -197,9 +175,25 @@ onMounted(async () => {
 }
 
 .dashboard-stat-card :deep(.el-statistic__content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   color: var(--color-heading);
   font-size: 30px;
   font-weight: 700;
+}
+
+.dashboard-stat-card :deep(.el-statistic__prefix) {
+  display: inline-flex;
+  align-items: center;
+  color: var(--el-color-primary);
+  font-size: 26px;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 56px;
+  background: var(--color-border);
 }
 
 .launcher-card :deep(.el-card__body) {
@@ -246,8 +240,20 @@ onMounted(async () => {
   }
 
   .stat-card-content {
-    justify-content: flex-start;
+    align-items: stretch;
+    justify-content: center;
+    flex-direction: column;
+    gap: 18px;
     min-height: 88px;
+  }
+
+  .dashboard-stat-card :deep(.el-statistic) {
+    min-width: 0;
+  }
+
+  .stat-divider {
+    width: 100%;
+    height: 1px;
   }
 
   .drag-btn {
