@@ -102,6 +102,10 @@ function goRegister() {
 
 <style scoped>
 .home-container {
+  --home-anchor-y: var(--home-content-center-y, calc(50vh + 32px));
+  --home-title-y: calc(var(--home-anchor-y) - 44px);
+  --home-action-top: calc(var(--home-anchor-y) + 76px);
+  --home-action-hover-top: calc(var(--home-action-top) - 4px);
   width: 100%;
   height: 100vh;
   display: flex;
@@ -124,7 +128,7 @@ function goRegister() {
 
 .home-fixed-button {
   position: fixed;
-  top: calc(50vh + var(--home-center-offset, 32px) + 44px);
+  top: var(--home-action-top);
   z-index: 10;
   isolation: isolate;
   overflow: hidden;
@@ -192,7 +196,7 @@ function goRegister() {
 
 .home-fixed-primary:hover,
 .home-fixed-secondary:hover {
-  top: calc(50vh + var(--home-center-offset, 32px) + 40px);
+  top: var(--home-action-hover-top);
 }
 
 .probe-fade-in {
@@ -214,19 +218,16 @@ function goRegister() {
 
 .hero-section {
   position: fixed;
-  top: var(--header-height, 64px);
-  right: 0;
-  bottom: var(--footer-height, 0px);
-  left: 0;
+  inset: 0;
   z-index: 1;
   color: #fff;
   pointer-events: none;
 }
 
 .hero-content {
-  position: absolute;
+  position: fixed;
   left: 50%;
-  top: 50%;
+  top: var(--home-title-y);
   width: min(800px, calc(100vw - 40px));
   transform: translate(-50%, -50%);
   text-align: center;
@@ -247,6 +248,14 @@ function goRegister() {
 }
 
 @media (max-width: 768px) {
+  .home-container {
+    --home-title-y: calc(var(--home-anchor-y) - 70px);
+    --home-action-top: calc(var(--home-anchor-y) + 44px);
+    --home-second-action-top: calc(var(--home-action-top) + 64px);
+    --home-action-hover-top: calc(var(--home-action-top) - 4px);
+    --home-second-action-hover-top: calc(var(--home-second-action-top) - 4px);
+  }
+
   .hero-title {
     font-size: 36px;
   }
@@ -257,19 +266,19 @@ function goRegister() {
     min-width: 0;
   }
   .home-fixed-primary {
-    top: calc(50vh + var(--home-center-offset, 32px) + 36px);
+    top: var(--home-action-top);
   }
   .home-fixed-single {
     left: 32px;
   }
   .home-fixed-secondary {
-    top: calc(50vh + var(--home-center-offset, 32px) + 100px);
+    top: var(--home-second-action-top);
   }
   .home-fixed-primary:hover {
-    top: calc(50vh + var(--home-center-offset, 32px) + 32px);
+    top: var(--home-action-hover-top);
   }
   .home-fixed-secondary:hover {
-    top: calc(50vh + var(--home-center-offset, 32px) + 96px);
+    top: var(--home-second-action-hover-top);
   }
 }
 </style>

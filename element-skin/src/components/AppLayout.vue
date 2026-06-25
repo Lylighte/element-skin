@@ -150,6 +150,7 @@
       :style="{
         '--footer-height': footerHeight + 'px',
         '--home-center-offset': homeCenterOffset,
+        '--home-content-center-y': homeContentCenterY,
       }"
     >
       <slot />
@@ -250,6 +251,7 @@ const footerHeight = ref(0)
 const footerRef = ref<InstanceType<typeof AppFooter> | null>(null)
 const HOME_HEADER_HEIGHT = 64
 const homeCenterOffset = computed(() => `${(HOME_HEADER_HEIGHT - footerHeight.value) / 2}px`)
+const homeContentCenterY = computed(() => `calc(50vh + ${homeCenterOffset.value})`)
 
 const updateFooterHeight = () => {
   nextTick(() => {
