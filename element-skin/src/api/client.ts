@@ -10,13 +10,13 @@ const NO_REFRESH_PATHS = ['/me/refresh-token', '/site-login', '/site-logout']
 
 function isNoRefreshPath(url: string | undefined): boolean {
   if (!url) return false
-  const path = (url.split('?')[0] ?? url)
+  const path = url.split('?')[0] ?? url
   return NO_REFRESH_PATHS.some((p) => path.endsWith(p))
 }
 
 // 需要登录的路由前缀。是否跳登录取决于**用户当前所在页面**，而非哪个接口 401——
 // /me 这类探针在公共页（首页等）也会调用并 401，按接口判断会误伤公共页访客。
-const PROTECTED_PREFIXES = ['/dashboard', '/admin', '/skin-library']
+const PROTECTED_PREFIXES = ['/dashboard', '/admin', '/skin-library', '/notifications']
 
 function stripBase(pathname: string): string {
   // 去掉部署 base（如生产子目录 /skin/），使前缀判断在 dev 与 prod 一致。

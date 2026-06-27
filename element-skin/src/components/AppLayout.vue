@@ -198,6 +198,7 @@ import {
   Link,
   Picture,
   Message,
+  Bell,
   Moon,
   Sunny,
   MagicStick,
@@ -293,6 +294,7 @@ provide('footerHeight', footerHeight)
 
 const dashboardLinks: NavLink[] = [
   { path: '/dashboard/home', title: '仪表盘', icon: Odometer },
+  { path: '/notifications', title: '通知中心', icon: Bell },
   { path: '/dashboard/wardrobe', title: '我的衣柜', icon: Box },
   { path: '/dashboard/roles', title: '角色管理', icon: User },
   { path: '/dashboard/profile', title: '个人资料', icon: Setting },
@@ -305,6 +307,7 @@ const adminNavLinks: NavLink[] = [
   { path: '/admin/invites', title: '邀请码管理', icon: Tools },
   { path: '/admin/settings', title: '站点设置', icon: Setting },
   { path: '/admin/email', title: '邮件服务', icon: Message },
+  { path: '/admin/notices', title: '通知公告', icon: Bell },
   { path: '/admin/mojang', title: 'Fallback 服务', icon: Link },
   { path: '/admin/homepage-media', title: '首页图片', icon: Picture },
   { path: '/admin/easter-eggs', title: '彩蛋列表', icon: MagicStick },
@@ -332,6 +335,7 @@ const adminNavItems = computed<NavLink[]>(() => [
     trigger: 'click',
     children: [
       { path: '/admin/email', title: '邮件服务', icon: Message },
+      { path: '/admin/notices', title: '通知公告', icon: Bell },
       { path: '/admin/mojang', title: 'Fallback 服务', icon: Link },
       { path: '/admin/homepage-media', title: '首页图片', icon: Picture },
       { path: '/admin/easter-eggs', title: '彩蛋列表', icon: MagicStick },
@@ -346,9 +350,13 @@ const defaultOpeneds = computed(() => {
     opened.push('admin-content-group')
   }
   if (
-    ['/admin/email', '/admin/mojang', '/admin/homepage-media', '/admin/easter-eggs'].some((p) =>
-      path.startsWith(p),
-    )
+    [
+      '/admin/email',
+      '/admin/notices',
+      '/admin/mojang',
+      '/admin/homepage-media',
+      '/admin/easter-eggs',
+    ].some((p) => path.startsWith(p))
   ) {
     opened.push('admin-config-group')
   }

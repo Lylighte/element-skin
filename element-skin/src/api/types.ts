@@ -160,3 +160,36 @@ export interface FallbackStatusResponse {
   retention_ms: number
   generated_at: number
 }
+
+export type NoticeType = 'announcement'
+export type NoticeDisplayMode = 'inline' | 'detail'
+export type NoticeLevel = 'info' | 'success' | 'warning' | 'danger'
+export type NoticeAudience = 'users' | 'admins'
+export type NoticeStatus = 'all' | 'enabled' | 'disabled' | 'scheduled' | 'expired'
+
+export interface Notice {
+  id: string
+  type: NoticeType
+  title: string
+  summary: string
+  content_markdown: string
+  display_mode: NoticeDisplayMode
+  level: NoticeLevel
+  link_text: string
+  link_url: string
+  audience: NoticeAudience
+  enabled: boolean
+  pinned: boolean
+  dismissible: boolean
+  starts_at: number | null
+  ends_at: number | null
+  created_by?: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface NoticeView extends Notice {
+  read: boolean
+  read_at: number | null
+  dismissed_at: number | null
+}

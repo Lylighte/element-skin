@@ -6,6 +6,8 @@ import LoginView from '../views/LoginView.vue'
 import ResetPassword from '../views/ResetPassword.vue'
 import UserDashboard from '../views/UserDashboard.vue'
 import SkinLibraryView from '../views/SkinLibraryView.vue'
+import NotificationsView from '../views/NotificationsView.vue'
+import NotificationDetailView from '../views/NotificationDetailView.vue'
 
 // Dashboard Components
 import DashboardWardrobe from '@/components/dashboard/DashboardWardrobe.vue'
@@ -23,6 +25,7 @@ import AdminEmail from '@/components/admin/AdminEmail.vue'
 import AdminEasterEggs from '@/components/admin/AdminEasterEggs.vue'
 import AdminTexturesList from '@/components/admin/AdminTexturesList.vue'
 import AdminRolesList from '@/components/admin/AdminRolesList.vue'
+import AdminNotices from '@/components/admin/AdminNotices.vue'
 import { installEasterEggRouterHooks } from '@/easter-eggs'
 
 const router = createRouter({
@@ -84,6 +87,11 @@ const router = createRouter({
           component: AdminHomepageMedia,
         },
         {
+          path: 'notices',
+          name: 'admin-notices',
+          component: AdminNotices,
+        },
+        {
           path: 'easter-eggs',
           name: 'admin-easter-eggs',
           component: AdminEasterEggs,
@@ -131,6 +139,16 @@ const router = createRouter({
       path: '/skin-library',
       name: 'skin-library',
       component: SkinLibraryView,
+    },
+    {
+      path: '/notifications',
+      name: 'notifications',
+      component: NotificationsView,
+    },
+    {
+      path: '/notifications/:id',
+      name: 'notification-detail',
+      component: NotificationDetailView,
     },
   ],
 })
