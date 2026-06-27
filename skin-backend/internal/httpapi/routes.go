@@ -3,6 +3,7 @@ package httpapi
 import (
 	"element-skin/backend/internal/httpapi/admin"
 	"element-skin/backend/internal/httpapi/microsoft"
+	"element-skin/backend/internal/httpapi/notice"
 	"element-skin/backend/internal/httpapi/remote"
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/httpapi/yggdrasil"
@@ -12,6 +13,7 @@ func (r *Router) routes() {
 	siteRoutes := site.NewWithRedis(r.cfg, r.db, r.redis, r.site, r.auth)
 	yggRoutes := yggdrasil.New(r.cfg, r.db, r.redis, r.settings, r.ygg)
 	microsoftRoutes := microsoft.New(r.cfg, r.db, r.settings, r.auth, r.redis)
+	noticeRoutes := notice.New(r.db, r.auth)
 	remoteRoutes := remote.New(r.db, r.auth)
 	adminRoutes := admin.NewWithRedis(r.cfg, r.db, r.redis, r.auth)
 
@@ -44,6 +46,10 @@ func (r *Router) routes() {
 	r.handle("GET /public/settings", siteRoutes.PublicSettings)
 	r.handle("GET /public/homepage-media", siteRoutes.PublicHomepageMedia)
 	r.handle("GET /public/fallback-status", siteRoutes.PublicFallbackStatus)
+	r.handle("GET /notices", noticeRoutes.Auth(noticeRoutes.List))
+	r.handle("GET /notices/{id}", noticeRoutes.Auth(noticeRoutes.Detail))
+	r.handle("POST /notices/{id}/read", noticeRoutes.Auth(noticeRoutes.MarkRead))
+	r.handle("POST /notices/{id}/dismiss", noticeRoutes.Auth(noticeRoutes.Dismiss))
 
 	r.handle("POST /authserver/authenticate", yggRoutes.Authenticate)
 	r.handle("POST /authserver/refresh", yggRoutes.Refresh)
@@ -98,6 +104,10 @@ func (r *Router) routes() {
 	r.handle("PATCH /admin/homepage-media/reorder", adminRoutes.Auth(adminRoutes.ReorderHomepageMedia))
 	r.handle("PATCH /admin/homepage-media/{id}", adminRoutes.Auth(adminRoutes.PatchHomepageMedia))
 	r.handle("DELETE /admin/homepage-media/{id}", adminRoutes.Auth(adminRoutes.DeleteHomepageMedia))
+	r.handle("GET /admin/notices", adminRoutes.Auth(adminRoutes.Notices))
+	r.handle("POST /admin/notices", adminRoutes.Auth(adminRoutes.CreateNotice))
+	r.handle("PATCH /admin/notices/{id}", adminRoutes.Auth(adminRoutes.PatchNotice))
+	r.handle("DELETE /admin/notices/{id}", adminRoutes.Auth(adminRoutes.DeleteNotice))
 	r.handle("GET /admin/settings/site", adminRoutes.Auth(adminRoutes.GetSiteSettings))
 	r.handle("POST /admin/settings/site", adminRoutes.Auth(adminRoutes.SaveSiteSettings))
 	r.handle("GET /admin/settings/{group}", adminRoutes.Auth(adminRoutes.GetSettingsGroup))

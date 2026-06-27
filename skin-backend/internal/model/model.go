@@ -63,3 +63,31 @@ type HomepageMedia struct {
 	CreatedAt           int64   `json:"created_at"`
 	UpdatedAt           int64   `json:"updated_at"`
 }
+
+type Notice struct {
+	ID              string  `json:"id"`
+	Type            string  `json:"type"`
+	Title           string  `json:"title"`
+	Summary         string  `json:"summary"`
+	ContentMarkdown string  `json:"content_markdown"`
+	DisplayMode     string  `json:"display_mode"`
+	Level           string  `json:"level"`
+	LinkText        string  `json:"link_text"`
+	LinkURL         string  `json:"link_url"`
+	Audience        string  `json:"audience"`
+	Enabled         bool    `json:"enabled"`
+	Pinned          bool    `json:"pinned"`
+	Dismissible     bool    `json:"dismissible"`
+	StartsAt        *int64  `json:"starts_at"`
+	EndsAt          *int64  `json:"ends_at"`
+	CreatedBy       *string `json:"created_by"`
+	CreatedAt       int64   `json:"created_at"`
+	UpdatedAt       int64   `json:"updated_at"`
+}
+
+type NoticeView struct {
+	Notice
+	Read        bool   `json:"read"`
+	ReadAt      *int64 `json:"read_at"`
+	DismissedAt *int64 `json:"dismissed_at"`
+}

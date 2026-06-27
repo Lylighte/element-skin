@@ -38,6 +38,11 @@ func CurrentUserID(req *http.Request) string {
 	return v
 }
 
+func CurrentUserIsAdmin(req *http.Request) bool {
+	v, _ := req.Context().Value(adminKey).(bool)
+	return v
+}
+
 func CurrentUserIsSuperAdmin(req *http.Request) bool {
 	v, _ := req.Context().Value(superAdminKey).(bool)
 	return v

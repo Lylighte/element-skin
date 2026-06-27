@@ -121,6 +121,39 @@ CREATE TABLE IF NOT EXISTS homepage_media (
     updated_at BIGINT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS notices (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    content_markdown TEXT NOT NULL,
+    display_mode TEXT NOT NULL,
+    level TEXT NOT NULL DEFAULT 'info',
+    link_text TEXT NOT NULL DEFAULT '',
+    link_url TEXT NOT NULL DEFAULT '',
+    audience TEXT NOT NULL DEFAULT 'users',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    pinned BOOLEAN NOT NULL DEFAULT FALSE,
+    dismissible BOOLEAN NOT NULL DEFAULT TRUE,
+    starts_at BIGINT DEFAULT NULL,
+    ends_at BIGINT DEFAULT NULL,
+    created_by TEXT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS notice_receipts (
+    notice_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    read_at BIGINT DEFAULT NULL,
+    dismissed_at BIGINT DEFAULT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY(notice_id, user_id),
+    FOREIGN KEY(notice_id) REFERENCES notices(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 ALTER TABLE skin_library DROP CONSTRAINT IF EXISTS skin_library_pkey;
 ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash, texture_type);
 ALTER TABLE skin_library ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DEFAULT 0;
@@ -176,6 +209,9 @@ CREATE INDEX IF NOT EXISTS idx_skin_library_created_hash ON skin_library (create
 CREATE INDEX IF NOT EXISTS idx_skin_library_public_usage_created_hash ON skin_library (is_public, usage_count DESC, created_at DESC, skin_hash DESC);
 CREATE INDEX IF NOT EXISTS idx_whitelisted_users_endpoint ON whitelisted_users (endpoint_id);
 CREATE INDEX IF NOT EXISTS idx_homepage_media_public_order ON homepage_media (enabled, sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_notices_active ON notices (enabled, audience, pinned, starts_at, ends_at, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_notices_cleanup ON notices (ends_at) WHERE ends_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_notice_receipts_user ON notice_receipts (user_id, read_at, dismissed_at);
 
 INSERT INTO settings (key, value) VALUES
 ('microsoft_client_id', ''),

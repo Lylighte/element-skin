@@ -13,6 +13,7 @@ import (
 	"element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/database/homepage"
 	"element-skin/backend/internal/database/invite"
+	"element-skin/backend/internal/database/notice"
 	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/database/setting"
 	"element-skin/backend/internal/database/texture"
@@ -36,6 +37,7 @@ type DB struct {
 	Fallbacks     fallback.Store
 	HomepageMedia homepage.Store
 	Verifications verification.Store
+	Notices       notice.Store
 }
 
 func Open(ctx context.Context, cfg config.Config) (*DB, error) {
@@ -72,6 +74,7 @@ func New(pool *pgxpool.Pool) *DB {
 		Fallbacks:     fallback.Store{Pool: pool},
 		HomepageMedia: homepage.Store{Pool: pool},
 		Verifications: verification.Store{Pool: pool},
+		Notices:       notice.Store{Pool: pool},
 	}
 }
 
