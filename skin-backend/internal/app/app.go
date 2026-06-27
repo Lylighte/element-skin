@@ -27,6 +27,10 @@ type refreshTokenCleaner interface {
 	DeleteExpiredRefresh(ctx context.Context, cutoff int64) error
 }
 
+type noticeCleaner interface {
+	DeleteExpired(ctx context.Context, cutoff int64) error
+}
+
 func New(ctx context.Context, cfg config.Config) (*App, error) {
 	if err := util.ValidateJWTSecret(cfg.JWTSecret); err != nil {
 		return nil, err
@@ -36,6 +40,10 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 	if err := db.Tokens.DeleteExpiredRefresh(ctx, database.NowMS()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := db.Notices.DeleteExpired(ctx, database.NowMS()); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -54,6 +62,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 	cleanupCtx, cancel := context.WithCancel(context.Background())
 	go RunRefreshCleanupLoop(cleanupCtx, db.Tokens, time.Hour)
+	go RunNoticeCleanupLoop(cleanupCtx, db.Notices, time.Hour)
 	go probesvc.RunLoop(cleanupCtx, db, redis, settings)
 	return &App{
 		db:       db,
@@ -107,6 +116,19 @@ func RunRefreshCleanupLoop(ctx context.Context, cleaner refreshTokenCleaner, int
 			return
 		case <-ticker.C:
 			_ = cleaner.DeleteExpiredRefresh(ctx, database.NowMS())
+		}
+	}
+}
+
+func RunNoticeCleanupLoop(ctx context.Context, cleaner noticeCleaner, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_ = cleaner.DeleteExpired(ctx, database.NowMS())
 		}
 	}
 }
