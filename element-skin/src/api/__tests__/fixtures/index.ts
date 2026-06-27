@@ -5,6 +5,7 @@ import { authApiCases } from './authCases'
 import { createApiCaseContext } from './forms'
 import { meApiCases } from './meCases'
 import { microsoftApiCases } from './microsoftCases'
+import { noticeApiCases } from './noticeCases'
 import { profilesApiCases } from './profilesCases'
 import { publicApiCases } from './publicCases'
 import { remoteYggApiCases } from './remoteYggCases'
@@ -17,6 +18,7 @@ export function createApiCases(): ApiCase[] {
     ...authApiCases(),
     ...meApiCases(),
     ...microsoftApiCases(),
+    ...noticeApiCases(),
     ...profilesApiCases(),
     ...publicApiCases(),
     ...remoteYggApiCases(),

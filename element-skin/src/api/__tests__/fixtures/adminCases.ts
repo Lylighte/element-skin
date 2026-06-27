@@ -8,6 +8,12 @@ import {
 } from '../../admin/homepage-media'
 import { createAdminInvite, deleteAdminInvite, getAdminInvites } from '../../admin/invites'
 import {
+  createAdminNotice,
+  deleteAdminNotice,
+  getAdminNotices,
+  patchAdminNotice,
+} from '../../admin/notices'
+import {
   deleteAdminProfile,
   getAdminProfiles,
   patchAdminProfile,
@@ -36,6 +42,7 @@ export function adminApiCases(context: ApiCaseContext): ApiCase[] {
     ...inviteCases(),
     ...adminProfileCases(),
     ...adminSettingsCases(),
+    ...adminNoticeCases(),
     ...adminTextureCases(),
     ...adminUserCases(),
     ...whitelistCases(),
@@ -92,6 +99,83 @@ function homepageMediaCases(context: ApiCaseContext): ApiCase[] {
   ]
 }
 
+function adminNoticeCases(): ApiCase[] {
+  return [
+    {
+      name: 'getAdminNotices gets notice params',
+      method: 'get',
+      call: () =>
+        getAdminNotices({
+          cursor: 'admin-notice-cursor',
+          limit: 12,
+          type: 'announcement',
+          status: 'enabled',
+        }),
+      args: [
+        '/admin/notices',
+        {
+          params: {
+            cursor: 'admin-notice-cursor',
+            limit: 12,
+            type: 'announcement',
+            status: 'enabled',
+          },
+        },
+      ],
+    },
+    {
+      name: 'createAdminNotice posts notice draft',
+      method: 'post',
+      call: () =>
+        createAdminNotice({
+          title: 'OAuth Applications',
+          summary: 'OAuth app registration is open.',
+          content_markdown: 'Visit **developer settings**.',
+          display_mode: 'detail',
+          level: 'info',
+          audience: 'users',
+          enabled: true,
+          pinned: true,
+          dismissible: true,
+          link_text: 'Open',
+          link_url: '/oauth/apps',
+          starts_at: null,
+          ends_at: 1_800_000_000_000,
+        }),
+      args: [
+        '/admin/notices',
+        {
+          title: 'OAuth Applications',
+          summary: 'OAuth app registration is open.',
+          content_markdown: 'Visit **developer settings**.',
+          display_mode: 'detail',
+          level: 'info',
+          audience: 'users',
+          enabled: true,
+          pinned: true,
+          dismissible: true,
+          link_text: 'Open',
+          link_url: '/oauth/apps',
+          starts_at: null,
+          ends_at: 1_800_000_000_000,
+        },
+      ],
+    },
+    {
+      name: 'patchAdminNotice patches selected notice fields',
+      method: 'patch',
+      call: () => patchAdminNotice('notice-1', { enabled: false, ends_at: null }),
+      args: ['/admin/notices/notice-1', { enabled: false, ends_at: null }],
+    },
+    {
+      name: 'deleteAdminNotice deletes notice id',
+      method: 'delete',
+      call: () => deleteAdminNotice('notice-1'),
+      args: ['/admin/notices/notice-1'],
+    },
+  ]
+}
+
 function inviteCases(): ApiCase[] {
   return [
     {
@@ -121,7 +205,10 @@ function adminProfileCases(): ApiCase[] {
       name: 'getAdminProfiles gets profile params',
       method: 'get',
       call: () => getAdminProfiles({ cursor: 'admin-profile-cursor', limit: 10, q: 'Alex' }),
-      args: ['/admin/profiles', { params: { cursor: 'admin-profile-cursor', limit: 10, q: 'Alex' } }],
+      args: [
+        '/admin/profiles',
+        { params: { cursor: 'admin-profile-cursor', limit: 10, q: 'Alex' } },
+      ],
     },
     {
       name: 'patchAdminProfile patches admin profile',
@@ -172,7 +259,8 @@ function adminTextureCases(): ApiCase[] {
     {
       name: 'getAdminTextures gets admin texture params',
       method: 'get',
-      call: () => getAdminTextures({ cursor: 'texture-admin-cursor', limit: 25, q: 'cape', type: 'cape' }),
+      call: () =>
+        getAdminTextures({ cursor: 'texture-admin-cursor', limit: 25, q: 'cape', type: 'cape' }),
       args: [
         '/admin/textures',
         { params: { cursor: 'texture-admin-cursor', limit: 25, q: 'cape', type: 'cape' } },
@@ -181,14 +269,22 @@ function adminTextureCases(): ApiCase[] {
     {
       name: 'patchAdminTexture patches admin texture',
       method: 'patch',
-      call: () => patchAdminTexture('hash-admin', { type: 'skin', model: 'slim', note: 'OK', is_public: 1 }),
-      args: ['/admin/textures/hash-admin', { type: 'skin', model: 'slim', note: 'OK', is_public: 1 }],
+      call: () =>
+        patchAdminTexture('hash-admin', { type: 'skin', model: 'slim', note: 'OK', is_public: 1 }),
+      args: [
+        '/admin/textures/hash-admin',
+        { type: 'skin', model: 'slim', note: 'OK', is_public: 1 },
+      ],
     },
     {
       name: 'deleteAdminTexture deletes admin texture with params',
       method: 'delete',
-      call: () => deleteAdminTexture('hash-admin', { type: 'skin', user_id: 'user-1', force: true }),
-      args: ['/admin/textures/hash-admin', { params: { type: 'skin', user_id: 'user-1', force: true } }],
+      call: () =>
+        deleteAdminTexture('hash-admin', { type: 'skin', user_id: 'user-1', force: true }),
+      args: [
+        '/admin/textures/hash-admin',
+        { params: { type: 'skin', user_id: 'user-1', force: true } },
+      ],
     },
   ]
 }
