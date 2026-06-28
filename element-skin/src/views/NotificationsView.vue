@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-[1180px] mx-auto py-5 animate-fade-in">
+  <div class="mx-auto w-full max-w-[1480px] py-5 animate-fade-in">
     <div class="page-header">
       <div class="page-header-content">
         <div>
@@ -27,79 +27,85 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-5 items-start">
-      <UiCard shadow="never">
+    <div class="grid grid-cols-1 gap-5 lg:grid-cols-[420px_minmax(0,1fr)]">
+      <UiCard shadow="never" class="overflow-hidden">
         <div
-          class="flex flex-col gap-2"
+          ref="listScrollRef"
+          class="flex max-h-[calc(100vh-190px)] min-h-[560px] flex-col overflow-auto"
           v-loading="loading"
           element-loading-background="transparent"
         >
           <button
             v-for="notice in notices"
             :key="notice.id"
-            class="w-full rounded-xl border px-4 py-3 text-left transition"
+            class="w-full border-b border-[var(--color-border)] px-4 py-3 text-left transition last:border-b-0"
             :class="
               selectedId === notice.id
-                ? 'border-[var(--el-color-primary)] bg-[rgba(64,158,255,0.08)]'
-                : 'border-transparent bg-[var(--color-background-soft)] hover:border-[var(--color-border)] hover:bg-[var(--color-card-background)]'
+                ? 'bg-[rgba(64,158,255,0.08)]'
+                : 'bg-transparent hover:bg-[var(--color-background-soft)]'
             "
             @click="selectNotice(notice.id)"
           >
-            <div class="mb-2 flex items-center gap-2">
+            <div class="flex items-start gap-3">
               <span
-                class="h-2 w-2 rounded-full"
+                class="mt-2 h-2 w-2 shrink-0 rounded-full"
                 :class="notice.read ? 'bg-[var(--color-border)]' : 'bg-[var(--el-color-primary)]'"
               />
-              <el-tag v-if="notice.pinned" size="small" type="warning">置顶</el-tag>
-              <el-tag size="small" type="info">公告</el-tag>
-              <el-tag size="small" :type="levelTagType(notice.level)">
-                {{ levelLabel(notice.level) }}
-              </el-tag>
-            </div>
-            <div class="font-semibold text-[var(--color-heading)] line-clamp-1">
-              {{ notice.title }}
-            </div>
-            <div
-              class="mt-2 text-sm text-[var(--color-text-light)] leading-6 line-clamp-2 [&_p]:m-0 [&_a]:text-[var(--el-color-primary)]"
-              v-html="noticePreview(notice)"
-            />
-            <div
-              class="mt-3 flex items-center justify-between gap-3 text-xs text-[var(--color-text-light)]"
-            >
-              <span>{{ formatShortDate(notice.created_at) }}</span>
-              <el-button
-                v-if="notice.dismissible"
-                size="small"
-                text
-                @click.stop="dismiss(notice.id)"
-              >
-                忽略
-              </el-button>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="truncate font-semibold text-[var(--color-heading)]">
+                    {{ notice.title }}
+                  </div>
+                  <span class="shrink-0 text-xs text-[var(--color-text-light)]">
+                    {{ formatShortDate(notice.created_at) }}
+                  </span>
+                </div>
+                <div
+                  class="mt-1 text-sm leading-6 text-[var(--color-text-light)] line-clamp-2 [&_a]:text-[var(--el-color-primary)] [&_p]:m-0"
+                  v-html="noticePreview(notice)"
+                />
+                <div class="mt-2 flex items-center justify-between gap-3">
+                  <div class="flex min-w-0 flex-wrap items-center gap-2">
+                    <el-tag v-if="notice.pinned" size="small" type="warning">置顶</el-tag>
+                    <el-tag size="small" type="info">公告</el-tag>
+                    <el-tag size="small" :type="levelTagType(notice.level)">
+                      {{ levelLabel(notice.level) }}
+                    </el-tag>
+                  </div>
+                  <el-button
+                    v-if="notice.dismissible"
+                    size="small"
+                    text
+                    @click.stop="dismiss(notice.id)"
+                  >
+                    忽略
+                  </el-button>
+                </div>
+              </div>
             </div>
           </button>
 
-          <el-empty v-if="!notices.length && !loading" description="暂无通知" />
+          <el-empty v-if="!notices.length && !loading" class="my-auto" description="暂无通知" />
 
-          <CursorPager
+          <div
             v-if="notices.length > 0"
-            class="mt-3"
-            :count="notices.length"
-            :loading="pagination.isLoading.value"
-            :disabled-prev="!pagination.canGoPrev.value"
-            :disabled-next="!pagination.canGoNext.value"
-            @prev="handlePrevPage"
-            @next="handleNextPage"
-          />
+            ref="loadMoreRef"
+            class="flex min-h-12 items-center justify-center text-xs text-[var(--color-text-light)]"
+          >
+            <span v-if="loadingMore">加载中...</span>
+            <span v-else-if="hasNext">继续向下滚动加载更多</span>
+            <span v-else>没有更多通知了</span>
+          </div>
         </div>
       </UiCard>
 
       <UiCard
         shadow="never"
-        class="min-h-[520px]"
+        class="min-h-[560px]"
         v-loading="detailLoading"
         element-loading-background="transparent"
       >
-        <article v-if="selectedNotice" class="p-1">
+        <article v-if="selectedNotice" class="px-2 py-1">
           <div class="mb-4 flex flex-wrap items-center gap-2">
             <el-tag v-if="selectedNotice.pinned" size="small" type="warning">置顶</el-tag>
             <el-tag size="small" type="info">公告</el-tag>
@@ -144,7 +150,7 @@
           </div>
         </article>
 
-        <div v-else class="flex min-h-[480px] items-center justify-center">
+        <div v-else class="flex min-h-[520px] items-center justify-center">
           <el-empty description="选择一条通知查看详情" />
         </div>
       </UiCard>
@@ -153,15 +159,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import CursorPager from '@/components/common/CursorPager.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import { dismissNotice, getNotice, getNotices } from '@/api/notices'
 import type { NoticeLevel, NoticeType, NoticeView } from '@/api/types'
-import { useCursorPagination } from '@/composables/useCursorPagination'
 import { renderMarkdown } from '@/utils/markdown'
 
 const route = useRoute()
@@ -171,10 +175,15 @@ const selectedNotice = ref<NoticeView | null>(null)
 const selectedId = computed(() => selectedNotice.value?.id || String(route.params.id || ''))
 const loading = ref(false)
 const detailLoading = ref(false)
+const loadingMore = ref(false)
+const hasNext = ref(false)
+const nextCursor = ref<string | null>(null)
+const listScrollRef = ref<HTMLElement | null>(null)
+const loadMoreRef = ref<HTMLElement | null>(null)
 const readScope = ref<'all' | 'unread'>('all')
 const noticeType = ref<NoticeType>('announcement')
-const limit = 10
-const pagination = useCursorPagination<NoticeView>(limit)
+const limit = 20
+let loadObserver: IntersectionObserver | null = null
 
 const renderedSelectedContent = computed(() =>
   renderMarkdown(selectedNotice.value?.content_markdown || ''),
@@ -252,13 +261,14 @@ async function loadNotices() {
   loading.value = true
   try {
     const res = await getNotices({
-      cursor: pagination.currentCursor.value,
+      cursor: null,
       limit,
       type: noticeType.value,
       include_read: readScope.value === 'all',
     })
     notices.value = res.data.items
-    pagination.setPageData(res.data)
+    hasNext.value = res.data.has_next
+    nextCursor.value = res.data.next_cursor
 
     const routeID = String(route.params.id || '')
     if (routeID) {
@@ -271,46 +281,60 @@ async function loadNotices() {
       }
     } else {
       selectedNotice.value = null
+      router.replace('/notifications')
     }
   } catch {
     ElMessage.error('加载通知失败')
   } finally {
     loading.value = false
+    await nextTick()
+    ensureLoadObserver()
   }
 }
 
-async function handleNextPage() {
-  await pagination.goToNextPage(async (cursor, pageLimit) => {
+async function loadMoreNotices() {
+  if (!hasNext.value || !nextCursor.value || loadingMore.value || loading.value) return
+  loadingMore.value = true
+  try {
     const res = await getNotices({
-      cursor,
-      limit: pageLimit,
+      cursor: nextCursor.value,
+      limit,
       type: noticeType.value,
       include_read: readScope.value === 'all',
     })
-    notices.value = res.data.items
-    selectedNotice.value = res.data.items[0] || null
-    if (selectedNotice.value) router.replace(`/notifications/${selectedNotice.value.id}`)
-    return res.data
-  })
+    const existing = new Set(notices.value.map((notice) => notice.id))
+    notices.value = notices.value.concat(
+      res.data.items.filter((notice) => !existing.has(notice.id)),
+    )
+    hasNext.value = res.data.has_next
+    nextCursor.value = res.data.next_cursor
+  } catch {
+    ElMessage.error('加载更多通知失败')
+  } finally {
+    loadingMore.value = false
+  }
 }
 
-async function handlePrevPage() {
-  await pagination.goToPrevPage(async (cursor, pageLimit) => {
-    const res = await getNotices({
-      cursor,
-      limit: pageLimit,
-      type: noticeType.value,
-      include_read: readScope.value === 'all',
-    })
-    notices.value = res.data.items
-    selectedNotice.value = res.data.items[0] || null
-    if (selectedNotice.value) router.replace(`/notifications/${selectedNotice.value.id}`)
-    return res.data
-  })
+function ensureLoadObserver() {
+  if (loadObserver) loadObserver.disconnect()
+  if (!loadMoreRef.value || !listScrollRef.value) return
+  loadObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        void loadMoreNotices()
+      }
+    },
+    {
+      root: listScrollRef.value,
+      rootMargin: '120px',
+    },
+  )
+  loadObserver.observe(loadMoreRef.value)
 }
 
 async function refreshFirstPage() {
-  pagination.reset()
+  nextCursor.value = null
+  hasNext.value = false
   await loadNotices()
 }
 
@@ -339,4 +363,11 @@ watch(
 )
 
 onMounted(refreshFirstPage)
+
+onBeforeUnmount(() => {
+  if (loadObserver) {
+    loadObserver.disconnect()
+    loadObserver = null
+  }
+})
 </script>

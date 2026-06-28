@@ -74,46 +74,41 @@
             <span>全部</span>
           </el-button>
         </div>
-        <UiCard shadow="hover">
-          <div class="flex flex-col gap-3 p-1">
-            <button
-              v-for="notice in dashboardNotices"
-              :key="notice.id"
-              class="w-full text-left rounded-xl border border-[var(--color-border)] bg-[var(--color-background-soft)] px-4 py-3 transition hover:border-[var(--el-color-primary)] hover:bg-[var(--color-card-background)]"
-              @click="openNotice(notice.id)"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex flex-wrap items-center gap-2 mb-2">
-                    <el-tag size="small" :type="levelTagType(notice.level)">
-                      {{ levelLabel(notice.level) }}
-                    </el-tag>
-                    <el-tag v-if="notice.pinned" size="small" type="warning">置顶</el-tag>
-                  </div>
-                  <div class="font-semibold text-[var(--color-heading)] truncate">
-                    {{ notice.title }}
-                  </div>
+        <UiCard v-for="notice in dashboardNotices" :key="notice.id" shadow="hover" hoverable>
+          <button class="w-full p-1 text-left" @click="openNotice(notice.id)">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="mb-2 flex flex-wrap items-center gap-2">
+                  <el-tag size="small" :type="levelTagType(notice.level)">
+                    {{ levelLabel(notice.level) }}
+                  </el-tag>
+                  <el-tag v-if="notice.pinned" size="small" type="warning">置顶</el-tag>
                 </div>
-                <el-button
-                  v-if="notice.dismissible"
-                  size="small"
-                  text
-                  class="shrink-0"
-                  @click.stop="dismissDashboardNotice(notice.id)"
-                >
-                  忽略
-                </el-button>
+                <div class="truncate font-semibold text-[var(--color-heading)]">
+                  {{ notice.title }}
+                </div>
               </div>
-              <div
-                class="mt-2 text-sm text-[var(--color-text-light)] leading-6 line-clamp-3 [&_p]:m-0 [&_a]:text-[var(--el-color-primary)]"
-                v-html="noticePreview(notice)"
-              />
-              <div class="mt-3 text-xs text-[var(--color-text-light)]">
-                {{ formatShortDate(notice.created_at) }}
-              </div>
-            </button>
-            <el-empty v-if="!dashboardNotices.length && !noticesLoading" description="暂无公告" />
-          </div>
+              <el-button
+                v-if="notice.dismissible"
+                size="small"
+                text
+                class="shrink-0"
+                @click.stop="dismissDashboardNotice(notice.id)"
+              >
+                忽略
+              </el-button>
+            </div>
+            <div
+              class="mt-2 text-sm leading-6 text-[var(--color-text-light)] line-clamp-3 [&_a]:text-[var(--el-color-primary)] [&_p]:m-0"
+              v-html="noticePreview(notice)"
+            />
+            <div class="mt-3 text-xs text-[var(--color-text-light)]">
+              {{ formatShortDate(notice.created_at) }}
+            </div>
+          </button>
+        </UiCard>
+        <UiCard v-if="!dashboardNotices.length && !noticesLoading" shadow="never">
+          <el-empty description="暂无公告" />
         </UiCard>
       </aside>
     </div>
