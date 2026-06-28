@@ -6,6 +6,7 @@ import (
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
@@ -21,10 +22,22 @@ type ImportService struct {
 	ProcessTexture  func([]byte, string) (string, error)
 }
 
-func (s ImportService) ImportProfile(ctx context.Context, userID, profileID, profileName string, assets []TextureAsset) (map[string]any, error) {
+var (
+	profileCreateOwnedPermission = permission.MustDefinitionByCode("profile.create.owned")
+	textureCreateOwnedPermission = permission.MustDefinitionByCode("texture.create.owned")
+)
+
+func (s ImportService) ImportProfile(ctx context.Context, actor permission.Actor, profileID, profileName string, assets []TextureAsset) (map[string]any, error) {
+	if !actor.Has(profileCreateOwnedPermission) {
+		return nil, util.HTTPError{Status: 403, Detail: "permission denied"}
+	}
+	if hasTextureAsset(assets) && !actor.Has(textureCreateOwnedPermission) {
+		return nil, util.HTTPError{Status: 403, Detail: "permission denied"}
+	}
 	if profileID == "" || profileName == "" {
 		return nil, util.HTTPError{Status: 400, Detail: "profile_id and profile_name are required"}
 	}
+	userID := actor.UserID
 	if !util.ValidProfileName(profileName) {
 		return nil, util.HTTPError{Status: 400, Detail: "invalid profile name"}
 	}
@@ -87,7 +100,7 @@ func (s ImportService) ImportProfile(ctx context.Context, userID, profileID, pro
 	return nil, util.HTTPError{Status: 500, Detail: "无法生成唯一角色名"}
 }
 
-func (s ImportService) ImportProfiles(ctx context.Context, userID string, profiles []map[string]string, fetch func(context.Context, string) ([]TextureAsset, error)) map[string]any {
+func (s ImportService) ImportProfiles(ctx context.Context, actor permission.Actor, profiles []map[string]string, fetch func(context.Context, string) ([]TextureAsset, error)) map[string]any {
 	var items []map[string]any
 	var failed []map[string]any
 	for _, p := range profiles {
@@ -102,7 +115,7 @@ func (s ImportService) ImportProfiles(ctx context.Context, userID string, profil
 			failed = append(failed, map[string]any{"profile_id": id, "profile_name": name, "detail": "导入失败"})
 			continue
 		}
-		res, err := s.ImportProfile(ctx, userID, id, name, assets)
+		res, err := s.ImportProfile(ctx, actor, id, name, assets)
 		if err != nil {
 			detail := "导入失败"
 			if he, ok := err.(util.HTTPError); ok {
@@ -119,6 +132,15 @@ func (s ImportService) ImportProfiles(ctx context.Context, userID string, profil
 		"items":         items,
 		"failed":        failed,
 	}
+}
+
+func hasTextureAsset(assets []TextureAsset) bool {
+	for _, asset := range assets {
+		if asset.URL != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s ImportService) download(ctx context.Context, rawURL string) ([]byte, error) {

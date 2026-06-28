@@ -9,10 +9,30 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/service/imports"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
+
+func importActor(userID string, codes ...string) permission.Actor {
+	bits := permission.NewBitSet(len(permission.Definitions))
+	for _, code := range codes {
+		def := permission.MustDefinitionByCode(code)
+		bits.Set(def.BitIndex)
+	}
+	return permission.Actor{
+		SubjectID:   "user:" + userID,
+		UserID:      userID,
+		SessionKind: permission.SessionKindWeb,
+		Entrypoint:  permission.EntrypointDashboard,
+		Permissions: bits,
+	}
+}
+
+func importUserActor(userID string) permission.Actor {
+	return importActor(userID, "profile.create.owned", "texture.create.owned")
+}
 
 func TestImportProfileSkinCapeAndNameDedup(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
@@ -29,7 +49,7 @@ func TestImportProfileSkinCapeAndNameDedup(t *testing.T) {
 			return h, nil
 		},
 	}
-	res, err := importer.ImportProfile(ctx, user.ID, "ms_uuid_1", "TakenName", []imports.TextureAsset{
+	res, err := importer.ImportProfile(ctx, importUserActor(user.ID), "ms_uuid_1", "TakenName", []imports.TextureAsset{
 		{URL: "http://skin", Kind: "skin", Variant: "slim"},
 		{URL: "http://cape", Kind: "cape"},
 	})
@@ -56,7 +76,7 @@ func TestImportProfileDeduplicatesFullLengthNameWithExactSuffix(t *testing.T) {
 
 	result, err := (imports.ImportService{DB: db}).ImportProfile(
 		ctx,
-		user.ID,
+		importUserActor(user.ID),
 		"full_name_imported",
 		fullName,
 		nil,
@@ -80,12 +100,12 @@ func TestImportProfileUUIDConflictAndDownloadTolerance(t *testing.T) {
 	user := testutil.CreateUser(t, db, "conflict@test.com", "Password123", "Importer", false)
 	testutil.CreateProfile(t, db, user.ID, "dup_uuid", "AlreadyHere")
 	importer := imports.ImportService{DB: db}
-	if _, err := importer.ImportProfile(ctx, user.ID, "dup_uuid", "Whatever", nil); err == nil || !strings.Contains(err.Error(), "UUID") {
+	if _, err := importer.ImportProfile(ctx, importUserActor(user.ID), "dup_uuid", "Whatever", nil); err == nil || !strings.Contains(err.Error(), "UUID") {
 		t.Fatalf("expected UUID conflict, got %v", err)
 	}
 
 	importer.DownloadTexture = func(context.Context, string) ([]byte, error) { return nil, errors.New("network down") }
-	res, err := importer.ImportProfile(ctx, user.ID, "tolerant_uuid", "Tolerant", []imports.TextureAsset{{URL: "http://skin", Kind: "skin"}})
+	res, err := importer.ImportProfile(ctx, importUserActor(user.ID), "tolerant_uuid", "Tolerant", []imports.TextureAsset{{URL: "http://skin", Kind: "skin"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +125,7 @@ func TestImportProfileRejectsInvalidNamesWithoutPersisting(t *testing.T) {
 	user := testutil.CreateUser(t, db, "invalid-import-name@test.com", "Password123", "InvalidImportName", false)
 	importer := imports.ImportService{DB: db}
 
-	result, err := importer.ImportProfile(ctx, user.ID, "invalid_import_name_id", "Bad Name!", nil)
+	result, err := importer.ImportProfile(ctx, importUserActor(user.ID), "invalid_import_name_id", "Bad Name!", nil)
 	if result != nil || err != (util.HTTPError{Status: 400, Detail: "invalid profile name"}) {
 		t.Fatalf("invalid import name result=%#v err=%#v; want nil and exact 400", result, err)
 	}
@@ -113,7 +133,7 @@ func TestImportProfileRejectsInvalidNamesWithoutPersisting(t *testing.T) {
 		t.Fatalf("invalid import name persisted profile=%#v err=%v", stored, err)
 	}
 
-	batch := importer.ImportProfiles(ctx, user.ID, []map[string]string{
+	batch := importer.ImportProfiles(ctx, importUserActor(user.ID), []map[string]string{
 		{"profile_id": "invalid_import_batch", "profile_name": "Also-Bad"},
 		{"profile_id": "valid_import_batch", "profile_name": "ValidImport"},
 	}, func(context.Context, string) ([]imports.TextureAsset, error) {
@@ -130,6 +150,30 @@ func TestImportProfileRejectsInvalidNamesWithoutPersisting(t *testing.T) {
 	}
 	if stored, err := db.Profiles.GetByID(ctx, "invalid_import_batch"); err != nil || stored != nil {
 		t.Fatalf("invalid batch import persisted profile=%#v err=%v", stored, err)
+	}
+}
+
+func TestImportProfileRequiresTexturePermissionOnlyWhenAssetsExist(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "import-permission@test.com", "Password123", "ImportPermission", false)
+	importer := imports.ImportService{DB: db}
+	profileOnlyActor := importActor(user.ID, "profile.create.owned")
+
+	profileOnly, err := importer.ImportProfile(ctx, profileOnlyActor, "profile_only_import", "ProfileOnly", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profileOnly["ok"] != true || profileOnly["profile"].(map[string]any)["id"] != "profile_only_import" {
+		t.Fatalf("profile-only import should succeed with profile permission: %#v", profileOnly)
+	}
+
+	withAsset, err := importer.ImportProfile(ctx, profileOnlyActor, "asset_import_denied", "AssetDenied", []imports.TextureAsset{{URL: "skin-url", Kind: "skin"}})
+	if withAsset != nil || err != (util.HTTPError{Status: 403, Detail: "permission denied"}) {
+		t.Fatalf("asset import without texture permission result=%#v err=%#v; want exact 403", withAsset, err)
+	}
+	if stored, err := db.Profiles.GetByID(ctx, "asset_import_denied"); err != nil || stored != nil {
+		t.Fatalf("denied asset import persisted profile=%#v err=%v", stored, err)
 	}
 }
 
@@ -167,7 +211,7 @@ func TestConcurrentImportsRetryConflictingProfileName(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			res, err := importer.ImportProfile(context.Background(), user.ID, id, "ConcurrentImp", nil)
+			res, err := importer.ImportProfile(context.Background(), importUserActor(user.ID), id, "ConcurrentImp", nil)
 			if err != nil {
 				results <- result{err: err}
 				return
@@ -234,7 +278,7 @@ func TestConcurrentImportsReturnExactUUIDConflict(t *testing.T) {
 			<-start
 			_, err := importer.ImportProfile(
 				context.Background(),
-				user.ID,
+				importUserActor(user.ID),
 				"concurrent_import_same_id",
 				"ConcurrentID",
 				nil,
@@ -283,7 +327,7 @@ func TestImportProfilesBatchKeepsBusinessErrorsAndConvergesInternal(t *testing.T
 		t.Fatal(err)
 	}
 	importer := imports.ImportService{DB: db}
-	result := importer.ImportProfiles(ctx, user.ID, []map[string]string{
+	result := importer.ImportProfiles(ctx, importUserActor(user.ID), []map[string]string{
 		{"profile_id": "batch_ok", "profile_name": "BatchOk"},
 		{"profile_id": "", "profile_name": "Broken"},
 		{"profile_id": "batch_internal", "profile_name": "Internal"},

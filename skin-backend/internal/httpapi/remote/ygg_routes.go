@@ -49,7 +49,7 @@ func (h Handler) ImportProfiles(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	importer := importsvc.ImportService{DB: h.db}
-	res := importer.ImportProfiles(req.Context(), shared.CurrentUserID(req), profiles, func(ctx context.Context, id string) ([]importsvc.TextureAsset, error) {
+	res := importer.ImportProfiles(req.Context(), shared.CurrentActor(req), profiles, func(ctx context.Context, id string) ([]importsvc.TextureAsset, error) {
 		return []importsvc.TextureAsset{{URL: id + ":skin", Kind: "skin", Variant: "classic"}}, nil
 	})
 	util.JSON(w, 200, res)
@@ -76,7 +76,7 @@ func (h Handler) ImportProfile(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	importer := importsvc.ImportService{DB: h.db}
-	res, err := importer.ImportProfile(req.Context(), shared.CurrentUserID(req), profileID, profileName, []importsvc.TextureAsset{{URL: profileID + ":skin", Kind: "skin", Variant: "classic"}})
+	res, err := importer.ImportProfile(req.Context(), shared.CurrentActor(req), profileID, profileName, []importsvc.TextureAsset{{URL: profileID + ":skin", Kind: "skin", Variant: "classic"}})
 	if err != nil {
 		util.Error(w, err)
 		return
