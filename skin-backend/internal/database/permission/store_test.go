@@ -467,6 +467,60 @@ func TestSetSubjectPermissionOverrideIdempotent(t *testing.T) {
 	}
 }
 
+func TestActorForUserWithDelegationFieldsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "actor-delegation@test.com", "pw", "ActorDelegation", false)
+	if err := db.Permissions.EnsureUserSubject(ctx, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UnixMilli()
+	def := core.MustDefinitionByCode("texture.update_visibility.owned")
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO delegated_clients (id,owner_user_id,name,status,created_at,updated_at)
+		VALUES ('actor-client',$1,'ActorClient','active',$2,$2)
+	`, user.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO delegated_client_permissions (client_id,permission_id,created_at)
+		VALUES ('actor-client',$1,$2)
+	`, int64(def.ID), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO delegated_permission_grants (id,user_id,subject_id,client_id,status,created_at)
+		VALUES ('actor-grant',$1,$2,'actor-client','active',$3)
+	`, user.ID, permissiondb.SubjectIDForUser(user.ID), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO delegated_grant_permissions (grant_id,permission_id,created_at)
+		VALUES ('actor-grant',$1,$2)
+	`, int64(def.ID), now); err != nil {
+		t.Fatal(err)
+	}
+
+	actor, err := db.Permissions.ActorForUser(ctx, user.ID, permissiondb.EffectiveOptions{
+		SessionKind:       core.SessionKindWeb,
+		Entrypoint:        core.EntrypointDashboard,
+		DelegatedGrantID:  "actor-grant",
+		DelegatedClientID: "actor-client",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actor.DelegationID != "actor-grant" {
+		t.Fatalf("DelegationID=%q want=actor-grant", actor.DelegationID)
+	}
+	if actor.DelegatedClientID != "actor-client" {
+		t.Fatalf("DelegatedClientID=%q want=actor-client", actor.DelegatedClientID)
+	}
+	if !actor.Permissions.Has(def.BitIndex) {
+		t.Fatal("delegated actor should have the granted permission")
+	}
+}
+
 func has(bits core.BitSet, code string) bool {
 	return bits.Has(core.MustDefinitionByCode(code).BitIndex)
 }
