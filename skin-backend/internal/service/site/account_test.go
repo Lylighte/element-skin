@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	settingssvc "element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/service/site"
@@ -22,8 +23,9 @@ func TestAccountMeReturnsCountsAndUpdateMePersistsExactFields(t *testing.T) {
 	ctx := context.Background()
 	svc := newSiteService(db, testutil.TestConfig())
 	user := testutil.CreateUser(t, db, "site-account-service@test.com", "Password123", "SiteAccountService", false)
+	actor := testActor(t, db, user.ID)
 
-	if err := svc.UpdateMe(ctx, user.ID, map[string]any{"email": "updated-account@test.com", "display_name": "UpdatedAccount", "preferred_language": "en_US", "avatar_hash": "avatar_hash"}); err != nil {
+	if err := svc.UpdateMe(ctx, actor, map[string]any{"email": "updated-account@test.com", "display_name": "UpdatedAccount", "preferred_language": "en_US", "avatar_hash": "avatar_hash"}); err != nil {
 		t.Fatal(err)
 	}
 	me, err := svc.Me(ctx, testActor(t, db, user.ID))
@@ -78,6 +80,7 @@ func TestAccountRejectsInvalidUpdatesAndWrongPasswordExactly(t *testing.T) {
 	svc := newSiteService(db, testutil.TestConfig())
 	user := testutil.CreateUser(t, db, "site-account-invalid@test.com", "Password123", "SiteAccountInvalid", false)
 	other := testutil.CreateUser(t, db, "site-account-invalid-other@test.com", "Password123", "SiteAccountInvalidOther", false)
+	actor := testActor(t, db, user.ID)
 
 	for _, tc := range []struct {
 		name string
@@ -89,7 +92,7 @@ func TestAccountRejectsInvalidUpdatesAndWrongPasswordExactly(t *testing.T) {
 		{"blank display name", map[string]any{"display_name": "   "}, "Username cannot be empty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := svc.UpdateMe(ctx, user.ID, tc.body)
+			err := svc.UpdateMe(ctx, actor, tc.body)
 			var httpErr util.HTTPError
 			if !errors.As(err, &httpErr) || httpErr.Status != 400 || httpErr.Detail != tc.want {
 				t.Fatalf("UpdateMe should reject %s exactly, got %#v", tc.name, err)
@@ -101,7 +104,7 @@ func TestAccountRejectsInvalidUpdatesAndWrongPasswordExactly(t *testing.T) {
 		t.Fatalf("invalid updates should not mutate account: user=%#v err=%v", unchanged, err)
 	}
 
-	err = svc.ChangePassword(ctx, user.ID, "WrongPassword", "NewPassword123")
+	err = svc.ChangePassword(ctx, actor, "WrongPassword", "NewPassword123")
 	var httpErr util.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.Status != 403 || httpErr.Detail != "旧密码错误" {
 		t.Fatalf("wrong old password should reject exactly, got %#v", err)
@@ -111,11 +114,13 @@ func TestAccountRejectsInvalidUpdatesAndWrongPasswordExactly(t *testing.T) {
 		t.Fatalf("wrong old password should not change hash: user=%#v err=%v", afterWrongPassword, err)
 	}
 
-	err = svc.ChangePassword(ctx, "missing-user", "Password123", "NewPassword123")
+	missingPasswordActor := testActorWithCodes("missing-user", "account_password.update.self")
+	err = svc.ChangePassword(ctx, missingPasswordActor, "Password123", "NewPassword123")
 	if !errors.As(err, &httpErr) || httpErr.Status != 404 || httpErr.Detail != "用户不存在" {
 		t.Fatalf("missing user password change should reject exactly, got %#v", err)
 	}
-	err = svc.UpdateMe(ctx, "missing-user", map[string]any{"preferred_language": "en_US"})
+	missingUpdateActor := testActorWithCodes("missing-user", "account.update.self")
+	err = svc.UpdateMe(ctx, missingUpdateActor, map[string]any{"preferred_language": "en_US"})
 	if !errors.As(err, &httpErr) || httpErr.Status != 404 || httpErr.Detail != "user not found" {
 		t.Fatalf("missing user account update should reject exactly, got %#v", err)
 	}
@@ -145,13 +150,13 @@ func TestConcurrentEmailUpdatesReturnExactBusinessConflict(t *testing.T) {
 	start := make(chan struct{})
 	results := make(chan error, 2)
 	var wg sync.WaitGroup
-	for _, userID := range []string{first.ID, second.ID} {
-		userID := userID
+	for _, actor := range []permission.Actor{testActor(t, db, first.ID), testActor(t, db, second.ID)} {
+		actor := actor
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-start
-			results <- svc.UpdateMe(context.Background(), userID, map[string]any{"email": targetEmail})
+			results <- svc.UpdateMe(context.Background(), actor, map[string]any{"email": targetEmail})
 		}()
 	}
 	close(start)
@@ -212,13 +217,13 @@ func TestConcurrentDisplayNameUpdatesKeepNameUnique(t *testing.T) {
 	start := make(chan struct{})
 	results := make(chan error, 2)
 	var wg sync.WaitGroup
-	for _, userID := range []string{first.ID, second.ID} {
-		userID := userID
+	for _, actor := range []permission.Actor{testActor(t, db, first.ID), testActor(t, db, second.ID)} {
+		actor := actor
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-start
-			results <- svc.UpdateMe(context.Background(), userID, map[string]any{"display_name": targetName})
+			results <- svc.UpdateMe(context.Background(), actor, map[string]any{"display_name": targetName})
 		}()
 	}
 	close(start)
@@ -271,7 +276,7 @@ func TestChangePasswordPreservesPasswordAndRefreshWhenYggRevocationFails(t *test
 		Settings: settingssvc.Settings{DB: db, Redis: cache},
 	}
 
-	err := svc.ChangePassword(ctx, user.ID, "Password123", "NewPassword123")
+	err := svc.ChangePassword(ctx, testActor(t, db, user.ID), "Password123", "NewPassword123")
 	if err == nil || err.Error() != "ygg token revocation failed" {
 		t.Fatalf("ygg revocation failure should be returned exactly, got %v", err)
 	}

@@ -481,7 +481,7 @@ func TestDeleteUserRecountsSharedLibraryButDeletesUploadedTextures(t *testing.T)
 		t.Fatal(err)
 	}
 
-	ok, err := svc.DeleteUser(ctx, target.ID)
+	ok, err := svc.DeleteUser(ctx, testActorWithCodes("admin-delete-user", "account.delete.any"), target.ID)
 	if err != nil || !ok {
 		t.Fatalf("DeleteUser returned ok=%v err=%v", ok, err)
 	}

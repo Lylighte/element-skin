@@ -22,8 +22,8 @@ var (
 	accountDeleteAnyPermission = permission.MustDefinitionByCode("account.delete.any")
 	accountBanAnyPermission    = permission.MustDefinitionByCode("account.ban.any")
 	accountUnbanAnyPermission  = permission.MustDefinitionByCode("account.unban.any")
-	permissionGrantAny        = permission.MustDefinitionByCode("permission.grant.any")
-	permissionRevokeAny       = permission.MustDefinitionByCode("permission.revoke.any")
+	permissionGrantAny         = permission.MustDefinitionByCode("permission.grant.any")
+	permissionRevokeAny        = permission.MustDefinitionByCode("permission.revoke.any")
 )
 
 func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
@@ -172,7 +172,7 @@ func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	ok, err := h.site.DeleteUser(req.Context(), targetID)
+	ok, err := h.site.DeleteUser(req.Context(), shared.CurrentActor(req), targetID)
 	if err != nil {
 		util.Error(w, err)
 		return
