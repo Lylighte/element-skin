@@ -57,3 +57,14 @@ func TestActorPermissionCodesExactly(t *testing.T) {
 		t.Fatalf("PermissionCodes mismatch: %#v", got)
 	}
 }
+
+func TestActorPermissionCodesEmpty(t *testing.T) {
+	actor := permission.Actor{
+		UserID:      "empty-user",
+		Permissions: permission.NewBitSet(len(permission.Definitions)),
+	}
+	got := actor.PermissionCodes()
+	if len(got) != 0 {
+		t.Fatalf("empty actor should return empty codes: %#v", got)
+	}
+}
