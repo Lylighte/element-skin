@@ -10,7 +10,7 @@ import (
 )
 
 func TestInitSQLContainsExpectedTablesConstraintsIndexesAndSeeds(t *testing.T) {
-	required := []string{
+	sqlFragments := []string{
 		"CREATE TABLE IF NOT EXISTS users",
 		"CREATE TABLE IF NOT EXISTS profiles",
 		"email TEXT UNIQUE NOT NULL",
@@ -23,9 +23,37 @@ func TestInitSQLContainsExpectedTablesConstraintsIndexesAndSeeds(t *testing.T) {
 		"('site_name', '皮肤站')",
 		"ON CONFLICT (key) DO NOTHING",
 	}
-	for _, fragment := range required {
+	for _, fragment := range sqlFragments {
 		if !strings.Contains(database.InitSQL, fragment) {
 			t.Fatalf("InitSQL missing fragment %q", fragment)
+		}
+	}
+}
+
+func TestInitSQLExecutesSuccessfullyAgainstRealDatabase(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	expectedTables := []string{
+		"users", "profiles", "site_refresh_tokens", "invites", "settings",
+		"user_textures", "skin_library", "fallback_endpoints", "whitelisted_users",
+		"verification_codes", "homepage_media", "notices", "notice_receipts",
+		"permission_subjects", "permission_resources", "permission_actions",
+		"permission_scopes", "permissions", "roles", "role_permissions",
+		"subject_roles", "subject_permission_overrides",
+		"session_permission_policies",
+	}
+	for _, table := range expectedTables {
+		var exists bool
+		if err := db.Pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.tables
+				WHERE table_schema='public' AND table_name=$1
+			)
+		`, table).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Fatalf("InitSQL should create table %q", table)
 		}
 	}
 }
