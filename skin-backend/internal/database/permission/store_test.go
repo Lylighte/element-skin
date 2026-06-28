@@ -856,6 +856,44 @@ func TestSeedDefaultsFailsWhenPermissionSubjectsTableMissing(t *testing.T) {
 	}
 }
 
+func TestEffectivePermissionsWithBanPolicyColumnTypeError(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "col-type-err@test.com", "pw", "ColTypeErr", false)
+	if _, err := db.Pool.Exec(ctx, `ALTER TABLE users ALTER COLUMN banned_until TYPE TEXT USING COALESCE(banned_until::TEXT, '')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := db.Permissions.EffectivePermissionsForUser(ctx, user.ID, permissiondb.EffectiveOptions{
+		ApplyBanPolicy: true,
+	})
+	if err == nil {
+		t.Fatal("EffectivePermissionsForUser should fail when banned_until column type is wrong")
+	}
+}
+
+func TestEnsureUserSubjectConstraintError(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "constraint-err@test.com", "pw", "ConstraintErr", false)
+	if _, err := db.Pool.Exec(ctx, `ALTER TABLE permission_subjects ADD CONSTRAINT always_reject CHECK (FALSE) NOT VALID`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Permissions.EnsureUserSubject(ctx, user.ID); err == nil {
+		t.Fatal("EnsureUserSubject should fail with CHECK constraint violation")
+	}
+}
+
+func TestPoolClosedReturnsError(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "pool-closed@test.com", "pw", "PoolClosed", false)
+	db.Pool.Close()
+	_, err := db.Permissions.EffectivePermissionsForUser(ctx, user.ID, permissiondb.EffectiveOptions{})
+	if err == nil {
+		t.Fatal("all queries should fail after pool is closed")
+	}
+}
+
 func TestEnsureUserSubjectCancelledContext(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx, cancel := context.WithCancel(context.Background())
