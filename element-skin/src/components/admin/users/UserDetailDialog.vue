@@ -83,29 +83,51 @@
                 <h4 class="m-0 text-base font-semibold text-[var(--color-heading)]">角色授权</h4>
                 <el-text size="small" type="info">角色提供批量权限，单项覆盖用于精细调整</el-text>
               </div>
-              <div class="grid gap-3 md:grid-cols-2">
-                <div
-                  v-for="role in permissionState?.catalog.roles || []"
-                  :key="role.id"
-                  class="flex items-center justify-between gap-4 rounded-lg border border-[var(--color-border)] p-4"
-                >
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold text-[var(--color-heading)]">{{ role.name }}</span>
-                      <el-tag v-if="role.protected" type="danger" size="small">受保护</el-tag>
-                    </div>
-                    <p class="mt-1 mb-0 text-sm text-[var(--color-text-light)]">
-                      {{ role.description }}
-                    </p>
-                  </div>
-                  <el-switch
-                    :model-value="hasRole(role.id)"
-                    :disabled="roleSwitchDisabled(role)"
-                    @change="
-                      (enabled: string | number | boolean) =>
-                        handleRoleChange(role.id, Boolean(enabled))
-                    "
-                  />
+              <div class="rounded-lg border border-[var(--color-border)] p-4">
+                <div class="mb-4 flex flex-wrap gap-2">
+                  <el-tag
+                    v-for="role in assignedRoleLabels"
+                    :key="role.id"
+                    :type="role.protected ? 'danger' : 'info'"
+                    :closable="roleTagClosable(role)"
+                    disable-transitions
+                    @close="emit('revoke-role', role.id)"
+                  >
+                    {{ role.name }}
+                  </el-tag>
+                  <el-text v-if="!assignedRoleLabels.length" type="info" size="small">
+                    暂无额外角色
+                  </el-text>
+                </div>
+                <div class="flex flex-col gap-2 md:flex-row">
+                  <el-select
+                    v-model="selectedRoleId"
+                    class="md:w-72"
+                    placeholder="选择要授予的角色"
+                    filterable
+                    clearable
+                  >
+                    <el-option
+                      v-for="role in grantableRoles"
+                      :key="role.id"
+                      :label="role.name"
+                      :value="role.id"
+                      :disabled="role.protected && !canManageProtected"
+                    >
+                      <div class="flex items-center justify-between gap-3">
+                        <span>{{ role.name }}</span>
+                        <el-tag v-if="role.protected" type="danger" size="small">受保护</el-tag>
+                      </div>
+                    </el-option>
+                  </el-select>
+                  <el-button
+                    type="primary"
+                    :icon="Plus"
+                    :disabled="!selectedRoleId || !canGrantPermission"
+                    @click="grantSelectedRole"
+                  >
+                    添加角色
+                  </el-button>
                 </div>
               </div>
             </section>
@@ -115,24 +137,76 @@
                 <h4 class="m-0 text-base font-semibold text-[var(--color-heading)]">
                   单项权限覆盖
                 </h4>
-                <div class="flex flex-col gap-2 md:flex-row">
-                  <el-select v-model="resourceFilter" class="md:w-48" placeholder="资源" clearable>
-                    <el-option
-                      v-for="resource in resourceOptions"
-                      :key="resource.value"
-                      :label="resource.label"
-                      :value="resource.value"
-                    />
-                  </el-select>
-                  <el-input
-                    v-model="permissionSearch"
-                    class="md:w-64"
-                    placeholder="搜索权限 code / 描述"
+              </div>
+              <div class="mb-4 rounded-lg border border-[var(--color-border)] p-4">
+                <div class="mb-4 flex flex-wrap gap-2">
+                  <el-tag
+                    v-for="item in overrideTagItems"
+                    :key="item.permission_code"
+                    :type="item.effect === 'allow' ? 'success' : 'danger'"
+                    closable
+                    disable-transitions
+                    @close="emit('clear-permission', item.permission_code)"
+                  >
+                    {{ item.effect === 'allow' ? '允许' : '拒绝' }} · {{ item.label }}
+                  </el-tag>
+                  <el-text v-if="!overrideTagItems.length" type="info" size="small">
+                    暂无单项权限覆盖
+                  </el-text>
+                </div>
+                <div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_120px_auto]">
+                  <el-select
+                    v-model="selectedPermissionCode"
+                    placeholder="选择要覆盖的权限"
+                    filterable
                     clearable
-                  />
+                  >
+                    <el-option
+                      v-for="item in grantablePermissionOptions"
+                      :key="item.code"
+                      :label="`${item.code} · ${item.description}`"
+                      :value="item.code"
+                      :disabled="permissionControlDisabled(item)"
+                    >
+                      <div class="flex flex-col">
+                        <span class="font-mono text-xs">{{ item.code }}</span>
+                        <span class="text-xs text-[var(--color-text-light)]">
+                          {{ item.description }}
+                        </span>
+                      </div>
+                    </el-option>
+                  </el-select>
+                  <el-select v-model="selectedPermissionEffect">
+                    <el-option label="允许" value="allow" :disabled="!canGrantPermission" />
+                    <el-option label="拒绝" value="deny" :disabled="!canRevokePermission" />
+                  </el-select>
+                  <el-button
+                    type="primary"
+                    :icon="Plus"
+                    :disabled="!canAddSelectedPermission"
+                    @click="setSelectedPermission"
+                  >
+                    添加覆盖
+                  </el-button>
                 </div>
               </div>
-              <el-table :data="filteredPermissions" size="small" max-height="420" class="w-full">
+              <div class="mb-3 flex flex-col gap-2 md:flex-row md:justify-end">
+                <el-select v-model="resourceFilter" class="md:w-48" placeholder="资源" clearable>
+                  <el-option
+                    v-for="resource in resourceOptions"
+                    :key="resource.value"
+                    :label="resource.label"
+                    :value="resource.value"
+                  />
+                </el-select>
+                <el-input
+                  v-model="permissionSearch"
+                  class="md:w-64"
+                  placeholder="搜索权限 code / 描述"
+                  clearable
+                />
+              </div>
+              <el-table :data="filteredPermissions" size="small" max-height="340" class="w-full">
                 <el-table-column label="权限" min-width="280">
                   <template #default="{ row }">
                     <div class="font-mono text-xs text-[var(--color-heading)]">{{ row.code }}</div>
@@ -158,19 +232,14 @@
                 </el-table-column>
                 <el-table-column label="覆盖" width="160">
                   <template #default="{ row }">
-                    <el-select
-                      :model-value="overrideEffect(row.code)"
+                    <el-tag
+                      v-if="overrideEffect(row.code) !== 'inherit'"
+                      :type="overrideEffect(row.code) === 'allow' ? 'success' : 'danger'"
                       size="small"
-                      :disabled="permissionControlDisabled(row)"
-                      @change="
-                        (value: string | number | boolean) =>
-                          handlePermissionChange(row.code, String(value))
-                      "
                     >
-                      <el-option label="继承" value="inherit" />
-                      <el-option label="允许" value="allow" :disabled="!canGrantPermission" />
-                      <el-option label="拒绝" value="deny" :disabled="!canRevokePermission" />
-                    </el-select>
+                      {{ overrideEffect(row.code) === 'allow' ? '允许' : '拒绝' }}
+                    </el-tag>
+                    <el-tag v-else size="small" effect="plain">继承</el-tag>
                   </template>
                 </el-table-column>
               </el-table>
@@ -236,7 +305,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Warning, CircleCheck } from '@element-plus/icons-vue'
+import { Warning, CircleCheck, Plus } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import type {
   PermissionDefinition,
@@ -280,6 +349,9 @@ const emit = defineEmits<{
 
 const permissionSearch = ref('')
 const resourceFilter = ref('')
+const selectedRoleId = ref('')
+const selectedPermissionCode = ref('')
+const selectedPermissionEffect = ref<PermissionOverrideEffect>('allow')
 
 const roleIds = computed(() => new Set(props.permissionState?.roles || props.user?.roles || []))
 const effectivePermissions = computed(
@@ -314,12 +386,40 @@ const assignedRoleLabels = computed(() => {
     permissions: [],
   }))
 })
+const grantableRoles = computed(() =>
+  (props.permissionState?.catalog.roles || []).filter((role) => !roleIds.value.has(role.id)),
+)
 const resourceOptions = computed(() => {
   const seen = new Map<string, string>()
   for (const item of props.permissionState?.catalog.permissions || []) {
     if (!seen.has(item.resource)) seen.set(item.resource, item.resource_description)
   }
   return [...seen.entries()].map(([value, label]) => ({ value, label }))
+})
+const permissionByCode = computed(() => {
+  const out = new Map<string, PermissionDefinition>()
+  for (const item of props.permissionState?.catalog.permissions || []) out.set(item.code, item)
+  return out
+})
+const overrideTagItems = computed(() =>
+  (props.permissionState?.overrides || []).map((item) => ({
+    ...item,
+    label: permissionByCode.value.get(item.permission_code)?.description || item.permission_code,
+  })),
+)
+const grantablePermissionOptions = computed(() =>
+  (props.permissionState?.catalog.permissions || []).filter(
+    (item) => !overrideMap.value.has(item.code),
+  ),
+)
+const selectedPermission = computed(() =>
+  selectedPermissionCode.value ? permissionByCode.value.get(selectedPermissionCode.value) : null,
+)
+const canAddSelectedPermission = computed(() => {
+  if (!selectedPermission.value) return false
+  if (selectedPermissionEffect.value === 'allow' && !canGrantPermission.value) return false
+  if (selectedPermissionEffect.value === 'deny' && !canRevokePermission.value) return false
+  return !permissionControlDisabled(selectedPermission.value)
 })
 const filteredPermissions = computed(() => {
   const keyword = permissionSearch.value.trim().toLowerCase()
@@ -338,6 +438,9 @@ watch(visible, (open) => {
   if (!open) {
     permissionSearch.value = ''
     resourceFilter.value = ''
+    selectedRoleId.value = ''
+    selectedPermissionCode.value = ''
+    selectedPermissionEffect.value = 'allow'
   }
 })
 
@@ -345,16 +448,17 @@ function hasRole(roleId: string) {
   return roleIds.value.has(roleId)
 }
 
-function roleSwitchDisabled(role: PermissionRole) {
-  if (role.id === 'user') return true
+function roleTagClosable(role: PermissionRole) {
+  if (role.id === 'user') return false
   if (props.isSelf && role.protected) return true
   if (role.protected && !canManageProtected.value) return true
-  return hasRole(role.id) ? !canRevokePermission.value : !canGrantPermission.value
+  return canRevokePermission.value
 }
 
-function handleRoleChange(roleId: string, enabled: boolean) {
-  if (enabled) emit('grant-role', roleId)
-  else emit('revoke-role', roleId)
+function grantSelectedRole() {
+  if (!selectedRoleId.value) return
+  emit('grant-role', selectedRoleId.value)
+  selectedRoleId.value = ''
 }
 
 function overrideEffect(code: string) {
@@ -374,12 +478,10 @@ function permissionControlDisabled(row: PermissionDefinition) {
   return !canGrantPermission.value && !canRevokePermission.value
 }
 
-function handlePermissionChange(permissionCode: string, value: string) {
-  if (value === 'inherit') {
-    emit('clear-permission', permissionCode)
-    return
-  }
-  emit('set-permission', permissionCode, value as PermissionOverrideEffect)
+function setSelectedPermission() {
+  if (!selectedPermissionCode.value || !canAddSelectedPermission.value) return
+  emit('set-permission', selectedPermissionCode.value, selectedPermissionEffect.value)
+  selectedPermissionCode.value = ''
 }
 </script>
 
