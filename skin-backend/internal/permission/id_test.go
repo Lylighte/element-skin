@@ -38,3 +38,13 @@ func TestComposeIDRejectsZeroPartsExactly(t *testing.T) {
 		})
 	}
 }
+
+func TestIDRejectsNonZeroReservedCategorySegmentExactly(t *testing.T) {
+	id := permission.ID(0x0001_0001_0001_0001)
+	if id.Valid() {
+		t.Fatalf("id with reserved category segment should be invalid: %#x", uint64(id))
+	}
+	if id.ResourceID() != 1 || id.ActionID() != 1 || id.ScopeID() != 1 {
+		t.Fatalf("low segments should still decode exactly: resource=%d action=%d scope=%d", id.ResourceID(), id.ActionID(), id.ScopeID())
+	}
+}
