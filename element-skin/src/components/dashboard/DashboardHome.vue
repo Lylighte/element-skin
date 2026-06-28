@@ -126,6 +126,7 @@ import { ElMessage } from 'element-plus'
 import type { FallbackStatusEntry, NoticeLevel, NoticeView } from '@/api/types'
 import FallbackStatusCard from './FallbackStatusCard.vue'
 import UiCard from '@/components/ui/UiCard.vue'
+import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
 import { renderMarkdown } from '@/utils/markdown'
 
 const router = useRouter()
@@ -134,6 +135,7 @@ const profileCount = ref(0)
 const apiUrl = ref('')
 const dashboardNotices = ref<NoticeView[]>([])
 const noticesLoading = ref(false)
+const { refreshUnreadNotifications } = useNotificationIndicator()
 
 function getApiUrl() {
   const base = import.meta.env.VITE_API_BASE || ''
@@ -219,6 +221,7 @@ async function dismissDashboardNotice(id: string) {
   try {
     await dismissNotice(id)
     dashboardNotices.value = dashboardNotices.value.filter((notice) => notice.id !== id)
+    void refreshUnreadNotifications()
     ElMessage.success('已忽略')
   } catch {
     ElMessage.error('忽略公告失败')

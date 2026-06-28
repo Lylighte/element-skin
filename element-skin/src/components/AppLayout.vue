@@ -22,6 +22,7 @@
                 <el-menu-item v-for="child in item.children" :key="child.path" :index="child.path">
                   <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
                   <span>{{ child.title }}</span>
+                  <span v-if="shouldShowNotificationBadge(child)" class="notification-nav-dot" />
                 </el-menu-item>
               </el-sub-menu>
               <el-menu-item
@@ -31,6 +32,7 @@
               >
                 <el-icon v-if="item.icon"><component :is="item.icon" /></el-icon>
                 <span>{{ item.title }}</span>
+                <span v-if="shouldShowNotificationBadge(item)" class="notification-nav-dot" />
               </el-menu-item>
             </template>
           </el-menu>
@@ -140,6 +142,7 @@
           <el-menu-item v-else :index="item.path">
             <el-icon v-if="item.icon"><component :is="item.icon" /></el-icon>
             <span>{{ item.title }}</span>
+            <span v-if="shouldShowNotificationBadge(item)" class="notification-nav-dot" />
           </el-menu-item>
         </template>
       </el-menu>
@@ -205,6 +208,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { useAvatar } from '@/composables/useAvatar'
+import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
 import { appStorage } from '@/storage'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -234,6 +238,8 @@ interface DrawerLink {
 }
 
 const { currentAvatarImg: customAvatar, initializeAvatar } = useAvatar()
+const { hasUnreadNotifications, refreshUnreadNotifications, clearUnreadNotifications } =
+  useNotificationIndicator()
 const route = useRoute()
 const { push } = useRouter()
 const isHome = computed(() => route.path === '/')
@@ -406,6 +412,24 @@ const accountName = computed(() => user.value?.display_name || user.value?.email
 const avatarInitial = computed(() => (accountName.value || 'U').slice(0, 1).toUpperCase())
 
 let resizeObserver: ResizeObserver | null = null
+let unreadRefreshTimer: number | null = null
+
+function shouldShowNotificationBadge(item: NavLink | DrawerLink) {
+  return item.path === '/notifications' && hasUnreadNotifications.value
+}
+
+function startUnreadRefreshTimer() {
+  if (unreadRefreshTimer !== null) return
+  unreadRefreshTimer = window.setInterval(() => {
+    if (isLogged.value) void refreshUnreadNotifications()
+  }, 60_000)
+}
+
+function stopUnreadRefreshTimer() {
+  if (unreadRefreshTimer === null) return
+  window.clearInterval(unreadRefreshTimer)
+  unreadRefreshTimer = null
+}
 
 function go(path: string) {
   push(path)
@@ -416,6 +440,8 @@ async function logout() {
     await siteLogout()
   } catch {}
   user.value = null
+  clearUnreadNotifications()
+  stopUnreadRefreshTimer()
   authReady.value = true
   push('/')
   setTimeout(() => window.location.reload(), 100)
@@ -428,12 +454,30 @@ async function fetchMe() {
     if (res.data.avatar_hash) {
       initializeAvatar(res.data.avatar_hash)
     }
+    void refreshUnreadNotifications()
+    startUnreadRefreshTimer()
   } catch {
     user.value = null
+    clearUnreadNotifications()
+    stopUnreadRefreshTimer()
   } finally {
     authReady.value = true
   }
 }
+
+watch(
+  isLogged,
+  (logged) => {
+    if (logged) {
+      void refreshUnreadNotifications()
+      startUnreadRefreshTimer()
+      return
+    }
+    clearUnreadNotifications()
+    stopUnreadRefreshTimer()
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   appStorage.cleanupUnusedKeys()
@@ -475,6 +519,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', updateFooterHeight)
   if (resizeObserver) resizeObserver.disconnect()
+  stopUnreadRefreshTimer()
   cleanupEasterEgg()
 })
 </script>
@@ -660,6 +705,18 @@ onUnmounted(() => {
 }
 .desktop-nav :deep(.el-sub-menu__title:hover) {
   color: var(--el-color-primary);
+}
+.notification-nav-dot {
+  width: 8px;
+  height: 8px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: var(--el-color-danger);
+  box-shadow: 0 0 0 2px var(--color-header-background);
+  flex-shrink: 0;
+}
+.is-home-layout .notification-nav-dot {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.28);
 }
 
 .header-actions {

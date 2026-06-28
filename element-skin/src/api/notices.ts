@@ -4,7 +4,7 @@ import type { CursorPageResponse, NoticeView } from './types'
 export interface NoticeListParams {
   cursor?: string | null
   limit?: number
-  type?: 'announcement'
+  type?: string
   include_read?: boolean
   dashboard?: boolean
 }

@@ -10,11 +10,12 @@ import type {
 export interface AdminNoticeListParams {
   cursor?: string | null
   limit?: number
-  type?: 'announcement'
+  type?: string
   status?: 'all' | 'enabled' | 'disabled' | 'scheduled' | 'expired'
 }
 
 export interface NoticeDraft {
+  type?: string
   title: string
   summary: string
   content_markdown: string

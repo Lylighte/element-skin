@@ -161,7 +161,7 @@ export interface FallbackStatusResponse {
   generated_at: number
 }
 
-export type NoticeType = 'announcement'
+export type NoticeType = 'announcement' | 'system' | (string & {})
 export type NoticeDisplayMode = 'inline' | 'detail'
 export type NoticeLevel = 'info' | 'success' | 'warning' | 'danger'
 export type NoticeAudience = 'users' | 'admins'
