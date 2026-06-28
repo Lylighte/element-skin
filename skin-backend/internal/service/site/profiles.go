@@ -256,7 +256,10 @@ func (s Site) setProfileTexture(ctx context.Context, profileID, textureType stri
 	return nil
 }
 
-func (s Site) DeleteProfileByID(ctx context.Context, profileID string) error {
+func (s Site) DeleteProfileByID(ctx context.Context, actor permission.Actor, profileID string) error {
+	if err := requireActorPermission(actor, serviceProfileDeleteAnyPermission); err != nil {
+		return err
+	}
 	return s.deleteProfile(ctx, profileID)
 }
 
