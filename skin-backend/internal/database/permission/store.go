@@ -41,6 +41,13 @@ type EffectiveOptions struct {
 	ApplyBanPolicy    bool
 }
 
+type SubjectPermissionOverride struct {
+	PermissionID   core.ID
+	PermissionCode string
+	Effect         string
+	CreatedAt      int64
+}
+
 func SubjectIDForUser(userID string) string {
 	return "user:" + userID
 }
@@ -264,6 +271,45 @@ func (s Store) SetSubjectPermissionOverride(ctx context.Context, userID string, 
 		SET effect=EXCLUDED.effect, granted_by_subject_id=EXCLUDED.granted_by_subject_id
 	`, SubjectIDForUser(userID), int64(def.ID), effect, nullString(grantedBySubjectID), now)
 	return err
+}
+
+func (s Store) SubjectPermissionOverridesForUser(ctx context.Context, userID string) ([]SubjectPermissionOverride, error) {
+	if err := s.EnsureUserSubject(ctx, userID); err != nil {
+		return nil, err
+	}
+	rows, err := s.conn().Query(ctx, `
+		SELECT p.id,p.code,spo.effect,spo.created_at
+		FROM subject_permission_overrides spo
+		JOIN permissions p ON p.id=spo.permission_id
+		WHERE spo.subject_id=$1
+		ORDER BY p.code
+	`, SubjectIDForUser(userID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SubjectPermissionOverride
+	for rows.Next() {
+		var item SubjectPermissionOverride
+		var permissionID int64
+		if err := rows.Scan(&permissionID, &item.PermissionCode, &item.Effect, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		item.PermissionID = core.ID(permissionID)
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (s Store) ClearSubjectPermissionOverride(ctx context.Context, userID string, def core.Definition) (bool, error) {
+	tag, err := s.conn().Exec(ctx, `
+		DELETE FROM subject_permission_overrides
+		WHERE subject_id=$1 AND permission_id=$2
+	`, SubjectIDForUser(userID), int64(def.ID))
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func seedCatalog(ctx context.Context, tx pgx.Tx, now int64) error {

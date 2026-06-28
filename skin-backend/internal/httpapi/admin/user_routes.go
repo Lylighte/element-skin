@@ -50,6 +50,10 @@ func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
+	if err := h.attachRolesToUserItems(req, res["items"]); err != nil {
+		util.Error(w, err)
+		return
+	}
 	res["next_cursor"] = util.EncodeCursor(shared.AsMap(res["next_key"]))
 	delete(res, "next_key")
 	util.JSON(w, 200, res)
@@ -156,6 +160,40 @@ func (h Handler) RevokeUserRole(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	util.JSON(w, 200, map[string]any{"ok": true, "role_id": roleID})
+}
+
+func (h Handler) UserPermissions(w http.ResponseWriter, req *http.Request) {
+	res, err := h.perms.UserPermissions(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"))
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, 200, res)
+}
+
+func (h Handler) SetUserPermissionOverride(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Effect string `json:"effect"`
+	}
+	if err := shared.DecodeJSON(req, &body); err != nil {
+		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
+		return
+	}
+	code := req.PathValue("permission_code")
+	if err := h.perms.SetUserPermissionOverride(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"), code, body.Effect); err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, 200, map[string]any{"ok": true, "permission_code": code, "effect": body.Effect})
+}
+
+func (h Handler) ClearUserPermissionOverride(w http.ResponseWriter, req *http.Request) {
+	code := req.PathValue("permission_code")
+	if err := h.perms.ClearUserPermissionOverride(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"), code); err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, 200, map[string]any{"ok": true, "permission_code": code})
 }
 
 func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
@@ -368,4 +406,20 @@ func (h Handler) userExists(req *http.Request, userID string) (bool, error) {
 		return false, err
 	}
 	return user != nil, nil
+}
+
+func (h Handler) attachRolesToUserItems(req *http.Request, rawItems any) error {
+	items, _ := rawItems.([]map[string]any)
+	for _, item := range items {
+		userID, _ := item["id"].(string)
+		if userID == "" {
+			continue
+		}
+		roles, err := h.db.Permissions.RoleIDsForUser(req.Context(), userID)
+		if err != nil {
+			return err
+		}
+		item["roles"] = roles
+	}
+	return nil
 }

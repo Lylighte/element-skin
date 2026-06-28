@@ -331,6 +331,54 @@ func TestSetSubjectPermissionOverrideAllowEffect(t *testing.T) {
 	}
 }
 
+func TestSubjectPermissionOverridesListAndClearExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "override-list@test.com", "pw", "OverrideList", false)
+	admin := testutil.CreateUser(t, db, "override-list-admin@test.com", "pw", "OverrideListAdmin", true)
+	denyDef := core.MustDefinitionByCode("texture.update_visibility.owned")
+	allowDef := core.MustDefinitionByCode("notice.create.any")
+	grantorSubjectID := permissiondb.SubjectIDForUser(admin.ID)
+
+	if err := db.Permissions.SetSubjectPermissionOverride(ctx, user.ID, denyDef, "deny", grantorSubjectID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Permissions.SetSubjectPermissionOverride(ctx, user.ID, allowDef, "allow", grantorSubjectID); err != nil {
+		t.Fatal(err)
+	}
+	overrides, err := db.Permissions.SubjectPermissionOverridesForUser(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(overrides) != 2 ||
+		overrides[0].PermissionID != allowDef.ID ||
+		overrides[0].PermissionCode != "notice.create.any" ||
+		overrides[0].Effect != "allow" ||
+		overrides[0].CreatedAt <= 0 ||
+		overrides[1].PermissionID != denyDef.ID ||
+		overrides[1].PermissionCode != "texture.update_visibility.owned" ||
+		overrides[1].Effect != "deny" ||
+		overrides[1].CreatedAt <= 0 {
+		t.Fatalf("override list mismatch: %#v", overrides)
+	}
+
+	cleared, err := db.Permissions.ClearSubjectPermissionOverride(ctx, user.ID, allowDef)
+	if err != nil || !cleared {
+		t.Fatalf("ClearSubjectPermissionOverride allow = %v, %v; want true, nil", cleared, err)
+	}
+	clearedAgain, err := db.Permissions.ClearSubjectPermissionOverride(ctx, user.ID, allowDef)
+	if err != nil || clearedAgain {
+		t.Fatalf("ClearSubjectPermissionOverride missing = %v, %v; want false, nil", clearedAgain, err)
+	}
+	overrides, err = db.Permissions.SubjectPermissionOverridesForUser(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(overrides) != 1 || overrides[0].PermissionCode != "texture.update_visibility.owned" || overrides[0].Effect != "deny" {
+		t.Fatalf("override list after clear mismatch: %#v", overrides)
+	}
+}
+
 func TestSetSubjectPermissionOverrideRejectsInvalidEffect(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
