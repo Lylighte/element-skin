@@ -363,9 +363,6 @@ func validateNotice(notice model.Notice) error {
 	if len([]rune(notice.Summary)) > MaxSummaryLen {
 		return util.HTTPError{Status: http.StatusBadRequest, Detail: "summary too long"}
 	}
-	if notice.ContentMarkdown == "" {
-		return util.HTTPError{Status: http.StatusBadRequest, Detail: "content_markdown is required"}
-	}
 	if len(notice.ContentMarkdown) > MaxContentLen {
 		return util.HTTPError{Status: http.StatusBadRequest, Detail: "content_markdown too long"}
 	}
@@ -374,6 +371,9 @@ func validateNotice(notice model.Notice) error {
 	}
 	if notice.DisplayMode == DisplayDetail && notice.Summary == "" {
 		return util.HTTPError{Status: http.StatusBadRequest, Detail: "summary is required for detail notices"}
+	}
+	if notice.DisplayMode == DisplayDetail && notice.ContentMarkdown == "" {
+		return util.HTTPError{Status: http.StatusBadRequest, Detail: "content_markdown is required for detail notices"}
 	}
 	if !validLevel(notice.Level) {
 		return util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid level"}

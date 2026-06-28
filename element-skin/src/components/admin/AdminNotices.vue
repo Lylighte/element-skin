@@ -84,9 +84,12 @@
             }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right" align="center">
+        <el-table-column label="操作" width="170" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button size="small" :icon="Edit" link @click="openEditDialog(row)" />
+            <el-button size="small" :icon="Edit" link @click="openEditDialog(row)">编辑</el-button>
+            <el-button size="small" :icon="Setting" link @click="openSettingsDialog(row)">
+              设置
+            </el-button>
             <el-button size="small" type="danger" :icon="Delete" link @click="deleteNotice(row)" />
           </template>
         </el-table-column>
@@ -106,27 +109,103 @@
     </UiCard>
 
     <UiDialog
-      v-model="dialogVisible"
-      :title="editingNotice ? '编辑公告' : '新建公告'"
+      v-model="contentDialogVisible"
+      :title="createMode ? '新建公告' : '编辑公告'"
       variant="wide-form"
     >
-      <div class="grid max-h-[72vh] grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_420px]">
-        <el-form label-position="top" class="min-h-0 overflow-auto p-6">
-          <el-form-item label="标题">
-            <el-input
-              v-model="form.title"
-              maxlength="80"
-              show-word-limit
-              placeholder="例如：OAuth 应用注册开放说明"
-            />
-          </el-form-item>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div
+        class="grid max-h-[72vh] grid-cols-1 gap-5 overflow-auto p-6 lg:grid-cols-[minmax(0,1fr)_420px]"
+      >
+        <el-form label-position="top">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
+            <el-form-item label="标题">
+              <el-input
+                v-model="form.title"
+                maxlength="80"
+                show-word-limit
+                placeholder="例如：OAuth 应用注册开放说明"
+              />
+            </el-form-item>
             <el-form-item label="展示方式">
               <el-radio-group v-model="form.display_mode">
                 <el-radio-button value="inline">短公告</el-radio-button>
                 <el-radio-button value="detail">长公告</el-radio-button>
               </el-radio-group>
             </el-form-item>
+          </div>
+          <el-form-item label="摘要">
+            <el-input
+              v-model="form.summary"
+              type="textarea"
+              :rows="4"
+              maxlength="160"
+              show-word-limit
+              :placeholder="
+                form.display_mode === 'detail'
+                  ? '长公告必填；仪表盘和通知列表会展示摘要'
+                  : '短公告内容，会直接展示在仪表盘和通知列表'
+              "
+            />
+          </el-form-item>
+          <el-form-item v-if="form.display_mode === 'detail'" label="正文 Markdown">
+            <el-input
+              v-model="form.content_markdown"
+              type="textarea"
+              :rows="18"
+              maxlength="20000"
+              show-word-limit
+              placeholder="支持标题、段落、列表、引用、代码块和链接；原始 HTML 会被清洗"
+            />
+          </el-form-item>
+        </el-form>
+
+        <aside
+          class="rounded-xl border border-[var(--color-border)] bg-[var(--color-background-soft)] p-4"
+        >
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <div class="font-semibold text-[var(--color-heading)]">预览</div>
+            <div class="flex items-center gap-2">
+              <el-tag size="small" :type="form.display_mode === 'detail' ? 'primary' : 'info'">
+                {{ form.display_mode === 'detail' ? '长公告' : '短公告' }}
+              </el-tag>
+              <el-tag size="small" :type="levelTagType(form.level)">
+                {{ levelLabel(form.level) }}
+              </el-tag>
+            </div>
+          </div>
+          <UiCard shadow="never">
+            <article class="p-1">
+              <h2 class="m-0 text-2xl font-semibold text-[var(--color-heading)]">
+                {{ form.title || '未命名公告' }}
+              </h2>
+              <p class="mt-4 mb-0 text-sm leading-7 text-[var(--color-text-light)]">
+                {{ form.summary || '暂无摘要' }}
+              </p>
+              <div
+                v-if="form.display_mode === 'detail'"
+                class="mt-6 border-t border-[var(--color-border)] pt-5 text-sm leading-7 text-[var(--color-text)] [&_a]:text-[var(--el-color-primary)] [&_blockquote]:border-l-4 [&_blockquote]:border-[var(--el-color-primary)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--color-text-light)] [&_code]:rounded [&_code]:bg-[var(--color-background-soft)] [&_code]:px-1.5 [&_code]:py-0.5 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_ol]:pl-5 [&_p]:my-3 [&_pre]:overflow-auto [&_pre]:rounded-xl [&_pre]:bg-[var(--color-background-soft)] [&_pre]:p-3 [&_ul]:pl-5"
+                v-html="previewHtml"
+              />
+              <div v-if="form.link_url && form.link_text" class="mt-6">
+                <el-button size="small" type="primary">{{ form.link_text }}</el-button>
+              </div>
+            </article>
+          </UiCard>
+        </aside>
+      </div>
+
+      <template #footer>
+        <div class="px-6 pb-6">
+          <el-button @click="contentDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="continueToSettings">下一步：发布设置</el-button>
+        </div>
+      </template>
+    </UiDialog>
+
+    <UiDialog v-model="settingsDialogVisible" title="发布设置" variant="wide-form">
+      <div class="max-h-[72vh] overflow-auto p-6">
+        <el-form label-position="top">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <el-form-item label="级别">
               <el-select v-model="form.level">
                 <el-option label="普通" value="info" />
@@ -135,28 +214,6 @@
                 <el-option label="紧急" value="danger" />
               </el-select>
             </el-form-item>
-          </div>
-          <el-form-item label="摘要">
-            <el-input
-              v-model="form.summary"
-              type="textarea"
-              :rows="3"
-              maxlength="160"
-              show-word-limit
-              placeholder="长公告必填；仪表盘和通知列表会优先展示摘要"
-            />
-          </el-form-item>
-          <el-form-item label="正文 Markdown">
-            <el-input
-              v-model="form.content_markdown"
-              type="textarea"
-              :rows="14"
-              maxlength="20000"
-              show-word-limit
-              placeholder="支持标题、段落、列表、引用、代码块和链接；原始 HTML 会被清洗"
-            />
-          </el-form-item>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <el-form-item label="可见人群">
               <el-select v-model="form.audience">
                 <el-option label="所有用户" value="users" />
@@ -164,7 +221,7 @@
               </el-select>
             </el-form-item>
             <el-form-item label="控制项">
-              <div class="flex flex-wrap gap-4">
+              <div class="flex h-8 flex-wrap items-center gap-4">
                 <el-checkbox v-model="form.enabled">启用</el-checkbox>
                 <el-checkbox v-model="form.pinned">置顶</el-checkbox>
                 <el-checkbox v-model="form.dismissible">可忽略</el-checkbox>
@@ -172,21 +229,23 @@
             </el-form-item>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <el-form-item label="开始时间">
+            <el-form-item label="生效时间">
               <el-date-picker
                 v-model="form.starts_at"
                 type="datetime"
                 value-format="x"
                 clearable
+                placeholder="立即生效"
                 class="w-full"
               />
             </el-form-item>
-            <el-form-item label="结束时间">
+            <el-form-item label="过期时间">
               <el-date-picker
                 v-model="form.ends_at"
                 type="datetime"
                 value-format="x"
                 clearable
+                placeholder="无期限"
                 class="w-full"
               />
             </el-form-item>
@@ -204,48 +263,15 @@
             </el-form-item>
           </div>
         </el-form>
-
-        <aside
-          class="min-h-0 overflow-auto border-t border-[var(--color-border)] bg-[var(--color-background-soft)] p-6 lg:border-l lg:border-t-0"
-        >
-          <div class="mb-4 flex items-center justify-between gap-3">
-            <div class="font-semibold text-[var(--color-heading)]">预览</div>
-            <div class="flex items-center gap-2">
-              <el-tag size="small" :type="form.display_mode === 'detail' ? 'primary' : 'info'">
-                {{ form.display_mode === 'detail' ? '长公告' : '短公告' }}
-              </el-tag>
-              <el-tag size="small" :type="levelTagType(form.level)">{{
-                levelLabel(form.level)
-              }}</el-tag>
-            </div>
-          </div>
-          <UiCard shadow="never">
-            <article class="p-1">
-              <h2 class="m-0 text-2xl font-semibold text-[var(--color-heading)]">
-                {{ form.title || '未命名公告' }}
-              </h2>
-              <p
-                v-if="form.summary"
-                class="mt-4 mb-0 text-sm text-[var(--color-text-light)] leading-7"
-              >
-                {{ form.summary }}
-              </p>
-              <div
-                class="mt-6 border-t border-[var(--color-border)] pt-5 text-sm text-[var(--color-text)] leading-7 [&_p]:my-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_ul]:pl-5 [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:border-[var(--el-color-primary)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--color-text-light)] [&_code]:rounded [&_code]:bg-[var(--color-background-soft)] [&_code]:px-1.5 [&_code]:py-0.5 [&_pre]:overflow-auto [&_pre]:rounded-xl [&_pre]:bg-[var(--color-background-soft)] [&_pre]:p-3 [&_a]:text-[var(--el-color-primary)]"
-                v-html="previewHtml"
-              />
-              <div v-if="form.link_url && form.link_text" class="mt-6">
-                <el-button size="small" type="primary">{{ form.link_text }}</el-button>
-              </div>
-            </article>
-          </UiCard>
-        </aside>
       </div>
 
       <template #footer>
         <div class="px-6 pb-6">
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="saveNotice">保存</el-button>
+          <el-button @click="backToContent">返回编辑</el-button>
+          <el-button @click="settingsDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="saveNotice">
+            {{ createMode ? '创建公告' : '保存' }}
+          </el-button>
         </div>
       </template>
     </UiDialog>
@@ -255,7 +281,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
+import { Bell, Delete, Edit, Plus, Refresh, Setting } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import UiCard from '@/components/ui/UiCard.vue'
@@ -276,9 +302,11 @@ const notices = ref<Notice[]>([])
 const status = ref<NoticeStatus>('all')
 const limit = 15
 const pagination = useCursorPagination<Notice>(limit)
-const dialogVisible = ref(false)
+const contentDialogVisible = ref(false)
+const settingsDialogVisible = ref(false)
 const saving = ref(false)
 const editingNotice = ref<Notice | null>(null)
+const createMode = ref(false)
 const form = reactive<NoticeDraft>({
   title: '',
   summary: '',
@@ -356,12 +384,14 @@ function lifecycleLabel(notice: Notice) {
 
 function openCreateDialog() {
   editingNotice.value = null
+  createMode.value = true
   resetForm()
-  dialogVisible.value = true
+  contentDialogVisible.value = true
 }
 
-function openEditDialog(notice: Notice) {
+function fillForm(notice: Notice) {
   editingNotice.value = notice
+  createMode.value = false
   Object.assign(form, {
     title: notice.title,
     summary: notice.summary,
@@ -377,13 +407,27 @@ function openEditDialog(notice: Notice) {
     starts_at: notice.starts_at,
     ends_at: notice.ends_at,
   } satisfies NoticeDraft)
-  dialogVisible.value = true
 }
 
-function validateForm() {
+function openEditDialog(notice: Notice) {
+  fillForm(notice)
+  contentDialogVisible.value = true
+}
+
+function openSettingsDialog(notice: Notice) {
+  fillForm(notice)
+  settingsDialogVisible.value = true
+}
+
+function validateContent() {
   if (!form.title.trim()) return '标题不能为空'
-  if (form.display_mode === 'detail' && !form.summary.trim()) return '长公告需要填写摘要'
-  if (!form.content_markdown.trim()) return '正文不能为空'
+  if (!form.summary.trim())
+    return form.display_mode === 'detail' ? '长公告需要填写摘要' : '短公告内容不能为空'
+  if (form.display_mode === 'detail' && !form.content_markdown.trim()) return '长公告正文不能为空'
+  return ''
+}
+
+function validateSettings() {
   if ((form.link_text && !form.link_url) || (!form.link_text && form.link_url))
     return '链接文字和地址需要同时填写'
   if (form.starts_at && form.ends_at && form.ends_at <= form.starts_at)
@@ -396,7 +440,7 @@ function normalizedForm(): NoticeDraft {
     ...form,
     title: form.title.trim(),
     summary: form.summary.trim(),
-    content_markdown: form.content_markdown.trim(),
+    content_markdown: form.display_mode === 'detail' ? form.content_markdown.trim() : '',
     link_text: form.link_text?.trim() || '',
     link_url: form.link_url?.trim() || '',
     starts_at: form.starts_at ?? null,
@@ -404,25 +448,47 @@ function normalizedForm(): NoticeDraft {
   }
 }
 
-async function saveNotice() {
-  const error = validateForm()
+function continueToSettings() {
+  const error = validateContent()
   if (error) {
     ElMessage.warning(error)
     return
   }
+  contentDialogVisible.value = false
+  settingsDialogVisible.value = true
+}
+
+function backToContent() {
+  settingsDialogVisible.value = false
+  contentDialogVisible.value = true
+}
+
+async function saveNotice() {
+  const contentError = validateContent()
+  if (contentError) {
+    settingsDialogVisible.value = false
+    contentDialogVisible.value = true
+    ElMessage.warning(contentError)
+    return
+  }
+  const settingsError = validateSettings()
+  if (settingsError) {
+    ElMessage.warning(settingsError)
+    return
+  }
   saving.value = true
   try {
-    if (editingNotice.value) {
-      await patchAdminNotice(editingNotice.value.id, normalizedForm())
-      ElMessage.success('已保存')
-    } else {
+    if (createMode.value) {
       await createAdminNotice(normalizedForm())
       ElMessage.success('已创建')
+    } else {
+      await patchAdminNotice(editingNotice.value!.id, normalizedForm())
+      ElMessage.success('已保存')
     }
-    dialogVisible.value = false
+    settingsDialogVisible.value = false
     await refreshFirstPage()
   } catch (e: unknown) {
-    ElMessage.error(getErrorMessage(e, '保存失败'))
+    ElMessage.error(getErrorMessage(e, createMode.value ? '创建失败' : '保存失败'))
   } finally {
     saving.value = false
   }

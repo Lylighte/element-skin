@@ -64,6 +64,20 @@ func TestNoticeHTTPUserAndAdminFlowsExactly(t *testing.T) {
 		t.Fatalf("created notice body mismatch: %#v", created)
 	}
 
+	inlineCreate := doJSON(t, h, "POST", "/admin/notices", map[string]any{
+		"title":        "Inline only",
+		"summary":      "Short dashboard text.",
+		"display_mode": "inline",
+		"enabled":      false,
+	}, adminCookie)
+	if inlineCreate.Code != http.StatusOK {
+		t.Fatalf("create inline notice status=%d body=%s", inlineCreate.Code, inlineCreate.Body.String())
+	}
+	inlineBody := parseJSON(t, inlineCreate)
+	if inlineBody["title"] != "Inline only" || inlineBody["summary"] != "Short dashboard text." || inlineBody["content_markdown"] != "" || inlineBody["display_mode"] != "inline" {
+		t.Fatalf("inline notice without content mismatch: %#v", inlineBody)
+	}
+
 	badCreate := doJSON(t, h, "POST", "/admin/notices", map[string]any{
 		"title":            "Broken",
 		"content_markdown": "Body",
@@ -135,12 +149,21 @@ func TestNoticeHTTPUserAndAdminFlowsExactly(t *testing.T) {
 		t.Fatalf("patched notice body mismatch: %#v", patchBody)
 	}
 
+	inlinePatch := doRawJSON(t, h, "PATCH", "/admin/notices/"+noticeID, `{"title":"Updated short notice","summary":"Updated short summary","display_mode":"inline","content_markdown":""}`, adminCookie)
+	if inlinePatch.Code != http.StatusOK {
+		t.Fatalf("patch detail notice to inline status=%d body=%s", inlinePatch.Code, inlinePatch.Body.String())
+	}
+	inlinePatchBody := parseJSON(t, inlinePatch)
+	if inlinePatchBody["title"] != "Updated short notice" || inlinePatchBody["summary"] != "Updated short summary" || inlinePatchBody["display_mode"] != "inline" || inlinePatchBody["content_markdown"] != "" {
+		t.Fatalf("patched inline notice body mismatch: %#v", inlinePatchBody)
+	}
+
 	adminList := doJSON(t, h, "GET", "/admin/notices?status=enabled", nil, adminCookie)
 	if adminList.Code != http.StatusOK {
 		t.Fatalf("admin notice list status=%d body=%s", adminList.Code, adminList.Body.String())
 	}
 	adminItems := parseJSON(t, adminList)["items"].([]any)
-	if len(adminItems) != 1 || adminItems[0].(map[string]any)["id"] != noticeID || adminItems[0].(map[string]any)["title"] != "Updated notice" {
+	if len(adminItems) != 1 || adminItems[0].(map[string]any)["id"] != noticeID || adminItems[0].(map[string]any)["title"] != "Updated short notice" {
 		t.Fatalf("admin notice list mismatch: %#v", adminItems)
 	}
 

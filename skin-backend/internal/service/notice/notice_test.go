@@ -28,6 +28,11 @@ func TestNoticeServiceValidatesInputsWithoutPersistingInvalidRows(t *testing.T) 
 			want:  "summary is required for detail notices",
 		},
 		{
+			name:  "detail requires content",
+			input: noticesvc.CreateInput{Title: "Detail", Summary: "Summary", DisplayMode: noticesvc.DisplayDetail},
+			want:  "content_markdown is required for detail notices",
+		},
+		{
 			name:  "invalid link protocol",
 			input: noticesvc.CreateInput{Title: "Bad Link", ContentMarkdown: "Body", LinkText: "Open", LinkURL: "javascript:alert(1)"},
 			want:  "invalid link_url",
@@ -57,6 +62,14 @@ func TestNoticeServiceValidatesInputsWithoutPersistingInvalidRows(t *testing.T) 
 	}
 	if count != 0 {
 		t.Fatalf("invalid notice creates persisted %d rows; want 0", count)
+	}
+
+	inline, err := svc.Create(ctx, noticesvc.CreateInput{Title: "Inline", Summary: "Short text", DisplayMode: noticesvc.DisplayInline}, admin.ID)
+	if err != nil {
+		t.Fatalf("inline notice without content should be valid: %v", err)
+	}
+	if inline.Title != "Inline" || inline.Summary != "Short text" || inline.ContentMarkdown != "" || inline.DisplayMode != noticesvc.DisplayInline {
+		t.Fatalf("inline notice without content mismatch: %#v", inline)
 	}
 }
 
