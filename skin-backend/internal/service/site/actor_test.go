@@ -20,3 +20,18 @@ func testActor(t testing.TB, db *database.DB, userID string) permission.Actor {
 	}
 	return actor
 }
+
+func testActorWithCodes(userID string, codes ...string) permission.Actor {
+	bits := permission.NewBitSet(len(permission.Definitions))
+	for _, code := range codes {
+		def := permission.MustDefinitionByCode(code)
+		bits.Set(def.BitIndex)
+	}
+	return permission.Actor{
+		SubjectID:   "user:" + userID,
+		UserID:      userID,
+		SessionKind: permission.SessionKindWeb,
+		Entrypoint:  permission.EntrypointDashboard,
+		Permissions: bits,
+	}
+}

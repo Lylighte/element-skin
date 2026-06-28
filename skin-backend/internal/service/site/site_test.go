@@ -67,7 +67,8 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 		t.Fatal("revoked refresh token should not rotate")
 	}
 
-	if err := site.UpdateMe(ctx, userID, map[string]any{"email": "updated-site@test.com", "display_name": "UpdatedSite", "preferred_language": "en_US", "avatar_hash": "avatar1"}); err != nil {
+	actor := testActor(t, db, userID)
+	if err := site.UpdateMe(ctx, actor, map[string]any{"email": "updated-site@test.com", "display_name": "UpdatedSite", "preferred_language": "en_US", "avatar_hash": "avatar1"}); err != nil {
 		t.Fatal(err)
 	}
 	me, err := site.Me(ctx, testActor(t, db, userID))
@@ -81,7 +82,7 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 	if err := db.Tokens.AddRefresh(ctx, "change_password_refresh", userID, database.NowMS()+60_000, database.NowMS()); err != nil {
 		t.Fatal(err)
 	}
-	if err := site.ChangePassword(ctx, userID, "Password123", "NewPassword123"); err != nil {
+	if err := site.ChangePassword(ctx, actor, "Password123", "NewPassword123"); err != nil {
 		t.Fatal(err)
 	}
 	changed, err := db.Users.GetByID(ctx, userID)

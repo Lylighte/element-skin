@@ -38,7 +38,7 @@ func (h Handler) UpdateMe(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	if err := h.site.UpdateMe(req.Context(), shared.CurrentUserID(req), body); err != nil {
+	if err := h.site.UpdateMe(req.Context(), shared.CurrentActor(req), body); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -62,7 +62,7 @@ func (h Handler) DeleteMe(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "protected role holders cannot delete their own account"})
 		return
 	}
-	ok, err := h.site.DeleteUser(req.Context(), userID)
+	ok, err := h.site.DeleteUser(req.Context(), shared.CurrentActor(req), userID)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -88,7 +88,7 @@ func (h Handler) ChangePassword(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	if err := h.site.ChangePassword(req.Context(), shared.CurrentUserID(req), body["old_password"], body["new_password"]); err != nil {
+	if err := h.site.ChangePassword(req.Context(), shared.CurrentActor(req), body["old_password"], body["new_password"]); err != nil {
 		util.Error(w, err)
 		return
 	}

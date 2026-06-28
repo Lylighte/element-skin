@@ -9,6 +9,7 @@ import (
 	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
@@ -224,7 +225,14 @@ func (s Site) DeleteProfileByID(ctx context.Context, profileID string) error {
 	return s.deleteProfile(ctx, profileID)
 }
 
-func (s Site) DeleteUser(ctx context.Context, userID string) (bool, error) {
+func (s Site) DeleteUser(ctx context.Context, actor permission.Actor, userID string) (bool, error) {
+	required := serviceAccountDeleteAnyPermission
+	if userID == actor.UserID {
+		required = serviceAccountDeleteSelfPermission
+	}
+	if err := requireActorPermission(actor, required); err != nil {
+		return false, err
+	}
 	if err := s.Redis.DeleteYggTokensByUser(ctx, userID); err != nil {
 		return false, err
 	}

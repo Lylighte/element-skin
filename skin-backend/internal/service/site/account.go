@@ -36,7 +36,11 @@ func (s Site) Me(ctx context.Context, actor permission.Actor) (map[string]any, e
 	}, nil
 }
 
-func (s Site) UpdateMe(ctx context.Context, userID string, body map[string]any) error {
+func (s Site) UpdateMe(ctx context.Context, actor permission.Actor, body map[string]any) error {
+	if err := requireActorPermission(actor, serviceAccountUpdateSelfPermission); err != nil {
+		return err
+	}
+	userID := actor.UserID
 	fields := map[string]any{}
 	if v, ok := body["email"].(string); ok && v != "" {
 		v = strings.TrimSpace(v)
@@ -85,7 +89,11 @@ func (s Site) UpdateMe(ctx context.Context, userID string, body map[string]any) 
 	return nil
 }
 
-func (s Site) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+func (s Site) ChangePassword(ctx context.Context, actor permission.Actor, oldPassword, newPassword string) error {
+	if err := requireActorPermission(actor, servicePasswordUpdateSelfPermission); err != nil {
+		return err
+	}
+	userID := actor.UserID
 	u, err := s.DB.Users.GetByID(ctx, userID)
 	if err != nil {
 		return err
