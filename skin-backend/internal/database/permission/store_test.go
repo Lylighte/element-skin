@@ -521,6 +521,144 @@ func TestActorForUserWithDelegationFieldsExactly(t *testing.T) {
 	}
 }
 
+func TestSeedUserSubjectsMigratesIsAdminColumnExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+
+	adminUser := testutil.CreateUser(t, db, "migrate-admin@test.com", "pw", "MigrateAdmin", false)
+	normalUser := testutil.CreateUser(t, db, "migrate-normal@test.com", "pw", "MigrateNormal", false)
+
+	if _, err := db.Pool.Exec(ctx, `ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE users SET is_admin=TRUE WHERE id=$1`, adminUser.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, core.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Permissions.SeedDefaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	hasAdmin, err := db.Permissions.UserHasRole(ctx, adminUser.ID, core.RoleAdmin)
+	if err != nil || !hasAdmin {
+		t.Fatalf("is_admin=TRUE user should get admin role: has=%v err=%v", hasAdmin, err)
+	}
+	normalHasAdmin, err := db.Permissions.UserHasRole(ctx, normalUser.ID, core.RoleAdmin)
+	if err != nil || normalHasAdmin {
+		t.Fatalf("is_admin=FALSE user should not get admin role: has=%v err=%v", normalHasAdmin, err)
+	}
+}
+
+func TestSeedUserSubjectsMigratesIsSuperAdminColumnAndDedupExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+
+	superUser := testutil.CreateUser(t, db, "migrate-super-first@test.com", "pw", "MigrateSuperFirst", false)
+	secondSuper := testutil.CreateUser(t, db, "migrate-super-second@test.com", "pw", "MigrateSuperSecond", false)
+
+	if _, err := db.Pool.Exec(ctx, `ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN DEFAULT FALSE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE users SET is_super_admin=TRUE WHERE id IN ($1,$2)`, superUser.ID, secondSuper.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Permissions.SeedDefaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("multiple is_super_admin=TRUE should be deduped to exactly one: got=%d", count)
+	}
+}
+
+func TestSeedDefaultsFirstRegisteredUserBecomesSuperAdmin(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+
+	user := testutil.CreateUser(t, db, "first-user@test.com", "pw", "FirstUser", false)
+	if _, err := db.Pool.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Permissions.SeedDefaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("SeedDefaults should ensure exactly one super_admin after removal: got=%d", count)
+	}
+	hasSuper, err := db.Permissions.UserHasRole(ctx, user.ID, core.RoleSuperAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasSuper {
+		t.Fatal("the only user should become super_admin when none exists")
+	}
+}
+
+func TestSeedDefaultsDeduplicatesMultipleSuperAdminsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+
+	first := testutil.CreateUser(t, db, "dedup-first@test.com", "pw", "DedupFirst", false)
+	second := testutil.CreateUser(t, db, "dedup-second@test.com", "pw", "DedupSecond", false)
+	third := testutil.CreateUser(t, db, "dedup-third@test.com", "pw", "DedupThird", false)
+	now := time.Now().UnixMilli()
+
+	if _, err := db.Pool.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []struct{ id, sub string }{
+		{first.ID, permissiondb.SubjectIDForUser(first.ID)},
+		{second.ID, permissiondb.SubjectIDForUser(second.ID)},
+		{third.ID, permissiondb.SubjectIDForUser(third.ID)},
+	} {
+		if _, err := db.Pool.Exec(ctx, `
+			INSERT INTO subject_roles (subject_id,role_id,created_at)
+			VALUES ($1,$2,$3)
+		`, u.sub, core.RoleSuperAdmin, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := db.Permissions.SeedDefaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("dedup should keep exactly one super_admin: got=%d", count)
+	}
+	var keptSubject string
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT sr.subject_id FROM subject_roles sr
+		JOIN permission_subjects ps ON ps.id=sr.subject_id
+		JOIN users u ON u.id=ps.user_id
+		WHERE sr.role_id=$1
+		ORDER BY u.created_at ASC, u.id ASC
+		LIMIT 1
+	`, core.RoleSuperAdmin).Scan(&keptSubject); err != nil {
+		t.Fatal(err)
+	}
+	if keptSubject != permissiondb.SubjectIDForUser(first.ID) {
+		t.Fatalf("dedup should keep earliest user: got=%s want=%s", keptSubject, permissiondb.SubjectIDForUser(first.ID))
+	}
+}
+
 func has(bits core.BitSet, code string) bool {
 	return bits.Has(core.MustDefinitionByCode(code).BitIndex)
 }
