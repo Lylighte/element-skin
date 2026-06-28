@@ -175,6 +175,13 @@ func TestYggdrasilSessionPolicyOnlyIncludesYggdrasilOperations(t *testing.T) {
 	}
 }
 
+func TestDefinitionByCodeMiss(t *testing.T) {
+	def, ok := permission.DefinitionByCode("nonexistent.code.here")
+	if ok || def.ID != 0 {
+		t.Fatalf("DefinitionByCode for unknown code should return zero: def=%#v ok=%v", def, ok)
+	}
+}
+
 func TestMustDefinitionByCodePanicsOnUnknownCode(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
