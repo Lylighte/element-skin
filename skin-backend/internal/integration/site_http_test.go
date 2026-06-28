@@ -23,7 +23,7 @@ func TestSiteLoginMeAndRefresh(t *testing.T) {
 		t.Fatalf("login status=%d body=%s", login.Code, login.Body.String())
 	}
 	body := parseJSON(t, login)
-	if body["user_id"] != user.ID || body["is_admin"] != false {
+	if body["user_id"] != user.ID || body["permissions"] == nil {
 		t.Fatalf("unexpected login body: %#v", body)
 	}
 	access := cookieNamed(login, "access_token")
@@ -76,7 +76,7 @@ func TestSiteLoginMeAndRefresh(t *testing.T) {
 
 	noAccessLogin := doJSON(t, h, "POST", "/site-login", map[string]any{"email": user.Email, "password": "ApiPassword123"})
 	noAccessRefresh := cookieNamed(noAccessLogin, "refresh_token")
-	expiredAccess, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, -time.Minute)
+	expiredAccess, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, -time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestSiteLoginMeAndRefresh(t *testing.T) {
 	if afterDelete.Code != 401 {
 		t.Fatalf("refresh after user deletion should be 401, got %d", afterDelete.Code)
 	}
-	deletedAccess, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, deletedUser.ID, false, time.Hour)
+	deletedAccess, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, deletedUser.ID, time.Hour)
 	deletedMe := doJSON(t, h, "GET", "/me", nil, &http.Cookie{Name: "access_token", Value: deletedAccess})
 	if deletedMe.Code != 401 {
 		t.Fatalf("access token for deleted user should be rejected, got %d", deletedMe.Code)
@@ -263,7 +263,7 @@ func TestPublicSkinLibrarySearchAndWardrobeName(t *testing.T) {
 func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	user := testutil.CreateUser(t, db, "siteflow@test.com", "Password123", "SiteFlow", false)
-	token, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
+	token, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	cookie := &http.Cookie{Name: "access_token", Value: token}
 
 	updateMe := doJSON(t, h, "PATCH", "/me", map[string]any{"display_name": "UpdatedDisplayName", "avatar_hash": "fake_avatar_hash_123"}, cookie)
@@ -476,7 +476,7 @@ func TestSelfDeleteAndDirectTextureUploadHTTP(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
 	user := testutil.CreateUser(t, db, "selfdelete@test.com", "Password123", "SelfDelete", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "direct_upload_profile", "DirectUpload")
-	access, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
+	access, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	cookie := &http.Cookie{Name: "access_token", Value: access}
 
 	direct := doMultipart(t, h, "POST", "/textures/upload", map[string]string{
@@ -507,8 +507,8 @@ func TestSelfDeleteAndDirectTextureUploadHTTP(t *testing.T) {
 		t.Fatal("self delete should revoke refresh tokens")
 	}
 
-	admin := testutil.CreateUser(t, db, "selfadmin@test.com", "Password123", "SelfAdmin", true)
-	adminAccess, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
+	admin := testutil.CreateUser(t, db, "selfadmin@test.com", "Password123", "SelfAdmin", true, true)
+	adminAccess, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
 	adminDel := doJSON(t, h, "DELETE", "/me", nil, &http.Cookie{Name: "access_token", Value: adminAccess})
 	if adminDel.Code != 403 {
 		t.Fatalf("admin self delete should be 403, got %d", adminDel.Code)
@@ -523,16 +523,22 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 		t.Fatalf("first register status=%d body=%s", first.Code, first.Body.String())
 	}
 	firstUser, err := db.Users.GetByEmail(ctx, "admin-first@test.com")
-	if err != nil || firstUser == nil || !firstUser.IsAdmin {
-		t.Fatalf("first registered user should be admin: user=%#v err=%v", firstUser, err)
+	if err != nil || firstUser == nil {
+		t.Fatalf("first registered user should exist: user=%#v err=%v", firstUser, err)
+	}
+	if hasRole, err := db.Permissions.UserHasRole(ctx, firstUser.ID, "super_admin"); err != nil || !hasRole {
+		t.Fatalf("first registered user should have super_admin role: hasRole=%v err=%v", hasRole, err)
 	}
 	secondRegister := doJSON(t, h, "POST", "/register", map[string]any{"email": "second-normal@test.com", "password": "Password123", "username": "SecondNormal"})
 	if secondRegister.Code != 200 {
 		t.Fatalf("second register status=%d body=%s", secondRegister.Code, secondRegister.Body.String())
 	}
 	secondUser, err := db.Users.GetByEmail(ctx, "second-normal@test.com")
-	if err != nil || secondUser == nil || secondUser.IsAdmin {
-		t.Fatalf("second registered user should not be admin: user=%#v err=%v", secondUser, err)
+	if err != nil || secondUser == nil {
+		t.Fatalf("second registered user should exist: user=%#v err=%v", secondUser, err)
+	}
+	if hasRole, err := db.Permissions.UserHasRole(ctx, secondUser.ID, "super_admin"); err != nil || hasRole {
+		t.Fatalf("second registered user should not have super_admin role: hasRole=%v err=%v", hasRole, err)
 	}
 	duplicateEmail := doJSON(t, h, "POST", "/register", map[string]any{"email": "second-normal@test.com", "password": "Password123", "username": "DuplicateEmailUser"})
 	if duplicateEmail.Code != 400 || !strings.Contains(duplicateEmail.Body.String(), "Email already registered") {

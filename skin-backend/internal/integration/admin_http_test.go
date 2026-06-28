@@ -14,8 +14,8 @@ func TestAdminProfilesTexturesInvitesHTTP(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
 	admin := testutil.CreateUser(t, db, "root@test.com", "Password123", "Root", true)
 	user := testutil.CreateUser(t, db, "owned@test.com", "Password123", "Owned", false)
-	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
-	userToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
+	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
+	userToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	adminCookie := &http.Cookie{Name: "access_token", Value: adminToken}
 	userCookie := &http.Cookie{Name: "access_token", Value: userToken}
 
@@ -165,7 +165,7 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
 	admin := testutil.CreateUser(t, db, "admin-controls@test.com", "Password123", "AdminControls", true, true)
 	user := testutil.CreateUser(t, db, "normal-controls@test.com", "Password123", "NormalControls", false)
-	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
+	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
 	adminCookie := &http.Cookie{Name: "access_token", Value: adminToken}
 
 	search := doJSON(t, h, "GET", "/admin/users?q=NormalControls", nil, adminCookie)
@@ -197,21 +197,23 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 		t.Fatalf("invalid admin user cursor should be 400, got %d", invalidCursor.Code)
 	}
 
-	selfToggle := doJSON(t, h, "POST", "/admin/users/"+admin.ID+"/toggle-admin", nil, adminCookie)
-	if selfToggle.Code != 403 {
-		t.Fatalf("self toggle should be 403, got %d body=%s", selfToggle.Code, selfToggle.Body.String())
+	selfGrant := doJSON(t, h, "PUT", "/admin/users/"+admin.ID+"/roles/super_admin", nil, adminCookie)
+	if selfGrant.Code != 403 {
+		t.Fatalf("self protected role grant should be 403, got %d body=%s", selfGrant.Code, selfGrant.Body.String())
 	}
-	toggled := doJSON(t, h, "POST", "/admin/users/"+user.ID+"/toggle-admin", nil, adminCookie)
-	if toggled.Code != 200 || parseJSON(t, toggled)["is_admin"] != true {
-		t.Fatalf("toggle admin status=%d body=%s", toggled.Code, toggled.Body.String())
+	granted := doJSON(t, h, "PUT", "/admin/users/"+user.ID+"/roles/admin", nil, adminCookie)
+	if granted.Code != 200 || parseJSON(t, granted)["role_id"] != "admin" {
+		t.Fatalf("grant admin role status=%d body=%s", granted.Code, granted.Body.String())
 	}
-	row, _ := db.Users.GetByID(context.Background(), user.ID)
-	if row == nil || !row.IsAdmin {
-		t.Fatalf("user should now be admin: %#v", row)
+	if hasRole, err := db.Permissions.UserHasRole(context.Background(), user.ID, "admin"); err != nil || !hasRole {
+		t.Fatalf("user should now have admin role: hasRole=%v err=%v", hasRole, err)
 	}
-	toggledBack := doJSON(t, h, "POST", "/admin/users/"+user.ID+"/toggle-admin", nil, adminCookie)
-	if toggledBack.Code != 200 || parseJSON(t, toggledBack)["is_admin"] != false {
-		t.Fatalf("toggle back status=%d body=%s", toggledBack.Code, toggledBack.Body.String())
+	revoked := doJSON(t, h, "DELETE", "/admin/users/"+user.ID+"/roles/admin", nil, adminCookie)
+	if revoked.Code != 200 || parseJSON(t, revoked)["role_id"] != "admin" {
+		t.Fatalf("revoke admin role status=%d body=%s", revoked.Code, revoked.Body.String())
+	}
+	if hasRole, err := db.Permissions.UserHasRole(context.Background(), user.ID, "admin"); err != nil || hasRole {
+		t.Fatalf("user admin role should be revoked: hasRole=%v err=%v", hasRole, err)
 	}
 
 	bannedUntil := time.Now().Add(time.Hour).UnixMilli()
@@ -281,7 +283,7 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 func TestAdminTextureValidationEdges(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
 	admin := testutil.CreateUser(t, db, "edgeadmin@test.com", "Password123", "EdgeAdmin", true)
-	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
+	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
 	adminCookie := &http.Cookie{Name: "access_token", Value: adminToken}
 
 	invalidPublic := doJSON(t, h, "PATCH", "/admin/textures/somehash", map[string]any{"is_public": 2}, adminCookie)

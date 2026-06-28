@@ -54,7 +54,7 @@ func TestAdminSettingsInvalidatePublicCacheAndApplySecurityImmediately(t *testin
 	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "redis-settings-admin@test.com", "Password123", "RedisSettingsAdmin", true)
-	token, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
+	token, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestRedisBackedAuthCacheAndInvalidationHTTP(t *testing.T) {
 	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "redis-auth-admin@test.com", "Password123", "RedisAuthAdmin", true)
-	token, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
+	token, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,15 +212,15 @@ func TestRedisBackedAuthCacheAndInvalidationHTTP(t *testing.T) {
 		t.Fatalf("admin users status=%d body=%s", users.Code, users.Body.String())
 	}
 	cached, err := redis.GetAuthUser(ctx, admin.ID)
-	if err != nil || !cached.IsAdmin {
+	if err != nil || cached.ID != admin.ID {
 		t.Fatalf("auth user should be cached in redis: %#v err=%v", cached, err)
 	}
-	if _, err := db.Users.ToggleAdmin(ctx, admin.ID); err != nil {
+	if _, err := db.Permissions.RevokeRole(ctx, admin.ID, "admin"); err != nil {
 		t.Fatal(err)
 	}
-	stillCached := doJSON(t, h, "GET", "/admin/users", nil, cookie)
-	if stillCached.Code != 200 {
-		t.Fatalf("cached admin should remain allowed until invalidation, got %d", stillCached.Code)
+	revoked := doJSON(t, h, "GET", "/admin/users", nil, cookie)
+	if revoked.Code != 403 {
+		t.Fatalf("revoked admin role should be forbidden immediately, got %d %s", revoked.Code, revoked.Body.String())
 	}
 	if err := redis.InvalidateAuthUser(ctx, admin.ID); err != nil {
 		t.Fatal(err)

@@ -16,13 +16,13 @@ func TestNoticeHTTPUserAndAdminFlowsExactly(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
 	admin := testutil.CreateUser(t, db, "notice-http-admin@test.com", "Password123", "NoticeHTTPAdmin", true)
 	user := testutil.CreateUser(t, db, "notice-http-user@test.com", "Password123", "NoticeHTTPUser", false)
-	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
-	userToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
+	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
+	userToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	adminCookie := &http.Cookie{Name: "access_token", Value: adminToken}
 	userCookie := &http.Cookie{Name: "access_token", Value: userToken}
 
 	forbiddenAdmin := doJSON(t, h, "GET", "/admin/notices", nil, userCookie)
-	if forbiddenAdmin.Code != http.StatusForbidden || forbiddenAdmin.Body.String() != "{\"detail\":\"admin required\"}\n" {
+	if forbiddenAdmin.Code != http.StatusForbidden || forbiddenAdmin.Body.String() != "{\"detail\":\"permission denied\"}\n" {
 		t.Fatalf("non-admin notice list mismatch: status=%d body=%s", forbiddenAdmin.Code, forbiddenAdmin.Body.String())
 	}
 	unauthenticated := doJSON(t, h, "GET", "/notices", nil)
@@ -250,8 +250,8 @@ func TestNoticeHTTPAudienceStatusAndPatchValidationExactly(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
 	admin := testutil.CreateUser(t, db, "notice-http-audience-admin@test.com", "Password123", "NoticeAudienceAdmin", true)
 	user := testutil.CreateUser(t, db, "notice-http-audience-user@test.com", "Password123", "NoticeAudienceUser", false)
-	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
-	userToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
+	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
+	userToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	adminCookie := &http.Cookie{Name: "access_token", Value: adminToken}
 	userCookie := &http.Cookie{Name: "access_token", Value: userToken}
 	now := database.NowMS()
