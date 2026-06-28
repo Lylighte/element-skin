@@ -29,6 +29,7 @@ func TestWhitelistRoutesAddOfficialWhitelistPersistsUser(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/official-whitelist", strings.NewReader(`{"username":"Steve","endpoint_id":1}`))
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.AddOfficialWhitelist(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -40,6 +41,7 @@ func TestWhitelistRoutesAddOfficialWhitelistPersistsUser(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/official-whitelist?endpoint_id=1", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.OfficialWhitelist(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"username":"Steve"`) || !strings.Contains(rec.Body.String(), `"created_at":`) {
@@ -47,6 +49,7 @@ func TestWhitelistRoutesAddOfficialWhitelistPersistsUser(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/official-whitelist/Steve?endpoint_id=1", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("username", "Steve")
 	rec = httptest.NewRecorder()
 	h.RemoveOfficialWhitelist(rec, req)
@@ -59,6 +62,7 @@ func TestWhitelistRoutesAddOfficialWhitelistPersistsUser(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/official-whitelist?endpoint_id=1", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.OfficialWhitelist(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"items\":[]}\n" {
@@ -71,6 +75,7 @@ func TestWhitelistRoutesRejectInvalidInputsExactly(t *testing.T) {
 	h := admin.New(testutil.TestConfig(), db, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/official-whitelist", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.OfficialWhitelist(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"endpoint_id is required"`) {
@@ -78,6 +83,7 @@ func TestWhitelistRoutesRejectInvalidInputsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/official-whitelist", strings.NewReader(`{"username":" ","endpoint_id":1}`))
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.AddOfficialWhitelist(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"username is required"`) {
@@ -85,6 +91,7 @@ func TestWhitelistRoutesRejectInvalidInputsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/official-whitelist/Steve", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("username", "Steve")
 	rec = httptest.NewRecorder()
 	h.RemoveOfficialWhitelist(rec, req)
@@ -93,6 +100,7 @@ func TestWhitelistRoutesRejectInvalidInputsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/official-whitelist", strings.NewReader(`{"username":"Alex","endpoint_id":999}`))
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.AddOfficialWhitelist(rec, req)
 	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"fallback endpoint not found\"}\n" {

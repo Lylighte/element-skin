@@ -49,6 +49,9 @@ const (
 	ResourceMicrosoftImport
 	ResourceAudit
 	ResourceCache
+	ResourceInvite
+	ResourceHomepageMedia
+	ResourceOfficialWhitelist
 )
 
 const (
@@ -111,6 +114,9 @@ var Resources = []Resource{
 	{ResourceMicrosoftImport, "microsoft_import", "Microsoft 正版角色导入"},
 	{ResourceAudit, "audit", "审计"},
 	{ResourceCache, "cache", "缓存"},
+	{ResourceInvite, "invite", "邀请码"},
+	{ResourceHomepageMedia, "homepage_media", "首页媒体"},
+	{ResourceOfficialWhitelist, "official_whitelist", "官方白名单"},
 }
 
 var Actions = []Action{
@@ -162,6 +168,7 @@ var Definitions = definitions(
 	def(ResourceAccount, ActionUnban, ScopeAny, "解除任意账号封禁"),
 	def(ResourceAccount, ActionRead, ScopeAny, "读取任意账号资料"),
 	def(ResourceAccount, ActionUpdate, ScopeAny, "修改任意账号资料"),
+	def(ResourceAccount, ActionDelete, ScopeAny, "删除任意账号"),
 	def(ResourceUser, ActionRead, ScopeAny, "管理后台读取用户"),
 	def(ResourceUser, ActionUpdate, ScopeAny, "管理后台修改用户"),
 	def(ResourceProfile, ActionRead, ScopeOwned, "读取自己的角色"),
@@ -202,6 +209,7 @@ var Definitions = definitions(
 	def(ResourceWardrobeEntry, ActionRemove, ScopeAny, "管理后台移除任意衣柜条目"),
 	def(ResourceNotice, ActionRead, ScopeOwned, "读取投递给自己的通知"),
 	def(ResourceNotice, ActionDismiss, ScopeOwned, "忽略投递给自己的通知"),
+	def(ResourceNotice, ActionRead, ScopeAny, "管理后台读取通知"),
 	def(ResourceNotice, ActionCreate, ScopeAny, "发布通知"),
 	def(ResourceNotice, ActionUpdate, ScopeAny, "替换通知"),
 	def(ResourceNotice, ActionDelete, ScopeAny, "删除通知"),
@@ -209,6 +217,16 @@ var Definitions = definitions(
 	def(ResourceSiteSettings, ActionRead, ScopeAny, "读取站点设置"),
 	def(ResourceSiteSettings, ActionUpdate, ScopeAny, "修改站点设置"),
 	def(ResourceSitePublic, ActionRead, ScopePublic, "读取公开站点设置"),
+	def(ResourceInvite, ActionRead, ScopeAny, "读取邀请码"),
+	def(ResourceInvite, ActionCreate, ScopeAny, "创建邀请码"),
+	def(ResourceInvite, ActionDelete, ScopeAny, "删除邀请码"),
+	def(ResourceHomepageMedia, ActionRead, ScopeAny, "读取首页媒体"),
+	def(ResourceHomepageMedia, ActionCreate, ScopeAny, "创建首页媒体"),
+	def(ResourceHomepageMedia, ActionUpdate, ScopeAny, "修改首页媒体"),
+	def(ResourceHomepageMedia, ActionDelete, ScopeAny, "删除首页媒体"),
+	def(ResourceOfficialWhitelist, ActionRead, ScopeAny, "读取官方白名单"),
+	def(ResourceOfficialWhitelist, ActionAdd, ScopeAny, "添加官方白名单"),
+	def(ResourceOfficialWhitelist, ActionRemove, ScopeAny, "移除官方白名单"),
 	def(ResourcePermission, ActionRead, ScopeAny, "读取权限配置"),
 	def(ResourcePermissionRole, ActionCreate, ScopeAny, "创建权限角色"),
 	def(ResourcePermissionRole, ActionUpdate, ScopeAny, "修改权限角色"),

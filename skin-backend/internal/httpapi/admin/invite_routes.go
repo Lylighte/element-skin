@@ -5,10 +5,21 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
+var (
+	inviteReadPermission   = permission.MustDefinitionByCode("invite.read.any")
+	inviteCreatePermission = permission.MustDefinitionByCode("invite.create.any")
+	inviteDeletePermission = permission.MustDefinitionByCode("invite.delete.any")
+)
+
 func (h Handler) Invites(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, inviteReadPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	lastCreated, lastCode, err := shared.CursorCreatedHash(req.URL.Query().Get("cursor"), "last_code")
 	if err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
@@ -25,6 +36,10 @@ func (h Handler) Invites(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) CreateInvite(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, inviteCreatePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	var body map[string]any
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -61,6 +76,10 @@ func (h Handler) CreateInvite(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) DeleteInvite(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, inviteDeletePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	if err := h.db.Invites.Delete(req.Context(), req.PathValue("code")); err != nil {
 		util.Error(w, err)
 		return

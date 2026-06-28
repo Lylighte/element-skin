@@ -19,6 +19,7 @@ func TestSettingsRoutesSaveSiteSettingsPersistsValue(t *testing.T) {
 	h := admin.New(testutil.TestConfig(), db, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/settings/site", strings.NewReader(`{"site_name":"Route Site"}`))
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.SaveSiteSettings(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -40,6 +41,7 @@ func TestSettingsRoutesGetAndSaveSiteSettingsInvalidateCaches(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/admin/settings/site", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.GetSiteSettings(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"site_name":"Cached Site"`) ||
@@ -55,6 +57,7 @@ func TestSettingsRoutesGetAndSaveSiteSettingsInvalidateCaches(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/settings/site", strings.NewReader(`{"site_name":"Fresh Site","profile_uuid_mode":"offline","unknown_key":"ignored"}`))
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.SaveSiteSettings(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -85,6 +88,7 @@ func TestSettingsRoutesGetAndSaveNamedGroupExactState(t *testing.T) {
 	h := admin.New(testutil.TestConfig(), db, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/settings/security", strings.NewReader(`{"rate_limit_enabled":true,"rate_limit_auth_attempts":9}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("group", "security")
 	rec := httptest.NewRecorder()
 	h.SaveSettingsGroup(rec, req)
@@ -93,6 +97,7 @@ func TestSettingsRoutesGetAndSaveNamedGroupExactState(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/settings/security", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("group", "security")
 	rec = httptest.NewRecorder()
 	h.GetSettingsGroup(rec, req)
@@ -119,6 +124,7 @@ func TestSettingsRoutesNamedGroupsInvalidateOnlyRelevantPublicCaches(t *testing.
 				t.Fatal(err)
 			}
 			req := httptest.NewRequest(http.MethodPost, "/admin/settings/"+tc.group, strings.NewReader(tc.body))
+			req = withAdminActor(req, "admin-test-user")
 			req.SetPathValue("group", tc.group)
 			rec := httptest.NewRecorder()
 			h.SaveSettingsGroup(rec, req)
@@ -135,6 +141,7 @@ func TestSettingsRoutesNamedGroupsInvalidateOnlyRelevantPublicCaches(t *testing.
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/admin/settings/security", strings.NewReader(`{"rate_limit_auth_attempts":7}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("group", "security")
 	rec := httptest.NewRecorder()
 	h.SaveSettingsGroup(rec, req)
@@ -152,6 +159,7 @@ func TestSettingsRoutesRejectInvalidGroupAndBadJSONExactly(t *testing.T) {
 	h := admin.New(testutil.TestConfig(), db, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/settings/nope", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("group", "nope")
 	rec := httptest.NewRecorder()
 	h.GetSettingsGroup(rec, req)
@@ -160,6 +168,7 @@ func TestSettingsRoutesRejectInvalidGroupAndBadJSONExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/settings/site", strings.NewReader(`{"site_name":`))
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.SaveSiteSettings(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"invalid json"`) {
@@ -167,6 +176,7 @@ func TestSettingsRoutesRejectInvalidGroupAndBadJSONExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/settings/site", strings.NewReader(`{"profile_uuid_mode":"bad"}`))
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.SaveSiteSettings(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"invalid profile_uuid_mode"`) {
@@ -180,6 +190,7 @@ func TestSettingsRoutesReturnErrorWhenCacheInvalidationFailsAfterPersist(t *test
 	h := admin.NewWithRedis(testutil.TestConfig(), db, redis, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/settings/site", strings.NewReader(`{"site_name":"Persisted Despite Cache Failure"}`))
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.SaveSiteSettings(rec, req)
 	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
@@ -193,6 +204,7 @@ func TestSettingsRoutesReturnErrorWhenCacheInvalidationFailsAfterPersist(t *test
 	redis.failSettings = false
 	redis.failPublic = true
 	req = httptest.NewRequest(http.MethodPost, "/admin/settings/easter_eggs", strings.NewReader(`{"easter_eggs_enabled":["christmas"]}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("group", "easter_eggs")
 	rec = httptest.NewRecorder()
 	h.SaveSettingsGroup(rec, req)
@@ -209,6 +221,7 @@ func TestSettingsRoutesReturnErrorWhenCacheInvalidationFailsAfterPersist(t *test
 		t.Fatal(err)
 	}
 	req = httptest.NewRequest(http.MethodPost, "/admin/settings/security", strings.NewReader(`{"rate_limit_auth_attempts":11}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("group", "security")
 	rec = httptest.NewRecorder()
 	h.SaveSettingsGroup(rec, req)
