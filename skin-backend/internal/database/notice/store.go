@@ -167,6 +167,35 @@ func (s Store) Update(ctx context.Context, n model.Notice) (*model.Notice, error
 	return &updated, nil
 }
 
+func (s Store) Replace(ctx context.Context, oldID string, n model.Notice) (bool, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `DELETE FROM notices WHERE id=$1`, oldID)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO notices (
+			id,type,title,summary,content_markdown,display_mode,level,link_text,link_url,
+			audience,enabled,pinned,dismissible,starts_at,ends_at,created_by,created_at,updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+	`, n.ID, n.Type, n.Title, n.Summary, n.ContentMarkdown, n.DisplayMode, n.Level, n.LinkText, n.LinkURL,
+		n.Audience, n.Enabled, n.Pinned, n.Dismissible, n.StartsAt, n.EndsAt, n.CreatedBy, n.CreatedAt, n.UpdatedAt); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s Store) Delete(ctx context.Context, id string) (bool, error) {
 	tag, err := s.Pool.Exec(ctx, `DELETE FROM notices WHERE id=$1`, id)
 	if err != nil {

@@ -145,16 +145,47 @@ func TestNoticeHTTPUserAndAdminFlowsExactly(t *testing.T) {
 		t.Fatalf("patch notice status=%d body=%s", patch.Code, patch.Body.String())
 	}
 	patchBody := parseJSON(t, patch)
-	if patchBody["title"] != "Updated notice" || patchBody["summary"] != "Updated summary" || patchBody["content_markdown"] != "Updated body" || patchBody["ends_at"] != nil {
-		t.Fatalf("patched notice body mismatch: %#v", patchBody)
+	replacementID := patchBody["id"].(string)
+	if replacementID == "" || replacementID == noticeID ||
+		patchBody["title"] != "Updated notice" ||
+		patchBody["summary"] != "Updated summary" ||
+		patchBody["content_markdown"] != "Updated body" ||
+		patchBody["ends_at"] != nil {
+		t.Fatalf("patched notice should be replaced with a new body: %#v", patchBody)
+	}
+	if oldRow, err := db.Notices.Get(context.Background(), noticeID); err != nil || oldRow != nil {
+		t.Fatalf("patched notice should delete old row: row=%#v err=%v", oldRow, err)
+	}
+	var replacedReceipts int
+	if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM notice_receipts WHERE notice_id=$1`, noticeID).Scan(&replacedReceipts); err != nil {
+		t.Fatal(err)
+	}
+	if replacedReceipts != 0 {
+		t.Fatalf("replace should cascade old receipts, got %d", replacedReceipts)
+	}
+	replacementList := doJSON(t, h, "GET", "/notices?type=announcement&dashboard=true&limit=5", nil, userCookie)
+	if replacementList.Code != http.StatusOK {
+		t.Fatalf("replacement notice list status=%d body=%s", replacementList.Code, replacementList.Body.String())
+	}
+	replacementItems := parseJSON(t, replacementList)["items"].([]any)
+	if len(replacementItems) != 1 ||
+		replacementItems[0].(map[string]any)["id"] != replacementID ||
+		replacementItems[0].(map[string]any)["read"] != false ||
+		replacementItems[0].(map[string]any)["title"] != "Updated notice" {
+		t.Fatalf("replacement should publish a fresh unread notice: %#v", replacementItems)
 	}
 
-	inlinePatch := doRawJSON(t, h, "PATCH", "/admin/notices/"+noticeID, `{"title":"Updated short notice","summary":"Updated short summary","display_mode":"inline","content_markdown":""}`, adminCookie)
+	inlinePatch := doRawJSON(t, h, "PATCH", "/admin/notices/"+replacementID, `{"title":"Updated short notice","summary":"Updated short summary","display_mode":"inline","content_markdown":""}`, adminCookie)
 	if inlinePatch.Code != http.StatusOK {
 		t.Fatalf("patch detail notice to inline status=%d body=%s", inlinePatch.Code, inlinePatch.Body.String())
 	}
 	inlinePatchBody := parseJSON(t, inlinePatch)
-	if inlinePatchBody["title"] != "Updated short notice" || inlinePatchBody["summary"] != "Updated short summary" || inlinePatchBody["display_mode"] != "inline" || inlinePatchBody["content_markdown"] != "" {
+	inlineID := inlinePatchBody["id"].(string)
+	if inlineID == "" || inlineID == replacementID ||
+		inlinePatchBody["title"] != "Updated short notice" ||
+		inlinePatchBody["summary"] != "Updated short summary" ||
+		inlinePatchBody["display_mode"] != "inline" ||
+		inlinePatchBody["content_markdown"] != "" {
 		t.Fatalf("patched inline notice body mismatch: %#v", inlinePatchBody)
 	}
 
@@ -163,8 +194,13 @@ func TestNoticeHTTPUserAndAdminFlowsExactly(t *testing.T) {
 		t.Fatalf("admin notice list status=%d body=%s", adminList.Code, adminList.Body.String())
 	}
 	adminItems := parseJSON(t, adminList)["items"].([]any)
-	if len(adminItems) != 1 || adminItems[0].(map[string]any)["id"] != noticeID || adminItems[0].(map[string]any)["title"] != "Updated short notice" {
+	if len(adminItems) != 1 || adminItems[0].(map[string]any)["id"] != inlineID || adminItems[0].(map[string]any)["title"] != "Updated short notice" {
 		t.Fatalf("admin notice list mismatch: %#v", adminItems)
+	}
+
+	inlineDismiss := doJSON(t, h, "POST", "/notices/"+inlineID+"/dismiss", nil, userCookie)
+	if inlineDismiss.Code != http.StatusNoContent || inlineDismiss.Body.String() != "" {
+		t.Fatalf("dismiss replacement mismatch: status=%d body=%s", inlineDismiss.Code, inlineDismiss.Body.String())
 	}
 
 	systemCreate := doJSON(t, h, "POST", "/admin/notices", map[string]any{
@@ -190,21 +226,21 @@ func TestNoticeHTTPUserAndAdminFlowsExactly(t *testing.T) {
 		t.Fatalf("generic user notice list should include system notice only after announcement dismissal: %#v", allItems)
 	}
 
-	del := doJSON(t, h, "DELETE", "/admin/notices/"+noticeID, nil, adminCookie)
+	del := doJSON(t, h, "DELETE", "/admin/notices/"+inlineID, nil, adminCookie)
 	if del.Code != http.StatusNoContent || del.Body.String() != "" {
 		t.Fatalf("delete notice mismatch: status=%d body=%s", del.Code, del.Body.String())
 	}
-	if row, err := db.Notices.Get(context.Background(), noticeID); err != nil || row != nil {
+	if row, err := db.Notices.Get(context.Background(), inlineID); err != nil || row != nil {
 		t.Fatalf("deleted notice should be gone: row=%#v err=%v", row, err)
 	}
 	var receipts int
-	if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM notice_receipts WHERE notice_id=$1`, noticeID).Scan(&receipts); err != nil {
+	if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM notice_receipts WHERE notice_id=$1`, inlineID).Scan(&receipts); err != nil {
 		t.Fatal(err)
 	}
 	if receipts != 0 {
 		t.Fatalf("delete should cascade receipts, got %d", receipts)
 	}
-	deletedDetail := doJSON(t, h, "GET", "/notices/"+noticeID, nil, userCookie)
+	deletedDetail := doJSON(t, h, "GET", "/notices/"+inlineID, nil, userCookie)
 	if deletedDetail.Code != http.StatusNotFound || deletedDetail.Body.String() != "{\"detail\":\"notice not found\"}\n" {
 		t.Fatalf("deleted detail mismatch: status=%d body=%s", deletedDetail.Code, deletedDetail.Body.String())
 	}
