@@ -167,6 +167,29 @@ func TestNoticeHTTPUserAndAdminFlowsExactly(t *testing.T) {
 		t.Fatalf("admin notice list mismatch: %#v", adminItems)
 	}
 
+	systemCreate := doJSON(t, h, "POST", "/admin/notices", map[string]any{
+		"type":         "system",
+		"title":        "System message",
+		"summary":      "System message summary.",
+		"display_mode": "inline",
+		"enabled":      true,
+	}, adminCookie)
+	if systemCreate.Code != http.StatusOK {
+		t.Fatalf("create system notice status=%d body=%s", systemCreate.Code, systemCreate.Body.String())
+	}
+	systemBody := parseJSON(t, systemCreate)
+	if systemBody["type"] != "system" || systemBody["title"] != "System message" || systemBody["summary"] != "System message summary." {
+		t.Fatalf("system notice body mismatch: %#v", systemBody)
+	}
+	allUserNotices := doJSON(t, h, "GET", "/notices?limit=5&include_read=true", nil, userCookie)
+	if allUserNotices.Code != http.StatusOK {
+		t.Fatalf("all user notices status=%d body=%s", allUserNotices.Code, allUserNotices.Body.String())
+	}
+	allItems := parseJSON(t, allUserNotices)["items"].([]any)
+	if len(allItems) != 1 || allItems[0].(map[string]any)["type"] != "system" || allItems[0].(map[string]any)["title"] != "System message" {
+		t.Fatalf("generic user notice list should include system notice only after announcement dismissal: %#v", allItems)
+	}
+
 	del := doJSON(t, h, "DELETE", "/admin/notices/"+noticeID, nil, adminCookie)
 	if del.Code != http.StatusNoContent || del.Body.String() != "" {
 		t.Fatalf("delete notice mismatch: status=%d body=%s", del.Code, del.Body.String())

@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto w-full max-w-[1480px] py-5 animate-fade-in">
+  <div class="flex flex-col animate-fade-in">
     <div class="page-header">
       <div class="page-header-content">
         <div>
@@ -12,7 +12,7 @@
           <el-radio-button value="all">全部</el-radio-button>
           <el-radio-button value="unread">未读</el-radio-button>
         </UiSegmented>
-        <el-tag size="large" type="info">公告</el-tag>
+        <el-tag size="large" type="info">全部通知</el-tag>
         <el-button
           :icon="Refresh"
           :loading="loading"
@@ -25,11 +25,13 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-5 lg:grid-cols-[420px_minmax(0,1fr)]">
+    <div
+      class="grid grid-cols-1 gap-5 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[420px_minmax(0,1fr)]"
+    >
       <UiCard shadow="never" class="overflow-hidden">
         <div
           ref="listScrollRef"
-          class="flex max-h-[calc(100vh-190px)] min-h-[560px] flex-col overflow-auto"
+          class="flex max-h-[calc(100vh-190px)] min-h-[560px] flex-col overflow-auto lg:max-h-[calc(100vh-210px)]"
           v-loading="loading"
           element-loading-background="transparent"
         >
@@ -65,7 +67,7 @@
                 <div class="mt-2 flex items-center justify-between gap-3">
                   <div class="flex min-w-0 flex-wrap items-center gap-2">
                     <el-tag v-if="notice.pinned" size="small" type="warning">置顶</el-tag>
-                    <el-tag size="small" type="info">公告</el-tag>
+                    <el-tag size="small" type="info">{{ noticeTypeLabel(notice.type) }}</el-tag>
                     <el-tag size="small" :type="levelTagType(notice.level)">
                       {{ levelLabel(notice.level) }}
                     </el-tag>
@@ -103,10 +105,10 @@
         v-loading="detailLoading"
         element-loading-background="transparent"
       >
-        <article v-if="selectedNotice" class="px-2 py-1">
+        <article v-if="selectedNotice" class="px-2 py-1 lg:px-4">
           <div class="mb-4 flex flex-wrap items-center gap-2">
             <el-tag v-if="selectedNotice.pinned" size="small" type="warning">置顶</el-tag>
-            <el-tag size="small" type="info">公告</el-tag>
+            <el-tag size="small" type="info">{{ noticeTypeLabel(selectedNotice.type) }}</el-tag>
             <el-tag size="small" :type="levelTagType(selectedNotice.level)">
               {{ levelLabel(selectedNotice.level) }}
             </el-tag>
@@ -128,7 +130,10 @@
             {{ selectedNotice.summary }}
           </p>
 
-          <div class="mt-6 border-t border-[var(--color-border)] pt-6">
+          <div
+            v-if="selectedNotice.display_mode === 'detail'"
+            class="mt-6 border-t border-[var(--color-border)] pt-6"
+          >
             <div
               class="text-[var(--color-text)] leading-8 [&_p]:my-4 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:my-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[var(--el-color-primary)] [&_blockquote]:pl-4 [&_blockquote]:text-[var(--color-text-light)] [&_code]:rounded [&_code]:bg-[var(--color-background-soft)] [&_code]:px-1.5 [&_code]:py-0.5 [&_pre]:overflow-auto [&_pre]:rounded-xl [&_pre]:bg-[var(--color-background-soft)] [&_pre]:p-4 [&_a]:text-[var(--el-color-primary)]"
               v-html="renderedSelectedContent"
@@ -165,6 +170,7 @@ import UiCard from '@/components/ui/UiCard.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
 import { dismissNotice, getNotice, getNotices } from '@/api/notices'
 import type { NoticeLevel, NoticeView } from '@/api/types'
+import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
 import { renderMarkdown } from '@/utils/markdown'
 
 const route = useRoute()
@@ -181,13 +187,16 @@ const listScrollRef = ref<HTMLElement | null>(null)
 const loadMoreRef = ref<HTMLElement | null>(null)
 const readScope = ref<'all' | 'unread'>('all')
 const limit = 20
+const { refreshUnreadNotifications } = useNotificationIndicator()
 let loadObserver: IntersectionObserver | null = null
+const noticeTypeLabels: Record<string, string> = {
+  announcement: '公告',
+  system: '系统',
+}
 
 const renderedSelectedContent = computed(() =>
   renderMarkdown(
-    selectedNotice.value?.display_mode === 'detail'
-      ? selectedNotice.value.content_markdown
-      : selectedNotice.value?.summary || '',
+    selectedNotice.value?.display_mode === 'detail' ? selectedNotice.value.content_markdown : '',
   ),
 )
 
@@ -210,6 +219,10 @@ function levelTagType(level: NoticeLevel) {
       : level === 'success'
         ? 'success'
         : 'info'
+}
+
+function noticeTypeLabel(type: string) {
+  return noticeTypeLabels[type] || type
 }
 
 function noticePreview(notice: NoticeView) {
@@ -247,6 +260,7 @@ async function loadDetail(id: string) {
     notices.value = notices.value.map((item) =>
       item.id === id ? { ...item, read: true, read_at: res.data.read_at } : item,
     )
+    void refreshUnreadNotifications()
   } catch {
     selectedNotice.value = null
     ElMessage.error('加载通知详情失败')
@@ -265,7 +279,6 @@ async function loadNotices() {
     const res = await getNotices({
       cursor: null,
       limit,
-      type: 'announcement',
       include_read: readScope.value === 'all',
     })
     notices.value = res.data.items
@@ -301,7 +314,6 @@ async function loadMoreNotices() {
     const res = await getNotices({
       cursor: nextCursor.value,
       limit,
-      type: 'announcement',
       include_read: readScope.value === 'all',
     })
     const existing = new Set(notices.value.map((notice) => notice.id))
@@ -349,6 +361,7 @@ async function dismiss(id: string) {
       if (selectedNotice.value) router.replace(`/notifications/${selectedNotice.value.id}`)
       else router.replace('/notifications')
     }
+    void refreshUnreadNotifications()
     ElMessage.success('已忽略')
   } catch {
     ElMessage.error('忽略通知失败')

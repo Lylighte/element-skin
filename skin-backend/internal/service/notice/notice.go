@@ -15,6 +15,7 @@ import (
 
 const (
 	TypeAnnouncement = "announcement"
+	TypeSystem       = "system"
 
 	DisplayInline = "inline"
 	DisplayDetail = "detail"
@@ -107,7 +108,7 @@ func (s Service) ListForUser(ctx context.Context, user CurrentUser, params ListP
 	if params.Dashboard && typ == "" {
 		typ = TypeAnnouncement
 	}
-	if typ != "" && typ != TypeAnnouncement {
+	if typ != "" && !validType(typ) {
 		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid type"}
 	}
 	return s.DB.Notices.ListForUser(ctx, noticedb.UserListOptions{
@@ -180,7 +181,7 @@ func (s Service) ListForAdmin(ctx context.Context, params ListParams) (map[strin
 		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid status"}
 	}
 	typ := strings.TrimSpace(params.Type)
-	if typ != "" && typ != TypeAnnouncement {
+	if typ != "" && !validType(typ) {
 		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid type"}
 	}
 	return s.DB.Notices.ListForAdmin(ctx, noticedb.AdminListOptions{
@@ -351,7 +352,7 @@ func applyPatch(notice *model.Notice, input PatchInput) {
 }
 
 func validateNotice(notice model.Notice) error {
-	if notice.Type != TypeAnnouncement {
+	if !validType(notice.Type) {
 		return util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid type"}
 	}
 	if notice.Title == "" {
@@ -439,6 +440,10 @@ func validLevel(level string) bool {
 	default:
 		return false
 	}
+}
+
+func validType(typ string) bool {
+	return typ == TypeAnnouncement || typ == TypeSystem
 }
 
 func validStatus(status string) bool {

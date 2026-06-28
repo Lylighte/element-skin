@@ -71,6 +71,14 @@ func TestNoticeServiceValidatesInputsWithoutPersistingInvalidRows(t *testing.T) 
 	if inline.Title != "Inline" || inline.Summary != "Short text" || inline.ContentMarkdown != "" || inline.DisplayMode != noticesvc.DisplayInline {
 		t.Fatalf("inline notice without content mismatch: %#v", inline)
 	}
+
+	system, err := svc.Create(ctx, noticesvc.CreateInput{Type: noticesvc.TypeSystem, Title: "System", Summary: "System text", DisplayMode: noticesvc.DisplayInline}, admin.ID)
+	if err != nil {
+		t.Fatalf("system notice should be valid: %v", err)
+	}
+	if system.Type != noticesvc.TypeSystem || system.Title != "System" || system.Summary != "System text" || system.ContentMarkdown != "" {
+		t.Fatalf("system notice mismatch: %#v", system)
+	}
 }
 
 func TestNoticeServiceUserVisibilityReadDismissAndPatchExactState(t *testing.T) {
