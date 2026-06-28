@@ -8,11 +8,27 @@ import (
 	core "element-skin/backend/internal/permission"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type Querier interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
 type Store struct {
 	Pool *pgxpool.Pool
+	q    Querier
+}
+
+func (s Store) conn() Querier {
+	if s.q != nil {
+		return s.q
+	}
+	return s.Pool
 }
 
 const firstSuperAdminRoleLockID int64 = 0x5045524D53555052
@@ -30,7 +46,7 @@ func SubjectIDForUser(userID string) string {
 }
 
 func (s Store) SeedDefaults(ctx context.Context) error {
-	tx, err := s.Pool.Begin(ctx)
+	tx, err := s.conn().Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -52,7 +68,7 @@ func (s Store) SeedDefaults(ctx context.Context) error {
 }
 
 func (s Store) EnsureUserSubject(ctx context.Context, userID string) error {
-	tx, err := s.Pool.Begin(ctx)
+	tx, err := s.conn().Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -133,7 +149,7 @@ func (s Store) GrantRole(ctx context.Context, userID, roleID, grantedBySubjectID
 		return err
 	}
 	now := time.Now().UnixMilli()
-	_, err := s.Pool.Exec(ctx, `
+	_, err := s.conn().Exec(ctx, `
 		INSERT INTO subject_roles (subject_id,role_id,granted_by_subject_id,created_at)
 		VALUES ($1,$2,$3,$4)
 		ON CONFLICT (subject_id, role_id) DO UPDATE
@@ -143,7 +159,7 @@ func (s Store) GrantRole(ctx context.Context, userID, roleID, grantedBySubjectID
 }
 
 func (s Store) RevokeRole(ctx context.Context, userID, roleID string) (bool, error) {
-	tag, err := s.Pool.Exec(ctx, `
+	tag, err := s.conn().Exec(ctx, `
 		DELETE FROM subject_roles
 		WHERE subject_id=$1 AND role_id=$2
 	`, SubjectIDForUser(userID), roleID)
@@ -157,7 +173,7 @@ func (s Store) GrantInitialSuperAdminIfNone(ctx context.Context, userID string) 
 	if err := s.EnsureUserSubject(ctx, userID); err != nil {
 		return false, err
 	}
-	tx, err := s.Pool.Begin(ctx)
+	tx, err := s.conn().Begin(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -187,7 +203,7 @@ func (s Store) RoleIDsForUser(ctx context.Context, userID string) ([]string, err
 	if err := s.EnsureUserSubject(ctx, userID); err != nil {
 		return nil, err
 	}
-	rows, err := s.Pool.Query(ctx, `
+	rows, err := s.conn().Query(ctx, `
 		SELECT role_id
 		FROM subject_roles
 		WHERE subject_id=$1
@@ -210,7 +226,7 @@ func (s Store) RoleIDsForUser(ctx context.Context, userID string) ([]string, err
 
 func (s Store) UserHasRole(ctx context.Context, userID, roleID string) (bool, error) {
 	var exists bool
-	err := s.Pool.QueryRow(ctx, `
+	err := s.conn().QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM subject_roles
@@ -222,7 +238,7 @@ func (s Store) UserHasRole(ctx context.Context, userID, roleID string) (bool, er
 
 func (s Store) UserHasProtectedRole(ctx context.Context, userID string) (bool, error) {
 	var exists bool
-	err := s.Pool.QueryRow(ctx, `
+	err := s.conn().QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM subject_roles sr
@@ -241,7 +257,7 @@ func (s Store) SetSubjectPermissionOverride(ctx context.Context, userID string, 
 		return err
 	}
 	now := time.Now().UnixMilli()
-	_, err := s.Pool.Exec(ctx, `
+	_, err := s.conn().Exec(ctx, `
 		INSERT INTO subject_permission_overrides (subject_id,permission_id,effect,granted_by_subject_id,created_at)
 		VALUES ($1,$2,$3,$4,$5)
 		ON CONFLICT (subject_id, permission_id) DO UPDATE
@@ -442,7 +458,7 @@ func usersColumnExists(ctx context.Context, tx pgx.Tx, column string) (bool, err
 
 func (s Store) effectivePermissionsForSubject(ctx context.Context, subjectID string) (core.BitSet, error) {
 	permissions := core.NewBitSet(len(core.Definitions))
-	rows, err := s.Pool.Query(ctx, `
+	rows, err := s.conn().Query(ctx, `
 		SELECT p.bit_index
 		FROM subject_roles sr
 		JOIN role_permissions rp ON rp.role_id=sr.role_id
@@ -465,7 +481,7 @@ func (s Store) effectivePermissionsForSubject(ctx context.Context, subjectID str
 		return nil, err
 	}
 	rows.Close()
-	rows, err = s.Pool.Query(ctx, `
+	rows, err = s.conn().Query(ctx, `
 		SELECT p.bit_index, spo.effect
 		FROM subject_permission_overrides spo
 		JOIN permissions p ON p.id=spo.permission_id
@@ -497,7 +513,7 @@ func (s Store) effectivePermissionsForSubject(ctx context.Context, subjectID str
 
 func (s Store) sessionPolicy(ctx context.Context, sessionKind, entrypoint string) (core.BitSet, error) {
 	policy := core.NewBitSet(len(core.Definitions))
-	rows, err := s.Pool.Query(ctx, `
+	rows, err := s.conn().Query(ctx, `
 		SELECT p.bit_index
 		FROM session_permission_policies spp
 		JOIN permissions p ON p.id=spp.permission_id
@@ -520,7 +536,7 @@ func (s Store) sessionPolicy(ctx context.Context, sessionKind, entrypoint string
 
 func (s Store) delegationPolicy(ctx context.Context, userID, clientID, grantID string) (core.BitSet, error) {
 	policy := core.NewBitSet(len(core.Definitions))
-	rows, err := s.Pool.Query(ctx, `
+	rows, err := s.conn().Query(ctx, `
 		SELECT p.bit_index
 		FROM delegated_permission_grants g
 		JOIN delegated_clients c ON c.id=g.client_id
@@ -550,7 +566,7 @@ func (s Store) delegationPolicy(ctx context.Context, userID, clientID, grantID s
 
 func (s Store) userBanned(ctx context.Context, userID string) (bool, error) {
 	var bannedUntil *int64
-	err := s.Pool.QueryRow(ctx, `SELECT banned_until FROM users WHERE id=$1`, userID).Scan(&bannedUntil)
+	err := s.conn().QueryRow(ctx, `SELECT banned_until FROM users WHERE id=$1`, userID).Scan(&bannedUntil)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

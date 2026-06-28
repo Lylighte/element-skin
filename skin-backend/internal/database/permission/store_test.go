@@ -903,6 +903,42 @@ func TestEnsureUserSubjectCancelledContext(t *testing.T) {
 	}
 }
 
+func TestEffectivePermissionsRowsCanError(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "rows-scan-err@test.com", "pw", "RowsScanErr", false)
+	fc := testutil.NewFaultyConn(db.Pool).WithScanError(testutil.ErrFaultInjected)
+	db.Permissions.SetTestConn(fc)
+	_, err := db.Permissions.EffectivePermissionsForUser(ctx, user.ID, permissiondb.EffectiveOptions{})
+	if err != testutil.ErrFaultInjected {
+		t.Fatalf("should return injected Scan error: %v", err)
+	}
+}
+
+func TestEffectivePermissionsRowsErr(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "rows-err-err@test.com", "pw", "RowsErrErr", false)
+	fc := testutil.NewFaultyConn(db.Pool).WithRowsErr(testutil.ErrFaultInjected)
+	db.Permissions.SetTestConn(fc)
+	_, err := db.Permissions.EffectivePermissionsForUser(ctx, user.ID, permissiondb.EffectiveOptions{})
+	if err != testutil.ErrFaultInjected {
+		t.Fatalf("should return injected Err error: %v", err)
+	}
+}
+
+func TestRoleIDsForUserRowsScanError(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "roleids-scan-err@test.com", "pw", "RoleIDsScanErr", false)
+	fc := testutil.NewFaultyConn(db.Pool).WithScanError(testutil.ErrFaultInjected)
+	db.Permissions.SetTestConn(fc)
+	_, err := db.Permissions.RoleIDsForUser(ctx, user.ID)
+	if err != testutil.ErrFaultInjected {
+		t.Fatalf("should return injected Scan error: %v", err)
+	}
+}
+
 func has(bits core.BitSet, code string) bool {
 	return bits.Has(core.MustDefinitionByCode(code).BitIndex)
 }
