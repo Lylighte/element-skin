@@ -12,8 +12,8 @@ export interface User {
   id: string
   email: string
   display_name?: string
-  is_admin: boolean
-  is_super_admin?: boolean
+  roles?: string[]
+  permissions?: string[]
   avatar_hash?: string | null
   banned_until?: number | null
   profile_count?: number
@@ -74,8 +74,47 @@ export interface SiteSettings {
 // Auth responses（token 现在通过 HttpOnly cookie 下发，不再出现在 body）
 export interface LoginResponse {
   user_id: string
-  is_admin: boolean
-  is_super_admin?: boolean
+  permissions?: string[]
+}
+
+export type PermissionOverrideEffect = 'allow' | 'deny'
+
+export interface PermissionDefinition {
+  id: number
+  code: string
+  description: string
+  bit_index: number
+  resource: string
+  resource_description: string
+  action: string
+  action_description: string
+  scope: string
+  scope_description: string
+}
+
+export interface PermissionRole {
+  id: string
+  name: string
+  description: string
+  system_role: boolean
+  protected: boolean
+  permissions: string[]
+}
+
+export interface UserPermissionOverride {
+  permission_code: string
+  effect: PermissionOverrideEffect
+  created_at: number
+}
+
+export interface UserPermissionsResponse {
+  roles: string[]
+  effective_permissions: string[]
+  overrides: UserPermissionOverride[]
+  catalog: {
+    permissions: PermissionDefinition[]
+    roles: PermissionRole[]
+  }
 }
 
 // Invite code

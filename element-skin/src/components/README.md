@@ -122,11 +122,11 @@ loading, and admin API calls.
 
 UI-only pieces live in `admin/users/`:
 
-- `UserDetailDialog.vue`: user identity panel, profile list, and danger actions.
+- `UserDetailDialog.vue`: user identity panel, profile list, role/permission editor, and danger actions.
 - `ResetPasswordDialog.vue`: reset-password form.
 - `BanUserDialog.vue`: preset/custom ban duration form.
 
-These components emit intent events such as `toggle-admin`, `show-ban`, and
+These components emit intent events such as `grant-role`, `set-permission`, `show-ban`, and
 `delete-user`; they should not import admin API modules.
 
 ## Migration Checklist

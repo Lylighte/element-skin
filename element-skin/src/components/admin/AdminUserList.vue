@@ -47,12 +47,20 @@
         <el-table-column prop="email" label="邮箱" min-width="220" />
         <el-table-column label="身份状态" width="120">
           <template #default="{ row }">
-            <el-tag v-if="row.is_super_admin" type="danger" effect="dark" size="small"
-              >超级管理员</el-tag
+            <el-tag v-if="hasUserRole(row, 'super_admin')" type="danger" effect="dark" size="small">
+              超级管理员
+            </el-tag>
+            <el-tag v-else-if="hasUserRole(row, 'admin')" type="danger" effect="light" size="small">
+              管理员
+            </el-tag>
+            <el-tag
+              v-else-if="hasUserRole(row, 'moderator')"
+              type="warning"
+              effect="light"
+              size="small"
             >
-            <el-tag v-else-if="row.is_admin" type="danger" effect="light" size="small"
-              >管理员</el-tag
-            >
+              审核员
+            </el-tag>
             <el-tag v-else-if="getUserBanStatus(row)" type="warning" effect="light" size="small"
               >已封禁</el-tag
             >
@@ -92,11 +100,15 @@
       :is-banned="currentUser ? getUserBanStatus(currentUser) : false"
       :ban-remaining="formatBanRemaining(currentUser?.banned_until)"
       :is-self="currentUser ? isCurrentUserSelf(currentUser) : false"
-      :current-is-super-admin="loggedInUser?.is_super_admin || false"
+      :permission-state="currentPermissionState"
+      :permissions-loading="permissionsLoading"
+      :current-permissions="loggedInUser?.permissions || []"
       @profiles-prev="handleProfilesPrevPage"
       @profiles-next="handleProfilesNextPage"
-      @toggle-admin="toggleAdmin"
-      @transfer-super-admin="transferSuperAdmin"
+      @grant-role="grantRole"
+      @revoke-role="revokeRole"
+      @set-permission="setPermission"
+      @clear-permission="clearPermission"
       @show-ban="showBanDialog"
       @unban="unbanUser"
       @show-reset-password="showResetPasswordDialog"
@@ -140,14 +152,17 @@ import {
   getUsers,
   getUser,
   getUserProfiles,
-  toggleAdmin as apiToggleAdmin,
-  transferSuperAdmin as apiTransferSuperAdmin,
+  getUserPermissions,
+  grantUserRole,
+  revokeUserRole,
+  setUserPermissionOverride,
+  clearUserPermissionOverride,
   deleteUser as apiDeleteUser,
   banUser as apiBanUser,
   unbanUser as apiUnbanUser,
   resetUserPassword,
 } from '@/api/admin/users'
-import type { User, Profile } from '@/api/types'
+import type { PermissionOverrideEffect, User, Profile, UserPermissionsResponse } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 
 type UserQueryParams = { cursor?: string | null; limit?: number; q?: string }
@@ -160,6 +175,8 @@ const searchQuery = ref('')
 const activeSearchQuery = ref('') // 当前生效的搜索词（点击搜索按钮后才同步）
 const userAvatars = reactive<Record<string, string>>({}) // hash -> base64 avatar image cache
 const currentUser = ref<User | null>(null)
+const currentPermissionState = ref<UserPermissionsResponse | null>(null)
+const permissionsLoading = ref(false)
 const userProfiles = ref<Profile[]>([])
 const profileLimit = 10
 const profilesPagination = useCursorPagination<Profile>(profileLimit)
@@ -248,13 +265,36 @@ function handleClearSearch() {
 
 async function showUserDetailDialog(user: User) {
   try {
-    const res = await getUser(user.id)
-    currentUser.value = res.data
+    currentPermissionState.value = null
     profilesPagination.reset()
+    permissionsLoading.value = true
+    const [userRes, permissionsRes] = await Promise.all([
+      getUser(user.id),
+      getUserPermissions(user.id),
+    ])
+    currentPermissionState.value = permissionsRes.data
+    currentUser.value = {
+      ...userRes.data,
+      roles: permissionsRes.data.roles,
+    }
     await fetchUserProfilesAdmin()
     userDetailDialogVisible.value = true
   } catch {
     ElMessage.error('无法加载用户详情')
+  } finally {
+    permissionsLoading.value = false
+  }
+}
+
+async function fetchUserPermissions(userId = currentUser.value?.id) {
+  if (!userId) return
+  permissionsLoading.value = true
+  try {
+    const res = await getUserPermissions(userId)
+    currentPermissionState.value = res.data
+    if (currentUser.value?.id === userId) currentUser.value.roles = res.data.roles
+  } finally {
+    permissionsLoading.value = false
   }
 }
 
@@ -292,33 +332,44 @@ async function handleProfilesPrevPage() {
   })
 }
 
-async function toggleAdmin(user: User) {
+async function grantRole(roleId: string) {
+  if (!currentUser.value) return
   try {
-    await ElMessageBox.confirm(`确定要切换 ${user.email} 的管理员状态吗？`, '确认', {
-      type: 'warning',
-    })
-    const res = await apiToggleAdmin(user.id)
-    ElMessage.success('操作成功')
+    await grantUserRole(currentUser.value.id, roleId)
+    ElMessage.success('角色已授予')
+    await fetchUserPermissions()
     await refreshUsers()
-    if (currentUser.value) currentUser.value.is_admin = Boolean(res.data.is_admin)
   } catch {}
 }
 
-async function transferSuperAdmin(user: User) {
+async function revokeRole(roleId: string) {
+  if (!currentUser.value) return
   try {
-    await ElMessageBox.confirm(
-      `确定将超级管理员转让给 ${user.email} 吗？转让后你仍是管理员，但不再能设置/解除管理员。`,
-      '转让超级管理员',
-      { type: 'warning', confirmButtonText: '确认转让', cancelButtonText: '取消' },
-    )
-    await apiTransferSuperAdmin(user.id)
-    ElMessage.success('超级管理员已转让')
-    if (loggedInUser?.value) {
-      loggedInUser.value.is_super_admin = false
-      loggedInUser.value.is_admin = true
-    }
-    userDetailDialogVisible.value = false
-    await refreshUsersFromFirst()
+    await ElMessageBox.confirm('确定要撤销该角色吗？', '确认', { type: 'warning' })
+    await revokeUserRole(currentUser.value.id, roleId)
+    ElMessage.success('角色已撤销')
+    await fetchUserPermissions()
+    await refreshUsers()
+  } catch {}
+}
+
+async function setPermission(permissionCode: string, effect: PermissionOverrideEffect) {
+  if (!currentUser.value) return
+  try {
+    await setUserPermissionOverride(currentUser.value.id, permissionCode, effect)
+    ElMessage.success(effect === 'allow' ? '权限已允许' : '权限已拒绝')
+    await fetchUserPermissions()
+  } catch {
+    ElMessage.error('权限更新失败')
+  }
+}
+
+async function clearPermission(permissionCode: string) {
+  if (!currentUser.value) return
+  try {
+    await clearUserPermissionOverride(currentUser.value.id, permissionCode)
+    ElMessage.success('权限已恢复继承')
+    await fetchUserPermissions()
   } catch {}
 }
 
@@ -392,6 +443,7 @@ async function unbanUser(user: User) {
 
 // Helpers
 const getUserBanStatus = (user: User) => user.banned_until != null && Date.now() < user.banned_until
+const hasUserRole = (user: User, role: string) => (user.roles || []).includes(role)
 const loggedInUser = inject<Ref<User | null>>('user', ref(null))
 const isCurrentUserSelf = (user: User) => loggedInUser?.value?.id === user.id
 const formatBanRemaining = (ts: number | null | undefined) => {

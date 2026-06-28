@@ -403,8 +403,16 @@ const repoUrl = 'https://github.com/water2004/element-skin'
 const repoLabel = `Element Skin ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v1.3.0'}`
 
 const isLogged = computed(() => !!user.value)
-const isAdmin = computed(() => user.value?.is_admin || false)
-const isSuperAdmin = computed(() => user.value?.is_super_admin || false)
+const userPermissions = computed(() => user.value?.permissions || [])
+const userRoles = computed(() => user.value?.roles || [])
+const hasPermission = (code: string) => userPermissions.value.includes(code)
+const hasRole = (role: string) => userRoles.value.includes(role)
+const isAdmin = computed(
+  () => hasPermission('user.read.any') || hasRole('admin') || hasRole('super_admin'),
+)
+const isSuperAdmin = computed(
+  () => hasPermission('permission_protected.manage.any') || hasRole('super_admin'),
+)
 const accountRoleLabel = computed(() =>
   isSuperAdmin.value ? '超级管理员' : isAdmin.value ? '管理员' : '普通用户',
 )
