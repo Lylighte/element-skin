@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +66,7 @@ func TestYggdrasilJoinRejectsUnboundOrMismatchedProfile(t *testing.T) {
 	if err := redis.SetYggToken(ctx, model.Token{AccessToken: "unbound_join", ClientToken: "client", UserID: user.ID, CreatedAt: database.NowMS()}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if err := ygg.Join(ctx, "unbound_join", profile.ID, "server_unbound", "127.0.0.1"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if err := ygg.Join(ctx, "unbound_join", profile.ID, "server_unbound", "127.0.0.1"); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("unbound token should not join a profile, got %v", err)
 	}
 	if _, err := redis.GetYggSession(ctx, "server_unbound"); !errors.Is(err, redisstore.ErrCacheMiss) {
@@ -78,7 +77,7 @@ func TestYggdrasilJoinRejectsUnboundOrMismatchedProfile(t *testing.T) {
 	if err := redis.SetYggToken(ctx, model.Token{AccessToken: "bound_join", ClientToken: "client", UserID: user.ID, ProfileID: &profileID, CreatedAt: database.NowMS()}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if err := ygg.Join(ctx, "bound_join", other.ID, "server_mismatch", "127.0.0.1"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if err := ygg.Join(ctx, "bound_join", other.ID, "server_mismatch", "127.0.0.1"); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("profile mismatch should be rejected, got %v", err)
 	}
 	if _, err := redis.GetYggSession(ctx, "server_mismatch"); !errors.Is(err, redisstore.ErrCacheMiss) {
@@ -94,7 +93,7 @@ func TestYggdrasilJoinRejectsMissingAccessTokenWithoutSession(t *testing.T) {
 	redis := testutil.NewMemoryRedis()
 	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: redis}
 
-	if err := ygg.Join(ctx, "missing_access", profile.ID, "server_missing_access", "127.0.0.1"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if err := ygg.Join(ctx, "missing_access", profile.ID, "server_missing_access", "127.0.0.1"); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("missing access token should be rejected exactly, got %v", err)
 	}
 	if _, err := redis.GetYggSession(ctx, "server_missing_access"); !errors.Is(err, redisstore.ErrCacheMiss) {
@@ -160,7 +159,7 @@ func TestYggdrasilJoinRejectsBannedUserByPermissionExactly(t *testing.T) {
 	}
 
 	err := ygg.Join(ctx, "banned_access", profile.ID, "server_banned", "127.0.0.1")
-	if err == nil || !strings.Contains(err.Error(), "Permission denied.") {
+	if !yggError(err, 403, "ForbiddenOperationException", "Permission denied.") {
 		t.Fatalf("banned user should be rejected by join permission exactly, got %v", err)
 	}
 	if session, err := redis.GetYggSession(ctx, "server_banned"); !errors.Is(err, redisstore.ErrCacheMiss) {
@@ -198,7 +197,7 @@ func TestYggdrasilSessionRejectsReassignedProfileOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := ygg.Join(ctx, token.AccessToken, profile.ID, "server_reassigned", "127.0.0.1"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if err := ygg.Join(ctx, token.AccessToken, profile.ID, "server_reassigned", "127.0.0.1"); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("join must reject a profile ID reassigned to another user, got %v", err)
 	}
 	if _, err := redis.GetYggSession(ctx, "server_reassigned"); !errors.Is(err, redisstore.ErrCacheMiss) {
