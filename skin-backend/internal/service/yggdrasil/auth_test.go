@@ -3,7 +3,6 @@ package yggdrasil_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -87,7 +86,7 @@ func TestYggdrasilAuthRefreshAndValidate(t *testing.T) {
 		t.Fatalf("refresh selectedID should bind profile: %#v", bound)
 	}
 
-	if _, err := ygg.Authenticate(ctx, profile.Name, "wrong-password", "", false); err == nil || !strings.Contains(err.Error(), "Invalid credentials") {
+	if _, err := ygg.Authenticate(ctx, profile.Name, "wrong-password", "", false); !yggError(err, 403, "ForbiddenOperationException", "Invalid credentials. Invalid username or password.") {
 		t.Fatalf("bad credentials should return ygg error, got %v", err)
 	}
 }
@@ -164,7 +163,7 @@ func TestYggdrasilSessionPermissionsRejectExactOperations(t *testing.T) {
 				t.Fatal(err)
 			}
 			err := tc.call(ctx, ygg, t, user.Email, "Password123")
-			if err == nil || !strings.Contains(err.Error(), "Permission denied.") {
+			if !yggError(err, 403, "ForbiddenOperationException", "Permission denied.") {
 				t.Fatalf("%s without %s should be denied with exact ygg permission error, got %v", tc.name, tc.permission, err)
 			}
 		})
@@ -281,7 +280,7 @@ func TestYggdrasilTokenReadsRedisOnly(t *testing.T) {
 	if err != nil || got.AccessToken != token.AccessToken || got.UserID != user.ID || got.ProfileID == nil || *got.ProfileID != profile.ID {
 		t.Fatalf("Token should read redis token: %#v err=%v", got, err)
 	}
-	if _, err := ygg.Token(ctx, "missing_access"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if _, err := ygg.Token(ctx, "missing_access"); !yggError(err, 401, "Unauthorized", "Invalid token") {
 		t.Fatalf("missing redis token should be unauthorized ygg error, got %v", err)
 	}
 }
@@ -306,10 +305,10 @@ func TestYggdrasilValidateRefreshSignoutAndInvalidateEdgeCases(t *testing.T) {
 	if token, err := redis.GetYggToken(ctx, "bound_edge_access"); err != nil || token.AccessToken != "bound_edge_access" {
 		t.Fatalf("empty invalidate must not delete existing tokens: token=%#v err=%v", token, err)
 	}
-	if err := ygg.Validate(ctx, "bound_edge_access", "wrong-client"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if err := ygg.Validate(ctx, "bound_edge_access", "wrong-client"); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("validate should reject wrong client token, got %v", err)
 	}
-	if _, err := ygg.Refresh(ctx, "bound_edge_access", "client", profile.ID, false); err == nil || !strings.Contains(err.Error(), "Access token already has a profile assigned") {
+	if _, err := ygg.Refresh(ctx, "bound_edge_access", "client", profile.ID, false); !yggError(err, 400, "IllegalArgumentException", "Access token already has a profile assigned.") {
 		t.Fatalf("refresh should reject selecting a profile on already-bound token, got %v", err)
 	}
 
@@ -317,21 +316,21 @@ func TestYggdrasilValidateRefreshSignoutAndInvalidateEdgeCases(t *testing.T) {
 	if err := redis.SetYggToken(ctx, model.Token{AccessToken: "expired_edge_access", ClientToken: "client", UserID: user.ID, ProfileID: &oldProfileID, CreatedAt: database.NowMS() - int64(16*24*time.Hour/time.Millisecond)}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if err := ygg.Validate(ctx, "expired_edge_access", "client"); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if err := ygg.Validate(ctx, "expired_edge_access", "client"); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("validate should reject expired token by created_at even if redis key exists, got %v", err)
 	}
 
 	if err := redis.SetYggToken(ctx, model.Token{AccessToken: "unbound_edge_access", ClientToken: "client", UserID: user.ID, CreatedAt: database.NowMS()}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ygg.Refresh(ctx, "unbound_edge_access", "wrong-client", "", false); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if _, err := ygg.Refresh(ctx, "unbound_edge_access", "wrong-client", "", false); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("refresh should reject wrong client token, got %v", err)
 	}
-	if _, err := ygg.Refresh(ctx, "unbound_edge_access", "client", otherProfile.ID, false); err == nil || !strings.Contains(err.Error(), "Invalid profile") {
+	if _, err := ygg.Refresh(ctx, "unbound_edge_access", "client", otherProfile.ID, false); !yggError(err, 403, "ForbiddenOperationException", "Invalid profile.") {
 		t.Fatalf("refresh should reject selecting a foreign profile, got %v", err)
 	}
 
-	if err := ygg.Signout(ctx, user.Email, "wrong-password"); err == nil || !strings.Contains(err.Error(), "Invalid credentials") {
+	if err := ygg.Signout(ctx, user.Email, "wrong-password"); !yggError(err, 403, "ForbiddenOperationException", "Invalid credentials. Invalid username or password.") {
 		t.Fatalf("signout should reject bad credentials, got %v", err)
 	}
 }
@@ -366,13 +365,13 @@ func TestYggdrasilRejectsBoundTokenAfterProfileIDIsReassigned(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := ygg.Validate(ctx, token.AccessToken, token.ClientToken); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if err := ygg.Validate(ctx, token.AccessToken, token.ClientToken); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("validate must reject a token whose profile ID now belongs to another user, got %v", err)
 	}
-	if _, err := ygg.Token(ctx, token.AccessToken); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if _, err := ygg.Token(ctx, token.AccessToken); !yggError(err, 401, "Unauthorized", "Invalid token") {
 		t.Fatalf("token lookup must reject reassigned profile ownership, got %v", err)
 	}
-	if _, err := ygg.Refresh(ctx, token.AccessToken, token.ClientToken, "", false); err == nil || !strings.Contains(err.Error(), "Invalid token") {
+	if _, err := ygg.Refresh(ctx, token.AccessToken, token.ClientToken, "", false); !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
 		t.Fatalf("refresh must reject reassigned profile ownership, got %v", err)
 	}
 }
@@ -533,4 +532,12 @@ func (s *trimFailStore) SetYggToken(ctx context.Context, token model.Token, ttl 
 func (s *trimFailStore) TrimYggTokensByUser(context.Context, string, int) error {
 	s.trimCalls++
 	return errors.New("token limit trim failed")
+}
+
+func yggError(err error, status int, yggCode, detail string) bool {
+	var httpErr util.HTTPError
+	return errors.As(err, &httpErr) &&
+		httpErr.Status == status &&
+		httpErr.YggError == yggCode &&
+		httpErr.Detail == detail
 }
