@@ -14,7 +14,21 @@ import (
 
 var manageProtectedPermission = permission.MustDefinitionByCode("permission_protected.manage.any")
 
+var (
+	userReadAnyPermission      = permission.MustDefinitionByCode("user.read.any")
+	userUpdateAnyPermission    = permission.MustDefinitionByCode("user.update.any")
+	accountReadAnyPermission   = permission.MustDefinitionByCode("account.read.any")
+	accountUpdateAnyPermission = permission.MustDefinitionByCode("account.update.any")
+	accountDeleteAnyPermission = permission.MustDefinitionByCode("account.delete.any")
+	accountBanAnyPermission    = permission.MustDefinitionByCode("account.ban.any")
+	accountUnbanAnyPermission  = permission.MustDefinitionByCode("account.unban.any")
+)
+
 func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, userReadAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	rawCursor := req.URL.Query().Get("cursor")
 	cursor, err := util.DecodeCursor(rawCursor)
 	if err != nil {
@@ -40,6 +54,10 @@ func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) User(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, accountReadAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	user, err := h.db.Users.GetByID(req.Context(), req.PathValue("user_id"))
 	if err != nil {
 		util.Error(w, err)
@@ -53,6 +71,10 @@ func (h Handler) User(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, userUpdateAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	if !shared.CurrentActor(req).Has(manageProtectedPermission) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "super admin required"})
 		return
@@ -79,6 +101,10 @@ func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) TransferSuperAdmin(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, userUpdateAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	if !shared.CurrentActor(req).Has(manageProtectedPermission) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "super admin required"})
 		return
@@ -128,6 +154,10 @@ func (h Handler) invalidateAuthUsers(req *http.Request, userIDs ...string) error
 }
 
 func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, accountDeleteAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	targetID := req.PathValue("user_id")
 	if targetID == shared.CurrentUserID(req) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot delete yourself"})
@@ -154,6 +184,10 @@ func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UserProfiles(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, profileReadAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	rawCursor := req.URL.Query().Get("cursor")
 	cursor, err := util.DecodeCursor(rawCursor)
 	if err != nil {
@@ -179,6 +213,10 @@ func (h Handler) UserProfiles(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, accountBanAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	var body map[string]int64
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -210,6 +248,10 @@ func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, accountUnbanAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	user, err := h.db.Users.GetByID(req.Context(), req.PathValue("user_id"))
 	if err != nil {
 		util.Error(w, err)
@@ -239,6 +281,10 @@ func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ResetUserPassword(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, accountUpdateAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})

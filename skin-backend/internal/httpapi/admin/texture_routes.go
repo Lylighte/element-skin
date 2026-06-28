@@ -7,10 +7,22 @@ import (
 
 	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
+var (
+	textureReadAnyPermission             = permission.MustDefinitionByCode("texture.read.any")
+	textureUpdateMetadataAnyPermission   = permission.MustDefinitionByCode("texture.update_metadata.any")
+	textureUpdateVisibilityAnyPermission = permission.MustDefinitionByCode("texture.update_visibility.any")
+	textureDeleteAnyPermission           = permission.MustDefinitionByCode("texture.delete.any")
+)
+
 func (h Handler) Textures(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, textureReadAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	lastCreated, lastHash, err := shared.CursorCreatedHash(req.URL.Query().Get("cursor"), "last_skin_hash")
 	if err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
@@ -31,6 +43,24 @@ func (h Handler) UpdateTexture(w http.ResponseWriter, req *http.Request) {
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
+	}
+	if _, ok := body["note"]; ok {
+		if err := shared.RequirePermission(req, textureUpdateMetadataAnyPermission); err != nil {
+			util.Error(w, err)
+			return
+		}
+	}
+	if _, ok := body["model"]; ok {
+		if err := shared.RequirePermission(req, textureUpdateMetadataAnyPermission); err != nil {
+			util.Error(w, err)
+			return
+		}
+	}
+	if _, ok := body["is_public"]; ok {
+		if err := shared.RequirePermission(req, textureUpdateVisibilityAnyPermission); err != nil {
+			util.Error(w, err)
+			return
+		}
 	}
 	hash := req.PathValue("hash")
 	textureType := textureTypeFromRequest(req, body)
@@ -73,6 +103,10 @@ func (h Handler) UpdateTexture(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, textureDeleteAnyPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	force := req.URL.Query().Get("force") == "true"
 	typ := req.URL.Query().Get("type")
 	if typ == "" {

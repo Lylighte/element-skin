@@ -54,6 +54,7 @@ func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 
 	body := strings.NewReader(`{"title":"Hero","enabled":false,"duration_ms":7000,"overlay_opacity_light":0.38,"overlay_opacity_dark":0.62}`)
 	req := httptest.NewRequest(http.MethodPatch, "/admin/homepage-media/"+item.ID, body)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("id", item.ID)
 	rec = httptest.NewRecorder()
 	h.PatchHomepageMedia(rec, req)
@@ -76,6 +77,7 @@ func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 	second := decodeMedia(t, rec.Body.Bytes())
 	reorderBody := strings.NewReader(`{"ids":["` + second.ID + `","` + item.ID + `"]}`)
 	req = httptest.NewRequest(http.MethodPatch, "/admin/homepage-media/reorder", reorderBody)
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.ReorderHomepageMedia(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -90,6 +92,7 @@ func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/homepage-media/"+item.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("id", item.ID)
 	rec = httptest.NewRecorder()
 	h.DeleteHomepageMedia(rec, req)
@@ -129,6 +132,7 @@ func TestHomepageMediaPanoramaUploadUsesGeneratedStandardZipAndYawPitchFields(t 
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/homepage-media/panorama", &body)
+	req = withAdminActor(req, "admin-test-user")
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	h.UploadHomepagePanorama(rec, req)
@@ -188,6 +192,7 @@ func TestHomepageMediaRejectsInvalidPanoramaInputsExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/admin/homepage-media/panorama", &body)
+	req = withAdminActor(req, "admin-test-user")
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rec = httptest.NewRecorder()
 	h.UploadHomepagePanorama(rec, req)
@@ -211,6 +216,7 @@ func TestHomepageMediaRejectsInvalidPanoramaInputsExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	req = httptest.NewRequest(http.MethodPost, "/admin/homepage-media/panorama", &body)
+	req = withAdminActor(req, "admin-test-user")
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rec = httptest.NewRecorder()
 	h.UploadHomepagePanorama(rec, req)
@@ -234,6 +240,7 @@ func TestHomepageMediaRejectsInvalidPanoramaInputsExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	req = httptest.NewRequest(http.MethodPost, "/admin/homepage-media/panorama", &body)
+	req = withAdminActor(req, "admin-test-user")
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rec = httptest.NewRecorder()
 	h.UploadHomepagePanorama(rec, req)
@@ -265,6 +272,7 @@ func multipartUploadRequest(t *testing.T, path, field, filename string, data []b
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodPost, path, &body)
+	req = withAdminActor(req, "admin-test-user")
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req
 }

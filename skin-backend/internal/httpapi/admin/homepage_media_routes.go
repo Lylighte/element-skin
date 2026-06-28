@@ -16,7 +16,9 @@ import (
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/database/homepage"
+	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
@@ -25,7 +27,18 @@ const (
 	maxHomepagePanoramaBytes = 50 * 1024 * 1024
 )
 
+var (
+	homepageMediaReadPermission   = permission.MustDefinitionByCode("homepage_media.read.any")
+	homepageMediaCreatePermission = permission.MustDefinitionByCode("homepage_media.create.any")
+	homepageMediaUpdatePermission = permission.MustDefinitionByCode("homepage_media.update.any")
+	homepageMediaDeletePermission = permission.MustDefinitionByCode("homepage_media.delete.any")
+)
+
 func (h Handler) ListHomepageMedia(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, homepageMediaReadPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	items, err := h.db.HomepageMedia.List(req.Context(), false)
 	if err != nil {
 		util.Error(w, err)
@@ -38,6 +51,10 @@ func (h Handler) ListHomepageMedia(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UploadHomepageImage(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, homepageMediaCreatePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	if err := req.ParseMultipartForm(maxHomepageImageBytes + 1); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid multipart form"})
 		return
@@ -103,6 +120,10 @@ func (h Handler) UploadHomepageImage(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UploadHomepagePanorama(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, homepageMediaCreatePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	if err := req.ParseMultipartForm(maxHomepagePanoramaBytes + 1); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid multipart form"})
 		return
@@ -167,6 +188,10 @@ func (h Handler) UploadHomepagePanorama(w http.ResponseWriter, req *http.Request
 }
 
 func (h Handler) PatchHomepageMedia(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, homepageMediaUpdatePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	var body struct {
 		Title               *string  `json:"title"`
 		OverlayOpacityLight *float64 `json:"overlay_opacity_light"`
@@ -231,6 +256,10 @@ func (h Handler) PatchHomepageMedia(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ReorderHomepageMedia(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, homepageMediaUpdatePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	var body struct {
 		IDs []string `json:"ids"`
 	}
@@ -262,6 +291,10 @@ func (h Handler) ReorderHomepageMedia(w http.ResponseWriter, req *http.Request) 
 }
 
 func (h Handler) DeleteHomepageMedia(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, homepageMediaDeletePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	id := req.PathValue("id")
 	item, err := h.db.HomepageMedia.Delete(req.Context(), id)
 	if err != nil {

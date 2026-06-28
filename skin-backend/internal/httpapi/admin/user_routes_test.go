@@ -23,16 +23,26 @@ import (
 )
 
 var (
-	testAdminPermission     = permission.MustDefinitionByCode("user.read.any")
 	testProtectedPermission = permission.MustDefinitionByCode("permission_protected.manage.any")
 )
 
 func withAdminActor(req *http.Request, userID string) *http.Request {
-	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, testAdminPermission))
+	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, rolePermissions(permission.RoleAdmin)...))
 }
 
 func withProtectedActor(req *http.Request, userID string) *http.Request {
-	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, testAdminPermission, testProtectedPermission))
+	defs := append([]permission.Definition{}, rolePermissions(permission.RoleAdmin)...)
+	defs = append(defs, testProtectedPermission)
+	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, defs...))
+}
+
+func rolePermissions(roleID string) []permission.Definition {
+	for _, role := range permission.Roles {
+		if role.ID == roleID {
+			return role.Permissions
+		}
+	}
+	panic("missing role: " + roleID)
 }
 
 func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
@@ -43,6 +53,7 @@ func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
 	other := testutil.CreateUser(t, db, "listed-users@test.com", "Password123", "ListedUsers", false)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/users?limit=1&q=Listed", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req = withAdminActor(req, adminUser.ID)
 	rec := httptest.NewRecorder()
 	h.Users(rec, req)
@@ -52,6 +63,7 @@ func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/users/"+adminUser.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", adminUser.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -61,6 +73,7 @@ func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+adminUser.ID+"/toggle-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", adminUser.ID)
 	req = withProtectedActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -79,6 +92,7 @@ func TestSuperAdminOnlyAdminRoleControls(t *testing.T) {
 	target := testutil.CreateUser(t, db, "target-role@test.com", "Password123", "TargetRole", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec := httptest.NewRecorder()
@@ -88,6 +102,7 @@ func TestSuperAdminOnlyAdminRoleControls(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withProtectedActor(req, superAdmin.ID)
 	rec = httptest.NewRecorder()
@@ -97,6 +112,7 @@ func TestSuperAdminOnlyAdminRoleControls(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withProtectedActor(req, superAdmin.ID)
 	rec = httptest.NewRecorder()
@@ -123,6 +139,7 @@ func TestSuperAdminRoleControlsRejectExactInvalidTargets(t *testing.T) {
 	target := testutil.CreateUser(t, db, "target-role-errors@test.com", "Password123", "TargetRoleErrors", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec := httptest.NewRecorder()
@@ -132,6 +149,7 @@ func TestSuperAdminRoleControlsRejectExactInvalidTargets(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+superAdmin.ID+"/transfer-super-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", superAdmin.ID)
 	req = withProtectedActor(req, superAdmin.ID)
 	rec = httptest.NewRecorder()
@@ -141,6 +159,7 @@ func TestSuperAdminRoleControlsRejectExactInvalidTargets(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/missing-user/transfer-super-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", "missing-user")
 	req = withProtectedActor(req, superAdmin.ID)
 	rec = httptest.NewRecorder()
@@ -167,6 +186,7 @@ func TestTransferSuperAdminPreservesRolesWhenTargetCacheInvalidationFails(t *tes
 	target := testutil.CreateUser(t, db, "transfer-cache-target@test.com", "Password123", "TransferCacheTarget", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withProtectedActor(req, superAdmin.ID)
 	rec := httptest.NewRecorder()
@@ -205,6 +225,7 @@ func TestTransferSuperAdminInvalidatesCachesAgainAfterCommit(t *testing.T) {
 	h := admin.NewWithRedis(cfg, db, cache, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withProtectedActor(req, superAdmin.ID)
 	rec := httptest.NewRecorder()
@@ -262,6 +283,7 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 	profile := testutil.CreateProfile(t, db, target.ID, "target_user_profile", "TargetUserProfile")
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/users/"+target.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec := httptest.NewRecorder()
@@ -271,6 +293,7 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/users/"+target.ID+"/profiles", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -281,6 +304,7 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 
 	banUntil := time.Now().Add(time.Hour).UnixMilli()
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(banUntil)+`}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -293,6 +317,7 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/unban", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -305,6 +330,7 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"AdminNewPassword123"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
 	h.ResetUserPassword(rec, req)
@@ -331,6 +357,7 @@ func TestUserProfilesPaginatesEncodedCursorWithoutRepeatingRows(t *testing.T) {
 			targetURL += "&cursor=" + cursor
 		}
 		req := httptest.NewRequest(http.MethodGet, targetURL, nil)
+		req = withAdminActor(req, "admin-test-user")
 		req.SetPathValue("user_id", target.ID)
 		req = withAdminActor(req, adminUser.ID)
 		rec := httptest.NewRecorder()
@@ -403,6 +430,7 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 
 	cacheTarget(t)
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withProtectedActor(req, superAdmin.ID)
 	rec := httptest.NewRecorder()
@@ -415,6 +443,7 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 	cacheTarget(t)
 	banUntil := time.Now().Add(time.Hour).UnixMilli()
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(banUntil)+`}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -426,6 +455,7 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 
 	cacheTarget(t)
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/unban", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -440,6 +470,7 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"AdminCachePassword123"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
 	h.ResetUserPassword(rec, req)
@@ -460,6 +491,7 @@ func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
 	target := testutil.CreateUser(t, db, "target-user-errors@test.com", "Password123", "TargetUserErrors", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/ban", strings.NewReader(`{`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec := httptest.NewRecorder()
@@ -469,6 +501,7 @@ func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":1}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -481,6 +514,7 @@ func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/missing-user/unban", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", "missing-user")
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -490,6 +524,7 @@ func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"`+target.ID+`"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
 	h.ResetUserPassword(rec, req)
@@ -498,6 +533,7 @@ func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"missing-user","new_password":"AdminNewPassword123"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
 	h.ResetUserPassword(rec, req)
@@ -526,6 +562,7 @@ func TestUnbanReturnsNotFoundWhenUserIsDeletedAfterAuthorizationCheck(t *testing
 	result := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/unban", nil)
+		req = withAdminActor(req, "admin-test-user")
 		req.SetPathValue("user_id", target.ID)
 		req = withAdminActor(req, adminUser.ID)
 		rec := httptest.NewRecorder()
@@ -596,6 +633,7 @@ func TestUserRoutesDeleteUserAndInvalidateAuthCacheExactly(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec := httptest.NewRecorder()
@@ -617,6 +655,7 @@ func TestUserRoutesDeleteUserAndInvalidateAuthCacheExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
@@ -634,6 +673,7 @@ func TestUserRoutesProtectSuperAdminFromPlainAdminExactly(t *testing.T) {
 	superAdmin := testutil.CreateUser(t, db, "super-protect@test.com", "Password123", "SuperProtect", true, true)
 
 	req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+superAdmin.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", superAdmin.ID)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec := httptest.NewRecorder()
@@ -643,6 +683,7 @@ func TestUserRoutesProtectSuperAdminFromPlainAdminExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+superAdmin.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", superAdmin.ID)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec = httptest.NewRecorder()
@@ -652,6 +693,7 @@ func TestUserRoutesProtectSuperAdminFromPlainAdminExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+superAdmin.ID+"/unban", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", superAdmin.ID)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec = httptest.NewRecorder()
@@ -669,6 +711,7 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 	target := testutil.CreateUser(t, db, "admin-reset-unchanged@test.com", "Password123", "AdminResetUnchanged", false)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/users?cursor=not-base64", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.Users(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
@@ -677,6 +720,7 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 
 	incompleteCursor := util.EncodeCursor(map[string]any{"unexpected": "value"})
 	req = httptest.NewRequest(http.MethodGet, "/admin/users?cursor="+incompleteCursor, nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.Users(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
@@ -684,6 +728,7 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/users/missing-user", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", "missing-user")
 	rec = httptest.NewRecorder()
 	h.User(rec, req)
@@ -692,6 +737,7 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/missing-user/toggle-admin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", "missing-user")
 	req = withProtectedActor(req, superAdmin.ID)
 	rec = httptest.NewRecorder()
@@ -701,6 +747,7 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{`))
+	req = withAdminActor(req, "admin-test-user")
 	req = withProtectedActor(req, superAdmin.ID)
 	rec = httptest.NewRecorder()
 	h.ResetUserPassword(rec, req)
@@ -728,6 +775,7 @@ func TestAdminResetPasswordPreservesCredentialsAndRefreshWhenYggRevocationFails(
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"AdminNewPassword123"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req = withAdminActor(req, adminUser.ID)
 	rec := httptest.NewRecorder()
 	h.ResetUserPassword(rec, req)

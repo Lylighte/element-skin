@@ -7,10 +7,21 @@ import (
 
 	"element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
+var (
+	officialWhitelistReadPermission   = permission.MustDefinitionByCode("official_whitelist.read.any")
+	officialWhitelistAddPermission    = permission.MustDefinitionByCode("official_whitelist.add.any")
+	officialWhitelistRemovePermission = permission.MustDefinitionByCode("official_whitelist.remove.any")
+)
+
 func (h Handler) OfficialWhitelist(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, officialWhitelistReadPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	endpointID, err := shared.ParsePositiveInt(req.URL.Query().Get("endpoint_id"))
 	if err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "endpoint_id is required"})
@@ -28,6 +39,10 @@ func (h Handler) OfficialWhitelist(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) AddOfficialWhitelist(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, officialWhitelistAddPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	var body map[string]any
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -55,6 +70,10 @@ func (h Handler) AddOfficialWhitelist(w http.ResponseWriter, req *http.Request) 
 }
 
 func (h Handler) RemoveOfficialWhitelist(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, officialWhitelistRemovePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	endpointID, err := shared.ParsePositiveInt(req.URL.Query().Get("endpoint_id"))
 	if err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "endpoint_id is required"})

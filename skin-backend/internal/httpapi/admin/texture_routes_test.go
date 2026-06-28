@@ -24,6 +24,7 @@ func TestTextureRoutesRejectBadPublicValue(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_route_hash", strings.NewReader(`{"type":"skin","is_public":"yes"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "admin_route_hash")
 	rec := httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -36,6 +37,7 @@ func TestTextureRoutesRejectInvalidPatchTextureType(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	h := admin.New(testutil.TestConfig(), db, nil)
 	req := httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_route_hash", strings.NewReader(`{"type":"elytra","note":"bad"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "admin_route_hash")
 	rec := httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -49,6 +51,7 @@ func TestTextureRoutesRejectNoUpdateFieldsAndMissingTextureExactly(t *testing.T)
 	h := admin.New(testutil.TestConfig(), db, nil)
 
 	req := httptest.NewRequest(http.MethodPatch, "/admin/textures/missing_hash", strings.NewReader(`{"type":"skin"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "missing_hash")
 	rec := httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -57,6 +60,7 @@ func TestTextureRoutesRejectNoUpdateFieldsAndMissingTextureExactly(t *testing.T)
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/textures/missing_hash", strings.NewReader(`{"type":"skin","note":"Nope"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "missing_hash")
 	rec = httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -65,6 +69,7 @@ func TestTextureRoutesRejectNoUpdateFieldsAndMissingTextureExactly(t *testing.T)
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/textures/missing_hash?type=skin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "missing_hash")
 	rec = httptest.NewRecorder()
 	h.DeleteTexture(rec, req)
@@ -82,6 +87,7 @@ func TestTextureRoutesListUpdateAndDeleteExactState(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/textures?q=Admin%20Texture%20State&type=skin", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.Textures(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"hash":"admin_state_hash"`) || !strings.Contains(rec.Body.String(), `"name":"Admin Texture State"`) {
@@ -89,6 +95,7 @@ func TestTextureRoutesListUpdateAndDeleteExactState(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_state_hash", strings.NewReader(`{"type":"skin","note":"Admin Texture Renamed","model":"slim","is_public":false}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "admin_state_hash")
 	rec = httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -101,6 +108,7 @@ func TestTextureRoutesListUpdateAndDeleteExactState(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/textures/admin_state_hash?type=skin&user_id="+user.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "admin_state_hash")
 	rec = httptest.NewRecorder()
 	h.DeleteTexture(rec, req)
@@ -122,6 +130,7 @@ func TestTextureRoutesRejectMalformedAndInvalidModelWithoutMutation(t *testing.T
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/textures?cursor=not-base64", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.Textures(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
@@ -132,6 +141,7 @@ func TestTextureRoutesRejectMalformedAndInvalidModelWithoutMutation(t *testing.T
 		util.EncodeCursor(map[string]any{"last_created_at": -1, "last_skin_hash": "hash"}),
 	} {
 		req = httptest.NewRequest(http.MethodGet, "/admin/textures?cursor="+cursor, nil)
+		req = withAdminActor(req, "admin-test-user")
 		rec = httptest.NewRecorder()
 		h.Textures(rec, req)
 		if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
@@ -140,6 +150,7 @@ func TestTextureRoutesRejectMalformedAndInvalidModelWithoutMutation(t *testing.T
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_model_hash", strings.NewReader(`{`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "admin_model_hash")
 	rec = httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -148,6 +159,7 @@ func TestTextureRoutesRejectMalformedAndInvalidModelWithoutMutation(t *testing.T
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_model_hash?type=skin", strings.NewReader(`{"note":"Must Not Persist","model":"wide"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "admin_model_hash")
 	rec = httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -161,6 +173,7 @@ func TestTextureRoutesRejectMalformedAndInvalidModelWithoutMutation(t *testing.T
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/textures/missing_hash?type=skin&force=true", nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "missing_hash")
 	rec = httptest.NewRecorder()
 	h.DeleteTexture(rec, req)
@@ -181,6 +194,7 @@ func TestTextureRoutesQueryTypeOverridesBodyTypeExactly(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_shared_hash?type=cape", strings.NewReader(`{"type":"skin","note":"Updated Cape"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "admin_shared_hash")
 	rec := httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -216,6 +230,7 @@ func TestAdminTexturePatchRollsBackAllFieldsOnDatabaseFailure(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPatch, "/admin/textures/admin_patch_rollback?type=skin",
 		strings.NewReader(`{"note":"Changed","model":"slim","is_public":false}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("hash", "admin_patch_rollback")
 	rec := httptest.NewRecorder()
 	h.UpdateTexture(rec, req)
@@ -258,6 +273,7 @@ func TestAdminTexturePatchReturnsNotFoundWhenLibraryRowIsDeletedAfterRead(t *tes
 	result := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		req := httptest.NewRequest(http.MethodPatch, "/admin/textures/"+hash+"?type=skin", strings.NewReader(`{"note":"Must Not Persist"}`))
+		req = withAdminActor(req, "admin-test-user")
 		req.SetPathValue("hash", hash)
 		rec := httptest.NewRecorder()
 		h.UpdateTexture(rec, req)

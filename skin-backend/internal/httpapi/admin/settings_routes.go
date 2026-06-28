@@ -4,10 +4,20 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
+var (
+	siteSettingsReadPermission   = permission.MustDefinitionByCode("site_settings.read.any")
+	siteSettingsUpdatePermission = permission.MustDefinitionByCode("site_settings.update.any")
+)
+
 func (h Handler) GetSiteSettings(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, siteSettingsReadPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	res, err := h.settings.GetGroup(req.Context(), "site")
 	if err != nil {
 		util.Error(w, err)
@@ -17,6 +27,10 @@ func (h Handler) GetSiteSettings(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) SaveSiteSettings(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, siteSettingsUpdatePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	var body map[string]any
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -38,6 +52,10 @@ func (h Handler) SaveSiteSettings(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) GetSettingsGroup(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, siteSettingsReadPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	res, err := h.settings.GetGroup(req.Context(), req.PathValue("group"))
 	if err != nil {
 		util.Error(w, err)
@@ -47,6 +65,10 @@ func (h Handler) GetSettingsGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) SaveSettingsGroup(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, siteSettingsUpdatePermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	var body map[string]any
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})

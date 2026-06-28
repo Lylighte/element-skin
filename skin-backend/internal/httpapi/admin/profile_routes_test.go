@@ -19,6 +19,7 @@ func TestProfileRoutesUpdateProfilePersistsName(t *testing.T) {
 	profile := testutil.CreateProfile(t, db, user.ID, "admin_route_profile", "AdminRouteProfile")
 
 	req := httptest.NewRequest(http.MethodPatch, "/admin/profiles/"+profile.ID, strings.NewReader(`{"name":"RenamedAdmin"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", profile.ID)
 	rec := httptest.NewRecorder()
 	h.UpdateProfile(rec, req)
@@ -40,6 +41,7 @@ func TestProfileRoutesListDeleteAndTexturePatchExactState(t *testing.T) {
 	capeHash := "admin_profile_cape_hash"
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/profiles?q=AdminProfileTexture", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.Profiles(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"`+profile.ID+`"`) || !strings.Contains(rec.Body.String(), `"name":"AdminProfileTexture"`) {
@@ -47,6 +49,7 @@ func TestProfileRoutesListDeleteAndTexturePatchExactState(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/profiles/"+profile.ID+"/skin", strings.NewReader(`{"hash":"`+skinHash+`"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", profile.ID)
 	rec = httptest.NewRecorder()
 	h.UpdateProfileSkin(rec, req)
@@ -54,6 +57,7 @@ func TestProfileRoutesListDeleteAndTexturePatchExactState(t *testing.T) {
 		t.Fatalf("profile skin update response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	req = httptest.NewRequest(http.MethodPatch, "/admin/profiles/"+profile.ID+"/cape", strings.NewReader(`{"hash":"`+capeHash+`"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", profile.ID)
 	rec = httptest.NewRecorder()
 	h.UpdateProfileCape(rec, req)
@@ -66,6 +70,7 @@ func TestProfileRoutesListDeleteAndTexturePatchExactState(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/admin/profiles/"+profile.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", profile.ID)
 	rec = httptest.NewRecorder()
 	h.DeleteProfile(rec, req)
@@ -89,6 +94,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/profiles?cursor=not-base64", nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec := httptest.NewRecorder()
 	h.Profiles(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
@@ -97,6 +103,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 
 	incompleteCursor := util.EncodeCursor(map[string]any{"unexpected": "value"})
 	req = httptest.NewRequest(http.MethodGet, "/admin/profiles?cursor="+incompleteCursor, nil)
+	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.Profiles(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
@@ -104,6 +111,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/profiles/"+target.ID, strings.NewReader(`{`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", target.ID)
 	rec = httptest.NewRecorder()
 	h.UpdateProfile(rec, req)
@@ -112,6 +120,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/profiles/"+target.ID, strings.NewReader(`{"name":"bad-name!"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", target.ID)
 	rec = httptest.NewRecorder()
 	h.UpdateProfile(rec, req)
@@ -120,6 +129,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/profiles/"+target.ID, strings.NewReader(`{"name":"AdminExisting"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", target.ID)
 	rec = httptest.NewRecorder()
 	h.UpdateProfile(rec, req)
@@ -132,6 +142,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/profiles/missing", strings.NewReader(`{"name":"ValidName"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", "missing")
 	rec = httptest.NewRecorder()
 	h.UpdateProfile(rec, req)
@@ -140,6 +151,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/profiles/"+target.ID+"/skin", strings.NewReader(`{"hash":null}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", target.ID)
 	rec = httptest.NewRecorder()
 	h.UpdateProfileSkin(rec, req)
@@ -152,6 +164,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/admin/profiles/missing/skin", strings.NewReader(`{"hash":"anything"}`))
+	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", "missing")
 	rec = httptest.NewRecorder()
 	h.UpdateProfileSkin(rec, req)
