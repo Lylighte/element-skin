@@ -102,7 +102,7 @@
             type="danger"
             @click="showDeleteDialog = true"
             size="large"
-            v-if="!user?.is_admin"
+            v-if="canDeleteOwnAccount"
           >
             <el-icon><Delete /></el-icon>
             注销账号
@@ -112,11 +112,7 @@
     </UiCard>
 
     <!-- 注销账号确认对话框 -->
-    <UiDialog
-      v-model="showDeleteDialog"
-      title="确认注销账号"
-      :close-on-click-modal="false"
-    >
+    <UiDialog v-model="showDeleteDialog" title="确认注销账号" :close-on-click-modal="false">
       <el-alert
         title="警告：该操作不可逆！"
         type="error"
@@ -178,6 +174,9 @@ const emailInitial = computed(() => {
   const email = user.value?.email || user.value?.display_name || 'U'
   return email.charAt(0).toUpperCase()
 })
+const canDeleteOwnAccount = computed(
+  () => !(user.value?.permissions || []).includes('account.delete.any'),
+)
 
 watch(
   () => user.value,

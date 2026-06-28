@@ -7,13 +7,14 @@ vi.mock('../client', () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
+    put: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
   },
 }))
 
 const mockedClient = client as unknown as Record<ApiMethod, Mock>
-const methods: ApiMethod[] = ['get', 'post', 'patch', 'delete']
+const methods: ApiMethod[] = ['get', 'post', 'put', 'patch', 'delete']
 const mockedResponse = { data: { marker: 'api-response' } }
 
 beforeEach(() => {

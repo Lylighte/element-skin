@@ -1,4 +1,4 @@
-export type ApiMethod = 'get' | 'post' | 'patch' | 'delete'
+export type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete'
 
 export interface ApiCase {
   name: string

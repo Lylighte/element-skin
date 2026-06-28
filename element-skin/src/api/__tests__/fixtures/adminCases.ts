@@ -24,13 +24,16 @@ import { getAdminSettingsGroup, saveAdminSettingsGroup } from '../../admin/setti
 import { deleteAdminTexture, getAdminTextures, patchAdminTexture } from '../../admin/textures'
 import {
   banUser,
+  clearUserPermissionOverride,
   deleteUser,
+  getUserPermissions,
   getUser,
   getUserProfiles,
   getUsers,
+  grantUserRole,
   resetUserPassword,
-  toggleAdmin,
-  transferSuperAdmin,
+  revokeUserRole,
+  setUserPermissionOverride,
   unbanUser,
 } from '../../admin/users'
 import { addWhitelistUser, getWhitelist, removeWhitelistUser } from '../../admin/whitelist'
@@ -310,16 +313,34 @@ function adminUserCases(): ApiCase[] {
       args: ['/admin/users/user-1/profiles', { params: { cursor: 'profiles', limit: 8 } }],
     },
     {
-      name: 'toggleAdmin posts toggle endpoint',
-      method: 'post',
-      call: () => toggleAdmin('user-1'),
-      args: ['/admin/users/user-1/toggle-admin'],
+      name: 'getUserPermissions gets user permission state',
+      method: 'get',
+      call: () => getUserPermissions('user-1'),
+      args: ['/admin/users/user-1/permissions'],
     },
     {
-      name: 'transferSuperAdmin posts transfer endpoint',
-      method: 'post',
-      call: () => transferSuperAdmin('user-1'),
-      args: ['/admin/users/user-1/transfer-super-admin'],
+      name: 'grantUserRole puts role assignment',
+      method: 'put',
+      call: () => grantUserRole('user-1', 'admin'),
+      args: ['/admin/users/user-1/roles/admin'],
+    },
+    {
+      name: 'revokeUserRole deletes role assignment',
+      method: 'delete',
+      call: () => revokeUserRole('user-1', 'admin'),
+      args: ['/admin/users/user-1/roles/admin'],
+    },
+    {
+      name: 'setUserPermissionOverride puts permission effect',
+      method: 'put',
+      call: () => setUserPermissionOverride('user-1', 'notice.create.any', 'allow'),
+      args: ['/admin/users/user-1/permissions/notice.create.any', { effect: 'allow' }],
+    },
+    {
+      name: 'clearUserPermissionOverride deletes permission effect',
+      method: 'delete',
+      call: () => clearUserPermissionOverride('user-1', 'notice.create.any'),
+      args: ['/admin/users/user-1/permissions/notice.create.any'],
     },
     {
       name: 'deleteUser deletes user',
