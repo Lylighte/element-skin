@@ -14,7 +14,7 @@ import (
 func TestMicrosoftImportProfileTokenSemantics(t *testing.T) {
 	db, h, cache := testutil.NewTestAppWithRedisTB(t)
 	user := testutil.CreateUser(t, db, "msapi@test.com", "Password123", "MsApiUser", false)
-	token, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
+	token, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	cookie := &http.Cookie{Name: "access_token", Value: token}
 
 	importToken := "import-token-ok"
@@ -120,8 +120,8 @@ func TestMicrosoftAuthURLAndGetProfileTokenSemantics(t *testing.T) {
 	userDB, h, cache := testutil.NewTestAppWithRedisTB(t)
 	user := testutil.CreateUser(t, userDB, "msflow@test.com", "Password123", "MsFlow", false)
 	other := testutil.CreateUser(t, userDB, "msflow-other@test.com", "Password123", "MsFlowOther", false)
-	token, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
-	otherToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, other.ID, false, time.Hour)
+	token, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
+	otherToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, other.ID, time.Hour)
 	cookie := &http.Cookie{Name: "access_token", Value: token}
 	otherCookie := &http.Cookie{Name: "access_token", Value: otherToken}
 

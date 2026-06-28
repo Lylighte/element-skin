@@ -15,8 +15,8 @@ func TestSettingsGroupsAndRemoteYggImportHTTP(t *testing.T) {
 	db, h := testutil.NewTestApp(t)
 	admin := testutil.CreateUser(t, db, "settings-admin@test.com", "Password123", "SettingsAdmin", true)
 	user := testutil.CreateUser(t, db, "remote@test.com", "Password123", "RemoteUser", false)
-	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
-	userToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
+	adminToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
+	userToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	adminCookie := &http.Cookie{Name: "access_token", Value: adminToken}
 	userCookie := &http.Cookie{Name: "access_token", Value: userToken}
 

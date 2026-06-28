@@ -229,7 +229,7 @@ func TestAdminAccessUsesDatabaseState(t *testing.T) {
 	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	admin := testutil.CreateUser(t, db, "admin@test.com", "Password123", "Admin", true)
 	normal := testutil.CreateUser(t, db, "normal@test.com", "Password123", "Normal", false)
-	token, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, true, time.Hour)
+	token, err := util.CreateAccessToken(testutil.TestConfig().JWTSecret, admin.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,12 +239,12 @@ func TestAdminAccessUsesDatabaseState(t *testing.T) {
 	if users.Code != 200 {
 		t.Fatalf("admin users status=%d body=%s", users.Code, users.Body.String())
 	}
-	if _, err := db.Users.ToggleAdmin(context.Background(), admin.ID); err != nil {
+	if _, err := db.Permissions.RevokeRole(context.Background(), admin.ID, "admin"); err != nil {
 		t.Fatal(err)
 	}
-	cached := doJSON(t, h, "GET", "/admin/users", nil, adminCookie)
-	if cached.Code != 200 {
-		t.Fatalf("short auth cache should allow until invalidated, got %d", cached.Code)
+	revoked := doJSON(t, h, "GET", "/admin/users", nil, adminCookie)
+	if revoked.Code != 403 {
+		t.Fatalf("revoked admin role should be forbidden immediately, got %d %s", revoked.Code, revoked.Body.String())
 	}
 	if err := redis.InvalidateAuthUser(context.Background(), admin.ID); err != nil {
 		t.Fatal(err)
@@ -254,7 +254,7 @@ func TestAdminAccessUsesDatabaseState(t *testing.T) {
 		t.Fatalf("demoted admin should be forbidden after auth cache invalidation, got %d", demoted.Code)
 	}
 
-	normalToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, normal.ID, false, time.Hour)
+	normalToken, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, normal.ID, time.Hour)
 	forbidden := doJSON(t, h, "GET", "/admin/users", nil, &http.Cookie{Name: "access_token", Value: normalToken})
 	if forbidden.Code != 403 {
 		t.Fatalf("normal user should be forbidden, got %d", forbidden.Code)
@@ -301,7 +301,7 @@ func TestTextureUploadAndYggdrasilTextureRoutes(t *testing.T) {
 	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	user := testutil.CreateUser(t, db, "upload@test.com", "Password123", "Uploader", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "upload_profile", "UploadPlayer")
-	access, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, false, time.Hour)
+	access, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	cookie := &http.Cookie{Name: "access_token", Value: access}
 
 	upload := doMultipart(t, h, "POST", "/me/textures", map[string]string{
