@@ -206,7 +206,7 @@ func (s Service) Create(ctx context.Context, input CreateInput, createdBy string
 	return &notice, nil
 }
 
-func (s Service) Patch(ctx context.Context, id string, input PatchInput) (*model.Notice, error) {
+func (s Service) Patch(ctx context.Context, id string, input PatchInput, createdBy string) (*model.Notice, error) {
 	existing, err := s.DB.Notices.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -216,18 +216,26 @@ func (s Service) Patch(ctx context.Context, id string, input PatchInput) (*model
 	}
 	updated := *existing
 	applyPatch(&updated, input)
-	updated.UpdatedAt = database.NowMS()
-	if err := validateNotice(updated); err != nil {
-		return nil, err
-	}
-	out, err := s.DB.Notices.Update(ctx, updated)
+	newID, err := util.GenerateUUIDNoDash()
 	if err != nil {
 		return nil, err
 	}
-	if out == nil {
+	now := database.NowMS()
+	updated.ID = newID
+	updated.CreatedAt = now
+	updated.UpdatedAt = now
+	updated.CreatedBy = &createdBy
+	if err := validateNotice(updated); err != nil {
+		return nil, err
+	}
+	ok, err := s.DB.Notices.Replace(ctx, id, updated)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, util.HTTPError{Status: http.StatusNotFound, Detail: "notice not found"}
 	}
-	return out, nil
+	return &updated, nil
 }
 
 func (s Service) Delete(ctx context.Context, id string) error {

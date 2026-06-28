@@ -49,7 +49,7 @@ func (h Handler) PatchNotice(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	res, err := h.notices.Patch(req.Context(), req.PathValue("id"), body)
+	res, err := h.notices.Patch(req.Context(), req.PathValue("id"), body, shared.CurrentUserID(req))
 	if err != nil {
 		util.Error(w, err)
 		return

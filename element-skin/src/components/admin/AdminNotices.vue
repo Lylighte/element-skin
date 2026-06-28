@@ -496,7 +496,8 @@ async function saveNotice() {
 
 async function toggleEnabled(notice: Notice) {
   try {
-    await patchAdminNotice(notice.id, { enabled: notice.enabled })
+    const res = await patchAdminNotice(notice.id, { enabled: notice.enabled })
+    Object.assign(notice, res.data)
     ElMessage.success(notice.enabled ? '已启用' : '已停用')
   } catch (e: unknown) {
     notice.enabled = !notice.enabled

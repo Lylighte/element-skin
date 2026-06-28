@@ -7,6 +7,7 @@ import (
 	noticedb "element-skin/backend/internal/database/notice"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
 )
 
 func TestNoticeStoreFiltersReceiptsPaginationAndCleanupExactly(t *testing.T) {
@@ -144,6 +145,131 @@ func TestNoticeStoreFiltersReceiptsPaginationAndCleanupExactly(t *testing.T) {
 	}
 	if receipts != 0 {
 		t.Fatalf("delete should cascade receipts, count=%d", receipts)
+	}
+}
+
+func TestNoticeStoreAdminListUpdateAndReplaceExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	creator := testutil.CreateUser(t, db, "notice-admin-store@test.com", "Password123", "NoticeAdminStore", true)
+	reader := testutil.CreateUser(t, db, "notice-admin-store-reader@test.com", "Password123", "NoticeAdminStoreReader", false)
+	now := int64(1_800_000_000_000)
+	start := now + 60_000
+	end := now - 60_000
+
+	for _, item := range []model.Notice{
+		testNotice("admin-enabled-pinned", "Admin Enabled Pinned", "users", true, true, now-10, nil, nil, creator.ID),
+		testNotice("admin-enabled-new", "Admin Enabled New", "users", true, false, now-20, nil, nil, creator.ID),
+		testNotice("admin-disabled", "Admin Disabled", "users", false, false, now-30, nil, nil, creator.ID),
+		testNotice("admin-expired", "Admin Expired", "users", true, false, now-40, nil, &end, creator.ID),
+		testNotice("admin-scheduled", "Admin Scheduled", "users", true, false, now-50, &start, nil, creator.ID),
+	} {
+		if err := db.Notices.Create(ctx, item); err != nil {
+			t.Fatalf("create %s: %v", item.ID, err)
+		}
+	}
+
+	firstPage, err := db.Notices.ListForAdmin(ctx, noticedb.AdminListOptions{Type: "announcement", Status: "enabled", Limit: 1, Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstItems := firstPage["items"].([]model.Notice)
+	cursor := firstPage["next_cursor"].(string)
+	decodedCursor, cursorErr := util.DecodeCursor(cursor)
+	if len(firstItems) != 1 ||
+		firstItems[0].ID != "admin-enabled-pinned" ||
+		firstPage["has_next"] != true ||
+		firstPage["page_size"] != 1 ||
+		cursor == "" ||
+		cursorErr != nil ||
+		decodedCursor["last_pinned"] != true ||
+		decodedCursor["last_created_at"] != float64(now-10) ||
+		decodedCursor["last_id"] != "admin-enabled-pinned" {
+		t.Fatalf("admin first page mismatch: page=%#v cursor=%#v err=%v", firstPage, decodedCursor, cursorErr)
+	}
+
+	secondPage, err := db.Notices.ListForAdmin(ctx, noticedb.AdminListOptions{
+		Type:        "announcement",
+		Status:      "enabled",
+		Limit:       2,
+		Now:         now,
+		LastPinned:  ptrBool(true),
+		LastCreated: ptrInt64(now - 10),
+		LastID:      "admin-enabled-pinned",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondItems := secondPage["items"].([]model.Notice)
+	if len(secondItems) != 2 ||
+		secondItems[0].ID != "admin-enabled-new" ||
+		secondItems[1].ID != "admin-expired" ||
+		secondPage["has_next"] != true ||
+		secondPage["next_cursor"] == "" {
+		t.Fatalf("admin second page mismatch: %#v", secondPage)
+	}
+
+	for _, tc := range []struct {
+		status string
+		want   string
+	}{
+		{status: "disabled", want: "admin-disabled"},
+		{status: "expired", want: "admin-expired"},
+		{status: "scheduled", want: "admin-scheduled"},
+	} {
+		page, err := db.Notices.ListForAdmin(ctx, noticedb.AdminListOptions{Type: "announcement", Status: tc.status, Limit: 5, Now: now})
+		if err != nil {
+			t.Fatal(err)
+		}
+		items := page["items"].([]model.Notice)
+		if len(items) != 1 || items[0].ID != tc.want || page["page_size"] != 1 || page["has_next"] != false {
+			t.Fatalf("%s admin page mismatch: %#v", tc.status, page)
+		}
+	}
+
+	updated := testNotice("admin-disabled", "Admin Disabled Updated", "admins", true, true, now+1, nil, nil, creator.ID)
+	updated.Type = "system"
+	updated.Level = "danger"
+	got, err := db.Notices.Update(ctx, updated)
+	if err != nil ||
+		got == nil ||
+		got.ID != "admin-disabled" ||
+		got.Type != "system" ||
+		got.Title != "Admin Disabled Updated" ||
+		got.Audience != "admins" ||
+		got.Level != "danger" ||
+		!got.Enabled ||
+		!got.Pinned ||
+		got.UpdatedAt != now+1 {
+		t.Fatalf("update mismatch: got=%#v err=%v", got, err)
+	}
+	if missing, err := db.Notices.Update(ctx, testNotice("missing-admin-update", "Missing", "users", true, false, now, nil, nil, creator.ID)); err != nil || missing != nil {
+		t.Fatalf("missing update should return nil: got=%#v err=%v", missing, err)
+	}
+
+	if err := db.Notices.MarkRead(ctx, "admin-enabled-new", reader.ID, now+2); err != nil {
+		t.Fatal(err)
+	}
+	replacement := testNotice("admin-replacement", "Admin Replacement", "users", true, false, now+3, nil, nil, creator.ID)
+	replaced, err := db.Notices.Replace(ctx, "admin-enabled-new", replacement)
+	if err != nil || !replaced {
+		t.Fatalf("replace should succeed: replaced=%v err=%v", replaced, err)
+	}
+	if old, err := db.Notices.Get(ctx, "admin-enabled-new"); err != nil || old != nil {
+		t.Fatalf("old replaced notice should be absent: old=%#v err=%v", old, err)
+	}
+	if newNotice, err := db.Notices.Get(ctx, "admin-replacement"); err != nil || newNotice == nil || newNotice.Title != "Admin Replacement" {
+		t.Fatalf("new replacement notice mismatch: notice=%#v err=%v", newNotice, err)
+	}
+	var oldReceipts int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM notice_receipts WHERE notice_id=$1`, "admin-enabled-new").Scan(&oldReceipts); err != nil {
+		t.Fatal(err)
+	}
+	if oldReceipts != 0 {
+		t.Fatalf("replace should cascade old receipts, got %d", oldReceipts)
+	}
+	if missing, err := db.Notices.Replace(ctx, "missing-admin-replace", testNotice("unused-replace", "Unused", "users", true, false, now, nil, nil, creator.ID)); err != nil || missing {
+		t.Fatalf("missing replace should return false: replaced=%v err=%v", missing, err)
 	}
 }
 

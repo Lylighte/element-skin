@@ -134,14 +134,30 @@ func TestNoticeServiceUserVisibilityReadDismissAndPatchExactState(t *testing.T) 
 		Dismissible:     ptrBool(true),
 		DisplayMode:     ptrString(noticesvc.DisplayDetail),
 		ContentMarkdown: ptrString("Updated body"),
-	})
+	}, admin.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Summary != "Updated summary" || updated.EndsAt != nil || !updated.Dismissible || updated.ContentMarkdown != "Updated body" {
-		t.Fatalf("patch did not persist exact state: %#v", updated)
+	if updated.ID == detail.ID ||
+		updated.Summary != "Updated summary" ||
+		updated.EndsAt != nil ||
+		!updated.Dismissible ||
+		updated.ContentMarkdown != "Updated body" ||
+		updated.CreatedBy == nil ||
+		*updated.CreatedBy != admin.ID {
+		t.Fatalf("patch should replace with a new exact notice: %#v", updated)
 	}
-	if err := svc.Dismiss(ctx, detail.ID, noticesvc.CurrentUser{ID: user.ID}); err != nil {
+	if old, err := db.Notices.Get(ctx, detail.ID); err != nil || old != nil {
+		t.Fatalf("patch should delete old notice: old=%#v err=%v", old, err)
+	}
+	var oldReceipts int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM notice_receipts WHERE notice_id=$1`, detail.ID).Scan(&oldReceipts); err != nil {
+		t.Fatal(err)
+	}
+	if oldReceipts != 0 {
+		t.Fatalf("patch should cascade old receipts, got %d", oldReceipts)
+	}
+	if err := svc.Dismiss(ctx, updated.ID, noticesvc.CurrentUser{ID: user.ID}); err != nil {
 		t.Fatal(err)
 	}
 	list, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: user.ID}, noticesvc.ListParams{Type: noticesvc.TypeAnnouncement, Limit: 10, IncludeRead: true})
