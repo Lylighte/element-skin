@@ -94,6 +94,31 @@ func TestStoreCreateUpdateDeleteAndInviteExhaustion(t *testing.T) {
 	}
 }
 
+func TestCreateWithoutProfilePersistsOnlyUser(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := user.Store{Pool: db.Pool}
+	hash, err := util.HashPassword("CreateNoProfile1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := model.User{ID: "create_no_profile", Email: "create-no-profile@test.com", Password: hash, DisplayName: "CreateNoProfile"}
+	if err := store.Create(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetByID(ctx, u.ID)
+	if err != nil || got == nil || got.ID != u.ID || got.Email != u.Email {
+		t.Fatalf("Create without profile mismatch: got=%#v err=%v", got, err)
+	}
+	var profileCount int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM profiles WHERE user_id=$1`, u.ID).Scan(&profileCount); err != nil {
+		t.Fatal(err)
+	}
+	if profileCount != 0 {
+		t.Fatalf("Create without profile should not create profile: got=%d", profileCount)
+	}
+}
+
 func TestPublicUserDoesNotExposePassword(t *testing.T) {
 	u := model.User{
 		ID:                "user-id",

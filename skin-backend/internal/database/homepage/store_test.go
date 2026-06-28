@@ -46,6 +46,27 @@ func TestMigrateHomepageMediaFilesCreatesHomepageMediaOnceInFilenameOrder(t *tes
 	}
 }
 
+func TestNextSortOrderReturnsZeroForEmptyTableAndMaxPlusOne(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := homepage.Store{Pool: db.Pool}
+	next, err := store.NextSortOrder(ctx)
+	if err != nil || next != 0 {
+		t.Fatalf("NextSortOrder empty table mismatch: got=%d err=%v", next, err)
+	}
+	now := database.NowMS()
+	if err := store.Create(ctx, testMedia("first", 0, now)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Create(ctx, testMedia("second", 1, now)); err != nil {
+		t.Fatal(err)
+	}
+	next, err = store.NextSortOrder(ctx)
+	if err != nil || next != 2 {
+		t.Fatalf("NextSortOrder after two items mismatch: got=%d err=%v", next, err)
+	}
+}
+
 func TestHomepageStorePatchReorderAndDeleteExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	now := database.NowMS()

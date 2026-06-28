@@ -23,6 +23,71 @@ import (
 	"element-skin/backend/internal/testutil"
 )
 
+func TestListHomepageMedia(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cache := testutil.NewMemoryRedis()
+	h := admin.NewWithRedis(cfg, db, cache, nil)
+
+	t.Run("empty list", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/homepage-media", nil)
+		req = withAdminActor(req, "admin-test-user")
+		rec := httptest.NewRecorder()
+		h.ListHomepageMedia(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("empty list status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		if rec.Body.String() != "[]\n" {
+			t.Fatalf("empty list must be [], got %q", rec.Body.String())
+		}
+	})
+
+	t.Run("permission denied", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/homepage-media", nil)
+		rec := httptest.NewRecorder()
+		h.ListHomepageMedia(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("permission denied status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		if rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+			t.Fatalf("permission denied body mismatch: %q", rec.Body.String())
+		}
+	})
+}
+
+func TestHomepageMediaUploadFailsWhenRedisInvalidateFails(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.CarouselDir = t.TempDir()
+	h := admin.NewWithRedis(cfg, db, &homepageInvalidateFailRedis{Store: testutil.NewMemoryRedis()}, nil)
+
+	req := multipartUploadRequest(t, "/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 64, 64))
+	rec := httptest.NewRecorder()
+	h.UploadHomepageImage(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("redis fail upload status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("redis fail upload body mismatch: %q", rec.Body.String())
+	}
+	// Verify DB record was cleaned up after Redis failure.
+	items, err := db.HomepageMedia.List(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected no items after Redis invalidate failure, got %d", len(items))
+	}
+	// Verify file was cleaned up.
+	entries, err := os.ReadDir(cfg.CarouselDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected no files after Redis invalidate failure, got %d", len(entries))
+	}
+}
+
 func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()

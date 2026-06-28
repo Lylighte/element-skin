@@ -146,6 +146,30 @@ func TestSessionPolicyAndBanNarrowPermissionsExactly(t *testing.T) {
 	}
 }
 
+func TestExpiredBanRestoresJoinPermission(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "expired-ban@test.com", "pw", "ExpiredBan", false)
+	expiredUntil := time.Now().Add(-time.Hour).UnixMilli()
+	if _, err := db.Pool.Exec(ctx, `UPDATE users SET banned_until=$1 WHERE id=$2`, expiredUntil, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	bits, err := db.Permissions.EffectivePermissionsForUser(ctx, user.ID, permissiondb.EffectiveOptions{
+		SessionKind:    core.SessionKindYggdrasil,
+		Entrypoint:     core.EntrypointYggdrasil,
+		ApplyBanPolicy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has(bits, "yggdrasil_server.join.bound_profile") {
+		t.Fatal("expired ban should restore join permission")
+	}
+	if !has(bits, "yggdrasil_server.hasjoined.bound_profile") {
+		t.Fatal("expired ban should keep hasjoined permission")
+	}
+}
+
 func TestDelegationPolicyIntersectsSubjectClientAndGrantExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()

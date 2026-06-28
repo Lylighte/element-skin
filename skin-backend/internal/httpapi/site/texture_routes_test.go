@@ -3,7 +3,9 @@ package site_test
 import (
 	"bytes"
 	"context"
+	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/site"
+	"element-skin/backend/internal/permission"
 	sitesvc "element-skin/backend/internal/service/site"
 	texturesvc "element-skin/backend/internal/service/texture"
 	"element-skin/backend/internal/testutil"
@@ -469,6 +471,81 @@ func TestTextureRoutesDeleteMissingWardrobeRowDoesNotClearAppliedProfile(t *test
 	if err != nil || info == nil {
 		t.Fatalf("failed delete of non-wardrobe texture must not remove uploader library row: info=%#v err=%v", info, err)
 	}
+}
+
+func TestTextureRoutesIsPublicWithoutPermissionReturns403(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-texture-no-vis@test.com", "Password123", "SiteTextureNoVis", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "site_texture_no_vis", "SiteTextureNoVis")
+
+	// UploadMyTexture with is_public=true but without texture.update_visibility.owned
+	req := textureMultipartRequest(t, "/me/textures", map[string]string{
+		"texture_type": "skin",
+		"is_public":    "true",
+	}, "file", "skin.png", routePNG(t, 64, 64))
+	req = withUserActorWithoutPermission(req, user.ID, "texture.update_visibility.owned")
+	rec := httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("is_public without update_visibility should return 403: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	// UploadAndApplyTexture with is_public=true but without texture.update_visibility.owned
+	req = textureMultipartRequest(t, "/textures/upload", map[string]string{
+		"uuid":         profile.ID,
+		"texture_type": "skin",
+		"is_public":    "true",
+	}, "file", "apply.png", routePNGWithColor(t, 64, 64, color.RGBA{R: 200, G: 80, B: 120, A: 255}))
+	req = withUserActorWithoutPermission(req, user.ID, "texture.update_visibility.owned")
+	rec = httptest.NewRecorder()
+	h.UploadAndApplyTexture(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("upload apply is_public without update_visibility should return 403: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	if count, err := db.Textures.CountForUser(req.Context(), user.ID); err != nil || count != 0 {
+		t.Fatalf("rejected is_public upload must not persist texture rows: count=%d err=%v", count, err)
+	}
+}
+
+func TestTextureRoutesInvalidImageReturns400(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-texture-invalid-img@test.com", "Password123", "SiteTextureInvalidImg", false)
+
+	req := textureMultipartRequest(t, "/me/textures", map[string]string{
+		"texture_type": "skin",
+	}, "file", "bad.png", []byte("not a valid png image"))
+	req = withUserActor(req, user.ID)
+	rec := httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Image must be PNG format\"}\n" {
+		t.Fatalf("invalid image should return 400: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	if count, err := db.Textures.CountForUser(req.Context(), user.ID); err != nil || count != 0 {
+		t.Fatalf("invalid image upload must not persist texture rows: count=%d err=%v", count, err)
+	}
+}
+
+func withUserActorWithoutPermission(req *http.Request, userID string, excludeCode string) *http.Request {
+	var perms []permission.Definition
+	for _, role := range permission.Roles {
+		if role.ID == permission.RoleUser {
+			for _, p := range role.Permissions {
+				if p.Code != excludeCode {
+					perms = append(perms, p)
+				}
+			}
+			break
+		}
+	}
+	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, perms...))
 }
 
 func ptrString(s string) *string {

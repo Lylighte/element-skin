@@ -63,8 +63,8 @@ func TestAuthRegisterRejectsPolicyFailuresWithoutCreatingUser(t *testing.T) {
 	if err := svc.Settings.InvalidateCache(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Register(ctx, "weak-register@test.com", "weak", "WeakRegister", "", ""); err == nil {
-		t.Fatal("strong password policy should reject weak registration password")
+	if _, err := svc.Register(ctx, "weak-register@test.com", "weak", "WeakRegister", "", ""); !httpError(err, 400, "密码长度至少 8 位；密码需包含大写字母；密码需包含数字") {
+		t.Fatalf("strong password policy should reject weak password with exact HTTP 400, got %#v", err)
 	}
 	if user, err := db.Users.GetByEmail(ctx, "weak-register@test.com"); err != nil || user != nil {
 		t.Fatalf("weak password registration must not create user: user=%#v err=%v", user, err)

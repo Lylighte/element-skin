@@ -97,13 +97,50 @@ func TestUserRoleDoesNotIncludeAdminScopedPermissions(t *testing.T) {
 	if userRole == nil {
 		t.Fatal("user role not found")
 	}
-	if len(userRole.Permissions) == 0 {
-		t.Fatal("user role must have at least one permission")
+	if len(userRole.Permissions) != 40 {
+		t.Fatalf("user role has %d permissions, want 40", len(userRole.Permissions))
 	}
 	expectedCodes := []string{
-		"profile.read.owned", "profile.create.owned", "profile.update.owned", "profile.delete.owned",
-		"texture.create.owned", "texture.read.owned", "texture.delete.owned",
-		"account.read.self", "account.update.self",
+		"account.read.self",
+		"account.update.self",
+		"account_password.update.self",
+		"account.delete.self",
+		"profile.read.owned",
+		"profile.create.owned",
+		"profile.update.owned",
+		"profile.delete.owned",
+		"profile.read.bound_profile",
+		"profile.update.bound_profile",
+		"profile.read.public",
+		"texture.read.owned",
+		"texture.read.public",
+		"texture.create.owned",
+		"texture.update_metadata.owned",
+		"texture.update_visibility.owned",
+		"texture.delete.owned",
+		"texture.apply.owned",
+		"texture.clear.owned",
+		"texture.apply.bound_profile",
+		"texture.clear.bound_profile",
+		"wardrobe.read.owned",
+		"wardrobe_entry.read.owned",
+		"wardrobe_entry.add.owned",
+		"wardrobe_entry.update.owned",
+		"wardrobe_entry.remove.owned",
+		"wardrobe_entry.apply.owned",
+		"notice.read.owned",
+		"notice.dismiss.owned",
+		"site_public.read.public",
+		"yggdrasil_session.create.owned",
+		"yggdrasil_session.refresh.owned",
+		"yggdrasil_session.validate.owned",
+		"yggdrasil_session.invalidate.owned",
+		"yggdrasil_session.signout.owned",
+		"yggdrasil_server.join.bound_profile",
+		"yggdrasil_server.hasjoined.bound_profile",
+		"microsoft_import.start.owned",
+		"microsoft_import.read_profile.owned",
+		"microsoft_import.create_profile.owned",
 	}
 	roleCodes := make(map[string]bool, len(userRole.Permissions))
 	for _, def := range userRole.Permissions {
@@ -145,12 +182,48 @@ func TestAdminRoleDoesNotIncludeSuperAdminOrSystemPermissions(t *testing.T) {
 	if adminRole == nil {
 		t.Fatal("admin role not found")
 	}
-	if len(adminRole.Permissions) == 0 {
-		t.Fatal("admin role must have at least one permission")
+	if len(adminRole.Permissions) != 38 {
+		t.Fatalf("admin role has %d permissions, want 38", len(adminRole.Permissions))
 	}
 	expectedCodes := []string{
-		"account.ban.any", "notice.create.any", "profile.read.any",
-		"texture.read.any", "site_settings.read.any", "permission.grant.any",
+		"account.ban.any",
+		"account.unban.any",
+		"account.read.any",
+		"account.update.any",
+		"account.delete.any",
+		"user.read.any",
+		"user.update.any",
+		"profile.read.any",
+		"profile.update.any",
+		"profile.delete.any",
+		"texture.read.any",
+		"texture.update_metadata.any",
+		"texture.update_visibility.any",
+		"texture.delete.any",
+		"wardrobe.read.any",
+		"wardrobe_entry.remove.any",
+		"notice.read.any",
+		"notice.create.any",
+		"notice.update.any",
+		"notice.delete.any",
+		"site_settings.read.any",
+		"site_settings.update.any",
+		"invite.read.any",
+		"invite.create.any",
+		"invite.delete.any",
+		"homepage_media.read.any",
+		"homepage_media.create.any",
+		"homepage_media.update.any",
+		"homepage_media.delete.any",
+		"official_whitelist.read.any",
+		"official_whitelist.add.any",
+		"official_whitelist.remove.any",
+		"permission.read.any",
+		"permission.grant.any",
+		"permission.revoke.any",
+		"permission_audit.read.any",
+		"audit.read.any",
+		"cache.invalidate.any",
 	}
 	roleCodes := make(map[string]bool, len(adminRole.Permissions))
 	for _, def := range adminRole.Permissions {
@@ -213,12 +286,21 @@ func TestYggdrasilSessionPolicyOnlyIncludesYggdrasilOperations(t *testing.T) {
 		if policy.SessionKind != permission.SessionKindYggdrasil {
 			continue
 		}
-		if len(policy.Permissions) == 0 {
-			t.Fatal("yggdrasil session policy must have at least one permission")
+		if len(policy.Permissions) != 11 {
+			t.Fatalf("yggdrasil session policy has %d permissions, want 11", len(policy.Permissions))
 		}
 		expectedCodes := []string{
-			"profile.read.bound_profile", "texture.apply.bound_profile",
-			"yggdrasil_session.create.owned", "yggdrasil_server.join.bound_profile",
+			"profile.read.bound_profile",
+			"profile.update.bound_profile",
+			"texture.apply.bound_profile",
+			"texture.clear.bound_profile",
+			"yggdrasil_session.create.owned",
+			"yggdrasil_session.refresh.owned",
+			"yggdrasil_session.validate.owned",
+			"yggdrasil_session.invalidate.owned",
+			"yggdrasil_session.signout.owned",
+			"yggdrasil_server.join.bound_profile",
+			"yggdrasil_server.hasjoined.bound_profile",
 		}
 		policyCodes := make(map[string]bool, len(policy.Permissions))
 		for _, def := range policy.Permissions {
