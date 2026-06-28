@@ -75,16 +75,16 @@
           </el-button>
         </div>
         <UiCard v-for="notice in dashboardNotices" :key="notice.id" shadow="hover" hoverable>
-          <button class="w-full p-1 text-left" @click="openNotice(notice.id)">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <div class="mb-2 flex flex-wrap items-center gap-2">
+          <button class="w-full text-left" @click="openNotice(notice.id)">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex min-w-0 items-center gap-2">
+                <div class="flex shrink-0 items-center gap-1.5">
                   <el-tag size="small" :type="levelTagType(notice.level)">
                     {{ levelLabel(notice.level) }}
                   </el-tag>
                   <el-tag v-if="notice.pinned" size="small" type="warning">置顶</el-tag>
                 </div>
-                <div class="truncate font-semibold text-[var(--color-heading)]">
+                <div class="min-w-0 truncate font-semibold text-[var(--color-heading)]">
                   {{ notice.title }}
                 </div>
               </div>
@@ -99,10 +99,10 @@
               </el-button>
             </div>
             <div
-              class="mt-2 text-sm leading-6 text-[var(--color-text-light)] line-clamp-3 [&_a]:text-[var(--el-color-primary)] [&_p]:m-0"
+              class="mt-2 text-sm leading-6 text-[var(--color-text-light)] line-clamp-2 [&_a]:text-[var(--el-color-primary)] [&_p]:m-0"
               v-html="noticePreview(notice)"
             />
-            <div class="mt-3 text-xs text-[var(--color-text-light)]">
+            <div class="mt-2 text-xs text-[var(--color-text-light)]">
               {{ formatShortDate(notice.created_at) }}
             </div>
           </button>
