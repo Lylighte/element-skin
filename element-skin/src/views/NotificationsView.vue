@@ -184,7 +184,11 @@ const limit = 20
 let loadObserver: IntersectionObserver | null = null
 
 const renderedSelectedContent = computed(() =>
-  renderMarkdown(selectedNotice.value?.content_markdown || ''),
+  renderMarkdown(
+    selectedNotice.value?.display_mode === 'detail'
+      ? selectedNotice.value.content_markdown
+      : selectedNotice.value?.summary || '',
+  ),
 )
 
 function levelLabel(level: NoticeLevel) {
@@ -209,7 +213,7 @@ function levelTagType(level: NoticeLevel) {
 }
 
 function noticePreview(notice: NoticeView) {
-  return renderMarkdown(notice.display_mode === 'detail' ? notice.summary : notice.content_markdown)
+  return renderMarkdown(notice.summary || '')
 }
 
 function formatShortDate(ts: number) {

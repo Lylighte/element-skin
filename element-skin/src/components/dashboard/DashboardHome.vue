@@ -162,8 +162,7 @@ function copyApiUrl() {
 }
 
 function noticePreview(notice: NoticeView) {
-  const text = notice.display_mode === 'detail' ? notice.summary : notice.content_markdown
-  return renderMarkdown(text)
+  return renderMarkdown(notice.summary || '')
 }
 
 function levelLabel(level: NoticeLevel) {
