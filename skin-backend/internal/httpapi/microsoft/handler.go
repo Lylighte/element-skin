@@ -23,5 +23,5 @@ func New(cfg config.Config, db *database.DB, settings settingssvc.Settings, auth
 }
 
 func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {
-	return h.auth(next, false)
+	return h.auth(next)
 }

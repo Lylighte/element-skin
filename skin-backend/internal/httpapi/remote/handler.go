@@ -17,5 +17,5 @@ func New(db *database.DB, auth shared.AuthFunc) Handler {
 }
 
 func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {
-	return h.auth(next, false)
+	return h.auth(next)
 }

@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/httpapi/remote"
+	"element-skin/backend/internal/permission"
 )
 
 func TestHandlerAuthRequestsUserAccess(t *testing.T) {
-	var requireAdmin bool
-	h := remote.New(nil, func(next http.HandlerFunc, require bool) http.HandlerFunc {
-		requireAdmin = require
+	var required []permission.Definition
+	h := remote.New(nil, func(next http.HandlerFunc, defs ...permission.Definition) http.HandlerFunc {
+		required = defs
 		return next
 	})
 	wrapped := h.Auth(func(w http.ResponseWriter, req *http.Request) {
@@ -19,7 +20,7 @@ func TestHandlerAuthRequestsUserAccess(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	wrapped(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-	if rec.Code != http.StatusNoContent || requireAdmin {
-		t.Fatalf("remote Auth should request non-admin access: status=%d requireAdmin=%v", rec.Code, requireAdmin)
+	if rec.Code != http.StatusNoContent || len(required) != 0 {
+		t.Fatalf("remote Auth required permissions mismatch: status=%d required=%d", rec.Code, len(required))
 	}
 }

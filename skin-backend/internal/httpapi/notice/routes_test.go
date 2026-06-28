@@ -12,6 +12,7 @@ import (
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/httpapi/notice"
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/permission"
 	noticesvc "element-skin/backend/internal/service/notice"
 	"element-skin/backend/internal/testutil"
 )
@@ -101,13 +102,13 @@ func TestNoticeRoutesErrorsAndAuthWrapperExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	user := testutil.CreateUser(t, db, "notice-route-error-user@test.com", "Password123", "NoticeRouteErrorUser", false)
 	calledAuth := false
-	h := notice.New(db, func(next http.HandlerFunc, admin bool) http.HandlerFunc {
+	h := notice.New(db, func(next http.HandlerFunc, required ...permission.Definition) http.HandlerFunc {
 		calledAuth = true
-		if admin {
-			t.Fatalf("notice auth wrapper should not require admin")
+		if len(required) != 0 {
+			t.Fatalf("notice auth wrapper required permissions=%d, want 0", len(required))
 		}
 		return func(w http.ResponseWriter, req *http.Request) {
-			next(w, req.WithContext(shared.WithUser(req.Context(), user.ID, false)))
+			next(w, req.WithContext(shared.WithActorPermissions(req.Context(), user.ID)))
 		}
 	})
 
@@ -134,10 +135,13 @@ func TestNoticeRoutesErrorsAndAuthWrapperExactly(t *testing.T) {
 
 func userRequest(method, target, userID string, isAdmin bool) *http.Request {
 	req := httptest.NewRequest(method, target, nil)
-	return req.WithContext(shared.WithUser(req.Context(), userID, isAdmin))
+	if isAdmin {
+		return req.WithContext(shared.WithActorPermissions(req.Context(), userID, permission.MustDefinitionByCode("notice.create.any")))
+	}
+	return req.WithContext(shared.WithActorPermissions(req.Context(), userID))
 }
 
-func passAuth(next http.HandlerFunc, _ bool) http.HandlerFunc {
+func passAuth(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
 	return next
 }
 

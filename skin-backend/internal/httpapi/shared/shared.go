@@ -10,42 +10,43 @@ import (
 	"strconv"
 	"strings"
 
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
-type AuthFunc func(http.HandlerFunc, bool) http.HandlerFunc
+type AuthFunc func(http.HandlerFunc, ...permission.Definition) http.HandlerFunc
 
 type ctxKey string
 
 const (
-	userIDKey     ctxKey = "user_id"
-	adminKey      ctxKey = "admin"
-	superAdminKey ctxKey = "super_admin"
+	actorKey ctxKey = "actor"
 )
 
-func WithUser(ctx context.Context, userID string, isAdmin bool, isSuperAdmin ...bool) context.Context {
-	ctx = context.WithValue(ctx, userIDKey, userID)
-	ctx = context.WithValue(ctx, adminKey, isAdmin)
-	super := false
-	if len(isSuperAdmin) > 0 {
-		super = isSuperAdmin[0]
+func WithActor(ctx context.Context, actor permission.Actor) context.Context {
+	return context.WithValue(ctx, actorKey, actor)
+}
+
+func WithActorPermissions(ctx context.Context, userID string, definitions ...permission.Definition) context.Context {
+	bits := permission.NewBitSet(len(permission.Definitions))
+	for _, def := range definitions {
+		bits.Set(def.BitIndex)
 	}
-	return context.WithValue(ctx, superAdminKey, super)
+	return WithActor(ctx, permission.Actor{
+		SubjectID:   "user:" + userID,
+		UserID:      userID,
+		SessionKind: permission.SessionKindWeb,
+		Entrypoint:  permission.EntrypointDashboard,
+		Permissions: bits,
+	})
+}
+
+func CurrentActor(req *http.Request) permission.Actor {
+	actor, _ := req.Context().Value(actorKey).(permission.Actor)
+	return actor
 }
 
 func CurrentUserID(req *http.Request) string {
-	v, _ := req.Context().Value(userIDKey).(string)
-	return v
-}
-
-func CurrentUserIsAdmin(req *http.Request) bool {
-	v, _ := req.Context().Value(adminKey).(bool)
-	return v
-}
-
-func CurrentUserIsSuperAdmin(req *http.Request) bool {
-	v, _ := req.Context().Value(superAdminKey).(bool)
-	return v
+	return CurrentActor(req).UserID
 }
 
 func AsMap(v any) map[string]any {

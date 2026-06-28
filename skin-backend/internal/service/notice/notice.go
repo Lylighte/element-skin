@@ -44,8 +44,8 @@ type Service struct {
 }
 
 type CurrentUser struct {
-	ID      string
-	IsAdmin bool
+	ID                   string
+	CanReadAdminAudience bool
 }
 
 type ListParams struct {
@@ -113,7 +113,7 @@ func (s Service) ListForUser(ctx context.Context, user CurrentUser, params ListP
 	}
 	return s.DB.Notices.ListForUser(ctx, noticedb.UserListOptions{
 		UserID:      user.ID,
-		IsAdmin:     user.IsAdmin,
+		IsAdmin:     user.CanReadAdminAudience,
 		Type:        typ,
 		Limit:       params.Limit,
 		Now:         database.NowMS(),
@@ -412,7 +412,7 @@ func visibleToUser(item model.NoticeView, user CurrentUser, now int64) bool {
 	if item.EndsAt != nil && *item.EndsAt <= now {
 		return false
 	}
-	if item.Audience == AudienceAdmins && !user.IsAdmin {
+	if item.Audience == AudienceAdmins && !user.CanReadAdminAudience {
 		return false
 	}
 	return item.Audience == AudienceUsers || item.Audience == AudienceAdmins

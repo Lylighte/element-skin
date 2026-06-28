@@ -20,7 +20,7 @@ func TestProfileRoutesCreateAndListExactResponses(t *testing.T) {
 	user := testutil.CreateUser(t, db, "site-profile@test.com", "Password123", "SiteProfile", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/me/profiles", strings.NewReader(`{"name":"RouteRole","model":"slim"}`))
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec := httptest.NewRecorder()
 	h.CreateProfile(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"name":"RouteRole"`) || !strings.Contains(rec.Body.String(), `"model":"slim"`) {
@@ -28,7 +28,7 @@ func TestProfileRoutesCreateAndListExactResponses(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/me/profiles?limit=1", nil)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.ListMyProfiles(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"name":"RouteRole"`) || !strings.Contains(rec.Body.String(), `"page_size":1`) {
@@ -53,7 +53,7 @@ func TestProfileRoutesUpdateClearAndDeleteExactState(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPatch, "/me/profiles/"+profile.ID, strings.NewReader(`{"name":"NewRouteRole"}`))
 	req.SetPathValue("pid", profile.ID)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec := httptest.NewRecorder()
 	h.UpdateProfile(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -66,7 +66,7 @@ func TestProfileRoutesUpdateClearAndDeleteExactState(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodDelete, "/me/profiles/"+profile.ID+"/skin", nil)
 	req.SetPathValue("pid", profile.ID)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.ClearProfileSkin(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -79,7 +79,7 @@ func TestProfileRoutesUpdateClearAndDeleteExactState(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodDelete, "/me/profiles/"+profile.ID+"/cape", nil)
 	req.SetPathValue("pid", profile.ID)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.ClearProfileCape(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -92,7 +92,7 @@ func TestProfileRoutesUpdateClearAndDeleteExactState(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodDelete, "/me/profiles/"+profile.ID, nil)
 	req.SetPathValue("pid", profile.ID)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.DeleteProfile(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -114,7 +114,7 @@ func TestProfileRoutesRejectForeignProfileExactly(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPatch, "/me/profiles/"+profile.ID, strings.NewReader(`{"name":"Stolen"}`))
 	req.SetPathValue("pid", profile.ID)
-	req = req.WithContext(shared.WithUser(req.Context(), other.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), other.ID))
 	rec := httptest.NewRecorder()
 	h.UpdateProfile(rec, req)
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"detail":"not allowed"`) {
@@ -135,7 +135,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	target := testutil.CreateProfile(t, db, user.ID, "site_profile_target", "TargetRole")
 
 	req := httptest.NewRequest(http.MethodPost, "/me/profiles", strings.NewReader(`{`))
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec := httptest.NewRecorder()
 	h.CreateProfile(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
@@ -143,7 +143,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/me/profiles", strings.NewReader(`{"name":"bad-name!"}`))
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.CreateProfile(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "角色名只能包含字母") {
@@ -152,7 +152,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodPatch, "/me/profiles/"+target.ID, strings.NewReader(`{"name":"ExistingRole"}`))
 	req.SetPathValue("pid", target.ID)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.UpdateProfile(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"角色名已被占用\"}\n" {
@@ -164,7 +164,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/me/profiles?cursor=not-base64", nil)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.ListMyProfiles(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid cursor\"}\n" {
@@ -173,7 +173,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodDelete, "/me/profiles/missing", nil)
 	req.SetPathValue("pid", "missing")
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.DeleteProfile(rec, req)
 	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"profile not found\"}\n" {
@@ -212,7 +212,7 @@ func TestProfileRoutesRejectForeignTextureClearsWithoutMutation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodDelete, "/me/profiles/"+profile.ID+"/"+tc.name, nil)
 			req.SetPathValue("pid", profile.ID)
-			req = req.WithContext(shared.WithUser(req.Context(), other.ID, false))
+			req = req.WithContext(shared.WithActorPermissions(req.Context(), other.ID))
 			rec := httptest.NewRecorder()
 			tc.call(rec, req)
 			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"not allowed\"}\n" {
