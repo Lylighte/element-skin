@@ -154,6 +154,164 @@ CREATE TABLE IF NOT EXISTS notice_receipts (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS permission_subjects (
+    id TEXT PRIMARY KEY,
+    user_id TEXT UNIQUE,
+    kind TEXT NOT NULL CHECK(kind IN ('user', 'system')),
+    status TEXT NOT NULL CHECK(status IN ('active', 'disabled', 'locked')),
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS permission_resources (
+    id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 65535),
+    code TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS permission_actions (
+    id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 65535),
+    code TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS permission_scopes (
+    id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 65535),
+    code TEXT NOT NULL UNIQUE,
+    resolver_key TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+    id BIGINT PRIMARY KEY CHECK(id > 0 AND id < 281474976710656),
+    code TEXT NOT NULL UNIQUE,
+    bit_index INTEGER NOT NULL UNIQUE CHECK(bit_index >= 0),
+    resource_id INTEGER NOT NULL,
+    action_id INTEGER NOT NULL,
+    scope_id INTEGER NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL,
+    UNIQUE(resource_id, action_id, scope_id),
+    CHECK(id = resource_id::BIGINT * 4294967296 + action_id::BIGINT * 65536 + scope_id::BIGINT),
+    FOREIGN KEY(resource_id) REFERENCES permission_resources(id) ON DELETE RESTRICT,
+    FOREIGN KEY(action_id) REFERENCES permission_actions(id) ON DELETE RESTRICT,
+    FOREIGN KEY(scope_id) REFERENCES permission_scopes(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS roles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    system_role BOOLEAN NOT NULL DEFAULT FALSE,
+    protected BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id TEXT NOT NULL,
+    permission_id BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY(role_id, permission_id),
+    FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    FOREIGN KEY(permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS subject_roles (
+    subject_id TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    granted_by_subject_id TEXT,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY(subject_id, role_id),
+    FOREIGN KEY(subject_id) REFERENCES permission_subjects(id) ON DELETE CASCADE,
+    FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    FOREIGN KEY(granted_by_subject_id) REFERENCES permission_subjects(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS subject_permission_overrides (
+    subject_id TEXT NOT NULL,
+    permission_id BIGINT NOT NULL,
+    effect TEXT NOT NULL CHECK(effect IN ('allow', 'deny')),
+    granted_by_subject_id TEXT,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY(subject_id, permission_id),
+    FOREIGN KEY(subject_id) REFERENCES permission_subjects(id) ON DELETE CASCADE,
+    FOREIGN KEY(permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
+    FOREIGN KEY(granted_by_subject_id) REFERENCES permission_subjects(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_permission_policies (
+    session_kind TEXT NOT NULL,
+    entrypoint TEXT NOT NULL,
+    permission_id BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY(session_kind, entrypoint, permission_id),
+    FOREIGN KEY(permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS delegated_clients (
+    id TEXT PRIMARY KEY,
+    owner_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('active', 'disabled')),
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS delegated_client_permissions (
+    client_id TEXT NOT NULL,
+    permission_id BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY(client_id, permission_id),
+    FOREIGN KEY(client_id) REFERENCES delegated_clients(id) ON DELETE CASCADE,
+    FOREIGN KEY(permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS delegated_permission_grants (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('active', 'revoked')),
+    created_at BIGINT NOT NULL,
+    revoked_at BIGINT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(subject_id) REFERENCES permission_subjects(id) ON DELETE CASCADE,
+    FOREIGN KEY(client_id) REFERENCES delegated_clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS delegated_grant_permissions (
+    grant_id TEXT NOT NULL,
+    permission_id BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY(grant_id, permission_id),
+    FOREIGN KEY(grant_id) REFERENCES delegated_permission_grants(id) ON DELETE CASCADE,
+    FOREIGN KEY(permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS permission_audit_logs (
+    id TEXT PRIMARY KEY,
+    actor_subject_id TEXT,
+    action TEXT NOT NULL,
+    target_subject_id TEXT,
+    target_role_id TEXT,
+    target_permission_id BIGINT,
+    target_client_id TEXT,
+    target_grant_id TEXT,
+    created_at BIGINT NOT NULL,
+    FOREIGN KEY(actor_subject_id) REFERENCES permission_subjects(id) ON DELETE SET NULL,
+    FOREIGN KEY(target_subject_id) REFERENCES permission_subjects(id) ON DELETE SET NULL,
+    FOREIGN KEY(target_role_id) REFERENCES roles(id) ON DELETE SET NULL,
+    FOREIGN KEY(target_permission_id) REFERENCES permissions(id) ON DELETE SET NULL,
+    FOREIGN KEY(target_client_id) REFERENCES delegated_clients(id) ON DELETE SET NULL,
+    FOREIGN KEY(target_grant_id) REFERENCES delegated_permission_grants(id) ON DELETE SET NULL
+);
+
 ALTER TABLE skin_library DROP CONSTRAINT IF EXISTS skin_library_pkey;
 ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash, texture_type);
 ALTER TABLE skin_library ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DEFAULT 0;
@@ -212,6 +370,13 @@ CREATE INDEX IF NOT EXISTS idx_homepage_media_public_order ON homepage_media (en
 CREATE INDEX IF NOT EXISTS idx_notices_active ON notices (enabled, audience, pinned, starts_at, ends_at, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_notices_cleanup ON notices (ends_at) WHERE ends_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_notice_receipts_user ON notice_receipts (user_id, read_at, dismissed_at);
+CREATE INDEX IF NOT EXISTS idx_permission_subjects_user ON permission_subjects (user_id);
+CREATE INDEX IF NOT EXISTS idx_role_permissions_permission ON role_permissions (permission_id, role_id);
+CREATE INDEX IF NOT EXISTS idx_subject_roles_role ON subject_roles (role_id, subject_id);
+CREATE INDEX IF NOT EXISTS idx_subject_permission_overrides_permission ON subject_permission_overrides (permission_id, subject_id);
+CREATE INDEX IF NOT EXISTS idx_session_permission_policies_permission ON session_permission_policies (permission_id, session_kind, entrypoint);
+CREATE INDEX IF NOT EXISTS idx_delegated_clients_owner ON delegated_clients (owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_delegated_permission_grants_user_client ON delegated_permission_grants (user_id, client_id, status);
 
 INSERT INTO settings (key, value) VALUES
 ('microsoft_client_id', ''),

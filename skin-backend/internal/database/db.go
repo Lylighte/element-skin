@@ -14,6 +14,7 @@ import (
 	"element-skin/backend/internal/database/homepage"
 	"element-skin/backend/internal/database/invite"
 	"element-skin/backend/internal/database/notice"
+	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/database/setting"
 	"element-skin/backend/internal/database/texture"
@@ -38,6 +39,7 @@ type DB struct {
 	HomepageMedia homepage.Store
 	Verifications verification.Store
 	Notices       notice.Store
+	Permissions   permissiondb.Store
 }
 
 func Open(ctx context.Context, cfg config.Config) (*DB, error) {
@@ -75,6 +77,7 @@ func New(pool *pgxpool.Pool) *DB {
 		HomepageMedia: homepage.Store{Pool: pool},
 		Verifications: verification.Store{Pool: pool},
 		Notices:       notice.Store{Pool: pool},
+		Permissions:   permissiondb.Store{Pool: pool},
 	}
 }
 
@@ -85,8 +88,10 @@ func (db *DB) Close() {
 }
 
 func (db *DB) Init(ctx context.Context) error {
-	_, err := db.Pool.Exec(ctx, InitSQL)
-	return err
+	if _, err := db.Pool.Exec(ctx, InitSQL); err != nil {
+		return err
+	}
+	return db.Permissions.SeedDefaults(ctx)
 }
 
 func (db *DB) ResetPublicSchema(ctx context.Context) error {
