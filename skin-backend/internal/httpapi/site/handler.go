@@ -33,5 +33,5 @@ func NewWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, sv
 }
 
 func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {
-	return h.auth(next, false)
+	return h.auth(next)
 }

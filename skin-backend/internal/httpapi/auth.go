@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"time"
 
+	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/util"
 )
 
-func (r *Router) auth(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc {
+func (r *Router) auth(next http.HandlerFunc, required ...permission.Definition) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		cookie, err := req.Cookie("access_token")
 		if err != nil || cookie.Value == "" {
@@ -43,14 +45,20 @@ func (r *Router) auth(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc
 			util.Error(w, err)
 			return
 		}
-		if authUser.Banned(time.Now()) {
-			util.Error(w, util.HTTPError{Status: 403, Detail: "user is banned"})
+		actor, err := r.db.Permissions.ActorForUser(req.Context(), authUser.ID, permissiondb.EffectiveOptions{
+			SessionKind: permission.SessionKindWeb,
+			Entrypoint:  permission.EntrypointDashboard,
+		})
+		if err != nil {
+			util.Error(w, err)
 			return
 		}
-		if requireAdmin && !authUser.IsAdmin {
-			util.Error(w, util.HTTPError{Status: 403, Detail: "admin required"})
-			return
+		for _, def := range required {
+			if err := actor.Require(def); err != nil {
+				util.Error(w, util.HTTPError{Status: 403, Detail: "permission denied"})
+				return
+			}
 		}
-		next(w, req.WithContext(shared.WithUser(req.Context(), authUser.ID, authUser.IsAdmin, authUser.IsSuperAdmin)))
+		next(w, req.WithContext(shared.WithActor(req.Context(), actor)))
 	}
 }

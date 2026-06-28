@@ -4,9 +4,12 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/permission"
 	noticesvc "element-skin/backend/internal/service/notice"
 	"element-skin/backend/internal/util"
 )
+
+var readAdminAudiencePermission = permission.MustDefinitionByCode("notice.create.any")
 
 func (h Handler) List(w http.ResponseWriter, req *http.Request) {
 	res, err := h.notices.ListForUser(req.Context(), currentUser(req), noticesvc.ListParams{
@@ -49,5 +52,8 @@ func (h Handler) Dismiss(w http.ResponseWriter, req *http.Request) {
 }
 
 func currentUser(req *http.Request) noticesvc.CurrentUser {
-	return noticesvc.CurrentUser{ID: shared.CurrentUserID(req), IsAdmin: shared.CurrentUserIsAdmin(req)}
+	return noticesvc.CurrentUser{
+		ID:                   shared.CurrentUserID(req),
+		CanReadAdminAudience: shared.CurrentActor(req).Has(readAdminAudiencePermission),
+	}
 }

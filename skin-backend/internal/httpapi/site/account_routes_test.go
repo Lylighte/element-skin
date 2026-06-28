@@ -25,7 +25,7 @@ func TestAccountRoutesMeAndAdminSelfDeleteExactResponses(t *testing.T) {
 	user := testutil.CreateUser(t, db, "site-account@test.com", "Password123", "SiteAccount", false)
 
 	req := httptest.NewRequest(http.MethodGet, "/me", nil)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec := httptest.NewRecorder()
 	h.Me(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"`+user.ID+`"`) || !strings.Contains(rec.Body.String(), `"email":"site-account@test.com"`) {
@@ -34,7 +34,7 @@ func TestAccountRoutesMeAndAdminSelfDeleteExactResponses(t *testing.T) {
 
 	adminUser := testutil.CreateUser(t, db, "site-admin-delete@test.com", "Password123", "SiteAdminDelete", true)
 	req = httptest.NewRequest(http.MethodDelete, "/me", nil)
-	req = req.WithContext(shared.WithUser(req.Context(), adminUser.ID, true))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), adminUser.ID))
 	rec = httptest.NewRecorder()
 	h.DeleteMe(rec, req)
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "管理员不能删除自己的账号") {
@@ -56,7 +56,7 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"display_name":"UpdatedAccount","preferred_language":"en_US"}`))
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec := httptest.NewRecorder()
 	h.UpdateMe(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -84,7 +84,7 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/me/password", strings.NewReader(`{"old_password":"Password123","new_password":"NewPassword123"}`))
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.ChangePassword(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "密码修改成功") {
@@ -116,7 +116,7 @@ func TestAccountRoutesDeleteMeRemovesUserAndInvalidatesCacheExactly(t *testing.T
 	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/me", nil)
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec := httptest.NewRecorder()
 	h.DeleteMe(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
@@ -144,7 +144,7 @@ func TestAccountRoutesRejectConflictsAndWrongOldPasswordExactly(t *testing.T) {
 	other := testutil.CreateUser(t, db, "site-account-other@test.com", "Password123", "SiteAccountOther", false)
 
 	req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"email":"site-account-other@test.com"}`))
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec := httptest.NewRecorder()
 	h.UpdateMe(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"Email already in use"`) {
@@ -156,7 +156,7 @@ func TestAccountRoutesRejectConflictsAndWrongOldPasswordExactly(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/me/password", strings.NewReader(`{"old_password":"WrongPassword","new_password":"NewPassword123"}`))
-	req = req.WithContext(shared.WithUser(req.Context(), user.ID, false))
+	req = req.WithContext(shared.WithActorPermissions(req.Context(), user.ID))
 	rec = httptest.NewRecorder()
 	h.ChangePassword(rec, req)
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"detail":"旧密码错误"`) {

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 
 	"element-skin/backend/internal/httpapi/shared"
@@ -20,21 +21,21 @@ func TestRequestContextAndValueHelpersPreserveExactValues(t *testing.T) {
 	if got := shared.CurrentUserID(req); got != "" {
 		t.Fatalf("request without auth context user ID=%q, want empty", got)
 	}
-	if shared.CurrentUserIsSuperAdmin(req) {
-		t.Fatal("request without auth context must not be super admin")
+	if shared.CurrentActor(req).Permissions != nil {
+		t.Fatal("request without auth context must not contain permissions")
 	}
 
-	req = req.WithContext(shared.WithUser(context.Background(), "user-123", true, true))
+	req = req.WithContext(shared.WithActorPermissions(context.Background(), "user-123", permission.MustDefinitionByCode("permission_protected.manage.any")))
 	if got := shared.CurrentUserID(req); got != "user-123" {
 		t.Fatalf("context user ID=%q, want user-123", got)
 	}
-	if !shared.CurrentUserIsSuperAdmin(req) {
-		t.Fatal("explicit super-admin flag should be preserved")
+	if !shared.CurrentActor(req).Has(permission.MustDefinitionByCode("permission_protected.manage.any")) {
+		t.Fatal("explicit protected permission should be preserved")
 	}
 
-	req = req.WithContext(shared.WithUser(context.Background(), "user-456", true))
-	if shared.CurrentUserIsSuperAdmin(req) {
-		t.Fatal("omitted super-admin flag must default to false")
+	req = req.WithContext(shared.WithActorPermissions(context.Background(), "user-456"))
+	if shared.CurrentActor(req).Has(permission.MustDefinitionByCode("permission_protected.manage.any")) {
+		t.Fatal("omitted protected permission must default to false")
 	}
 
 	value := map[string]any{"enabled": true}

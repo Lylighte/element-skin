@@ -8,8 +8,11 @@ import (
 	"element-skin/backend/internal/database"
 	userstore "element-skin/backend/internal/database/user"
 	"element-skin/backend/internal/httpapi/shared"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
+
+var manageProtectedPermission = permission.MustDefinitionByCode("permission_protected.manage.any")
 
 func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
 	rawCursor := req.URL.Query().Get("cursor")
@@ -50,7 +53,7 @@ func (h Handler) User(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
-	if !shared.CurrentUserIsSuperAdmin(req) {
+	if !shared.CurrentActor(req).Has(manageProtectedPermission) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "super admin required"})
 		return
 	}
@@ -76,7 +79,7 @@ func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) TransferSuperAdmin(w http.ResponseWriter, req *http.Request) {
-	if !shared.CurrentUserIsSuperAdmin(req) {
+	if !shared.CurrentActor(req).Has(manageProtectedPermission) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "super admin required"})
 		return
 	}
@@ -216,7 +219,7 @@ func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
 		return
 	}
-	if user.IsSuperAdmin && !shared.CurrentUserIsSuperAdmin(req) {
+	if user.IsSuperAdmin && !shared.CurrentActor(req).Has(manageProtectedPermission) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot modify super admin"})
 		return
 	}
@@ -284,7 +287,7 @@ func (h Handler) ensureTargetNotSuperAdmin(req *http.Request, targetID string) e
 	if target == nil {
 		return util.HTTPError{Status: 404, Detail: "user not found"}
 	}
-	if target.IsSuperAdmin && !shared.CurrentUserIsSuperAdmin(req) {
+	if target.IsSuperAdmin && !shared.CurrentActor(req).Has(manageProtectedPermission) {
 		return util.HTTPError{Status: 403, Detail: "cannot modify super admin"}
 	}
 	return nil

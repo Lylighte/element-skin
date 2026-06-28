@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/httpapi/microsoft"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
@@ -20,7 +21,7 @@ func TestMicrosoftRoutesAuthURLAndCallbackValidationExactResponses(t *testing.T)
 	cfg := testutil.TestConfig()
 	cfg.SiteURL = "https://skin.example/root"
 	states := redisstore.NewMemoryStore()
-	h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, func(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc {
+	h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
 		return next
 	}, states)
 
@@ -78,7 +79,7 @@ func TestMicrosoftRoutesSettingsFailuresAndDefaultRedirectConsumeStateExactly(t 
 	states := redisstore.NewMemoryStore()
 	cache := redisstore.NewMemoryStore()
 	cache.Err = errors.New("settings cache unavailable")
-	h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: cache}, func(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc {
+	h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: cache}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
 		return next
 	}, states)
 
@@ -102,7 +103,7 @@ func TestMicrosoftRoutesSettingsFailuresAndDefaultRedirectConsumeStateExactly(t 
 	}
 
 	healthyCache := redisstore.NewMemoryStore()
-	h = microsoft.New(cfg, db, settings.Settings{DB: db, Redis: healthyCache}, func(next http.HandlerFunc, requireAdmin bool) http.HandlerFunc {
+	h = microsoft.New(cfg, db, settings.Settings{DB: db, Redis: healthyCache}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
 		return next
 	}, states)
 	if err := microsoft.SeedStateForTest(states, "default-site-state", map[string]any{

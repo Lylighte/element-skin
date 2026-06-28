@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/httpapi/admin"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestHandlerAuthRequestsAdminAccess(t *testing.T) {
-	var requireAdmin bool
-	h := admin.New(testutil.TestConfig(), nil, func(next http.HandlerFunc, require bool) http.HandlerFunc {
-		requireAdmin = require
+	var required []permission.Definition
+	h := admin.New(testutil.TestConfig(), nil, func(next http.HandlerFunc, defs ...permission.Definition) http.HandlerFunc {
+		required = defs
 		return next
 	})
 	wrapped := h.Auth(func(w http.ResponseWriter, req *http.Request) {
@@ -20,7 +21,7 @@ func TestHandlerAuthRequestsAdminAccess(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	wrapped(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-	if rec.Code != http.StatusNoContent || !requireAdmin {
-		t.Fatalf("admin Auth should request admin access: status=%d requireAdmin=%v", rec.Code, requireAdmin)
+	if rec.Code != http.StatusNoContent || len(required) != 1 || required[0].Code != "user.read.any" {
+		t.Fatalf("admin Auth required permissions mismatch: status=%d required=%v", rec.Code, required)
 	}
 }

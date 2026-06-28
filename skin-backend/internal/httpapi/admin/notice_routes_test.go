@@ -10,7 +10,6 @@ import (
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/httpapi/admin"
-	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -196,7 +195,7 @@ func adminNoticeRequest(method, target, body, userID string) *http.Request {
 		reader = strings.NewReader(body)
 	}
 	req := httptest.NewRequest(method, target, reader)
-	return req.WithContext(shared.WithUser(req.Context(), userID, true))
+	return withAdminActor(req, userID)
 }
 
 func decodeAdminNoticeBody(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
