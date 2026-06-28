@@ -177,6 +177,40 @@ func TestImportProfileRequiresTexturePermissionOnlyWhenAssetsExist(t *testing.T)
 	}
 }
 
+func TestImportProfileDeniesActorWithoutProfilePermission(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "import-no-perm@test.com", "Password123", "ImportNoPerm", false)
+	importer := imports.ImportService{DB: db}
+	noProfileActor := importActor(user.ID, "texture.create.owned")
+
+	result, err := importer.ImportProfile(ctx, noProfileActor, "no_perm_import", "NoPermImport", nil)
+	if result != nil || err != (util.HTTPError{Status: 403, Detail: "permission denied"}) {
+		t.Fatalf("import without profile.create.owned result=%#v err=%#v; want exact 403", result, err)
+	}
+	if stored, err := db.Profiles.GetByID(ctx, "no_perm_import"); err != nil || stored != nil {
+		t.Fatalf("denied import persisted profile=%#v err=%v", stored, err)
+	}
+}
+
+func TestImportProfilesDeniesBatchWhenActorLacksPermission(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "batch-no-perm@test.com", "Password123", "BatchNoPerm", false)
+	importer := imports.ImportService{DB: db}
+	noProfileActor := importActor(user.ID)
+
+	result := importer.ImportProfiles(ctx, noProfileActor, []map[string]string{
+		{"profile_id": "batch_perm_a", "profile_name": "BatchPermA"},
+	}, func(context.Context, string) ([]imports.TextureAsset, error) { return nil, nil })
+	if result["success_count"] != 0 || result["failure_count"] != 1 {
+		t.Fatalf("import batch without profile permission should reject all: %#v", result)
+	}
+	if stored, err := db.Profiles.GetByID(ctx, "batch_perm_a"); err != nil || stored != nil {
+		t.Fatalf("denied batch import persisted profile=%#v err=%v", stored, err)
+	}
+}
+
 func TestConcurrentImportsRetryConflictingProfileName(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
