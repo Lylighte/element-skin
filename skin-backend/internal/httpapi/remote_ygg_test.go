@@ -19,7 +19,7 @@ func TestRemoteYggRoutesValidateAndReturnExactBodies(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "remote-ygg@test.com", "Password123", "RemoteYgg", false)
-	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, false, time.Hour)
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

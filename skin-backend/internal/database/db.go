@@ -91,7 +91,15 @@ func (db *DB) Init(ctx context.Context) error {
 	if _, err := db.Pool.Exec(ctx, InitSQL); err != nil {
 		return err
 	}
-	return db.Permissions.SeedDefaults(ctx)
+	if err := db.Permissions.SeedDefaults(ctx); err != nil {
+		return err
+	}
+	_, err := db.Pool.Exec(ctx, `
+		DROP INDEX IF EXISTS idx_users_single_super_admin;
+		ALTER TABLE users DROP COLUMN IF EXISTS is_admin;
+		ALTER TABLE users DROP COLUMN IF EXISTS is_super_admin;
+	`)
+	return err
 }
 
 func (db *DB) ResetPublicSchema(ctx context.Context) error {

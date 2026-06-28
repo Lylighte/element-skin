@@ -30,8 +30,11 @@ func TestNewTestAppCreateHelpersExactState(t *testing.T) {
 	user := CreateUser(t, db, "", "Password123", "", true)
 	emailLocal := strings.TrimSuffix(user.Email, "@example.com")
 	displaySuffix := strings.TrimPrefix(user.DisplayName, "User_")
-	if len(emailLocal) != 8 || !strings.HasSuffix(user.Email, "@example.com") || !strings.HasPrefix(user.DisplayName, "User_") || len(displaySuffix) != 8 || !user.IsAdmin {
+	if len(emailLocal) != 8 || !strings.HasSuffix(user.Email, "@example.com") || !strings.HasPrefix(user.DisplayName, "User_") || len(displaySuffix) != 8 {
 		t.Fatalf("CreateUser generated fields mismatch: %#v", user)
+	}
+	if hasRole, err := db.Permissions.UserHasRole(ctx, user.ID, "admin"); err != nil || !hasRole {
+		t.Fatalf("CreateUser admin role mismatch: hasRole=%v err=%v", hasRole, err)
 	}
 	stored, err := db.Users.GetByID(ctx, user.ID)
 	if err != nil {

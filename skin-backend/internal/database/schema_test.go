@@ -30,58 +30,115 @@ func TestInitSQLContainsExpectedTablesConstraintsIndexesAndSeeds(t *testing.T) {
 	}
 }
 
-func TestInitSQLPromotesOldestAdminOrFirstUserToSuperAdmin(t *testing.T) {
+func TestInitMigratesLegacyAdminColumnsToPermissionRolesAndDropsThem(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	if _, err := db.Pool.Exec(ctx, `
 		TRUNCATE users CASCADE;
-		ALTER TABLE users DROP COLUMN IF EXISTS is_super_admin;
-		ALTER TABLE users DROP COLUMN IF EXISTS created_at;
-		INSERT INTO users (id,email,password,is_admin,display_name) VALUES
-			('z-user','z@test.com','pw',FALSE,'Zed'),
-			('a-admin','a@test.com','pw',TRUE,'AdminA'),
-			('b-admin','b@test.com','pw',TRUE,'AdminB');
+		ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+		ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN DEFAULT FALSE;
+		INSERT INTO users (id,email,password,is_admin,is_super_admin,display_name,created_at) VALUES
+			('z-user','z@test.com','pw',FALSE,FALSE,'Zed',300),
+			('a-admin','a@test.com','pw',TRUE,FALSE,'AdminA',100),
+			('b-admin','b@test.com','pw',TRUE,TRUE,'AdminB',200);
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var adminCount, superCount int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM subject_roles WHERE role_id='admin'),
+			(SELECT COUNT(*) FROM subject_roles WHERE role_id='super_admin')
+	`).Scan(&adminCount, &superCount); err != nil {
+		t.Fatal(err)
+	}
+	if adminCount != 2 || superCount != 1 {
+		t.Fatalf("legacy role migration counts: admin=%d super=%d; want 2 and 1", adminCount, superCount)
+	}
+	var superUserID string
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT ps.user_id
+		FROM subject_roles sr
+		JOIN permission_subjects ps ON ps.id=sr.subject_id
+		WHERE sr.role_id='super_admin'
+	`).Scan(&superUserID); err != nil {
+		t.Fatal(err)
+	}
+	if superUserID != "b-admin" {
+		t.Fatalf("legacy super admin should be preserved exactly, got %q", superUserID)
+	}
+	for _, column := range []string{"is_admin", "is_super_admin"} {
+		var exists bool
+		if err := db.Pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema='public' AND table_name='users' AND column_name=$1
+			)
+		`, column).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if exists {
+			t.Fatalf("legacy column %s should be dropped after migration", column)
+		}
+	}
+}
+
+func TestInitPromotesOldestAdminOrFirstUserWhenNoLegacySuperAdminExists(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `
+		TRUNCATE users CASCADE;
+		ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+		INSERT INTO users (id,email,password,is_admin,display_name,created_at) VALUES
+			('z-user','z@test.com','pw',FALSE,'Zed',300),
+			('a-admin','a@test.com','pw',TRUE,'AdminA',100),
+			('b-admin','b@test.com','pw',TRUE,'AdminB',200);
 	`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var superID string
-	if err := db.Pool.QueryRow(ctx, `SELECT id FROM users WHERE is_super_admin=TRUE`).Scan(&superID); err != nil {
+	var superUserID string
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT ps.user_id
+		FROM subject_roles sr
+		JOIN permission_subjects ps ON ps.id=sr.subject_id
+		WHERE sr.role_id='super_admin'
+	`).Scan(&superUserID); err != nil {
 		t.Fatal(err)
 	}
-	if superID != "a-admin" {
-		t.Fatalf("expected oldest admin to become super admin, got %q", superID)
-	}
-
-	if _, err := db.Pool.Exec(ctx, `UPDATE users SET is_admin=FALSE, is_super_admin=FALSE`); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Pool.QueryRow(ctx, `SELECT id FROM users WHERE is_super_admin=TRUE`).Scan(&superID); err != nil {
-		t.Fatal(err)
-	}
-	if superID != "a-admin" {
-		t.Fatalf("expected first user by migration ordering to become super admin, got %q", superID)
+	if superUserID != "a-admin" {
+		t.Fatalf("oldest legacy admin should become super admin, got %q", superUserID)
 	}
 
 	if _, err := db.Pool.Exec(ctx, `
-		DROP INDEX IF EXISTS idx_users_single_super_admin;
-		UPDATE users SET is_super_admin=TRUE, is_admin=TRUE WHERE id IN ('a-admin','b-admin');
+		DELETE FROM subject_roles;
+		TRUNCATE users CASCADE;
+		INSERT INTO users (id,email,password,display_name,created_at) VALUES
+			('z-user','z@test.com','pw','Zed',300),
+			('a-user','a@test.com','pw','UserA',100);
 	`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var superCount int
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE is_super_admin=TRUE`).Scan(&superCount); err != nil {
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT ps.user_id
+		FROM subject_roles sr
+		JOIN permission_subjects ps ON ps.id=sr.subject_id
+		WHERE sr.role_id='super_admin'
+	`).Scan(&superUserID); err != nil {
 		t.Fatal(err)
 	}
-	if superCount != 1 {
-		t.Fatalf("Init should normalize to exactly one super admin, got %d", superCount)
+	if superUserID != "a-user" {
+		t.Fatalf("oldest user should become super admin when no admin exists, got %q", superUserID)
 	}
 }

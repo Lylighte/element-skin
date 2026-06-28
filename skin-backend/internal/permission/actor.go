@@ -26,3 +26,13 @@ func (a Actor) Require(def Definition) error {
 	}
 	return nil
 }
+
+func (a Actor) PermissionCodes() []string {
+	out := make([]string, 0, len(Definitions))
+	for _, def := range Definitions {
+		if a.Has(def) {
+			out = append(out, def.Code)
+		}
+	}
+	return out
+}

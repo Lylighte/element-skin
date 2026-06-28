@@ -99,15 +99,17 @@ func TestSessionIssueAndRotateUseConfiguredRefreshLifetime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if login["refresh_max_age_seconds"] != 3*24*3600 || login["is_admin"] != true || login["is_super_admin"] != false {
-		t.Fatalf("login should use configured refresh lifetime and roles: %#v", login)
+	loginPermissions := login["permissions"].([]string)
+	if login["refresh_max_age_seconds"] != 3*24*3600 || !containsString(loginPermissions, "user.read.any") || containsString(loginPermissions, "permission_protected.manage.any") {
+		t.Fatalf("login should use configured refresh lifetime and admin permissions: %#v", login)
 	}
 	rotated, err := svc.RotateRefresh(ctx, login["refresh_token"].(string))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rotated["refresh_max_age_seconds"] != 3*24*3600 || rotated["is_admin"] != true || rotated["is_super_admin"] != false {
-		t.Fatalf("rotated session should preserve configured refresh lifetime and roles: %#v", rotated)
+	rotatedPermissions := rotated["permissions"].([]string)
+	if rotated["refresh_max_age_seconds"] != 3*24*3600 || !containsString(rotatedPermissions, "user.read.any") || containsString(rotatedPermissions, "permission_protected.manage.any") {
+		t.Fatalf("rotated session should preserve configured refresh lifetime and permissions: %#v", rotated)
 	}
 }
 

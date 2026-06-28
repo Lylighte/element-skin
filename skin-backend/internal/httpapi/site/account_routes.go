@@ -20,7 +20,7 @@ func (h Handler) Me(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	res, err := h.site.Me(req.Context(), shared.CurrentUserID(req))
+	res, err := h.site.Me(req.Context(), shared.CurrentActor(req))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -55,17 +55,11 @@ func (h Handler) DeleteMe(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	userID := shared.CurrentUserID(req)
-	user, err := h.db.Users.GetByID(req.Context(), userID)
-	if err != nil {
+	if hasProtectedRole, err := h.db.Permissions.UserHasProtectedRole(req.Context(), userID); err != nil {
 		util.Error(w, err)
 		return
-	}
-	if user == nil {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-		return
-	}
-	if user.IsAdmin {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "管理员不能删除自己的账号"})
+	} else if hasProtectedRole {
+		util.Error(w, util.HTTPError{Status: 403, Detail: "protected role holders cannot delete their own account"})
 		return
 	}
 	ok, err := h.site.DeleteUser(req.Context(), userID)

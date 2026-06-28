@@ -37,7 +37,7 @@ func TestAuthRejectsMissingInvalidAndNonAdminExactly(t *testing.T) {
 		t.Fatalf("invalid jwt auth mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, false, time.Hour)
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestAuthRejectsMissingInvalidAndNonAdminExactly(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "admin required") {
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "permission denied") {
 		t.Fatalf("non-admin auth mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
@@ -57,7 +57,7 @@ func TestAuthRedisErrorDoesNotFallBackToDatabase(t *testing.T) {
 	cache := redisstore.NewMemoryStore()
 	cache.Err = errors.New("redis down")
 	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
-	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, true, time.Hour)
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,16 +70,16 @@ func TestAuthRedisErrorDoesNotFallBackToDatabase(t *testing.T) {
 	}
 }
 
-func TestAuthUsesRedisCachedUserStateOnCacheHit(t *testing.T) {
+func TestAuthUsesRedisCachedSubjectIDButRecomputesPermissions(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "auth-cache-hit@test.com", "Password123", "AuthCacheHit", true)
 	cache := testutil.NewMemoryRedis()
-	if err := cache.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID, IsAdmin: false, IsSuperAdmin: false}, time.Minute); err != nil {
+	if err := cache.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
-	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, true, time.Hour)
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,8 +88,8 @@ func TestAuthUsesRedisCachedUserStateOnCacheHit(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "admin required") {
-		t.Fatalf("cached non-admin state should override newer DB admin state until invalidated: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"items"`) {
+		t.Fatalf("cached subject ID should still use DB permissions: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -99,7 +99,7 @@ func TestAuthFailsClosedWhenColdCacheCannotBePopulated(t *testing.T) {
 	user := testutil.CreateUser(t, db, "auth-cache-write@test.com", "Password123", "AuthCacheWrite", false)
 	cache := &authCacheWriteFailStore{Store: redisstore.NewMemoryStore()}
 	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
-	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, false, time.Hour)
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestAuthFailsClosedWhenColdCacheCannotBePopulated(t *testing.T) {
 	}
 }
 
-func TestAuthRejectsBannedUserOnColdCacheAndCachesBanState(t *testing.T) {
+func TestAuthCachesBanStateWithoutBlockingWebDashboard(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "auth-banned-cold@test.com", "Password123", "AuthBannedCold", false)
@@ -129,7 +129,7 @@ func TestAuthRejectsBannedUserOnColdCacheAndCachesBanState(t *testing.T) {
 	}
 	cache := redisstore.NewMemoryStore()
 	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
-	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, false, time.Hour)
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,8 +138,8 @@ func TestAuthRejectsBannedUserOnColdCacheAndCachesBanState(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"user is banned\"}\n" {
-		t.Fatalf("cold-cache banned user mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"`+user.ID+`"`) {
+		t.Fatalf("banned web user should keep dashboard access: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	cached, err := cache.GetAuthUser(t.Context(), user.ID)
 	if err != nil || cached.BannedUntil == nil || *cached.BannedUntil != bannedUntil || !cached.Banned(time.Now()) {

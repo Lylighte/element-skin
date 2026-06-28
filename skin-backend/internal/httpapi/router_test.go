@@ -29,11 +29,11 @@ func TestRouterServeHTTPAddsAuthlibHeaderAndAuthRoutes(t *testing.T) {
 		t.Fatalf("missing authlib API header: %q", rec.Header().Get("X-Authlib-Injector-API-Location"))
 	}
 
-	userToken, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, false, time.Hour)
+	userToken, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	adminToken, err := util.CreateAccessToken(cfg.JWTSecret, admin.ID, true, time.Hour)
+	adminToken, err := util.CreateAccessToken(cfg.JWTSecret, admin.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestRouterServeHTTPAddsAuthlibHeaderAndAuthRoutes(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: userToken})
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"id":"`+user.ID+`"`)) || !bytes.Contains(rec.Body.Bytes(), []byte(`"is_admin":false`)) {
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"id":"`+user.ID+`"`)) || !bytes.Contains(rec.Body.Bytes(), []byte(`"permissions":[`)) {
 		t.Fatalf("/me auth response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
@@ -50,7 +50,7 @@ func TestRouterServeHTTPAddsAuthlibHeaderAndAuthRoutes(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "access_token", Value: userToken})
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden || !bytes.Contains(rec.Body.Bytes(), []byte("admin required")) {
+	if rec.Code != http.StatusForbidden || !bytes.Contains(rec.Body.Bytes(), []byte("permission denied")) {
 		t.Fatalf("non-admin should be forbidden: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
@@ -74,11 +74,11 @@ func TestRouterRegistersRepresentativeRouteGroups(t *testing.T) {
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "route-user@test.com", "Password123", "RouteUser", false)
 	admin := testutil.CreateUser(t, db, "route-admin@test.com", "Password123", "RouteAdmin", true)
-	userToken, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, false, time.Hour)
+	userToken, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	adminToken, err := util.CreateAccessToken(cfg.JWTSecret, admin.ID, true, time.Hour)
+	adminToken, err := util.CreateAccessToken(cfg.JWTSecret, admin.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -126,6 +126,8 @@ var Roles = []Role{
 			"official_whitelist.add.any",
 			"official_whitelist.remove.any",
 			"permission.read.any",
+			"permission.grant.any",
+			"permission.revoke.any",
 			"permission_audit.read.any",
 			"audit.read.any",
 			"cache.invalidate.any",

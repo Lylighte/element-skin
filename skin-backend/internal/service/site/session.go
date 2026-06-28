@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"element-skin/backend/internal/database"
+	permissiondb "element-skin/backend/internal/database/permission"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
@@ -15,12 +17,19 @@ type pendingSession struct {
 	createdAt   int64
 }
 
-func (s Site) prepareSession(ctx context.Context, userID string, isAdmin, isSuperAdmin bool, extra map[string]any) (pendingSession, error) {
+func (s Site) prepareSession(ctx context.Context, userID string, extra map[string]any) (pendingSession, error) {
 	expireDays, err := s.settings().Int(ctx, "jwt_expire_days", s.Cfg.JWTExpireDays)
 	if err != nil {
 		return pendingSession{}, err
 	}
-	access, err := util.CreateAccessToken(s.Cfg.JWTSecret, userID, isAdmin, time.Duration(s.Cfg.AccessMinutes)*time.Minute)
+	access, err := util.CreateAccessToken(s.Cfg.JWTSecret, userID, time.Duration(s.Cfg.AccessMinutes)*time.Minute)
+	if err != nil {
+		return pendingSession{}, err
+	}
+	actor, err := s.DB.Permissions.ActorForUser(ctx, userID, permissiondb.EffectiveOptions{
+		SessionKind: permission.SessionKindWeb,
+		Entrypoint:  permission.EntrypointDashboard,
+	})
 	if err != nil {
 		return pendingSession{}, err
 	}
@@ -32,8 +41,7 @@ func (s Site) prepareSession(ctx context.Context, userID string, isAdmin, isSupe
 	out := map[string]any{
 		"access_token":            access,
 		"refresh_token":           rawRefresh,
-		"is_admin":                isAdmin,
-		"is_super_admin":          isSuperAdmin,
+		"permissions":             actor.PermissionCodes(),
 		"refresh_max_age_seconds": expireDays * 24 * 3600,
 	}
 	for k, v := range extra {
@@ -47,8 +55,8 @@ func (s Site) prepareSession(ctx context.Context, userID string, isAdmin, isSupe
 	}, nil
 }
 
-func (s Site) issueSession(ctx context.Context, userID string, isAdmin, isSuperAdmin bool, extra map[string]any) (map[string]any, error) {
-	pending, err := s.prepareSession(ctx, userID, isAdmin, isSuperAdmin, extra)
+func (s Site) issueSession(ctx context.Context, userID string, extra map[string]any) (map[string]any, error) {
+	pending, err := s.prepareSession(ctx, userID, extra)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +88,7 @@ func (s Site) RotateRefresh(ctx context.Context, raw string) (map[string]any, er
 	if user == nil {
 		return nil, util.HTTPError{Status: 401, Detail: "invalid refresh token"}
 	}
-	pending, err := s.prepareSession(ctx, user.ID, user.IsAdmin, user.IsSuperAdmin, nil)
+	pending, err := s.prepareSession(ctx, user.ID, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -20,7 +20,7 @@ func TestValidateJWTSecretCountsBytes(t *testing.T) {
 }
 
 func TestAccessTokenRoundTrip(t *testing.T) {
-	token, err := CreateAccessToken("abcdefghijklmnopqrstuvwxyz123456", "user-id", true, 3600_000_000_000)
+	token, err := CreateAccessToken("abcdefghijklmnopqrstuvwxyz123456", "user-id", 3600_000_000_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestAccessTokenRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("token did not decode")
 	}
-	if claims["sub"] != "user-id" || claims["is_admin"] != true {
+	if claims["sub"] != "user-id" || claims["is_admin"] != nil {
 		t.Fatalf("unexpected claims: %#v", claims)
 	}
 }

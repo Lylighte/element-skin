@@ -28,8 +28,8 @@ func TestRedisStoreHelpersPreserveStableKeysAndModels(t *testing.T) {
 	}
 
 	bannedUntil := time.Now().Add(time.Minute).UnixMilli()
-	user := AuthUserFromModel(model.User{ID: "u1", IsAdmin: true, IsSuperAdmin: true, BannedUntil: &bannedUntil})
-	if user.ID != "u1" || !user.IsAdmin || !user.IsSuperAdmin || user.BannedUntil == nil || !user.Banned(time.Now()) {
+	user := AuthUserFromModel(model.User{ID: "u1", BannedUntil: &bannedUntil})
+	if user.ID != "u1" || user.BannedUntil == nil || !user.Banned(time.Now()) {
 		t.Fatalf("auth user model conversion mismatch: %#v", user)
 	}
 	expiredBan := time.Now().Add(-time.Minute).UnixMilli()

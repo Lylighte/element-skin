@@ -26,11 +26,13 @@ func TestAccountMeReturnsCountsAndUpdateMePersistsExactFields(t *testing.T) {
 	if err := svc.UpdateMe(ctx, user.ID, map[string]any{"email": "updated-account@test.com", "display_name": "UpdatedAccount", "preferred_language": "en_US", "avatar_hash": "avatar_hash"}); err != nil {
 		t.Fatal(err)
 	}
-	me, err := svc.Me(ctx, user.ID)
+	me, err := svc.Me(ctx, testActor(t, db, user.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
+	permissions := me["permissions"].([]string)
 	if me["email"] != "updated-account@test.com" || me["display_name"] != "UpdatedAccount" || me["lang"] != "en_US" ||
+		!containsString(permissions, "account.read.self") ||
 		me["profile_count"] != 0 || me["texture_count"] != 0 {
 		t.Fatalf("Me response mismatch: %#v", me)
 	}
@@ -52,13 +54,22 @@ func TestAccountMeReturnsDatabaseErrorsInsteadOfZeroCounts(t *testing.T) {
 			if _, err := db.Pool.Exec(ctx, `ALTER TABLE `+tc.table+` RENAME TO unavailable_`+tc.table); err != nil {
 				t.Fatal(err)
 			}
-			result, err := svc.Me(ctx, user.ID)
+			result, err := svc.Me(ctx, testActor(t, db, user.ID))
 			var pgErr *pgconn.PgError
 			if result != nil || !errors.As(err, &pgErr) || pgErr.Code != "42P01" {
 				t.Fatalf("Me result=%#v err=%#v; want nil and PostgreSQL 42P01", result, err)
 			}
 		})
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAccountRejectsInvalidUpdatesAndWrongPasswordExactly(t *testing.T) {

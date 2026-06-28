@@ -98,12 +98,12 @@ func TestMemoryStoreVerificationRateLimitAndAuthCache(t *testing.T) {
 	}
 
 	until := time.Now().Add(time.Hour).UnixMilli()
-	auth := redisstore.AuthUser{ID: "u1", IsAdmin: true, BannedUntil: &until}
+	auth := redisstore.AuthUser{ID: "u1", BannedUntil: &until}
 	if err := store.SetAuthUser(ctx, auth, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	cached, err := store.GetAuthUser(ctx, "u1")
-	if err != nil || !cached.IsAdmin || !cached.Banned(time.Now()) {
+	if err != nil || !cached.Banned(time.Now()) {
 		t.Fatalf("auth cache mismatch: %#v err=%v", cached, err)
 	}
 	if err := store.InvalidateAuthUser(ctx, "u1"); err != nil {

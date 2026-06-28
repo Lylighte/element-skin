@@ -29,7 +29,7 @@ func TestSessionRoutesLoginSetsExactCookies(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/site-login", strings.NewReader(`{"email":"site-login@test.com","password":"Password123"}`))
 	rec := httptest.NewRecorder()
 	h.Login(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"user_id":"`+user.ID+`"`) || !strings.Contains(rec.Body.String(), `"is_admin":false`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"user_id":"`+user.ID+`"`) || !strings.Contains(rec.Body.String(), `"permissions":[`) {
 		t.Fatalf("login body mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	cookies := rec.Result().Cookies()
@@ -99,7 +99,7 @@ func TestSessionRoutesRefreshRotatesAndLogoutRevokesExactly(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: initialRefresh})
 	rec = httptest.NewRecorder()
 	h.RefreshToken(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"is_admin":false`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"permissions":[`) {
 		t.Fatalf("refresh token response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	rotatedRefresh := cookieValue(t, rec.Result().Cookies(), "refresh_token")
@@ -198,8 +198,11 @@ func TestSessionRoutesRegisterCreatesFirstAdminAndProfileExactly(t *testing.T) {
 	}
 	id := jsonStringField(t, rec.Body.String(), "id")
 	user, err := db.Users.GetByID(req.Context(), id)
-	if err != nil || user == nil || !user.IsAdmin || !user.IsSuperAdmin || user.Email != "new-user@test.com" || user.DisplayName != "New User" {
+	if err != nil || user == nil || user.Email != "new-user@test.com" || user.DisplayName != "New User" {
 		t.Fatalf("first registered user should be super admin exactly: user=%#v err=%v", user, err)
+	}
+	if hasRole, err := db.Permissions.UserHasRole(req.Context(), id, "super_admin"); err != nil || !hasRole {
+		t.Fatalf("first registered user role = %v, %v; want super_admin", hasRole, err)
 	}
 	profiles, err := db.Profiles.GetByUser(req.Context(), id, 10)
 	if err != nil || len(profiles) != 1 || profiles[0].Name != "new_user" || profiles[0].ID != util.OfflineUUIDNoDash("new_user") {

@@ -78,12 +78,12 @@ func TestRedisStoreCacheRoundTripsNormalizationAndTTL(t *testing.T) {
 	}
 
 	until := time.Now().Add(time.Hour).UnixMilli()
-	auth := AuthUser{ID: "user-1", IsAdmin: true, IsSuperAdmin: false, BannedUntil: &until}
+	auth := AuthUser{ID: "user-1", BannedUntil: &until}
 	if err := store.SetAuthUser(ctx, auth, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := store.GetAuthUser(ctx, auth.ID); err != nil || got.ID != auth.ID || !got.IsAdmin ||
-		got.IsSuperAdmin || got.BannedUntil == nil || *got.BannedUntil != until {
+	if got, err := store.GetAuthUser(ctx, auth.ID); err != nil || got.ID != auth.ID ||
+		got.BannedUntil == nil || *got.BannedUntil != until {
 		t.Fatalf("auth cache=%#v err=%v", got, err)
 	}
 	if err := store.InvalidateAuthUser(ctx, auth.ID); err != nil {

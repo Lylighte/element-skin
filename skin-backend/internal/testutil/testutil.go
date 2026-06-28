@@ -13,6 +13,7 @@ import (
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/util"
 
@@ -208,10 +209,23 @@ func CreateUser(t testing.TB, db *database.DB, email, password, username string,
 	}
 	user := model.User{
 		ID: randomID(t), Email: email, Password: hash,
-		IsAdmin: isAdmin, IsSuperAdmin: super, PreferredLanguage: "zh_CN", DisplayName: username,
+		PreferredLanguage: "zh_CN", DisplayName: username,
 	}
 	if err := db.Users.Create(context.Background(), user); err != nil {
 		t.Fatalf("create user: %v", err)
+	}
+	if err := db.Permissions.EnsureUserSubject(context.Background(), user.ID); err != nil {
+		t.Fatalf("create user permission subject: %v", err)
+	}
+	if isAdmin {
+		if err := db.Permissions.GrantRole(context.Background(), user.ID, permission.RoleAdmin, ""); err != nil {
+			t.Fatalf("grant admin role: %v", err)
+		}
+	}
+	if super {
+		if err := db.Permissions.GrantRole(context.Background(), user.ID, permission.RoleSuperAdmin, ""); err != nil {
+			t.Fatalf("grant super admin role: %v", err)
+		}
 	}
 	return user
 }

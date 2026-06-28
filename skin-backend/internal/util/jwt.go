@@ -27,12 +27,11 @@ func ValidateJWTSecret(secret string) error {
 	return nil
 }
 
-func CreateAccessToken(secret, userID string, isAdmin bool, ttl time.Duration) (string, error) {
+func CreateAccessToken(secret, userID string, ttl time.Duration) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":      userID,
-		"is_admin": isAdmin,
-		"type":     "access",
-		"exp":      time.Now().Add(ttl).Unix(),
+		"sub":  userID,
+		"type": "access",
+		"exp":  time.Now().Add(ttl).Unix(),
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
 }
