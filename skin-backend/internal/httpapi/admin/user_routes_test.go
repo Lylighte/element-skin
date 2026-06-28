@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/httpapi/admin"
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/model"
@@ -58,7 +59,9 @@ func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.Users(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"`+other.ID+`"`) ||
-		!strings.Contains(rec.Body.String(), `"email":"listed-users@test.com"`) || !strings.Contains(rec.Body.String(), `"page_size":1`) {
+		!strings.Contains(rec.Body.String(), `"email":"listed-users@test.com"`) ||
+		!strings.Contains(rec.Body.String(), `"roles":["user"]`) ||
+		!strings.Contains(rec.Body.String(), `"page_size":1`) {
 		t.Fatalf("admin user list mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
@@ -143,6 +146,210 @@ func TestRoleGrantAndRevokeControlsExactPermissions(t *testing.T) {
 	}
 	if hasRole, err := db.Permissions.UserHasRole(req.Context(), target.ID, permission.RoleAdmin); err != nil || hasRole {
 		t.Fatalf("target admin role after revoke = %v, %v; want false, nil", hasRole, err)
+	}
+}
+
+func TestUserPermissionRoutesExposeCatalogAndOverrideExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	h := admin.NewWithRedis(cfg, db, redis, nil)
+	adminUser := testutil.CreateUser(t, db, "admin-permission-route@test.com", "Password123", "AdminPermissionRoute", true)
+	target := testutil.CreateUser(t, db, "target-permission-route@test.com", "Password123", "TargetPermissionRoute", false)
+
+	cacheTarget := func(t *testing.T) {
+		t.Helper()
+		if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: target.ID}, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertTargetCacheMiss := func(t *testing.T, action string) {
+		t.Helper()
+		if _, err := redis.GetAuthUser(t.Context(), target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+			t.Fatalf("%s should invalidate target auth cache, got %v", action, err)
+		}
+	}
+
+	cacheTarget(t)
+	req := httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/permissions/texture.update_visibility.owned", strings.NewReader(`{"effect":"deny"}`))
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("permission_code", "texture.update_visibility.owned")
+	rec := httptest.NewRecorder()
+	h.SetUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"effect\":\"deny\",\"ok\":true,\"permission_code\":\"texture.update_visibility.owned\"}\n" {
+		t.Fatalf("deny override response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	assertTargetCacheMiss(t, "deny permission override")
+
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/permissions/notice.create.any", strings.NewReader(`{"effect":"allow"}`))
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("permission_code", "notice.create.any")
+	rec = httptest.NewRecorder()
+	h.SetUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"effect\":\"allow\",\"ok\":true,\"permission_code\":\"notice.create.any\"}\n" {
+		t.Fatalf("allow override response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/users/"+target.ID+"/permissions", nil)
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", target.ID)
+	rec = httptest.NewRecorder()
+	h.UserPermissions(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user permissions status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Roles                []string `json:"roles"`
+		EffectivePermissions []string `json:"effective_permissions"`
+		Overrides            []struct {
+			PermissionCode string `json:"permission_code"`
+			Effect         string `json:"effect"`
+			CreatedAt      int64  `json:"created_at"`
+		} `json:"overrides"`
+		Catalog struct {
+			Permissions []struct {
+				ID                  int64  `json:"id"`
+				Code                string `json:"code"`
+				Description         string `json:"description"`
+				BitIndex            int    `json:"bit_index"`
+				Resource            string `json:"resource"`
+				ResourceDescription string `json:"resource_description"`
+				Action              string `json:"action"`
+				ActionDescription   string `json:"action_description"`
+				Scope               string `json:"scope"`
+				ScopeDescription    string `json:"scope_description"`
+			} `json:"permissions"`
+			Roles []struct {
+				ID          string   `json:"id"`
+				Name        string   `json:"name"`
+				Description string   `json:"description"`
+				SystemRole  bool     `json:"system_role"`
+				Protected   bool     `json:"protected"`
+				Permissions []string `json:"permissions"`
+			} `json:"roles"`
+		} `json:"catalog"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Roles) != 1 || body.Roles[0] != permission.RoleUser {
+		t.Fatalf("target roles mismatch: %#v", body.Roles)
+	}
+	if !containsString(body.EffectivePermissions, "notice.create.any") || containsString(body.EffectivePermissions, "texture.update_visibility.owned") || !containsString(body.EffectivePermissions, "texture.update_metadata.owned") {
+		t.Fatalf("effective permissions mismatch after overrides: %#v", body.EffectivePermissions)
+	}
+	if len(body.Overrides) != 2 ||
+		body.Overrides[0].PermissionCode != "notice.create.any" ||
+		body.Overrides[0].Effect != "allow" ||
+		body.Overrides[0].CreatedAt <= 0 ||
+		body.Overrides[1].PermissionCode != "texture.update_visibility.owned" ||
+		body.Overrides[1].Effect != "deny" ||
+		body.Overrides[1].CreatedAt <= 0 {
+		t.Fatalf("overrides response mismatch: %#v", body.Overrides)
+	}
+	if len(body.Catalog.Permissions) != len(permission.Definitions) || body.Catalog.Permissions[0].Code != "account.read.self" || body.Catalog.Permissions[0].Resource != "account" || body.Catalog.Permissions[0].Action != "read" || body.Catalog.Permissions[0].Scope != "self" {
+		t.Fatalf("permission catalog mismatch: first=%#v len=%d", body.Catalog.Permissions[0], len(body.Catalog.Permissions))
+	}
+	if len(body.Catalog.Roles) != len(permission.Roles) || body.Catalog.Roles[0].ID != permission.RoleUser || body.Catalog.Roles[0].Name != "用户" || !containsString(body.Catalog.Roles[0].Permissions, "account.read.self") {
+		t.Fatalf("role catalog mismatch: first=%#v len=%d", body.Catalog.Roles[0], len(body.Catalog.Roles))
+	}
+
+	cacheTarget(t)
+	req = httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID+"/permissions/texture.update_visibility.owned", nil)
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("permission_code", "texture.update_visibility.owned")
+	rec = httptest.NewRecorder()
+	h.ClearUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true,\"permission_code\":\"texture.update_visibility.owned\"}\n" {
+		t.Fatalf("clear override response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	assertTargetCacheMiss(t, "clear permission override")
+	bits, err := db.Permissions.EffectivePermissionsForUser(t.Context(), target.ID, permissiondb.EffectiveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bits.Has(permission.MustDefinitionByCode("texture.update_visibility.owned").BitIndex) {
+		t.Fatal("clearing deny override should restore texture.update_visibility.owned")
+	}
+}
+
+func TestUserPermissionRoutesRejectInvalidAndProtectedOperationsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	h := admin.New(testutil.TestConfig(), db, nil)
+	adminUser := testutil.CreateUser(t, db, "admin-permission-reject@test.com", "Password123", "AdminPermissionReject", true)
+	superAdmin := testutil.CreateUser(t, db, "super-permission-reject@test.com", "Password123", "SuperPermissionReject", true, true)
+	target := testutil.CreateUser(t, db, "target-permission-reject@test.com", "Password123", "TargetPermissionReject", false)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users/missing-user/permissions", nil)
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", "missing-user")
+	rec := httptest.NewRecorder()
+	h.UserPermissions(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+		t.Fatalf("missing user permissions mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/permissions/nope.nope.nope", strings.NewReader(`{"effect":"allow"}`))
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("permission_code", "nope.nope.nope")
+	rec = httptest.NewRecorder()
+	h.SetUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"permission not found\"}\n" {
+		t.Fatalf("unknown permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/permissions/notice.create.any", strings.NewReader(`{"effect":"inherit"}`))
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("permission_code", "notice.create.any")
+	rec = httptest.NewRecorder()
+	h.SetUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"effect must be allow or deny\"}\n" {
+		t.Fatalf("invalid effect mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/permissions/permission_protected.manage.any", strings.NewReader(`{"effect":"allow"}`))
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("permission_code", "permission_protected.manage.any")
+	rec = httptest.NewRecorder()
+	h.SetUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"protected permission management required\"}\n" {
+		t.Fatalf("plain admin protected permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/permissions/permission_protected.manage.any", strings.NewReader(`{"effect":"allow"}`))
+	req = withProtectedActor(req, superAdmin.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("permission_code", "permission_protected.manage.any")
+	rec = httptest.NewRecorder()
+	h.SetUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"effect\":\"allow\",\"ok\":true,\"permission_code\":\"permission_protected.manage.any\"}\n" {
+		t.Fatalf("protected actor grant protected permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+superAdmin.ID+"/permissions/permission_protected.manage.any", strings.NewReader(`{"effect":"deny"}`))
+	req = withProtectedActor(req, superAdmin.ID)
+	req.SetPathValue("user_id", superAdmin.ID)
+	req.SetPathValue("permission_code", "permission_protected.manage.any")
+	rec = httptest.NewRecorder()
+	h.SetUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"cannot modify protected permission on yourself\"}\n" {
+		t.Fatalf("self protected override mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID+"/permissions/notice.create.any", nil)
+	req = withAdminActor(req, adminUser.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("permission_code", "notice.create.any")
+	rec = httptest.NewRecorder()
+	h.ClearUserPermissionOverride(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"permission override not found\"}\n" {
+		t.Fatalf("missing clear override mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -731,4 +938,13 @@ func (r *authInvalidateFailRedis) InvalidateAuthUser(ctx context.Context, userID
 
 func strconvI64(v int64) string {
 	return strconv.FormatInt(v, 10)
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
