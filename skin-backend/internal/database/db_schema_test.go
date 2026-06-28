@@ -52,7 +52,7 @@ func TestDBInitSchemaDefaultsAndCoreHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scannedUser == nil || scannedUser.ID != user.ID || scannedUser.Email != user.Email || !scannedUser.IsAdmin ||
+	if scannedUser == nil || scannedUser.ID != user.ID || scannedUser.Email != user.Email ||
 		scannedUser.PreferredLanguage != "zh_CN" || scannedUser.DisplayName != "ScanUser" || scannedUser.BannedUntil != nil ||
 		scannedUser.AvatarHash == nil || *scannedUser.AvatarHash != "avatar_hash" {
 		t.Fatalf("GetUserByID/scanUser mismatch: %#v", scannedUser)

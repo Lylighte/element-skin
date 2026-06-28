@@ -24,8 +24,11 @@ func TestAuthRegisterCreatesFirstAdminAndOfflineProfileExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	user, err := db.Users.GetByID(ctx, userID)
-	if err != nil || user == nil || !user.IsAdmin || !user.IsSuperAdmin || user.Email != "auth-service@test.com" || user.DisplayName != "AuthService" {
+	if err != nil || user == nil || user.Email != "auth-service@test.com" || user.DisplayName != "AuthService" {
 		t.Fatalf("registered user mismatch: user=%#v err=%v", user, err)
+	}
+	if hasRole, err := db.Permissions.UserHasRole(ctx, userID, "super_admin"); err != nil || !hasRole {
+		t.Fatalf("first registered user should receive super_admin role: hasRole=%v err=%v", hasRole, err)
 	}
 	profiles, err := db.Profiles.GetByUser(ctx, userID, 10)
 	if err != nil || len(profiles) != 1 || profiles[0].ID != util.OfflineUUIDNoDash("auth_service") || profiles[0].Name != "auth_service" {
@@ -580,7 +583,10 @@ func TestConcurrentRegistrationsRetryConflictingGeneratedProfileName(t *testing.
 		SELECT
 			(SELECT COUNT(*) FROM users WHERE id = ANY($1)),
 			(SELECT COUNT(*) FROM profiles WHERE user_id = ANY($1)),
-			(SELECT COUNT(*) FROM users WHERE id = ANY($1) AND is_super_admin=TRUE)
+			(SELECT COUNT(*)
+			 FROM subject_roles sr
+			 JOIN permission_subjects ps ON ps.id=sr.subject_id
+			 WHERE ps.user_id = ANY($1) AND sr.role_id='super_admin')
 	`, userIDs).Scan(&users, &profiles, &superAdmins); err != nil {
 		t.Fatal(err)
 	}

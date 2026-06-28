@@ -30,13 +30,13 @@ func TestAccountRoutesMeAndAdminSelfDeleteExactResponses(t *testing.T) {
 		t.Fatalf("me response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	adminUser := testutil.CreateUser(t, db, "site-admin-delete@test.com", "Password123", "SiteAdminDelete", true)
+	adminUser := testutil.CreateUser(t, db, "site-admin-delete@test.com", "Password123", "SiteAdminDelete", true, true)
 	req = httptest.NewRequest(http.MethodDelete, "/me", nil)
 	req = withUserActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
 	h.DeleteMe(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "管理员不能删除自己的账号") {
-		t.Fatalf("admin self delete should be rejected exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "protected role holders cannot delete their own account") {
+		t.Fatalf("protected role self delete should be rejected exactly: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	if got, err := db.Users.GetByID(req.Context(), adminUser.ID); err != nil || got == nil {
 		t.Fatalf("admin should still exist after rejected delete: user=%#v err=%v", got, err)
@@ -49,7 +49,7 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	redis := testutil.NewMemoryRedis()
 	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
 	user := testutil.CreateUser(t, db, "site-account-update@test.com", "Password123", "SiteAccountUpdate", false)
-	if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID, IsAdmin: false}, time.Minute); err != nil {
+	if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +74,7 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 		t.Fatalf("login before change password mismatch: status=%d body=%q", loginRec.Code, loginRec.Body.String())
 	}
 	refresh := cookieValue(t, loginRec.Result().Cookies(), "refresh_token")
-	if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID, IsAdmin: false}, time.Minute); err != nil {
+	if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	if err := redis.SetYggToken(t.Context(), model.Token{AccessToken: "account_change_password_ygg", UserID: user.ID, CreatedAt: time.Now().UnixMilli()}, time.Hour); err != nil {
@@ -106,7 +106,7 @@ func TestAccountRoutesDeleteMeRemovesUserAndInvalidatesCacheExactly(t *testing.T
 	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
 	user := testutil.CreateUser(t, db, "site-delete-me@test.com", "Password123", "SiteDeleteMe", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_delete_me_profile", "SiteDeleteMeProfile")
-	if err := redis.SetAuthUser(context.Background(), redisstore.AuthUser{ID: user.ID, IsAdmin: false}, time.Minute); err != nil {
+	if err := redis.SetAuthUser(context.Background(), redisstore.AuthUser{ID: user.ID}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	if err := redis.SetYggToken(t.Context(), model.Token{AccessToken: "delete_me_ygg", UserID: user.ID, CreatedAt: time.Now().UnixMilli()}, time.Hour); err != nil {

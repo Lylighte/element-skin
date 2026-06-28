@@ -5,8 +5,8 @@ import "testing"
 func TestModelStructsPreserveExactFields(t *testing.T) {
 	bannedUntil := int64(123)
 	avatar := "avatar"
-	user := User{ID: "uid", Email: "email", Password: "hash", IsAdmin: true, PreferredLanguage: "zh_CN", DisplayName: "User", BannedUntil: &bannedUntil, AvatarHash: &avatar}
-	if user.ID != "uid" || user.Email != "email" || user.Password != "hash" || !user.IsAdmin || user.PreferredLanguage != "zh_CN" || user.DisplayName != "User" ||
+	user := User{ID: "uid", Email: "email", Password: "hash", PreferredLanguage: "zh_CN", DisplayName: "User", BannedUntil: &bannedUntil, AvatarHash: &avatar}
+	if user.ID != "uid" || user.Email != "email" || user.Password != "hash" || user.PreferredLanguage != "zh_CN" || user.DisplayName != "User" ||
 		user.BannedUntil == nil || *user.BannedUntil != 123 || user.AvatarHash == nil || *user.AvatarHash != "avatar" {
 		t.Fatalf("User fields mismatch: %#v", user)
 	}

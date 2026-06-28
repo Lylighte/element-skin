@@ -27,8 +27,11 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user == nil || user.Email != "site-user@test.com" || user.DisplayName != "SiteUser" || !user.IsAdmin || !user.IsSuperAdmin {
+	if user == nil || user.Email != "site-user@test.com" || user.DisplayName != "SiteUser" {
 		t.Fatalf("registered first user mismatch: %#v", user)
+	}
+	if hasRole, err := db.Permissions.UserHasRole(ctx, userID, "super_admin"); err != nil || !hasRole {
+		t.Fatalf("first registered user role mismatch: hasRole=%v err=%v", hasRole, err)
 	}
 	profiles, err := db.Profiles.GetByUser(ctx, userID, 10)
 	if err != nil {
@@ -42,14 +45,16 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if login["user_id"] != userID || login["is_admin"] != true || login["is_super_admin"] != true || login["access_token"] == "" || login["refresh_token"] == "" {
+	loginPermissions := login["permissions"].([]string)
+	if login["user_id"] != userID || !containsString(loginPermissions, "permission_protected.manage.any") || login["access_token"] == "" || login["refresh_token"] == "" {
 		t.Fatalf("login response mismatch: %#v", login)
 	}
 	rotated, err := site.RotateRefresh(ctx, login["refresh_token"].(string))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rotated["is_admin"] != true || rotated["is_super_admin"] != true || rotated["access_token"] == "" || rotated["refresh_token"] == "" || rotated["refresh_token"] == login["refresh_token"] {
+	rotatedPermissions := rotated["permissions"].([]string)
+	if !containsString(rotatedPermissions, "permission_protected.manage.any") || rotated["access_token"] == "" || rotated["refresh_token"] == "" || rotated["refresh_token"] == login["refresh_token"] {
 		t.Fatalf("rotated session mismatch: %#v", rotated)
 	}
 	if _, err := site.RotateRefresh(ctx, login["refresh_token"].(string)); err == nil {
@@ -65,7 +70,7 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 	if err := site.UpdateMe(ctx, userID, map[string]any{"email": "updated-site@test.com", "display_name": "UpdatedSite", "preferred_language": "en_US", "avatar_hash": "avatar1"}); err != nil {
 		t.Fatal(err)
 	}
-	me, err := site.Me(ctx, userID)
+	me, err := site.Me(ctx, testActor(t, db, userID))
 	if err != nil {
 		t.Fatal(err)
 	}

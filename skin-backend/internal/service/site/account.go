@@ -6,12 +6,14 @@ import (
 	"strings"
 
 	userstore "element-skin/backend/internal/database/user"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 
 	"github.com/jackc/pgx/v5"
 )
 
-func (s Site) Me(ctx context.Context, userID string) (map[string]any, error) {
+func (s Site) Me(ctx context.Context, actor permission.Actor) (map[string]any, error) {
+	userID := actor.UserID
 	u, err := s.DB.Users.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -29,7 +31,7 @@ func (s Site) Me(ctx context.Context, userID string) (map[string]any, error) {
 	}
 	return map[string]any{
 		"id": u.ID, "email": u.Email, "lang": u.PreferredLanguage, "display_name": u.DisplayName,
-		"is_admin": u.IsAdmin, "is_super_admin": u.IsSuperAdmin, "banned_until": u.BannedUntil, "avatar_hash": u.AvatarHash,
+		"banned_until": u.BannedUntil, "avatar_hash": u.AvatarHash, "permissions": actor.PermissionCodes(),
 		"profile_count": pc, "texture_count": tc,
 	}, nil
 }

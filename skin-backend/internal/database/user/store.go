@@ -13,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const firstSuperAdminLockID int64 = 0x454C454D454E54
 const displayNameLockSeed int64 = 0x444953504C4159
 
 var ErrDisplayNameConflict = errors.New("display name already exists")
@@ -49,8 +48,8 @@ func (s Store) Create(ctx context.Context, u model.User) error {
 	if u.CreatedAt == 0 {
 		u.CreatedAt = time.Now().UnixMilli()
 	}
-	_, err := s.Pool.Exec(ctx, `INSERT INTO users (id,email,password,is_admin,is_super_admin,display_name,avatar_hash,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		u.ID, u.Email, u.Password, u.IsAdmin, u.IsSuperAdmin, u.DisplayName, u.AvatarHash, u.CreatedAt)
+	_, err := s.Pool.Exec(ctx, `INSERT INTO users (id,email,password,display_name,avatar_hash,created_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		u.ID, u.Email, u.Password, u.DisplayName, u.AvatarHash, u.CreatedAt)
 	return err
 }
 
@@ -63,24 +62,11 @@ func (s Store) CreateWithProfile(ctx context.Context, u model.User, p model.Prof
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if u.IsSuperAdmin {
-		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, firstSuperAdminLockID); err != nil {
-			return err
-		}
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE is_super_admin=TRUE)`).Scan(&exists); err != nil {
-			return err
-		}
-		if exists {
-			u.IsAdmin = false
-			u.IsSuperAdmin = false
-		}
-	}
 	if err := lockDisplayName(ctx, tx, u.DisplayName, ""); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO users (id,email,password,is_admin,is_super_admin,display_name,avatar_hash,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		u.ID, u.Email, u.Password, u.IsAdmin, u.IsSuperAdmin, u.DisplayName, u.AvatarHash, u.CreatedAt); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO users (id,email,password,display_name,avatar_hash,created_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		u.ID, u.Email, u.Password, u.DisplayName, u.AvatarHash, u.CreatedAt); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO profiles (id,user_id,name,texture_model,skin_hash,cape_hash) VALUES ($1,$2,$3,$4,$5,$6)`,
@@ -327,8 +313,6 @@ func PublicUser(u model.User) map[string]any {
 		"id":                 u.ID,
 		"email":              u.Email,
 		"display_name":       u.DisplayName,
-		"is_admin":           u.IsAdmin,
-		"is_super_admin":     u.IsSuperAdmin,
 		"banned_until":       u.BannedUntil,
 		"preferred_language": u.PreferredLanguage,
 		"avatar_hash":        u.AvatarHash,
@@ -336,10 +320,10 @@ func PublicUser(u model.User) map[string]any {
 	}
 }
 
-const userSelectSQL = `SELECT id,email,password,is_admin,is_super_admin,preferred_language,display_name,created_at,banned_until,avatar_hash FROM users`
+const userSelectSQL = `SELECT id,email,password,preferred_language,display_name,created_at,banned_until,avatar_hash FROM users`
 
 func scan(row pgx.Row) (model.User, error) {
 	var u model.User
-	err := row.Scan(&u.ID, &u.Email, &u.Password, &u.IsAdmin, &u.IsSuperAdmin, &u.PreferredLanguage, &u.DisplayName, &u.CreatedAt, &u.BannedUntil, &u.AvatarHash)
+	err := row.Scan(&u.ID, &u.Email, &u.Password, &u.PreferredLanguage, &u.DisplayName, &u.CreatedAt, &u.BannedUntil, &u.AvatarHash)
 	return u, err
 }

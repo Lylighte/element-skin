@@ -72,189 +72,77 @@ func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
 		t.Fatalf("self delete should be forbidden exactly: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+adminUser.ID+"/toggle-admin", nil)
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+adminUser.ID+"/roles/super_admin", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", adminUser.ID)
+	req.SetPathValue("role_id", permission.RoleSuperAdmin)
 	req = withProtectedActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
-	h.ToggleUserAdmin(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "cannot change your own admin status") {
-		t.Fatalf("self admin toggle should be forbidden exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	h.GrantUserRole(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "cannot grant protected role to yourself") {
+		t.Fatalf("self protected role grant should be forbidden exactly: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
-func TestSuperAdminOnlyAdminRoleControls(t *testing.T) {
+func TestRoleGrantAndRevokeControlsExactPermissions(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	h := admin.New(cfg, db, nil)
-	superAdmin := testutil.CreateUser(t, db, "super-role@test.com", "Password123", "SuperRole", true, true)
+	protectedAdmin := testutil.CreateUser(t, db, "protected-role@test.com", "Password123", "ProtectedRole", true, true)
 	plainAdmin := testutil.CreateUser(t, db, "plain-role@test.com", "Password123", "PlainRole", true)
 	target := testutil.CreateUser(t, db, "target-role@test.com", "Password123", "TargetRole", false)
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req := httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/roles/admin", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("role_id", permission.RoleAdmin)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec := httptest.NewRecorder()
-	h.ToggleUserAdmin(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "super admin required") {
-		t.Fatalf("plain admin toggle should require super admin: status=%d body=%q", rec.Code, rec.Body.String())
+	h.GrantUserRole(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true,\"role_id\":\"admin\"}\n" {
+		t.Fatalf("admin role grant response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if hasRole, err := db.Permissions.UserHasRole(req.Context(), target.ID, permission.RoleAdmin); err != nil || !hasRole {
+		t.Fatalf("target admin role after grant = %v, %v; want true, nil", hasRole, err)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/roles/super_admin", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
-	req = withProtectedActor(req, superAdmin.ID)
-	rec = httptest.NewRecorder()
-	h.ToggleUserAdmin(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"is_admin":true`) {
-		t.Fatalf("super admin toggle response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
-	}
-
-	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
-	req = withAdminActor(req, "admin-test-user")
-	req.SetPathValue("user_id", target.ID)
-	req = withProtectedActor(req, superAdmin.ID)
-	rec = httptest.NewRecorder()
-	h.TransferSuperAdmin(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("transfer super admin response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
-	}
-	oldSuper, err := db.Users.GetByID(req.Context(), superAdmin.ID)
-	if err != nil || oldSuper == nil || oldSuper.IsSuperAdmin || !oldSuper.IsAdmin {
-		t.Fatalf("old super admin should become plain admin: user=%#v err=%v", oldSuper, err)
-	}
-	newSuper, err := db.Users.GetByID(req.Context(), target.ID)
-	if err != nil || newSuper == nil || !newSuper.IsSuperAdmin || !newSuper.IsAdmin {
-		t.Fatalf("target should become super admin: user=%#v err=%v", newSuper, err)
-	}
-}
-
-func TestSuperAdminRoleControlsRejectExactInvalidTargets(t *testing.T) {
-	db, _ := testutil.NewTestApp(t)
-	cfg := testutil.TestConfig()
-	h := admin.New(cfg, db, nil)
-	superAdmin := testutil.CreateUser(t, db, "super-role-errors@test.com", "Password123", "SuperRoleErrors", true, true)
-	plainAdmin := testutil.CreateUser(t, db, "plain-role-errors@test.com", "Password123", "PlainRoleErrors", true)
-	target := testutil.CreateUser(t, db, "target-role-errors@test.com", "Password123", "TargetRoleErrors", false)
-
-	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
-	req = withAdminActor(req, "admin-test-user")
-	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("role_id", permission.RoleSuperAdmin)
 	req = withAdminActor(req, plainAdmin.ID)
-	rec := httptest.NewRecorder()
-	h.TransferSuperAdmin(rec, req)
-	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"super admin required\"}\n" {
-		t.Fatalf("plain admin transfer mismatch: status=%d body=%q", rec.Code, rec.Body.String())
-	}
-
-	req = httptest.NewRequest(http.MethodPost, "/admin/users/"+superAdmin.ID+"/transfer-super-admin", nil)
-	req = withAdminActor(req, "admin-test-user")
-	req.SetPathValue("user_id", superAdmin.ID)
-	req = withProtectedActor(req, superAdmin.ID)
 	rec = httptest.NewRecorder()
-	h.TransferSuperAdmin(rec, req)
-	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"target is already current super admin\"}\n" {
-		t.Fatalf("self transfer mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	h.GrantUserRole(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"protected role management required\"}\n" {
+		t.Fatalf("plain admin protected role grant mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/admin/users/missing-user/transfer-super-admin", nil)
-	req = withAdminActor(req, "admin-test-user")
-	req.SetPathValue("user_id", "missing-user")
-	req = withProtectedActor(req, superAdmin.ID)
-	rec = httptest.NewRecorder()
-	h.TransferSuperAdmin(rec, req)
-	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
-		t.Fatalf("missing transfer target mismatch: status=%d body=%q", rec.Code, rec.Body.String())
-	}
-
-	currentSuper, err := db.Users.GetByID(req.Context(), superAdmin.ID)
-	if err != nil || currentSuper == nil || !currentSuper.IsSuperAdmin {
-		t.Fatalf("invalid transfer attempts should keep current super admin: user=%#v err=%v", currentSuper, err)
-	}
-}
-
-func TestTransferSuperAdminPreservesRolesWhenTargetCacheInvalidationFails(t *testing.T) {
-	db, _ := testutil.NewTestApp(t)
-	cfg := testutil.TestConfig()
-	cache := &authInvalidateFailRedis{
-		Store:  testutil.NewMemoryRedis(),
-		failAt: 2,
-	}
-	h := admin.NewWithRedis(cfg, db, cache, nil)
-	superAdmin := testutil.CreateUser(t, db, "transfer-cache-super@test.com", "Password123", "TransferCacheSuper", true, true)
-	target := testutil.CreateUser(t, db, "transfer-cache-target@test.com", "Password123", "TransferCacheTarget", false)
-
-	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/roles/super_admin", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
-	req = withProtectedActor(req, superAdmin.ID)
-	rec := httptest.NewRecorder()
+	req.SetPathValue("role_id", permission.RoleSuperAdmin)
+	req = withProtectedActor(req, protectedAdmin.ID)
+	rec = httptest.NewRecorder()
+	h.GrantUserRole(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true,\"role_id\":\"super_admin\"}\n" {
+		t.Fatalf("protected role grant response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if hasRole, err := db.Permissions.UserHasRole(req.Context(), target.ID, permission.RoleSuperAdmin); err != nil || !hasRole {
+		t.Fatalf("target super admin role after grant = %v, %v; want true, nil", hasRole, err)
+	}
 
-	h.TransferSuperAdmin(rec, req)
-
-	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
-		t.Fatalf("transfer cache failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
-	}
-	if len(cache.userIDs) != 2 || cache.userIDs[0] != superAdmin.ID || cache.userIDs[1] != target.ID {
-		t.Fatalf("cache invalidations = %#v, want [%q %q]", cache.userIDs, superAdmin.ID, target.ID)
-	}
-	unchangedSuper, err := db.Users.GetByID(t.Context(), superAdmin.ID)
-	if err != nil || unchangedSuper == nil || !unchangedSuper.IsAdmin || !unchangedSuper.IsSuperAdmin {
-		t.Fatalf("failed transfer must preserve current super admin: user=%#v err=%v", unchangedSuper, err)
-	}
-	unchangedTarget, err := db.Users.GetByID(t.Context(), target.ID)
-	if err != nil || unchangedTarget == nil || unchangedTarget.IsAdmin || unchangedTarget.IsSuperAdmin {
-		t.Fatalf("failed transfer must preserve target roles: user=%#v err=%v", unchangedTarget, err)
-	}
-}
-
-func TestTransferSuperAdminInvalidatesCachesAgainAfterCommit(t *testing.T) {
-	db, _ := testutil.NewTestApp(t)
-	cfg := testutil.TestConfig()
-	baseCache := testutil.NewMemoryRedis()
-	superAdmin := testutil.CreateUser(t, db, "transfer-recache-super@test.com", "Password123", "TransferRecacheSuper", true, true)
-	target := testutil.CreateUser(t, db, "transfer-recache-target@test.com", "Password123", "TransferRecacheTarget", false)
-	cache := &repopulateDuringTransferRedis{
-		Store: baseCache,
-		oldUsers: map[string]redisstore.AuthUser{
-			superAdmin.ID: redisstore.AuthUserFromModel(superAdmin),
-			target.ID:     redisstore.AuthUserFromModel(target),
-		},
-	}
-	h := admin.NewWithRedis(cfg, db, cache, nil)
-
-	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/transfer-super-admin", nil)
+	req = httptest.NewRequest(http.MethodDelete, "/admin/users/"+target.ID+"/roles/admin", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
-	req = withProtectedActor(req, superAdmin.ID)
-	rec := httptest.NewRecorder()
-	h.TransferSuperAdmin(rec, req)
-
-	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
-		t.Fatalf("transfer response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	req.SetPathValue("role_id", permission.RoleAdmin)
+	req = withAdminActor(req, plainAdmin.ID)
+	rec = httptest.NewRecorder()
+	h.RevokeUserRole(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true,\"role_id\":\"admin\"}\n" {
+		t.Fatalf("role revoke response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
-	wantInvalidations := []string{superAdmin.ID, target.ID, superAdmin.ID, target.ID}
-	if len(cache.userIDs) != len(wantInvalidations) {
-		t.Fatalf("cache invalidations=%#v, want %#v", cache.userIDs, wantInvalidations)
-	}
-	for i, userID := range wantInvalidations {
-		if cache.userIDs[i] != userID {
-			t.Fatalf("cache invalidations=%#v, want %#v", cache.userIDs, wantInvalidations)
-		}
-	}
-	for _, userID := range []string{superAdmin.ID, target.ID} {
-		if _, err := baseCache.GetAuthUser(t.Context(), userID); !errors.Is(err, redisstore.ErrCacheMiss) {
-			t.Fatalf("post-commit cache for %q must be invalidated, got %v", userID, err)
-		}
-	}
-	oldSuper, err := db.Users.GetByID(t.Context(), superAdmin.ID)
-	if err != nil || oldSuper == nil || oldSuper.IsSuperAdmin || !oldSuper.IsAdmin {
-		t.Fatalf("source role mismatch after transfer: user=%#v err=%v", oldSuper, err)
-	}
-	newSuper, err := db.Users.GetByID(t.Context(), target.ID)
-	if err != nil || newSuper == nil || !newSuper.IsSuperAdmin || !newSuper.IsAdmin {
-		t.Fatalf("target role mismatch after transfer: user=%#v err=%v", newSuper, err)
+	if hasRole, err := db.Permissions.UserHasRole(req.Context(), target.ID, permission.RoleAdmin); err != nil || hasRole {
+		t.Fatalf("target admin role after revoke = %v, %v; want false, nil", hasRole, err)
 	}
 }
 
@@ -417,7 +305,7 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 
 	cacheTarget := func(t *testing.T) {
 		t.Helper()
-		if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: target.ID, IsAdmin: false}, time.Minute); err != nil {
+		if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: target.ID}, time.Minute); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -429,16 +317,17 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 	}
 
 	cacheTarget(t)
-	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+target.ID+"/toggle-admin", nil)
+	req := httptest.NewRequest(http.MethodPut, "/admin/users/"+target.ID+"/roles/admin", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("role_id", permission.RoleAdmin)
 	req = withProtectedActor(req, superAdmin.ID)
 	rec := httptest.NewRecorder()
-	h.ToggleUserAdmin(rec, req)
+	h.GrantUserRole(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("toggle admin response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		t.Fatalf("grant admin role response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
-	assertTargetCacheMiss(t, "toggle admin")
+	assertTargetCacheMiss(t, "grant admin role")
 
 	cacheTarget(t)
 	banUntil := time.Now().Add(time.Hour).UnixMilli()
@@ -625,7 +514,7 @@ func TestUserRoutesDeleteUserAndInvalidateAuthCacheExactly(t *testing.T) {
 	adminUser := testutil.CreateUser(t, db, "admin-delete@test.com", "Password123", "AdminDelete", true)
 	target := testutil.CreateUser(t, db, "target-delete@test.com", "Password123", "TargetDelete", false)
 	profile := testutil.CreateProfile(t, db, target.ID, "delete_user_profile", "DeleteUserProfile")
-	if err := redis.SetAuthUser(context.Background(), redisstore.AuthUser{ID: target.ID, IsAdmin: false}, time.Minute); err != nil {
+	if err := redis.SetAuthUser(context.Background(), redisstore.AuthUser{ID: target.ID}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	if err := redis.SetYggToken(t.Context(), model.Token{AccessToken: "admin_delete_ygg", UserID: target.ID, CreatedAt: time.Now().UnixMilli()}, time.Hour); err != nil {
@@ -736,14 +625,15 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 		t.Fatalf("missing user detail mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/admin/users/missing-user/toggle-admin", nil)
+	req = httptest.NewRequest(http.MethodPut, "/admin/users/missing-user/roles/admin", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", "missing-user")
+	req.SetPathValue("role_id", permission.RoleAdmin)
 	req = withProtectedActor(req, superAdmin.ID)
 	rec = httptest.NewRecorder()
-	h.ToggleUserAdmin(rec, req)
+	h.GrantUserRole(rec, req)
 	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
-		t.Fatalf("missing admin toggle target mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		t.Fatalf("missing role grant target mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/users/reset-password", strings.NewReader(`{`))

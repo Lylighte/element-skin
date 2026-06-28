@@ -4,8 +4,6 @@ type User struct {
 	ID                string
 	Email             string
 	Password          string
-	IsAdmin           bool
-	IsSuperAdmin      bool
 	PreferredLanguage string
 	DisplayName       string
 	CreatedAt         int64

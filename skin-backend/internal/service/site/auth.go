@@ -37,7 +37,7 @@ func (s Site) Login(ctx context.Context, email, password string) (map[string]any
 	if user == nil || !util.VerifyPassword(password, user.Password) {
 		return nil, util.HTTPError{Status: 401, Detail: "Invalid credentials"}
 	}
-	return s.issueSession(ctx, user.ID, user.IsAdmin, user.IsSuperAdmin, map[string]any{"user_id": user.ID})
+	return s.issueSession(ctx, user.ID, map[string]any{"user_id": user.ID})
 }
 
 func (s Site) Register(ctx context.Context, email, password, username, invite, code string) (string, error) {
@@ -115,10 +115,6 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 		}
 		inviteCode = invite
 	}
-	count, err := s.DB.Users.Count(ctx)
-	if err != nil {
-		return "", err
-	}
 	mode, err := settings.Get(ctx, "profile_uuid_mode", "random")
 	if err != nil {
 		return "", err
@@ -138,8 +134,7 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 	if err != nil {
 		return "", err
 	}
-	firstUser := count == 0
-	u := model.User{ID: userID, Email: email, Password: hash, IsAdmin: firstUser, IsSuperAdmin: firstUser, DisplayName: username}
+	u := model.User{ID: userID, Email: email, Password: hash, DisplayName: username}
 	for attempt := 0; attempt < 100; attempt++ {
 		profileName := util.ProfileNameCandidate(base, attempt)
 		if existing, err := s.DB.Profiles.GetByName(ctx, profileName); err != nil {
@@ -165,6 +160,12 @@ func (s Site) Register(ctx context.Context, email, password, username, invite, c
 			continue
 		}
 		if err == nil {
+			if err := s.DB.Permissions.EnsureUserSubject(ctx, userID); err != nil {
+				return "", err
+			}
+			if _, err := s.DB.Permissions.GrantInitialSuperAdminIfNone(ctx, userID); err != nil {
+				return "", err
+			}
 			if verifiedEmail {
 				_ = s.Redis.DeleteVerificationCode(ctx, email, "register")
 			}

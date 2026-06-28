@@ -17,14 +17,12 @@ import (
 var ErrCacheMiss = errors.New("redis cache miss")
 
 type AuthUser struct {
-	ID           string `json:"id"`
-	IsAdmin      bool   `json:"is_admin"`
-	IsSuperAdmin bool   `json:"is_super_admin"`
-	BannedUntil  *int64 `json:"banned_until,omitempty"`
+	ID          string `json:"id"`
+	BannedUntil *int64 `json:"banned_until,omitempty"`
 }
 
 func AuthUserFromModel(u model.User) AuthUser {
-	return AuthUser{ID: u.ID, IsAdmin: u.IsAdmin, IsSuperAdmin: u.IsSuperAdmin, BannedUntil: u.BannedUntil}
+	return AuthUser{ID: u.ID, BannedUntil: u.BannedUntil}
 }
 
 func (u AuthUser) Banned(now time.Time) bool {

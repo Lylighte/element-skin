@@ -22,6 +22,8 @@ var (
 	accountDeleteAnyPermission = permission.MustDefinitionByCode("account.delete.any")
 	accountBanAnyPermission    = permission.MustDefinitionByCode("account.ban.any")
 	accountUnbanAnyPermission  = permission.MustDefinitionByCode("account.unban.any")
+	permissionGrantAny        = permission.MustDefinitionByCode("permission.grant.any")
+	permissionRevokeAny       = permission.MustDefinitionByCode("permission.revoke.any")
 )
 
 func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
@@ -67,29 +69,43 @@ func (h Handler) User(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
 		return
 	}
-	util.JSON(w, 200, userstore.PublicUser(*user))
-}
-
-func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, userUpdateAnyPermission); err != nil {
+	out := userstore.PublicUser(*user)
+	roles, err := h.db.Permissions.RoleIDsForUser(req.Context(), user.ID)
+	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	if !shared.CurrentActor(req).Has(manageProtectedPermission) {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "super admin required"})
+	out["roles"] = roles
+	util.JSON(w, 200, out)
+}
+
+func (h Handler) GrantUserRole(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, permissionGrantAny); err != nil {
+		util.Error(w, err)
 		return
 	}
 	targetID := req.PathValue("user_id")
-	if targetID == shared.CurrentUserID(req) {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot change your own admin status"})
+	roleID := req.PathValue("role_id")
+	if roleID == "" {
+		util.Error(w, util.HTTPError{Status: 400, Detail: "role_id required"})
 		return
 	}
-	next, err := h.db.Users.ToggleAdmin(req.Context(), targetID)
-	if err != nil {
-		if database.IsNoRows(err) {
-			util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-			return
-		}
+	if roleID == permission.RoleSuperAdmin && targetID == shared.CurrentUserID(req) {
+		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot grant protected role to yourself"})
+		return
+	}
+	if err := h.ensureRoleGrantAllowed(req, roleID); err != nil {
+		util.Error(w, err)
+		return
+	}
+	if ok, err := h.userExists(req, targetID); err != nil {
+		util.Error(w, err)
+		return
+	} else if !ok {
+		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
+		return
+	}
+	if err := h.db.Permissions.GrantRole(req.Context(), targetID, roleID, shared.CurrentActor(req).SubjectID); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -97,60 +113,49 @@ func (h Handler) ToggleUserAdmin(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	util.JSON(w, 200, map[string]any{"ok": true, "is_admin": next})
+	util.JSON(w, 200, map[string]any{"ok": true, "role_id": roleID})
 }
 
-func (h Handler) TransferSuperAdmin(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, userUpdateAnyPermission); err != nil {
+func (h Handler) RevokeUserRole(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, permissionRevokeAny); err != nil {
 		util.Error(w, err)
 		return
 	}
-	if !shared.CurrentActor(req).Has(manageProtectedPermission) {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "super admin required"})
-		return
-	}
 	targetID := req.PathValue("user_id")
-	if targetID == shared.CurrentUserID(req) {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "target is already current super admin"})
+	roleID := req.PathValue("role_id")
+	if roleID == "" {
+		util.Error(w, util.HTTPError{Status: 400, Detail: "role_id required"})
 		return
 	}
-	target, err := h.db.Users.GetByID(req.Context(), targetID)
+	if roleID == permission.RoleSuperAdmin && targetID == shared.CurrentUserID(req) {
+		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot revoke protected role from yourself"})
+		return
+	}
+	if err := h.ensureRoleGrantAllowed(req, roleID); err != nil {
+		util.Error(w, err)
+		return
+	}
+	if ok, err := h.userExists(req, targetID); err != nil {
+		util.Error(w, err)
+		return
+	} else if !ok {
+		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
+		return
+	}
+	ok, err := h.db.Permissions.RevokeRole(req.Context(), targetID, roleID)
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	if target == nil {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
+	if !ok {
+		util.Error(w, util.HTTPError{Status: 404, Detail: "role assignment not found"})
 		return
 	}
-	currentID := shared.CurrentUserID(req)
-	if err := h.invalidateAuthUsers(req, currentID, targetID); err != nil {
+	if err := h.redis.InvalidateAuthUser(req.Context(), targetID); err != nil {
 		util.Error(w, err)
 		return
 	}
-	if err := h.db.Users.TransferSuperAdmin(req.Context(), currentID, targetID); err != nil {
-		if database.IsNoRows(err) {
-			util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-			return
-		}
-		util.Error(w, err)
-		return
-	}
-	if err := h.invalidateAuthUsers(req, currentID, targetID); err != nil {
-		util.Error(w, err)
-		return
-	}
-	util.JSON(w, 200, map[string]any{"ok": true})
-}
-
-func (h Handler) invalidateAuthUsers(req *http.Request, userIDs ...string) error {
-	var firstErr error
-	for _, userID := range userIDs {
-		if err := h.redis.InvalidateAuthUser(req.Context(), userID); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
+	util.JSON(w, 200, map[string]any{"ok": true, "role_id": roleID})
 }
 
 func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
@@ -261,7 +266,12 @@ func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
 		return
 	}
-	if user.IsSuperAdmin && !shared.CurrentActor(req).Has(manageProtectedPermission) {
+	hasProtectedRole, err := h.db.Permissions.UserHasProtectedRole(req.Context(), user.ID)
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	if hasProtectedRole && !shared.CurrentActor(req).Has(manageProtectedPermission) {
 		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot modify super admin"})
 		return
 	}
@@ -333,8 +343,29 @@ func (h Handler) ensureTargetNotSuperAdmin(req *http.Request, targetID string) e
 	if target == nil {
 		return util.HTTPError{Status: 404, Detail: "user not found"}
 	}
-	if target.IsSuperAdmin && !shared.CurrentActor(req).Has(manageProtectedPermission) {
+	hasProtectedRole, err := h.db.Permissions.UserHasProtectedRole(req.Context(), targetID)
+	if err != nil {
+		return err
+	}
+	if hasProtectedRole && !shared.CurrentActor(req).Has(manageProtectedPermission) {
 		return util.HTTPError{Status: 403, Detail: "cannot modify super admin"}
 	}
 	return nil
+}
+
+func (h Handler) ensureRoleGrantAllowed(req *http.Request, roleID string) error {
+	if roleID == permission.RoleSuperAdmin || roleID == permission.RoleSystemMaintenance {
+		if !shared.CurrentActor(req).Has(manageProtectedPermission) {
+			return util.HTTPError{Status: 403, Detail: "protected role management required"}
+		}
+	}
+	return nil
+}
+
+func (h Handler) userExists(req *http.Request, userID string) (bool, error) {
+	user, err := h.db.Users.GetByID(req.Context(), userID)
+	if err != nil {
+		return false, err
+	}
+	return user != nil, nil
 }
