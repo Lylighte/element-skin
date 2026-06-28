@@ -34,3 +34,13 @@ func TestStoreCreateGetUpsertAndDeleteExactState(t *testing.T) {
 		t.Fatalf("verification should be deleted: code=%q ok=%v err=%v", code, ok, err)
 	}
 }
+
+func TestGetCodeReturnsOkFalseForMissingCode(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := verification.Store{Pool: db.Pool}
+	code, expiresAt, ok, err := store.GetCode(ctx, "nonexistent@test.com", "register")
+	if err != nil || ok || code != "" || expiresAt != 0 {
+		t.Fatalf("GetCode missing code mismatch: code=%q expires=%d ok=%v err=%v", code, expiresAt, ok, err)
+	}
+}

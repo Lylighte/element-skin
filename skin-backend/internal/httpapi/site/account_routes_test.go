@@ -207,3 +207,37 @@ func TestAccountRoutesRejectMissingPrincipalAndMalformedPayloadsExactly(t *testi
 		t.Fatalf("rejected account requests must not mutate users: count=%d err=%v", count, err)
 	}
 }
+
+func TestDeleteMeErrorPaths(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-delete-me-err@test.com", "Password123", "SiteDeleteMeErr", false)
+
+	// DB error on UserHasProtectedRole: cancelled context causes query failure
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodDelete, "/me", nil).WithContext(ctx)
+	req = withUserActor(req, user.ID)
+	rec := httptest.NewRecorder()
+	h.DeleteMe(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("cancelled context should return 500 exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if got, err := db.Users.GetByID(context.Background(), user.ID); err != nil || got == nil {
+		t.Fatalf("user should still exist after cancelled-context error: user=%#v err=%v", got, err)
+	}
+
+	// ok=false from DeleteUser: pre-delete user so Delete returns false
+	if _, err := db.Users.Delete(context.Background(), user.ID); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodDelete, "/me", nil)
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.DeleteMe(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+		t.Fatalf("pre-deleted user should return 404 exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}

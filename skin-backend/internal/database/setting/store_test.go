@@ -33,3 +33,36 @@ func TestStoreSetGetIntGroupAndAllExactValues(t *testing.T) {
 		t.Fatalf("setting all mismatch: all=%#v err=%v", all, err)
 	}
 }
+
+func TestStoreSetFalseExactValue(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := setting.Store{Pool: db.Pool}
+	if err := store.Set(ctx, "bool_false", false); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.Get(ctx, "bool_false", "true"); err != nil || got != "false" {
+		t.Fatalf("setting get false mismatch: got=%q err=%v", got, err)
+	}
+}
+
+func TestStoreGetIntNonIntegerFallback(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := setting.Store{Pool: db.Pool}
+	if err := store.Set(ctx, "non_int", "not-a-number"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.Int(ctx, "non_int", 7); err != nil || got != 7 {
+		t.Fatalf("setting int non-integer fallback mismatch: got=%d err=%v", got, err)
+	}
+}
+
+func TestStoreGetMissingKeyReturnsFallback(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := setting.Store{Pool: db.Pool}
+	if got, err := store.Get(ctx, "nonexistent_key", "default_val"); err != nil || got != "default_val" {
+		t.Fatalf("setting get missing key mismatch: got=%q err=%v", got, err)
+	}
+}
