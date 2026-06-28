@@ -389,13 +389,14 @@ func TestProfilesCursorsDisabledLibraryAndAdminDeleteByID(t *testing.T) {
 		t.Fatalf("disabled public library should reject exactly, got %#v", err)
 	}
 
-	if err := svc.DeleteProfileByID(ctx, profile.ID); err != nil {
+	adminActor := testActorWithCodes("admin-delete-profile", "profile.delete.any")
+	if err := svc.DeleteProfileByID(ctx, adminActor, profile.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := db.Profiles.GetByID(ctx, profile.ID); err != nil || got != nil {
 		t.Fatalf("DeleteProfileByID should remove profile regardless of owner: profile=%#v err=%v", got, err)
 	}
-	if err := svc.DeleteProfileByID(ctx, profile.ID); !httpError(err, 404, "profile not found") {
+	if err := svc.DeleteProfileByID(ctx, adminActor, profile.ID); !httpError(err, 404, "profile not found") {
 		t.Fatalf("DeleteProfileByID missing profile should reject exactly, got %#v", err)
 	}
 }

@@ -92,7 +92,7 @@ func (h Handler) DeleteProfile(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	err := h.site.DeleteProfileByID(req.Context(), req.PathValue("profile_id"))
+	err := h.site.DeleteProfileByID(req.Context(), shared.CurrentActor(req), req.PathValue("profile_id"))
 	if err != nil {
 		util.Error(w, err)
 		return
