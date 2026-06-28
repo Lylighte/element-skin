@@ -130,3 +130,27 @@ func TestBitSetAndNotShorterOther(t *testing.T) {
 		t.Fatal("AndNot with shorter other should keep out-of-range bits")
 	}
 }
+
+func TestBitSetSetOutOfRange(t *testing.T) {
+	b := permission.NewBitSet(64)
+	b.Set(64)
+	if !b.Empty() {
+		t.Fatal("Set out-of-range should be no-op")
+	}
+}
+
+func TestBitSetClearOutOfRange(t *testing.T) {
+	b := permission.NewBitSet(64)
+	b.Set(0)
+	b.Clear(64)
+	if !b.Has(0) {
+		t.Fatal("Clear out-of-range should be no-op and not affect other bits")
+	}
+}
+
+func TestBitSetCloneEmpty(t *testing.T) {
+	empty := permission.NewBitSet(0)
+	if clone := empty.Clone(); clone != nil {
+		t.Fatal("Clone of nil/empty bitset should return nil")
+	}
+}
