@@ -140,39 +140,116 @@
                 <div class="grid gap-4">
                   <div class="flex flex-col gap-2">
                     <div class="text-sm font-semibold text-[var(--color-heading)]">继承的权限</div>
-                    <div class="flex flex-wrap gap-2">
-                      <el-tag
-                        v-for="item in inheritedPermissionItems"
-                        :key="item.code"
-                        :title="item.code"
-                        effect="plain"
-                        disable-transitions
+                    <div
+                      v-if="inheritedPermissionGroups.length"
+                      class="divide-y divide-[var(--color-border)] rounded-md border border-[var(--color-border)]"
+                    >
+                      <div
+                        v-for="group in inheritedPermissionGroups"
+                        :key="group.resource"
+                        class="flex flex-col gap-2 px-3 py-2 md:flex-row md:items-start"
                       >
-                        {{ item.label }}
-                      </el-tag>
-                      <el-text v-if="!inheritedPermissionItems.length" type="info" size="small">
-                        暂无继承权限
-                      </el-text>
+                        <div class="flex shrink-0 items-center gap-2 md:w-40">
+                          <el-tag :type="group.tagType" size="small" effect="plain">
+                            {{ group.resourceDescription }}
+                          </el-tag>
+                          <span class="text-xs text-[var(--color-text-light)]">
+                            {{ group.items.length }} 项
+                          </span>
+                        </div>
+                        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                          <el-tag
+                            v-for="item in visiblePermissionItems(group, 'inherited')"
+                            :key="item.code"
+                            :title="item.code"
+                            :type="group.tagType"
+                            size="small"
+                            effect="plain"
+                            disable-transitions
+                          >
+                            {{ item.label }}
+                          </el-tag>
+                          <el-button
+                            v-if="hiddenPermissionCount(group, 'inherited')"
+                            link
+                            type="primary"
+                            size="small"
+                            class="!h-6 !px-0"
+                            @click="togglePermissionGroup(group.resource, 'inherited')"
+                          >
+                            展开 {{ hiddenPermissionCount(group, 'inherited') }} 项
+                          </el-button>
+                          <el-button
+                            v-else-if="group.items.length > compactPermissionLimit"
+                            link
+                            type="info"
+                            size="small"
+                            class="!h-6 !px-0"
+                            @click="togglePermissionGroup(group.resource, 'inherited')"
+                          >
+                            收起
+                          </el-button>
+                        </div>
+                      </div>
                     </div>
+                    <el-text v-else type="info" size="small">暂无继承权限</el-text>
                   </div>
                   <div class="flex flex-col gap-2">
                     <div class="text-sm font-semibold text-[var(--color-heading)]">覆盖</div>
-                    <div class="flex flex-wrap gap-2">
-                      <el-tag
-                        v-for="item in overrideTagItems"
-                        :key="item.permission_code"
-                        :title="item.permission_code"
-                        :type="item.effect === 'allow' ? 'success' : 'danger'"
-                        closable
-                        disable-transitions
-                        @close="emit('clear-permission', item.permission_code)"
+                    <div
+                      v-if="overridePermissionGroups.length"
+                      class="divide-y divide-[var(--color-border)] rounded-md border border-[var(--color-border)]"
+                    >
+                      <div
+                        v-for="group in overridePermissionGroups"
+                        :key="group.resource"
+                        class="flex flex-col gap-2 px-3 py-2 md:flex-row md:items-start"
                       >
-                        {{ item.effect === 'allow' ? '允许' : '拒绝' }} · {{ item.label }}
-                      </el-tag>
-                      <el-text v-if="!overrideTagItems.length" type="info" size="small">
-                        暂无单项权限覆盖
-                      </el-text>
+                        <div class="flex shrink-0 items-center gap-2 md:w-40">
+                          <el-tag :type="group.tagType" size="small" effect="plain">
+                            {{ group.resourceDescription }}
+                          </el-tag>
+                          <span class="text-xs text-[var(--color-text-light)]">
+                            {{ group.items.length }} 项
+                          </span>
+                        </div>
+                        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                          <el-tag
+                            v-for="item in visiblePermissionItems(group, 'override')"
+                            :key="item.code"
+                            :title="item.code"
+                            :type="item.effect === 'allow' ? 'success' : 'danger'"
+                            size="small"
+                            closable
+                            disable-transitions
+                            @close="emit('clear-permission', item.code)"
+                          >
+                            {{ item.effect === 'allow' ? '允许' : '拒绝' }} · {{ item.label }}
+                          </el-tag>
+                          <el-button
+                            v-if="hiddenPermissionCount(group, 'override')"
+                            link
+                            type="primary"
+                            size="small"
+                            class="!h-6 !px-0"
+                            @click="togglePermissionGroup(group.resource, 'override')"
+                          >
+                            展开 {{ hiddenPermissionCount(group, 'override') }} 项
+                          </el-button>
+                          <el-button
+                            v-else-if="group.items.length > compactPermissionLimit"
+                            link
+                            type="info"
+                            size="small"
+                            class="!h-6 !px-0"
+                            @click="togglePermissionGroup(group.resource, 'override')"
+                          >
+                            收起
+                          </el-button>
+                        </div>
+                      </div>
                     </div>
+                    <el-text v-else type="info" size="small">暂无单项权限覆盖</el-text>
                   </div>
                 </div>
                 <el-divider class="my-4" />
@@ -319,6 +396,27 @@ const emit = defineEmits<{
 const selectedRoleId = ref('')
 const selectedPermissionCode = ref('')
 const selectedPermissionEffect = ref<PermissionOverrideEffect>('allow')
+const expandedInheritedPermissionGroups = ref<string[]>([])
+const expandedOverridePermissionGroups = ref<string[]>([])
+const compactPermissionLimit = 6
+
+type PermissionTagType = 'primary' | 'success' | 'info' | 'warning' | 'danger'
+type PermissionGroupKind = 'inherited' | 'override'
+
+interface PermissionDisplayItem {
+  code: string
+  label: string
+  resource: string
+  resourceDescription: string
+  effect?: PermissionOverrideEffect
+}
+
+interface PermissionDisplayGroup {
+  resource: string
+  resourceDescription: string
+  tagType: PermissionTagType
+  items: PermissionDisplayItem[]
+}
 
 const roleIds = computed(() => new Set(props.permissionState?.roles || props.user?.roles || []))
 const effectivePermissions = computed(
@@ -361,27 +459,29 @@ const permissionByCode = computed(() => {
   for (const item of props.permissionState?.catalog.permissions || []) out.set(item.code, item)
   return out
 })
-const inheritedPermissionItems = computed(() => {
-  const inherited = new Set<string>()
+const inheritedPermissionGroups = computed(() => {
+  const inherited = new Map<string, PermissionDisplayItem>()
   for (const role of props.permissionState?.catalog.roles || []) {
     if (!roleIds.value.has(role.id)) continue
     for (const code of role.permissions) {
       if (overrideMap.value.has(code)) continue
       if (!effectivePermissions.value.has(code)) continue
-      inherited.add(code)
+      const definition = permissionByCode.value.get(code)
+      inherited.set(code, createPermissionDisplayItem(code, definition))
     }
   }
-  return [...inherited].sort().map((code) => ({
-    code,
-    label: permissionByCode.value.get(code)?.description || code,
-  }))
+  return groupPermissionItems([...inherited.values()])
 })
-const overrideTagItems = computed(() =>
-  (props.permissionState?.overrides || []).map((item) => ({
-    ...item,
-    label: permissionByCode.value.get(item.permission_code)?.description || item.permission_code,
-  })),
-)
+const overridePermissionGroups = computed(() => {
+  const items = (props.permissionState?.overrides || []).map((item) => ({
+    ...createPermissionDisplayItem(
+      item.permission_code,
+      permissionByCode.value.get(item.permission_code),
+    ),
+    effect: item.effect,
+  }))
+  return groupPermissionItems(items)
+})
 const grantablePermissionOptions = computed(() =>
   (props.permissionState?.catalog.permissions || []).filter(
     (item) => !overrideMap.value.has(item.code),
@@ -398,12 +498,90 @@ const canAddSelectedPermission = computed(() => {
 })
 
 watch(visible, (open) => {
-  if (!open) {
-    selectedRoleId.value = ''
-    selectedPermissionCode.value = ''
-    selectedPermissionEffect.value = 'allow'
-  }
+  if (open) return
+  selectedRoleId.value = ''
+  selectedPermissionCode.value = ''
+  selectedPermissionEffect.value = 'allow'
+  expandedInheritedPermissionGroups.value = []
+  expandedOverridePermissionGroups.value = []
 })
+
+function createPermissionDisplayItem(
+  code: string,
+  definition?: PermissionDefinition,
+): PermissionDisplayItem {
+  return {
+    code,
+    label: definition?.description || code,
+    resource: definition?.resource || code.split('.')[0] || 'other',
+    resourceDescription: definition?.resource_description || definition?.resource || '其他权限',
+  }
+}
+
+function groupPermissionItems(items: PermissionDisplayItem[]): PermissionDisplayGroup[] {
+  const groups = new Map<string, PermissionDisplayGroup>()
+  for (const item of [...items].sort((a, b) => a.code.localeCompare(b.code))) {
+    const group = groups.get(item.resource)
+    if (group) {
+      group.items.push(item)
+      continue
+    }
+    groups.set(item.resource, {
+      resource: item.resource,
+      resourceDescription: item.resourceDescription,
+      tagType: permissionTagType(item.resource),
+      items: [item],
+    })
+  }
+  return [...groups.values()].sort((a, b) =>
+    a.resourceDescription.localeCompare(b.resourceDescription),
+  )
+}
+
+function visiblePermissionItems(
+  group: PermissionDisplayGroup,
+  kind: PermissionGroupKind,
+): PermissionDisplayItem[] {
+  if (isPermissionGroupExpanded(group.resource, kind)) return group.items
+  return group.items.slice(0, compactPermissionLimit)
+}
+
+function hiddenPermissionCount(group: PermissionDisplayGroup, kind: PermissionGroupKind) {
+  if (isPermissionGroupExpanded(group.resource, kind)) return 0
+  return Math.max(group.items.length - compactPermissionLimit, 0)
+}
+
+function togglePermissionGroup(resource: string, kind: PermissionGroupKind) {
+  const expandedGroups =
+    kind === 'inherited' ? expandedInheritedPermissionGroups : expandedOverridePermissionGroups
+  expandedGroups.value = isPermissionGroupExpanded(resource, kind)
+    ? expandedGroups.value.filter((item) => item !== resource)
+    : [...expandedGroups.value, resource]
+}
+
+function isPermissionGroupExpanded(resource: string, kind: PermissionGroupKind) {
+  const expandedGroups =
+    kind === 'inherited' ? expandedInheritedPermissionGroups : expandedOverridePermissionGroups
+  return expandedGroups.value.includes(resource)
+}
+
+function permissionTagType(resource: string): PermissionTagType {
+  const fixedTypes: Record<string, PermissionTagType> = {
+    auth: 'primary',
+    permission: 'danger',
+    permission_protected: 'danger',
+    profile: 'success',
+    site: 'warning',
+    texture: 'success',
+    user: 'primary',
+    wardrobe: 'success',
+    yggdrasil: 'warning',
+  }
+  if (fixedTypes[resource]) return fixedTypes[resource]
+  const fallbackTypes: PermissionTagType[] = ['primary', 'success', 'warning', 'danger', 'info']
+  const hash = [...resource].reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  return fallbackTypes[hash % fallbackTypes.length] || 'info'
+}
 
 function roleTagClosable(role: PermissionRole) {
   if (role.id === 'user') return false
