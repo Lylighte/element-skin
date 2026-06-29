@@ -7,8 +7,8 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
-      <div class="order-2 xl:order-1">
+    <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+      <div class="order-2 lg:order-1">
         <section class="flex flex-col gap-4 mb-8">
           <UiCard class="dashboard-stat-card" shadow="hover">
             <div class="stat-card-content">
@@ -67,7 +67,7 @@
         </section>
       </div>
 
-      <aside class="order-1 xl:order-2 flex flex-col gap-4">
+      <aside class="order-1 lg:order-2 flex flex-col gap-4">
         <div class="flex justify-between items-center gap-3">
           <h2 class="m-0 text-lg font-semibold text-[var(--color-heading)]">公告</h2>
           <el-button size="small" text @click="goNotifications">
