@@ -53,7 +53,9 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		db.Close()
 		return nil, err
 	}
-	db.Permissions.Cache = &permissiondb.RedisPermCache{Store: redis}
+	if db != nil {
+		db.Permissions.Cache = &permissiondb.RedisPermCache{Store: redis}
+	}
 	settings := settingssvc.Settings{DB: db, Redis: redis}
 	site := sitepkg.Site{DB: db, Cfg: cfg, Redis: redis, Settings: settings}
 	ygg, err := yggpkg.New(db, cfg, redis, settings)
@@ -83,7 +85,9 @@ func NewWithDB(cfg config.Config, db *database.DB) (*App, error) {
 }
 
 func NewWithDBAndRedis(cfg config.Config, db *database.DB, redis redisstore.Store) (*App, error) {
-	db.Permissions.Cache = &permissiondb.RedisPermCache{Store: redis}
+	if db != nil {
+		db.Permissions.Cache = &permissiondb.RedisPermCache{Store: redis}
+	}
 	settings := settingssvc.Settings{DB: db, Redis: redis}
 	site := sitepkg.Site{DB: db, Cfg: cfg, Redis: redis, Settings: settings}
 	ygg, err := yggpkg.New(db, cfg, redis, settings)
