@@ -9,9 +9,17 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-var readAdminAudiencePermission = permission.MustDefinitionByCode("notice.create.any")
+var (
+	noticeReadOwnedPermission    = permission.MustDefinitionByCode("notice.read.owned")
+	noticeDismissOwnedPermission = permission.MustDefinitionByCode("notice.dismiss.owned")
+	readAdminAudiencePermission  = permission.MustDefinitionByCode("notice.read.any")
+)
 
 func (h Handler) List(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, noticeReadOwnedPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	res, err := h.notices.ListForUser(req.Context(), currentUser(req), noticesvc.ListParams{
 		Type:        req.URL.Query().Get("type"),
 		Limit:       util.ClampLimit(req.URL.Query().Get("limit")),
@@ -27,6 +35,10 @@ func (h Handler) List(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) Detail(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, noticeReadOwnedPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	res, err := h.notices.GetForUser(req.Context(), req.PathValue("id"), currentUser(req))
 	if err != nil {
 		util.Error(w, err)
@@ -36,6 +48,10 @@ func (h Handler) Detail(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) MarkRead(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, noticeReadOwnedPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	if err := h.notices.MarkRead(req.Context(), req.PathValue("id"), currentUser(req)); err != nil {
 		util.Error(w, err)
 		return
@@ -44,6 +60,10 @@ func (h Handler) MarkRead(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) Dismiss(w http.ResponseWriter, req *http.Request) {
+	if err := shared.RequirePermission(req, noticeDismissOwnedPermission); err != nil {
+		util.Error(w, err)
+		return
+	}
 	if err := h.notices.Dismiss(req.Context(), req.PathValue("id"), currentUser(req)); err != nil {
 		util.Error(w, err)
 		return

@@ -108,7 +108,7 @@ func TestNoticeRoutesErrorsAndAuthWrapperExactly(t *testing.T) {
 			t.Fatalf("notice auth wrapper required permissions=%d, want 0", len(required))
 		}
 		return func(w http.ResponseWriter, req *http.Request) {
-			next(w, req.WithContext(shared.WithActorPermissions(req.Context(), user.ID)))
+			next(w, req.WithContext(shared.WithActorPermissions(req.Context(), user.ID, permission.MustDefinitionByCode("notice.read.owned"))))
 		}
 	})
 
@@ -131,14 +131,28 @@ func TestNoticeRoutesErrorsAndAuthWrapperExactly(t *testing.T) {
 	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"notice not found\"}\n" {
 		t.Fatalf("missing detail mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
+
+	rec = httptest.NewRecorder()
+	h.List(rec, httptest.NewRequest(http.MethodGet, "/notices", nil).WithContext(shared.WithActorPermissions(context.Background(), user.ID)))
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("list without notice.read.owned mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/notices/missing/dismiss", nil)
+	req.SetPathValue("id", "missing")
+	rec = httptest.NewRecorder()
+	h.Dismiss(rec, req.WithContext(shared.WithActorPermissions(context.Background(), user.ID, permission.MustDefinitionByCode("notice.read.owned"))))
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("dismiss without notice.dismiss.owned mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
 
 func userRequest(method, target, userID string, isAdmin bool) *http.Request {
 	req := httptest.NewRequest(method, target, nil)
 	if isAdmin {
-		return req.WithContext(shared.WithActorPermissions(req.Context(), userID, permission.MustDefinitionByCode("notice.create.any")))
+		return req.WithContext(shared.WithActorPermissions(req.Context(), userID, permission.MustDefinitionByCode("notice.read.owned"), permission.MustDefinitionByCode("notice.dismiss.owned"), permission.MustDefinitionByCode("notice.read.any")))
 	}
-	return req.WithContext(shared.WithActorPermissions(req.Context(), userID))
+	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, permission.MustDefinitionByCode("notice.read.owned"), permission.MustDefinitionByCode("notice.dismiss.owned")))
 }
 
 func passAuth(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
