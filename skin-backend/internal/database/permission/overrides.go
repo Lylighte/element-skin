@@ -29,6 +29,9 @@ func (s Store) SetSubjectPermissionOverride(ctx context.Context, userID string, 
 		ON CONFLICT (subject_id, permission_id) DO UPDATE
 		SET effect=EXCLUDED.effect, granted_by_subject_id=EXCLUDED.granted_by_subject_id
 	`, SubjectIDForUser(userID), int64(def.ID), effect, nullString(grantedBySubjectID), now)
+		if err == nil && s.Cache != nil {
+		_ = s.Cache.DeleteEffective(ctx, SubjectIDForUser(userID))
+	}
 	return err
 }
 

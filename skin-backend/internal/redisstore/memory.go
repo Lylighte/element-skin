@@ -88,6 +88,41 @@ func cloneValue(v any) any {
 	_ = json.Unmarshal(b, &out)
 	return out
 }
+func (s *MemoryStore) GetPermissionCache(_ context.Context, subjectID string) (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Err != nil {
+		return "", false, s.Err
+	}
+	v, ok := s.items[permCacheKey(subjectID)]
+		str, _ := v.value.(string); return str, ok, nil
+}
+
+func (s *MemoryStore) SetPermissionCache(_ context.Context, subjectID, encoded string, _ time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Err != nil {
+		return s.Err
+	}
+	if s.items == nil {
+		s.items = make(map[string]memoryItem)
+	}
+	s.items[permCacheKey(subjectID)] = memoryItem{value: encoded}
+	return nil
+}
+
+func (s *MemoryStore) DeletePermissionCache(_ context.Context, subjectID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Err != nil {
+		return s.Err
+	}
+	delete(s.items, permCacheKey(subjectID))
+	return nil
+}
+
+func permCacheKey(subjectID string) string { return "perm:eff:" + subjectID }
+
 func (s *MemoryStore) DeleteByPrefix(_ context.Context, prefix string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
