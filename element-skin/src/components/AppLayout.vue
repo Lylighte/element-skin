@@ -206,6 +206,7 @@ import {
 import { useAvatar } from '@/composables/useAvatar'
 import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
 import { canAccessAdminPath, hasAnyAdminPagePermission } from '@/permissions/adminPages'
+import { canAccessSitePath } from '@/permissions/sitePages'
 import { appStorage } from '@/storage'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -304,6 +305,9 @@ const dashboardLinks: NavLink[] = [
 const isLogged = computed(() => !!user.value)
 const userPermissions = computed(() => user.value?.permissions || [])
 const canAccessAdmin = computed(() => hasAnyAdminPagePermission(userPermissions.value))
+const canAccessSiteLink = (item: NavLink | DrawerLink) =>
+  !!item.path && canAccessSitePath(item.path, userPermissions.value)
+const accessibleDashboardLinks = computed(() => dashboardLinks.filter((item) => canAccessSiteLink(item)))
 const adminNavLinks: NavLink[] = [
   { path: '/dashboard', title: '返回面板', icon: Back },
   { path: '/admin/users', title: '用户管理', icon: User },
@@ -395,9 +399,9 @@ const navLinks = computed<NavLink[]>(() => {
   if (route.path.startsWith('/admin')) return adminNavItems.value
   const links: NavLink[] = []
   if (isLogged.value) {
-    if (enableSkinLibrary.value)
+    if (enableSkinLibrary.value && canAccessSitePath('/skin-library', userPermissions.value))
       links.push({ path: '/skin-library', title: '皮肤库', icon: Picture })
-    links.push(...dashboardLinks)
+    links.push(...accessibleDashboardLinks.value)
     if (canAccessAdmin.value) links.push({ path: '/admin', title: '管理面板', icon: Tools })
   }
   return links
@@ -406,10 +410,10 @@ const navLinks = computed<NavLink[]>(() => {
 const drawerLinks = computed<DrawerLink[]>(() => {
   const links: DrawerLink[] = []
   if (isLogged.value) {
-    if (enableSkinLibrary.value)
+    if (enableSkinLibrary.value && canAccessSitePath('/skin-library', userPermissions.value))
       links.push({ path: '/skin-library', title: '皮肤库', icon: Picture })
     links.push({ isDivider: true })
-    links.push(...dashboardLinks)
+    links.push(...accessibleDashboardLinks.value)
     if (canAccessAdmin.value) {
       links.push({ isDivider: true })
       links.push(...filterAdminLinks(adminNavLinks))

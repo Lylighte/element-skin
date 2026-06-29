@@ -28,6 +28,7 @@ import AdminNotices from '@/components/admin/AdminNotices.vue'
 import { getMe } from '@/api/me'
 import { installEasterEggRouterHooks } from '@/easter-eggs'
 import { canAccessAdminPath, firstAccessibleAdminPath } from '@/permissions/adminPages'
+import { canAccessSitePath, firstAccessibleSitePath, isProtectedSitePath } from '@/permissions/sitePages'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -154,16 +155,30 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (to.path !== '/admin' && !to.path.startsWith('/admin/')) return true
+  if (to.path === '/admin' || to.path.startsWith('/admin/')) {
+    try {
+      const res = await getMe()
+      const permissions = res.data.permissions ?? []
+      const firstAdminPath = firstAccessibleAdminPath(permissions)
+      if (!firstAdminPath) return { path: firstAccessibleSitePath(permissions) ?? '/' }
+      if (to.path === '/admin' || to.path === '/admin/') return { path: firstAdminPath }
+      if (canAccessAdminPath(to.path, permissions)) return true
+      return { path: firstAdminPath }
+    } catch {
+      return { path: '/login' }
+    }
+  }
+
+  if (!isProtectedSitePath(to.path)) return true
 
   try {
     const res = await getMe()
     const permissions = res.data.permissions ?? []
-    const firstAdminPath = firstAccessibleAdminPath(permissions)
-    if (!firstAdminPath) return { path: '/dashboard/home' }
-    if (to.path === '/admin' || to.path === '/admin/') return { path: firstAdminPath }
-    if (canAccessAdminPath(to.path, permissions)) return true
-    return { path: firstAdminPath }
+    const firstSitePath = firstAccessibleSitePath(permissions)
+    if (!firstSitePath) return { path: '/' }
+    if (to.path === '/dashboard' || to.path === '/dashboard/') return { path: firstSitePath }
+    if (canAccessSitePath(to.path, permissions)) return true
+    return { path: firstSitePath }
   } catch {
     return { path: '/login' }
   }
