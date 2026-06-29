@@ -71,6 +71,9 @@ type Store interface {
 	GetProbeHistory(context.Context, time.Time) ([]ProbeSample, error)
 	InvalidateProbeHistory(context.Context) error
 	DeleteByPrefix(context.Context, string) error
+	GetPermissionCache(ctx context.Context, subjectID string) (string, bool, error)
+	SetPermissionCache(ctx context.Context, subjectID string, encoded string, ttl time.Duration) error
+	DeletePermissionCache(ctx context.Context, subjectID string) error
 }
 
 type RedisStore struct {

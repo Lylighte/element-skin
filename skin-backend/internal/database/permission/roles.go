@@ -20,6 +20,9 @@ func (s Store) GrantRole(ctx context.Context, userID, roleID, grantedBySubjectID
 		ON CONFLICT (subject_id, role_id) DO UPDATE
 		SET granted_by_subject_id=EXCLUDED.granted_by_subject_id
 	`, SubjectIDForUser(userID), roleID, nullString(grantedBySubjectID), now)
+		if err == nil && s.Cache != nil {
+		_ = s.Cache.DeleteEffective(ctx, SubjectIDForUser(userID))
+	}
 	return err
 }
 
@@ -59,7 +62,10 @@ func (s Store) GrantInitialSuperAdminIfNone(ctx context.Context, userID string) 
 		VALUES ($1,$2,$3), ($1,$4,$3)
 		ON CONFLICT (subject_id, role_id) DO NOTHING
 	`, SubjectIDForUser(userID), core.RoleUser, now, core.RoleSuperAdmin); err != nil {
-		return false, err
+			if err == nil && s.Cache != nil {
+		_ = s.Cache.DeleteEffective(ctx, SubjectIDForUser(userID))
+	}
+	return false, err
 	}
 	return true, tx.Commit(ctx)
 }

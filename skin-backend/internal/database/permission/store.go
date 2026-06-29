@@ -18,8 +18,9 @@ type Querier interface {
 }
 
 type Store struct {
-	Pool *pgxpool.Pool
-	q    Querier
+	Pool  *pgxpool.Pool
+	q     Querier
+	Cache PermissionCache
 }
 
 func (s Store) conn() Querier {

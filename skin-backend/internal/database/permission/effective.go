@@ -71,6 +71,24 @@ func (s Store) ActorForUser(ctx context.Context, userID string, opts EffectiveOp
 }
 
 func (s Store) effectivePermissionsForSubject(ctx context.Context, subjectID string) (core.BitSet, error) {
+	if s.Cache != nil {
+		if cached, ok, err := s.Cache.GetEffective(ctx, subjectID); err != nil {
+			return nil, err
+		} else if ok {
+			return cached, nil
+		}
+	}
+	permissions, err := s.computeEffectivePermissions(ctx, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	if s.Cache != nil {
+		_ = s.Cache.SetEffective(ctx, subjectID, permissions, 5*time.Minute)
+	}
+	return permissions, nil
+}
+
+func (s Store) computeEffectivePermissions(ctx context.Context, subjectID string) (core.BitSet, error) {
 	permissions := core.NewBitSet(len(core.Definitions))
 	rows, err := s.conn().Query(ctx, `
 		SELECT p.bit_index
