@@ -10,15 +10,15 @@ import (
 )
 
 type ProbeSample struct {
-	EndpointID int    `json:"endpoint_id"`
-	Note       string `json:"note"`
-	SessionURL string `json:"session_url"`
-	AccountURL string `json:"account_url"`
+	EndpointID  int    `json:"endpoint_id"`
+	Note        string `json:"note"`
+	SessionURL  string `json:"session_url"`
+	AccountURL  string `json:"account_url"`
 	ServicesURL string `json:"services_url"`
-	CheckedAt  int64  `json:"checked_at"`
-	Session    string `json:"session"`
-	Account    string `json:"account"`
-	Services   string `json:"services"`
+	CheckedAt   int64  `json:"checked_at"`
+	Session     string `json:"session"`
+	Account     string `json:"account"`
+	Services    string `json:"services"`
 }
 
 const ProbeHistoryRetention = 24 * time.Hour
