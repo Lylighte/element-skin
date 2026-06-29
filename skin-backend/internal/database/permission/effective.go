@@ -19,13 +19,25 @@ type EffectiveOptions struct {
 }
 
 func (s Store) EffectivePermissionsForUser(ctx context.Context, userID string, opts EffectiveOptions) (core.BitSet, error) {
-	if err := s.EnsureUserSubject(ctx, userID); err != nil {
-		return nil, err
-	}
 	subjectID := SubjectIDForUser(userID)
-	permissions, err := s.effectivePermissionsForSubject(ctx, subjectID)
-	if err != nil {
-		return nil, err
+
+	var permissions core.BitSet
+	if s.Cache != nil {
+		if cached, hit, err := s.Cache.GetEffective(ctx, subjectID); err != nil {
+			return nil, err
+		} else if hit {
+			permissions = cached
+		}
+	}
+	if permissions == nil {
+		if err := s.EnsureUserSubject(ctx, userID); err != nil {
+			return nil, err
+		}
+		var err error
+		permissions, err = s.effectivePermissionsForSubject(ctx, subjectID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if opts.SessionKind != "" || opts.Entrypoint != "" {
 		policy, err := s.sessionPolicy(ctx, opts.SessionKind, opts.Entrypoint)
