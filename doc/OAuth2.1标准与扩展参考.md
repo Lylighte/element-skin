@@ -350,7 +350,7 @@ POST /oauth/par
 | --- | --- | --- |
 | `authorization_code` | 必须 | 必须配合 PKCE |
 | `refresh_token` | 必须 | 必须轮换 |
-| `client_credentials` | 暂缓 | 管理员/受信应用场景再开放 |
+| `client_credentials` | 暂缓 | 管理员审核后的应用主体能力；首个目标场景是 `/v1/minecraft/session/has-joined` |
 | `urn:ietf:params:oauth:grant-type:device_code` | 建议 | 启动器、CLI、插件体验好 |
 | `password` | 禁止 | OAuth 2.1 不保留 |
 | `implicit` | 禁止 | OAuth 2.1 不保留 |
@@ -419,6 +419,59 @@ subject_metadata
 - 用户授权权限变更
 - 授权撤销
 - 应用禁用
+
+### 13.1 Client Credentials 与应用主体
+
+Client Credentials Grant 不代表用户，不得复用用户委托授权表。
+
+应用自身必须成为独立权限主体：
+
+```text
+permission_subjects.id = client:{client_id}
+permission_subjects.kind = client
+```
+
+Client Credentials token 必须单独存储：
+
+```text
+oauth_client_access_tokens
+```
+
+该表不得混入用户 OAuth access token。Client Credentials token 不包含 `user_id`、不包含 `grant_id`，只能恢复：
+
+```text
+subject_id = client:{client_id}
+session_kind = client_credentials
+entrypoint = api
+client_id = client_id
+```
+
+Client Credentials 的最终权限：
+
+```text
+client subject effective permissions
+∩ session_permission_bitset(client_credentials, api)
+∩ requested_token_scope
+∩ app status active
+```
+
+`requested_token_scope` 只能缩小应用主体已经拥有的权限，不能申请新权限。
+
+管理员审核通过后，直接给 `client:{client_id}` 逐项授予 permission。Client Credentials 场景不使用用户授权页，不使用 `delegated_permission_grants`，也不使用 `delegated_client_permissions` 作为申请上限。
+
+首批 Client Credentials 业务目标：
+
+```http
+POST /v1/minecraft/session/has-joined
+```
+
+对应权限：
+
+```text
+minecraft_session.hasjoined.server
+```
+
+`server` scope 表示受审核服务端或外置插件客户端能力，不等于 `any`，也不等于 Yggdrasil `bound_profile`。
 
 ## 14. 与管理员能力下放的关系
 
