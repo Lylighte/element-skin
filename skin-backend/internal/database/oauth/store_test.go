@@ -35,6 +35,17 @@ func TestClientLifecyclePreservesExactFieldsAndPermissions(t *testing.T) {
 	if err := db.OAuth.CreateClient(ctx, client, initialPermissions); err != nil {
 		t.Fatal(err)
 	}
+	var subjectKind, subjectStatus string
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT kind, status
+		FROM permission_subjects
+		WHERE id=$1
+	`, permissiondb.SubjectIDForClient(client.ID)).Scan(&subjectKind, &subjectStatus); err != nil {
+		t.Fatal(err)
+	}
+	if subjectKind != "client" || subjectStatus != "active" {
+		t.Fatalf("client subject mismatch: kind=%q status=%q", subjectKind, subjectStatus)
+	}
 	got, err := db.OAuth.GetClient(ctx, client.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +119,85 @@ func TestClientLifecyclePreservesExactFieldsAndPermissions(t *testing.T) {
 	}
 	if got, err = db.OAuth.GetClient(ctx, client.ID); err != nil || got != nil {
 		t.Fatalf("deleted client should be nil: client=%#v err=%v", got, err)
+	}
+}
+
+func TestClientAccessTokenLifecyclePreservesExactFieldsAndPermissions(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "oauth-client-token@test.com", "pw", "OAuthClientToken", false)
+	clientPermissions := permissionIDs("minecraft_profile.read.public", "minecraft_session.hasjoined.server")
+	client := model.OAuthClient{
+		ID:          "app-token-client",
+		OwnerUserID: user.ID,
+		Name:        "App-only client",
+		Description: "App-only token test",
+		RedirectURI: "https://app.example/callback",
+		WebsiteURL:  "https://app.example",
+		ClientType:  "confidential",
+		SecretHash:  "secret-hash",
+		Status:      "active",
+		CreatedAt:   1000,
+		UpdatedAt:   1000,
+	}
+	if err := db.OAuth.CreateClient(ctx, client, clientPermissions); err != nil {
+		t.Fatal(err)
+	}
+
+	token := model.OAuthClientAccessToken{
+		TokenHash: "client-access-1",
+		ClientID:  client.ID,
+		ExpiresAt: 5000,
+		CreatedAt: 1100,
+	}
+	tokenPermissions := permissionIDs("minecraft_session.hasjoined.server")
+	if err := db.OAuth.CreateClientAccessToken(ctx, token, tokenPermissions); err != nil {
+		t.Fatal(err)
+	}
+	got, gotPermissions, err := db.OAuth.GetClientAccessToken(ctx, token.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, &token) {
+		t.Fatalf("client access token mismatch:\n got=%#v\nwant=%#v", got, &token)
+	}
+	if !reflect.DeepEqual(gotPermissions, tokenPermissions) {
+		t.Fatalf("client token permissions=%v want=%v", gotPermissions, tokenPermissions)
+	}
+
+	revokedAt := int64(1200)
+	revoked, err := db.OAuth.RevokeClientAccessToken(ctx, token.TokenHash, revokedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !revoked {
+		t.Fatal("RevokeClientAccessToken should revoke active client access token")
+	}
+	got, gotPermissions, err = db.OAuth.GetClientAccessToken(ctx, token.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := token
+	want.RevokedAt = &revokedAt
+	if !reflect.DeepEqual(got, &want) {
+		t.Fatalf("revoked client access token mismatch:\n got=%#v\nwant=%#v", got, &want)
+	}
+	if !reflect.DeepEqual(gotPermissions, tokenPermissions) {
+		t.Fatalf("revoked client token permissions=%v want=%v", gotPermissions, tokenPermissions)
+	}
+	revoked, err = db.OAuth.RevokeClientAccessToken(ctx, token.TokenHash, 1300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revoked {
+		t.Fatal("RevokeClientAccessToken should reject already revoked client access token")
+	}
+	missing, missingPermissions, err := db.OAuth.GetClientAccessToken(ctx, "missing-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing != nil || missingPermissions != nil {
+		t.Fatalf("missing client token should return nils: token=%#v permissions=%v", missing, missingPermissions)
 	}
 }
 

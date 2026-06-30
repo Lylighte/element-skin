@@ -11,6 +11,10 @@ func SubjectIDForUser(userID string) string {
 	return "user:" + userID
 }
 
+func SubjectIDForClient(clientID string) string {
+	return "client:" + clientID
+}
+
 func (s Store) EnsureUserSubject(ctx context.Context, userID string) error {
 	subjectID := SubjectIDForUser(userID)
 	var exists bool
@@ -44,4 +48,16 @@ func (s Store) EnsureUserSubject(ctx context.Context, userID string) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s Store) EnsureClientSubject(ctx context.Context, clientID string) error {
+	subjectID := SubjectIDForClient(clientID)
+	now := time.Now().UnixMilli()
+	_, err := s.conn().Exec(ctx, `
+		INSERT INTO permission_subjects (id,user_id,kind,status,created_at,updated_at)
+		VALUES ($1,NULL,'client','active',$2,$2)
+		ON CONFLICT (id) DO UPDATE
+		SET kind='client', updated_at=EXCLUDED.updated_at
+	`, subjectID, now)
+	return err
 }

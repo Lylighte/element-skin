@@ -52,6 +52,9 @@ func TestCatalogCodesAreStrictTriplesAndIDsMatchParts(t *testing.T) {
 	if _, ok := seenCodes["yggdrasil_server.join.bound_profile"]; !ok {
 		t.Fatalf("yggdrasil_server.join.bound_profile is missing")
 	}
+	if _, ok := seenCodes["minecraft_session.hasjoined.server"]; !ok {
+		t.Fatalf("minecraft_session.hasjoined.server is missing")
+	}
 }
 
 func TestRolesOnlyReferenceKnownDefinitions(t *testing.T) {
@@ -97,8 +100,8 @@ func TestUserRoleDoesNotIncludeAdminScopedPermissions(t *testing.T) {
 	if userRole == nil {
 		t.Fatal("user role not found")
 	}
-	if len(userRole.Permissions) != 47 {
-		t.Fatalf("user role has %d permissions, want 47", len(userRole.Permissions))
+	if len(userRole.Permissions) != 49 {
+		t.Fatalf("user role has %d permissions, want 49", len(userRole.Permissions))
 	}
 	expectedCodes := []string{
 		"account.read.self",
@@ -131,6 +134,8 @@ func TestUserRoleDoesNotIncludeAdminScopedPermissions(t *testing.T) {
 		"notice.read.owned",
 		"notice.dismiss.owned",
 		"site_public.read.public",
+		"minecraft_profile.read.public",
+		"minecraft_texture_property.read.public",
 		"yggdrasil_session.create.owned",
 		"yggdrasil_session.refresh.owned",
 		"yggdrasil_session.validate.owned",
@@ -182,6 +187,38 @@ func TestUserRoleDoesNotIncludeAdminScopedPermissions(t *testing.T) {
 			t.Fatalf("user role should not include admin permission %q", def.Code)
 		}
 	}
+}
+
+func TestClientCredentialsAPISessionPolicyOnlyIncludesAppOnlyMinecraftPermissions(t *testing.T) {
+	for _, policy := range permission.SessionPolicies {
+		if policy.SessionKind != permission.SessionKindClient || policy.Entrypoint != permission.EntrypointAPI {
+			continue
+		}
+		if len(policy.Permissions) != 3 {
+			t.Fatalf("client credentials API policy has %d permissions, want 3", len(policy.Permissions))
+		}
+		expectedCodes := []string{
+			"minecraft_profile.read.public",
+			"minecraft_texture_property.read.public",
+			"minecraft_session.hasjoined.server",
+		}
+		policyCodes := make(map[string]bool, len(policy.Permissions))
+		for _, def := range policy.Permissions {
+			policyCodes[def.Code] = true
+		}
+		for _, code := range expectedCodes {
+			if !policyCodes[code] {
+				t.Fatalf("client credentials API policy must include %s", code)
+			}
+		}
+		for _, def := range policy.Permissions {
+			if def.Scope.ID != permission.ScopePublic && def.Scope.ID != permission.ScopeServer {
+				t.Fatalf("client credentials API policy should not include %s", def.Code)
+			}
+		}
+		return
+	}
+	t.Fatal("client credentials API session policy not found")
 }
 
 func TestAdminRoleDoesNotIncludeSuperAdminOrSystemPermissions(t *testing.T) {

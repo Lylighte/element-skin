@@ -55,6 +55,9 @@ const (
 	ResourceOAuthApp
 	ResourceOAuthGrant
 	ResourceOAuthToken
+	ResourceMinecraftProfile
+	ResourceMinecraftTextureProperty
+	ResourceMinecraftSession
 )
 
 const (
@@ -96,6 +99,7 @@ const (
 	ScopeAssigned
 	ScopeAny
 	ScopeSystem
+	ScopeServer
 )
 
 var Resources = []Resource{
@@ -124,6 +128,9 @@ var Resources = []Resource{
 	{ResourceOAuthApp, "oauth_app", "OAuth 应用"},
 	{ResourceOAuthGrant, "oauth_grant", "OAuth 授权"},
 	{ResourceOAuthToken, "oauth_token", "OAuth 令牌"},
+	{ResourceMinecraftProfile, "minecraft_profile", "Minecraft 角色资料"},
+	{ResourceMinecraftTextureProperty, "minecraft_texture_property", "Minecraft 材质属性"},
+	{ResourceMinecraftSession, "minecraft_session", "Minecraft 会话能力"},
 }
 
 var Actions = []Action{
@@ -165,6 +172,7 @@ var Scopes = []Scope{
 	{ScopeAssigned, "assigned", "resource_assignment", "分配资源"},
 	{ScopeAny, "any", "global", "任意资源"},
 	{ScopeSystem, "system", "system_actor", "系统任务"},
+	{ScopeServer, "server", "client_server", "授权服务器资源"},
 }
 
 var Definitions = definitions(
@@ -270,6 +278,9 @@ var Definitions = definitions(
 	def(ResourceOAuthGrant, ActionRevoke, ScopeAny, "管理后台撤销 OAuth 授权"),
 	def(ResourceOAuthToken, ActionRevoke, ScopeOwned, "撤销自己的 OAuth 令牌"),
 	def(ResourceOAuthToken, ActionIntrospect, ScopeAny, "检查 OAuth 令牌"),
+	def(ResourceMinecraftProfile, ActionRead, ScopePublic, "读取公开 Minecraft 角色资料"),
+	def(ResourceMinecraftTextureProperty, ActionRead, ScopePublic, "读取公开 Minecraft 材质属性"),
+	def(ResourceMinecraftSession, ActionHasJoined, ScopeServer, "查询授权服务器的加入结果"),
 )
 
 type defInput struct {
