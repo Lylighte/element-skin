@@ -20,7 +20,7 @@ func (r *Router) Capabilities(w http.ResponseWriter, req *http.Request) {
 		"api_url":     apiURL,
 		"features": map[string]bool{
 			"skin_library":      true,
-			"oauth":             false,
+			"oauth":             true,
 			"device_code":       false,
 			"microsoft_import":  true,
 			"remote_ygg_import": true,
