@@ -1,6 +1,8 @@
 import apiClient from './client'
 import type { PermissionDefinition, PermissionOverrideEffect } from './types'
 
+export type OAuthClientStatus = 'pending' | 'active' | 'rejected' | 'disabled'
+
 export interface OAuthClient {
   client_id: string
   owner_user_id: string
@@ -9,11 +11,22 @@ export interface OAuthClient {
   redirect_uri: string
   website_url: string
   client_type: 'public' | 'confidential'
-  status: 'active' | 'disabled'
+  status: OAuthClientStatus
   created_at: number
   updated_at: number
   permissions: string[]
   client_secret?: string
+}
+
+export interface OAuthGrant {
+  id: string
+  user_id: string
+  subject_id: string
+  client_id: string
+  status: 'active' | 'revoked'
+  created_at: number
+  revoked_at?: number | null
+  permissions: string[]
 }
 
 export interface OAuthClientInput {
@@ -53,6 +66,14 @@ export function listOAuthApps(limit = 50) {
   return apiClient.get<{ items: OAuthClient[] }>('/v1/oauth/apps', { params: { limit } })
 }
 
+export function listOAuthGrants(limit = 50) {
+  return apiClient.get<{ items: OAuthGrant[] }>('/v1/oauth/grants', { params: { limit } })
+}
+
+export function revokeOAuthGrant(grantId: string) {
+  return apiClient.delete<{ ok: true }>(`/v1/oauth/grants/${grantId}`)
+}
+
 export function getPermissionCatalog() {
   return apiClient.get<PermissionCatalogResponse>('/v1/permissions/catalog')
 }
@@ -63,6 +84,10 @@ export function createOAuthApp(payload: OAuthClientInput) {
 
 export function updateOAuthApp(clientId: string, payload: OAuthClientInput & { status?: string }) {
   return apiClient.patch<OAuthClient>(`/v1/oauth/apps/${clientId}`, payload)
+}
+
+export function submitOAuthAppReview(clientId: string) {
+  return apiClient.post<OAuthClient>(`/v1/oauth/apps/${clientId}/review-submission`)
 }
 
 export function deleteOAuthApp(clientId: string) {
@@ -89,6 +114,16 @@ export function setOAuthClientPermission(
 
 export function clearOAuthClientPermission(clientId: string, permissionCode: string) {
   return apiClient.delete<{ ok: true }>(`/v1/oauth/apps/${clientId}/permissions/${permissionCode}`)
+}
+
+export function listAdminOAuthApps(status: OAuthClientStatus | 'all' = 'all', limit = 100) {
+  return apiClient.get<{ items: OAuthClient[] }>('/v1/admin/oauth/apps', {
+    params: { status, limit },
+  })
+}
+
+export function reviewAdminOAuthApp(clientId: string, status: Exclude<OAuthClientStatus, 'pending'>) {
+  return apiClient.patch<OAuthClient>(`/v1/admin/oauth/apps/${clientId}/review`, { status })
 }
 
 export function getDeviceAuthorization(userCode: string) {

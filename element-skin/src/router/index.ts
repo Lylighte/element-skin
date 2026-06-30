@@ -27,6 +27,7 @@ import AdminEasterEggs from '@/components/admin/AdminEasterEggs.vue'
 import AdminTexturesList from '@/components/admin/AdminTexturesList.vue'
 import AdminRolesList from '@/components/admin/AdminRolesList.vue'
 import AdminNotices from '@/components/admin/AdminNotices.vue'
+import AdminOAuthApps from '@/components/admin/AdminOAuthApps.vue'
 import { getMe } from '@/api/me'
 import { installEasterEggRouterHooks } from '@/easter-eggs'
 import { canAccessAdminPath, firstAccessibleAdminPath } from '@/permissions/adminPages'
@@ -108,6 +109,11 @@ const router = createRouter({
           path: 'roles',
           name: 'admin-roles',
           component: AdminRolesList,
+        },
+        {
+          path: 'oauth-apps',
+          name: 'admin-oauth-apps',
+          component: AdminOAuthApps,
         },
       ],
     },
