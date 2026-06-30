@@ -123,6 +123,36 @@ func (s Store) ListClients(ctx context.Context, limit int) ([]model.OAuthClient,
 	return scanClients(rows)
 }
 
+func (s Store) ListClientsByStatus(ctx context.Context, status string, limit int) ([]model.OAuthClient, error) {
+	if status == "" || status == "all" {
+		return s.ListClients(ctx, limit)
+	}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id, owner_user_id, name, description, redirect_uri, website_url, client_type, secret_hash, status, created_at, updated_at
+		FROM delegated_clients
+		WHERE status=$1
+		ORDER BY created_at DESC, id DESC
+		LIMIT $2
+	`, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanClients(rows)
+}
+
+func (s Store) UpdateClientStatus(ctx context.Context, clientID, status string, updatedAt int64) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE delegated_clients
+		SET status=$2, updated_at=$3
+		WHERE id=$1
+	`, clientID, status, updatedAt)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 func (s Store) ClientPermissionIDs(ctx context.Context, clientID string) ([]int64, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT permission_id

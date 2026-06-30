@@ -78,6 +78,15 @@ func (h Handler) ListApps(w http.ResponseWriter, req *http.Request) {
 	util.JSON(w, http.StatusOK, map[string]any{"items": res})
 }
 
+func (h Handler) ListAdminApps(w http.ResponseWriter, req *http.Request) {
+	res, err := h.oauth.ListClientsForAdmin(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("status"), util.ClampLimit(req.URL.Query().Get("limit")))
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, http.StatusOK, map[string]any{"items": res})
+}
+
 func (h Handler) CreateApp(w http.ResponseWriter, req *http.Request) {
 	var body appBody
 	if err := shared.DecodeJSON(req, &body); err != nil {
@@ -108,6 +117,29 @@ func (h Handler) UpdateApp(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	res, err := h.oauth.UpdateClient(req.Context(), shared.CurrentActor(req), req.PathValue("client_id"), body.input(), body.Status)
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, http.StatusOK, res)
+}
+
+func (h Handler) SubmitAppReview(w http.ResponseWriter, req *http.Request) {
+	res, err := h.oauth.SubmitClientForReview(req.Context(), shared.CurrentActor(req), req.PathValue("client_id"))
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, http.StatusOK, res)
+}
+
+func (h Handler) ReviewApp(w http.ResponseWriter, req *http.Request) {
+	var body appReviewBody
+	if err := shared.DecodeJSON(req, &body); err != nil {
+		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
+		return
+	}
+	res, err := h.oauth.ReviewClient(req.Context(), shared.CurrentActor(req), req.PathValue("client_id"), body.Status)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -338,6 +370,10 @@ type appBody struct {
 
 type permissionOverrideBody struct {
 	Effect string `json:"effect"`
+}
+
+type appReviewBody struct {
+	Status string `json:"status"`
 }
 
 func (b appBody) input() oauthsvc.ClientInput {
