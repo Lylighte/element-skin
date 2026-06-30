@@ -2612,7 +2612,224 @@ email
 easter_eggs
 ```
 
-## 25. OAuth 标准端点
+## 25. Minecraft 能力 API
+
+Minecraft 能力 API 是站点开放平台接口，不是 Yggdrasil 协议端点。它面向第三方启动器、外部工具、服务端插件和未来外置插件系统，统一放在 `/v1/minecraft/*` 下。
+
+Yggdrasil 兼容端点必须继续保持原路径和协议响应格式：
+
+```text
+/authserver/*
+/sessionserver/*
+/api/users/profiles/minecraft/*
+```
+
+`/v1/minecraft/*` 不复刻 Yggdrasil 协议，不返回 Yggdrasil 错误格式，不接受 Yggdrasil access token。它只接受站点 API 的认证模型：公开接口、站点 Cookie、OAuth Bearer token 或未来 Client Credentials token。
+
+### 25.1 不重复开放的能力
+
+以下能力已经由现有站点 API 覆盖，不在 `/v1/minecraft` 下重复提供：
+
+```http
+GET    /v1/users/me/profiles
+POST   /v1/users/me/profiles
+PATCH  /v1/users/me/profiles/{profile_id}
+DELETE /v1/users/me/profiles/{profile_id}
+
+GET    /v1/users/me/textures
+POST   /v1/users/me/textures
+PATCH  /v1/users/me/textures/{hash}/{texture_type}
+DELETE /v1/users/me/textures/{hash}/{texture_type}
+
+POST   /v1/users/me/textures/{hash}/apply
+POST   /v1/users/me/textures/upload-and-apply
+DELETE /v1/users/me/profiles/{profile_id}/skin
+DELETE /v1/users/me/profiles/{profile_id}/cape
+```
+
+第三方应用代表用户管理自己的角色和材质时，必须走 OAuth Authorization Code + 上述现有 `/v1/users/me/*` API。
+
+### 25.2 按名称查询公开角色
+
+```http
+GET /v1/minecraft/profiles/by-name/{name}
+```
+
+认证：公开可读，或 OAuth Bearer。
+
+权限：
+
+```text
+minecraft_profile.read.public
+```
+
+响应：
+
+```json
+{
+  "id": "minecraft_profile_id",
+  "name": "PlayerName",
+  "owner_user_id": "user_id",
+  "texture_model": "slim",
+  "public": true
+}
+```
+
+未找到或角色不可公开读取时返回 `404`。该接口不暴露账号邮箱、私有材质或非公开角色。
+
+### 25.3 批量按名称查询公开角色
+
+```http
+POST /v1/minecraft/profiles/by-names
+```
+
+认证：公开可读，或 OAuth Bearer。
+
+权限：
+
+```text
+minecraft_profile.read.public
+```
+
+请求：
+
+```json
+{
+  "names": ["Steve", "Alex"]
+}
+```
+
+响应：
+
+```json
+{
+  "items": [
+    {
+      "id": "minecraft_profile_id",
+      "name": "Steve",
+      "texture_model": "default",
+      "public": true
+    }
+  ]
+}
+```
+
+服务端必须限制单次查询数量。未找到或不可公开读取的名称不进入 `items`。
+
+### 25.4 按角色 ID 查询公开角色
+
+```http
+GET /v1/minecraft/profiles/{profile_id}
+```
+
+认证：公开可读，或 OAuth Bearer。
+
+权限：
+
+```text
+minecraft_profile.read.public
+```
+
+响应：
+
+```json
+{
+  "id": "minecraft_profile_id",
+  "name": "PlayerName",
+  "texture_model": "slim",
+  "public": true
+}
+```
+
+### 25.5 获取 textures property
+
+```http
+GET /v1/minecraft/profiles/{profile_id}/textures-property
+```
+
+认证：公开可读，或 OAuth Bearer。
+
+权限：
+
+```text
+minecraft_texture_property.read.public
+```
+
+响应：
+
+```json
+{
+  "profile_id": "minecraft_profile_id",
+  "profile_name": "PlayerName",
+  "textures_property": {
+    "name": "textures",
+    "value": "base64_json_payload",
+    "signature": "base64_signature"
+  }
+}
+```
+
+`textures_property` 必须与 Yggdrasil profile 响应中 `properties[name=textures]` 的数据来源一致，但响应结构属于站点 API，不直接复刻 `/sessionserver/session/minecraft/profile/{uuid}`。
+
+### 25.6 服务端加入结果校验
+
+```http
+POST /v1/minecraft/session/has-joined
+```
+
+认证：OAuth Client Credentials Bearer token。
+
+权限：
+
+```text
+minecraft_session.hasjoined.server
+```
+
+请求：
+
+```json
+{
+  "username": "PlayerName",
+  "server_id": "server_hash",
+  "ip": "127.0.0.1"
+}
+```
+
+响应：
+
+```json
+{
+  "joined": true,
+  "profile": {
+    "id": "minecraft_profile_id",
+    "name": "PlayerName",
+    "textures_property": {
+      "name": "textures",
+      "value": "base64_json_payload",
+      "signature": "base64_signature"
+    }
+  }
+}
+```
+
+未加入：
+
+```json
+{
+  "joined": false,
+  "profile": null
+}
+```
+
+语义：
+
+- 该接口供受信任服务端插件或外置插件系统调用。
+- 该接口不替代 `/sessionserver/session/minecraft/hasJoined`。
+- 该接口不接受 Yggdrasil access token。
+- 该接口必须复用服务器 join 结果的业务判断，但返回站点 API 响应结构。
+- 账号封禁语义与现有服务器加入链路保持一致：被封禁账号不得通过加入结果校验。
+
+## 26. OAuth 标准端点
 
 OAuth 协议端点不放入 `/v1`，以符合生态工具和标准发现习惯。
 
@@ -2644,11 +2861,11 @@ implicit
 
 Device Authorization Grant、Client Credentials、DPoP、PAR、JAR、RAR 等扩展见 `doc/OAuth2.1标准与扩展参考.md`。
 
-## 26. OAuth 应用与授权管理 API
+## 27. OAuth 应用与授权管理 API
 
 OAuth 应用和授权管理是站点业务能力，因此放入 `/v1`。
 
-### 26.1 开发者应用
+### 27.1 开发者应用
 
 ```http
 GET    /v1/oauth/apps
@@ -2673,7 +2890,7 @@ oauth_app.delete.owned
 - OAuth 应用资源必须进入权限 catalog。
 - 应用允许申请的权限上限应使用现有 permission code。
 
-### 26.2 当前用户授权
+### 27.2 当前用户授权
 
 ```http
 GET    /v1/oauth/grants
@@ -2687,7 +2904,7 @@ oauth_grant.read.owned
 oauth_grant.revoke.owned
 ```
 
-### 26.3 OAuth 协议请求
+### 27.3 OAuth 协议请求
 
 ```http
 GET /oauth/authorize
@@ -2842,15 +3059,15 @@ Content-Type: application/x-www-form-urlencoded
 }
 ```
 
-### 26.4 管理员 OAuth 管理
+### 27.4 管理员 OAuth 管理
 
 管理员可以通过同一组 `/v1/oauth/apps/{client_id}` 读取或修改具体 OAuth 应用。具有 `oauth_app.read.any` 或 `oauth_app.update.any` 时，不受应用 owner 限制。
 
 第一阶段暂不提供管理员全量 OAuth app/grant 列表接口。需要管理后台列表视图时再增加明确分页接口。
 
-## 27. 能力发现 API
+## 28. 能力发现 API
 
-### 27.1 站点能力
+### 28.1 站点能力
 
 ```http
 GET /v1/capabilities
@@ -2868,6 +3085,7 @@ GET /v1/capabilities
   "api_url": "https://skin.example.com",
   "features": {
     "skin_library": true,
+    "minecraft_api": true,
     "oauth": true,
     "device_code": false,
     "microsoft_import": true,
@@ -2883,7 +3101,7 @@ GET /v1/capabilities
 }
 ```
 
-### 27.2 权限目录
+### 28.2 权限目录
 
 ```http
 GET /v1/permissions/catalog
@@ -2920,7 +3138,7 @@ GET /v1/permissions/catalog
 - `admin_delegable` 表示是否属于管理员能力下放。
 - `protected` 表示是否涉及受保护权限主体。
 
-## 28. 路由迁移表
+## 29. 路由迁移表
 
 | 旧路径 | 新路径 |
 | --- | --- |
@@ -3004,9 +3222,9 @@ GET /v1/permissions/catalog
 | `GET /admin/settings/{group}` | `GET /v1/admin/settings/{group}` |
 | `POST /admin/settings/{group}` | `POST /v1/admin/settings/{group}` |
 
-## 29. 实现注意事项
+## 30. 实现注意事项
 
-### 29.1 API URL 配置
+### 30.1 API URL 配置
 
 当前后端公开设置中已经包含 `api_url`。迁移后：
 
@@ -3014,7 +3232,7 @@ GET /v1/permissions/catalog
 - 前端 API client 应统一拼接 `/v1/...`。
 - Microsoft redirect URI 默认值必须同步迁移到 `/v1/imports/microsoft/callback`。
 
-### 29.2 前端迁移
+### 30.2 前端迁移
 
 前端所有 API client 应迁移到 v1 路径。
 
@@ -3028,7 +3246,7 @@ GET /v1/permissions/catalog
 
 这些是 SPA 页面路径，不是后端 API。
 
-### 29.3 测试迁移
+### 30.3 测试迁移
 
 以下测试必须同步更新：
 
@@ -3039,7 +3257,7 @@ GET /v1/permissions/catalog
 
 Yggdrasil 相关测试不应迁移路径。
 
-### 29.4 Loadtest
+### 30.4 Loadtest
 
 loadtest 应覆盖 v1 路径：
 
@@ -3058,7 +3276,34 @@ loadtest 应覆盖 v1 路径：
 
 Yggdrasil loadtest 路径保持原样。
 
-## 30. OAuth 资源权限
+## 31. Minecraft 资源权限
+
+`/v1/minecraft/*` 是站点能力 API，不使用 `yggdrasil_*` 权限资源。实现该组接口时必须新增以下资源：
+
+```text
+minecraft_profile
+minecraft_texture_property
+minecraft_session
+```
+
+权限：
+
+```text
+minecraft_profile.read.public
+minecraft_texture_property.read.public
+minecraft_session.hasjoined.server
+```
+
+语义：
+
+- `minecraft_profile.read.public` 只允许读取公开角色资料。
+- `minecraft_texture_property.read.public` 只允许读取公开角色可对外暴露的 textures property。
+- `minecraft_session.hasjoined.server` 只允许受审核的 Client Credentials 应用调用服务端加入结果校验。
+- `minecraft_session.hasjoined.server` 不得授予用户委托 OAuth token，不得替代 `yggdrasil_server.hasjoined.bound_profile`。
+
+这些权限名应进入权限模型文档，并通过 catalog 测试固定。
+
+## 32. OAuth 资源权限
 
 OAuth 应用和授权是站点能力资源。v1 实现 OAuth 时必须新增以下资源：
 
@@ -3089,7 +3334,7 @@ oauth_token.introspect.any
 
 这些权限名应进入权限模型文档，并通过 catalog 测试固定。
 
-## 31. 迁移确认项
+## 33. 迁移确认项
 
 本规范确认以下 breaking change：
 
@@ -3100,4 +3345,5 @@ oauth_token.introspect.any
 5. 管理员通知的 `PATCH` 保留为 v1 端点，但语义固定为替换发布。
 6. OAuth 标准端点不放入 `/v1`。
 7. `/v1/permissions/catalog` 作为未来 OAuth scope 发现基础。
-8. 旧站点 API 不长期保留；Yggdrasil 与 Mojang 兼容端点不在本次迁移范围内。
+8. `/v1/minecraft/*` 是新增站点能力 API，不是 Yggdrasil 协议迁移路径。
+9. 旧站点 API 不长期保留；Yggdrasil 与 Mojang 兼容端点不在本次迁移范围内。
