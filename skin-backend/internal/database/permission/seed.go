@@ -28,6 +28,9 @@ func (s Store) SeedDefaults(ctx context.Context) error {
 	if err := seedUserSubjects(ctx, tx, now); err != nil {
 		return err
 	}
+	if err := seedClientSubjects(ctx, tx, now); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -219,4 +222,15 @@ func usersColumnExists(ctx context.Context, tx pgx.Tx, column string) (bool, err
 		)
 	`, column).Scan(&exists)
 	return exists, err
+}
+
+func seedClientSubjects(ctx context.Context, tx pgx.Tx, now int64) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO permission_subjects (id,user_id,kind,status,created_at,updated_at)
+		SELECT 'client:' || id, NULL, 'client', 'active', $1, $1
+		FROM delegated_clients
+		ON CONFLICT (id) DO UPDATE
+		SET kind='client', updated_at=EXCLUDED.updated_at
+	`, now)
+	return err
 }

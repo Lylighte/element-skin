@@ -20,10 +20,12 @@ const (
 	SessionKindYggdrasil  = "yggdrasil"
 	SessionKindSystem     = "system"
 	SessionKindDelegated  = "delegated"
+	SessionKindClient     = "client_credentials"
 	EntrypointDashboard   = "dashboard"
 	EntrypointAdmin       = "admin"
 	EntrypointYggdrasil   = "yggdrasil"
 	EntrypointMaintenance = "maintenance"
+	EntrypointAPI         = "api"
 )
 
 var Roles = []Role{
@@ -63,6 +65,8 @@ var Roles = []Role{
 			"notice.read.owned",
 			"notice.dismiss.owned",
 			"site_public.read.public",
+			"minecraft_profile.read.public",
+			"minecraft_texture_property.read.public",
 			"yggdrasil_session.create.owned",
 			"yggdrasil_session.refresh.owned",
 			"yggdrasil_session.validate.owned",
@@ -191,6 +195,15 @@ var SessionPolicies = []SessionPolicy{
 	},
 	{SessionKind: SessionKindSystem, Entrypoint: EntrypointMaintenance, Permissions: systemDefinitions()},
 	{SessionKind: SessionKindDelegated, Entrypoint: EntrypointDashboard, Permissions: nonSystemDefinitions()},
+	{
+		SessionKind: SessionKindClient,
+		Entrypoint:  EntrypointAPI,
+		Permissions: definitionsByCodes(
+			"minecraft_profile.read.public",
+			"minecraft_texture_property.read.public",
+			"minecraft_session.hasjoined.server",
+		),
+	},
 }
 
 func DefinitionByCode(code string) (Definition, bool) {

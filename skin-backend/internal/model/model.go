@@ -136,3 +136,25 @@ type OAuthToken struct {
 	CreatedAt int64
 	RevokedAt *int64
 }
+
+type OAuthClientAccessToken struct {
+	TokenHash string
+	ClientID  string
+	ExpiresAt int64
+	CreatedAt int64
+	RevokedAt *int64
+}
+
+type OAuthDeviceCode struct {
+	DeviceCodeHash string
+	UserCodeHash   string
+	ClientID       string
+	SubjectID      *string
+	Status         string
+	ExpiresAt      int64
+	CreatedAt      int64
+	ApprovedAt     *int64
+	DeniedAt       *int64
+	ConsumedAt     *int64
+	LastPolledAt   *int64
+}

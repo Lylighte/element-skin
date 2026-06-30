@@ -31,6 +31,14 @@ func (s Store) CreateClient(ctx context.Context, client model.OAuthClient, permi
 	if err := insertClientPermissions(ctx, tx, client.ID, permissionIDs, client.CreatedAt); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO permission_subjects (id,user_id,kind,status,created_at,updated_at)
+		VALUES ($1,NULL,'client','active',$2,$2)
+		ON CONFLICT (id) DO UPDATE
+		SET kind='client', updated_at=EXCLUDED.updated_at
+	`, "client:"+client.ID, client.CreatedAt); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -270,6 +278,75 @@ func (s Store) CreateTokens(ctx context.Context, access model.OAuthToken, refres
 	return tx.Commit(ctx)
 }
 
+func (s Store) CreateClientAccessToken(ctx context.Context, token model.OAuthClientAccessToken, permissionIDs []int64) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO oauth_client_access_tokens (token_hash, client_id, expires_at, created_at, revoked_at)
+		VALUES ($1,$2,$3,$4,$5)
+	`, token.TokenHash, token.ClientID, token.ExpiresAt, token.CreatedAt, token.RevokedAt); err != nil {
+		return err
+	}
+	for _, permissionID := range permissionIDs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO oauth_client_access_token_permissions (token_hash, permission_id, created_at)
+			VALUES ($1,$2,$3)
+		`, token.TokenHash, permissionID, token.CreatedAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (s Store) GetClientAccessToken(ctx context.Context, tokenHash string) (*model.OAuthClientAccessToken, []int64, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback(ctx)
+	row := tx.QueryRow(ctx, `
+		SELECT token_hash, client_id, expires_at, created_at, revoked_at
+		FROM oauth_client_access_tokens
+		WHERE token_hash=$1
+	`, tokenHash)
+	token, err := scanClientAccessToken(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT permission_id
+		FROM oauth_client_access_token_permissions
+		WHERE token_hash=$1
+		ORDER BY permission_id
+	`, tokenHash)
+	if err != nil {
+		return nil, nil, err
+	}
+	permissionIDs, err := scanInt64Rows(rows)
+	if err != nil {
+		return nil, nil, err
+	}
+	return token, permissionIDs, tx.Commit(ctx)
+}
+
+func (s Store) RevokeClientAccessToken(ctx context.Context, tokenHash string, revokedAt int64) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE oauth_client_access_tokens
+		SET revoked_at=$2
+		WHERE token_hash=$1 AND revoked_at IS NULL
+	`, tokenHash, revokedAt)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 func (s Store) GetAccessToken(ctx context.Context, tokenHash string) (*model.OAuthToken, error) {
 	return s.getToken(ctx, "oauth_access_tokens", tokenHash)
 }
@@ -374,6 +451,15 @@ func scanAuthorizationCode(row rowScanner) (*model.OAuthAuthorizationCode, error
 func scanOAuthToken(row rowScanner) (*model.OAuthToken, error) {
 	var token model.OAuthToken
 	err := row.Scan(&token.TokenHash, &token.ClientID, &token.UserID, &token.GrantID, &token.ExpiresAt, &token.CreatedAt, &token.RevokedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+func scanClientAccessToken(row rowScanner) (*model.OAuthClientAccessToken, error) {
+	var token model.OAuthClientAccessToken
+	err := row.Scan(&token.TokenHash, &token.ClientID, &token.ExpiresAt, &token.CreatedAt, &token.RevokedAt)
 	if err != nil {
 		return nil, err
 	}

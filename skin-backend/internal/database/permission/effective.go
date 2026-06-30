@@ -21,6 +21,34 @@ type EffectiveOptions struct {
 func (s Store) EffectivePermissionsForUser(ctx context.Context, userID string, opts EffectiveOptions) (core.BitSet, error) {
 	subjectID := SubjectIDForUser(userID)
 
+	if err := s.EnsureUserSubject(ctx, userID); err != nil {
+		return nil, err
+	}
+	permissions, err := s.EffectivePermissionsForSubject(ctx, subjectID, opts)
+	if err != nil {
+		return nil, err
+	}
+	if opts.ApplyBanPolicy {
+		banned, err := s.userBanned(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if banned {
+			join := core.MustDefinitionByCode("yggdrasil_server.join.bound_profile")
+			permissions.Clear(join.BitIndex)
+		}
+	}
+	return permissions, nil
+}
+
+func (s Store) EffectivePermissionsForClient(ctx context.Context, clientID string, opts EffectiveOptions) (core.BitSet, error) {
+	if err := s.EnsureClientSubject(ctx, clientID); err != nil {
+		return nil, err
+	}
+	return s.EffectivePermissionsForSubject(ctx, SubjectIDForClient(clientID), opts)
+}
+
+func (s Store) EffectivePermissionsForSubject(ctx context.Context, subjectID string, opts EffectiveOptions) (core.BitSet, error) {
 	var permissions core.BitSet
 	if s.Cache != nil {
 		if cached, hit, err := s.Cache.GetEffective(ctx, subjectID); err != nil {
@@ -30,9 +58,6 @@ func (s Store) EffectivePermissionsForUser(ctx context.Context, userID string, o
 		}
 	}
 	if permissions == nil {
-		if err := s.EnsureUserSubject(ctx, userID); err != nil {
-			return nil, err
-		}
 		var err error
 		permissions, err = s.effectivePermissionsForSubject(ctx, subjectID)
 		if err != nil {
@@ -47,21 +72,11 @@ func (s Store) EffectivePermissionsForUser(ctx context.Context, userID string, o
 		permissions = permissions.And(policy)
 	}
 	if opts.DelegatedGrantID != "" {
-		policy, err := s.delegationPolicy(ctx, userID, opts.DelegatedClientID, opts.DelegatedGrantID)
+		policy, err := s.delegationPolicy(ctx, subjectID, opts.DelegatedClientID, opts.DelegatedGrantID)
 		if err != nil {
 			return nil, err
 		}
 		permissions = permissions.And(policy)
-	}
-	if opts.ApplyBanPolicy {
-		banned, err := s.userBanned(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
-		if banned {
-			join := core.MustDefinitionByCode("yggdrasil_server.join.bound_profile")
-			permissions.Clear(join.BitIndex)
-		}
 	}
 	return permissions, nil
 }
@@ -78,6 +93,20 @@ func (s Store) ActorForUser(ctx context.Context, userID string, opts EffectiveOp
 		Entrypoint:        opts.Entrypoint,
 		DelegationID:      opts.DelegatedGrantID,
 		DelegatedClientID: opts.DelegatedClientID,
+		Permissions:       permissions,
+	}, nil
+}
+
+func (s Store) ActorForClient(ctx context.Context, clientID string, opts EffectiveOptions) (core.Actor, error) {
+	permissions, err := s.EffectivePermissionsForClient(ctx, clientID, opts)
+	if err != nil {
+		return core.Actor{}, err
+	}
+	return core.Actor{
+		SubjectID:         SubjectIDForClient(clientID),
+		SessionKind:       opts.SessionKind,
+		Entrypoint:        opts.Entrypoint,
+		DelegatedClientID: clientID,
 		Permissions:       permissions,
 	}, nil
 }
@@ -181,7 +210,7 @@ func (s Store) sessionPolicy(ctx context.Context, sessionKind, entrypoint string
 	return policy, rows.Err()
 }
 
-func (s Store) delegationPolicy(ctx context.Context, userID, clientID, grantID string) (core.BitSet, error) {
+func (s Store) delegationPolicy(ctx context.Context, subjectID, clientID, grantID string) (core.BitSet, error) {
 	policy := core.NewBitSet(len(core.Definitions))
 	rows, err := s.conn().Query(ctx, `
 		SELECT p.bit_index
@@ -191,12 +220,12 @@ func (s Store) delegationPolicy(ctx context.Context, userID, clientID, grantID s
 		JOIN delegated_client_permissions cp ON cp.client_id=g.client_id AND cp.permission_id=gp.permission_id
 		JOIN permissions p ON p.id=gp.permission_id
 		WHERE g.id=$1
-		  AND g.user_id=$2
+		  AND g.subject_id=$2
 		  AND ($3='' OR g.client_id=$3)
 		  AND g.status='active'
 		  AND c.status='active'
 		ORDER BY p.bit_index
-	`, grantID, userID, clientID)
+	`, grantID, subjectID, clientID)
 	if err != nil {
 		return nil, err
 	}
