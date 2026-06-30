@@ -60,6 +60,7 @@ type TokenRequest struct {
 	ClientSecret string
 	CodeVerifier string
 	RefreshToken string
+	Scope        string
 }
 
 type TokenResponse struct {
@@ -326,6 +327,8 @@ func (s Service) IssueToken(ctx context.Context, req TokenRequest) (TokenRespons
 		return s.exchangeAuthorizationCode(ctx, req)
 	case "refresh_token":
 		return s.refreshToken(ctx, req)
+	case "client_credentials":
+		return s.clientCredentialsToken(ctx, req)
 	default:
 		return TokenResponse{}, badRequest("unsupported grant_type")
 	}
@@ -355,6 +358,15 @@ func (s Service) RevokeToken(ctx context.Context, clientID, clientSecret, token 
 		_, err = s.DB.OAuth.RevokeRefreshToken(ctx, tokenHash, database.NowMS())
 		return err
 	}
+	if clientAccess, _, err := s.DB.OAuth.GetClientAccessToken(ctx, tokenHash); err != nil {
+		return err
+	} else if clientAccess != nil {
+		if clientAccess.ClientID != client.ID {
+			return forbidden()
+		}
+		_, err = s.DB.OAuth.RevokeClientAccessToken(ctx, tokenHash, database.NowMS())
+		return err
+	}
 	return nil
 }
 
@@ -368,7 +380,22 @@ func (s Service) Introspect(ctx context.Context, actor permission.Actor, token s
 		return nil, err
 	}
 	if access == nil || access.RevokedAt != nil || access.ExpiresAt <= database.NowMS() {
-		return map[string]any{"active": false}, nil
+		clientAccess, permissionIDs, err := s.DB.OAuth.GetClientAccessToken(ctx, tokenHash)
+		if err != nil {
+			return nil, err
+		}
+		if clientAccess == nil || clientAccess.RevokedAt != nil || clientAccess.ExpiresAt <= database.NowMS() {
+			return map[string]any{"active": false}, nil
+		}
+		codes := permissionCodesFromIDs(permissionIDs)
+		return map[string]any{
+			"active":      true,
+			"client_id":   clientAccess.ClientID,
+			"subject_id":  permissiondb.SubjectIDForClient(clientAccess.ClientID),
+			"exp":         clientAccess.ExpiresAt / 1000,
+			"scope":       strings.Join(codes, " "),
+			"permissions": codes,
+		}, nil
 	}
 	codes, err := s.grantPermissionCodes(ctx, access.GrantID)
 	if err != nil {
@@ -386,23 +413,48 @@ func (s Service) Introspect(ctx context.Context, actor permission.Actor, token s
 }
 
 func (s Service) ActorForBearer(ctx context.Context, bearer string) (permission.Actor, bool, error) {
-	token, err := s.DB.OAuth.GetAccessToken(ctx, util.HashRefreshToken(bearer))
+	tokenHash := util.HashRefreshToken(bearer)
+	token, err := s.DB.OAuth.GetAccessToken(ctx, tokenHash)
 	if err != nil {
 		return permission.Actor{}, false, err
 	}
-	if token == nil || token.RevokedAt != nil || token.ExpiresAt <= database.NowMS() {
+	if token != nil && token.RevokedAt == nil && token.ExpiresAt > database.NowMS() {
+		actor, err := s.DB.Permissions.ActorForUser(ctx, token.UserID, permissiondb.EffectiveOptions{
+			SessionKind:       permission.SessionKindDelegated,
+			Entrypoint:        permission.EntrypointDashboard,
+			DelegatedClientID: token.ClientID,
+			DelegatedGrantID:  token.GrantID,
+		})
+		if err != nil {
+			return permission.Actor{}, false, err
+		}
+		actor.SessionID = token.TokenHash
+		return actor, true, nil
+	}
+
+	clientToken, permissionIDs, err := s.DB.OAuth.GetClientAccessToken(ctx, tokenHash)
+	if err != nil {
+		return permission.Actor{}, false, err
+	}
+	if clientToken == nil || clientToken.RevokedAt != nil || clientToken.ExpiresAt <= database.NowMS() {
 		return permission.Actor{}, false, nil
 	}
-	actor, err := s.DB.Permissions.ActorForUser(ctx, token.UserID, permissiondb.EffectiveOptions{
-		SessionKind:       permission.SessionKindDelegated,
-		Entrypoint:        permission.EntrypointDashboard,
-		DelegatedClientID: token.ClientID,
-		DelegatedGrantID:  token.GrantID,
+	client, err := s.DB.OAuth.GetClient(ctx, clientToken.ClientID)
+	if err != nil {
+		return permission.Actor{}, false, err
+	}
+	if client == nil || client.Status != StatusActive {
+		return permission.Actor{}, false, nil
+	}
+	actor, err := s.DB.Permissions.ActorForClient(ctx, clientToken.ClientID, permissiondb.EffectiveOptions{
+		SessionKind: permission.SessionKindClient,
+		Entrypoint:  permission.EntrypointAPI,
 	})
 	if err != nil {
 		return permission.Actor{}, false, err
 	}
-	actor.SessionID = token.TokenHash
+	actor.SessionID = clientToken.TokenHash
+	actor.Permissions = actor.Permissions.And(bitSetFromPermissionIDs(permissionIDs))
 	return actor, true, nil
 }
 
@@ -457,6 +509,51 @@ func (s Service) refreshToken(ctx context.Context, req TokenRequest) (TokenRespo
 		return TokenResponse{}, badRequest("invalid refresh_token")
 	}
 	return tokenResponse(accessRaw, refreshRaw, codes), nil
+}
+
+func (s Service) clientCredentialsToken(ctx context.Context, req TokenRequest) (TokenResponse, error) {
+	client, err := s.authenticateClient(ctx, req.ClientID, req.ClientSecret)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	if client.ClientType != ClientTypeConfidential {
+		return TokenResponse{}, badRequest("client_credentials requires a confidential client")
+	}
+	actor, err := s.DB.Permissions.ActorForClient(ctx, client.ID, permissiondb.EffectiveOptions{
+		SessionKind: permission.SessionKindClient,
+		Entrypoint:  permission.EntrypointAPI,
+	})
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	codes, err := requestedOrDefaultClientScopes(req.Scope, actor)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	if len(codes) == 0 {
+		return TokenResponse{}, forbidden()
+	}
+	raw, tokenHash, err := generateToken()
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	now := database.NowMS()
+	token := model.OAuthClientAccessToken{
+		TokenHash: tokenHash,
+		ClientID:  client.ID,
+		ExpiresAt: now + int64(accessTokenTTL/time.Millisecond),
+		CreatedAt: now,
+	}
+	if err := s.DB.OAuth.CreateClientAccessToken(ctx, token, permissionIDsFromCodes(codes)); err != nil {
+		return TokenResponse{}, err
+	}
+	return TokenResponse{
+		AccessToken: raw,
+		TokenType:   "Bearer",
+		ExpiresIn:   int64(accessTokenTTL / time.Second),
+		Scope:       strings.Join(codes, " "),
+		Permissions: codes,
+	}, nil
 }
 
 func (s Service) issueTokens(ctx context.Context, clientID, userID, grantID string, codes []string) (TokenResponse, error) {
@@ -680,6 +777,43 @@ func permissionCodesFromIDs(ids []int64) []string {
 	}
 	sort.Strings(codes)
 	return codes
+}
+
+func bitSetFromPermissionIDs(ids []int64) permission.BitSet {
+	byID := map[int64]int{}
+	for _, def := range permission.Definitions {
+		byID[int64(def.ID)] = def.BitIndex
+	}
+	bits := permission.NewBitSet(len(permission.Definitions))
+	for _, id := range ids {
+		if bitIndex, ok := byID[id]; ok {
+			bits.Set(bitIndex)
+		}
+	}
+	return bits
+}
+
+func requestedOrDefaultClientScopes(raw string, actor permission.Actor) ([]string, error) {
+	if strings.TrimSpace(raw) != "" {
+		codes, err := parseScope(raw)
+		if err != nil {
+			return nil, err
+		}
+		for _, code := range codes {
+			if !actor.Has(permission.MustDefinitionByCode(code)) {
+				return nil, forbidden()
+			}
+		}
+		return codes, nil
+	}
+	codes := make([]string, 0, len(permission.Definitions))
+	for _, def := range permission.Definitions {
+		if actor.Has(def) {
+			codes = append(codes, def.Code)
+		}
+	}
+	sort.Strings(codes)
+	return codes, nil
 }
 
 func idSet(ids []int64) map[int64]bool {
