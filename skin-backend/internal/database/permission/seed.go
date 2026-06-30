@@ -67,16 +67,15 @@ func seedCatalog(ctx context.Context, tx pgx.Tx, now int64) error {
 	}
 	for _, def := range core.Definitions {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO permissions (id,code,bit_index,resource_id,action_id,scope_id,description,created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			INSERT INTO permissions (id,code,resource_id,action_id,scope_id,description,created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)
 			ON CONFLICT (id) DO UPDATE
 			SET code=EXCLUDED.code,
-			    bit_index=EXCLUDED.bit_index,
 			    resource_id=EXCLUDED.resource_id,
 			    action_id=EXCLUDED.action_id,
 			    scope_id=EXCLUDED.scope_id,
 			    description=EXCLUDED.description
-		`, int64(def.ID), def.Code, def.BitIndex, int(def.Resource.ID), int(def.Action.ID), int(def.Scope.ID), def.Description, now); err != nil {
+		`, int64(def.ID), def.Code, int(def.Resource.ID), int(def.Action.ID), int(def.Scope.ID), def.Description, now); err != nil {
 			return err
 		}
 	}

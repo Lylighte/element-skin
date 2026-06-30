@@ -187,7 +187,6 @@ CREATE TABLE IF NOT EXISTS permission_scopes (
 CREATE TABLE IF NOT EXISTS permissions (
     id BIGINT PRIMARY KEY CHECK(id > 0 AND id < 281474976710656),
     code TEXT NOT NULL UNIQUE,
-    bit_index INTEGER NOT NULL UNIQUE CHECK(bit_index >= 0),
     resource_id INTEGER NOT NULL,
     action_id INTEGER NOT NULL,
     scope_id INTEGER NOT NULL,

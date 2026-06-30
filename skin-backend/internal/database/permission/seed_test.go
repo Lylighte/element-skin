@@ -22,20 +22,19 @@ func TestSeedDefaultsPersistsCatalogExactly(t *testing.T) {
 	}
 	def := core.MustDefinitionByCode("permission_protected.manage.any")
 	var id int64
-	var bitIndex int
 	var resourceID int
 	var actionID int
 	var scopeID int
 	if err := db.Pool.QueryRow(ctx, `
-		SELECT id,bit_index,resource_id,action_id,scope_id
+		SELECT id,resource_id,action_id,scope_id
 		FROM permissions
 		WHERE code='permission_protected.manage.any'
-	`).Scan(&id, &bitIndex, &resourceID, &actionID, &scopeID); err != nil {
+	`).Scan(&id, &resourceID, &actionID, &scopeID); err != nil {
 		t.Fatal(err)
 	}
-	if id != int64(def.ID) || bitIndex != def.BitIndex || resourceID != int(def.Resource.ID) || actionID != int(def.Action.ID) || scopeID != int(def.Scope.ID) {
-		t.Fatalf("seeded permission mismatch: id=%#x/%#x bit=%d/%d resource=%d/%d action=%d/%d scope=%d/%d",
-			id, int64(def.ID), bitIndex, def.BitIndex, resourceID, def.Resource.ID, actionID, def.Action.ID, scopeID, def.Scope.ID)
+	if id != int64(def.ID) || resourceID != int(def.Resource.ID) || actionID != int(def.Action.ID) || scopeID != int(def.Scope.ID) {
+		t.Fatalf("seeded permission mismatch: id=%#x/%#x resource=%d/%d action=%d/%d scope=%d/%d",
+			id, int64(def.ID), resourceID, def.Resource.ID, actionID, def.Action.ID, scopeID, def.Scope.ID)
 	}
 	var roleCount int
 	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM roles WHERE system_role=TRUE`).Scan(&roleCount); err != nil {

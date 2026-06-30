@@ -18,6 +18,8 @@ type EffectiveOptions struct {
 	ApplyBanPolicy    bool
 }
 
+var runtimePermissionBitIndexes = permissionBitIndexMap()
+
 func (s Store) EffectivePermissionsForUser(ctx context.Context, userID string, opts EffectiveOptions) (core.BitSet, error) {
 	subjectID := SubjectIDForUser(userID)
 
@@ -132,34 +134,32 @@ func (s Store) effectivePermissionsForSubject(ctx context.Context, subjectID str
 func (s Store) computeEffectivePermissions(ctx context.Context, subjectID string) (core.BitSet, error) {
 	permissions := core.NewBitSet(len(core.Definitions))
 	rows, err := s.conn().Query(ctx, `
-		SELECT p.bit_index
+		SELECT rp.permission_id
 		FROM subject_roles sr
 		JOIN role_permissions rp ON rp.role_id=sr.role_id
-		JOIN permissions p ON p.id=rp.permission_id
 		WHERE sr.subject_id=$1
-		ORDER BY p.bit_index
+		ORDER BY rp.permission_id
 	`, subjectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var bitIndex int
-		if err := rows.Scan(&bitIndex); err != nil {
+		var permissionID int64
+		if err := rows.Scan(&permissionID); err != nil {
 			return nil, err
 		}
-		permissions.Set(bitIndex)
+		setPermissionBit(permissions, permissionID)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	rows.Close()
 	rows, err = s.conn().Query(ctx, `
-		SELECT p.bit_index, spo.effect
+		SELECT spo.permission_id, spo.effect
 		FROM subject_permission_overrides spo
-		JOIN permissions p ON p.id=spo.permission_id
 		WHERE spo.subject_id=$1
-		ORDER BY p.bit_index
+		ORDER BY spo.permission_id
 	`, subjectID)
 	if err != nil {
 		return nil, err
@@ -167,10 +167,14 @@ func (s Store) computeEffectivePermissions(ctx context.Context, subjectID string
 	defer rows.Close()
 	denied := core.NewBitSet(len(core.Definitions))
 	for rows.Next() {
-		var bitIndex int
+		var permissionID int64
 		var effect string
-		if err := rows.Scan(&bitIndex, &effect); err != nil {
+		if err := rows.Scan(&permissionID, &effect); err != nil {
 			return nil, err
+		}
+		bitIndex, ok := bitIndexForPermissionID(permissionID)
+		if !ok {
+			continue
 		}
 		if effect == "allow" {
 			permissions.Set(bitIndex)
@@ -190,22 +194,21 @@ func (s Store) sessionPolicy(ctx context.Context, sessionKind, entrypoint string
 	}
 	policy := core.NewBitSet(len(core.Definitions))
 	rows, err := s.conn().Query(ctx, `
-		SELECT p.bit_index
+		SELECT spp.permission_id
 		FROM session_permission_policies spp
-		JOIN permissions p ON p.id=spp.permission_id
 		WHERE spp.session_kind=$1 AND spp.entrypoint=$2
-		ORDER BY p.bit_index
+		ORDER BY spp.permission_id
 	`, sessionKind, entrypoint)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var bitIndex int
-		if err := rows.Scan(&bitIndex); err != nil {
+		var permissionID int64
+		if err := rows.Scan(&permissionID); err != nil {
 			return nil, err
 		}
-		policy.Set(bitIndex)
+		setPermissionBit(policy, permissionID)
 	}
 	return policy, rows.Err()
 }
@@ -213,31 +216,49 @@ func (s Store) sessionPolicy(ctx context.Context, sessionKind, entrypoint string
 func (s Store) delegationPolicy(ctx context.Context, subjectID, clientID, grantID string) (core.BitSet, error) {
 	policy := core.NewBitSet(len(core.Definitions))
 	rows, err := s.conn().Query(ctx, `
-		SELECT p.bit_index
+		SELECT gp.permission_id
 		FROM delegated_permission_grants g
 		JOIN delegated_clients c ON c.id=g.client_id
 		JOIN delegated_grant_permissions gp ON gp.grant_id=g.id
 		JOIN delegated_client_permissions cp ON cp.client_id=g.client_id AND cp.permission_id=gp.permission_id
-		JOIN permissions p ON p.id=gp.permission_id
 		WHERE g.id=$1
 		  AND g.subject_id=$2
 		  AND ($3='' OR g.client_id=$3)
 		  AND g.status='active'
 		  AND c.status='active'
-		ORDER BY p.bit_index
+		ORDER BY gp.permission_id
 	`, grantID, subjectID, clientID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var bitIndex int
-		if err := rows.Scan(&bitIndex); err != nil {
+		var permissionID int64
+		if err := rows.Scan(&permissionID); err != nil {
 			return nil, err
 		}
-		policy.Set(bitIndex)
+		setPermissionBit(policy, permissionID)
 	}
 	return policy, rows.Err()
+}
+
+func setPermissionBit(bits core.BitSet, permissionID int64) {
+	if bitIndex, ok := bitIndexForPermissionID(permissionID); ok {
+		bits.Set(bitIndex)
+	}
+}
+
+func bitIndexForPermissionID(permissionID int64) (int, bool) {
+	bitIndex, ok := runtimePermissionBitIndexes[permissionID]
+	return bitIndex, ok
+}
+
+func permissionBitIndexMap() map[int64]int {
+	out := make(map[int64]int, len(core.Definitions))
+	for _, def := range core.Definitions {
+		out[int64(def.ID)] = def.BitIndex
+	}
+	return out
 }
 
 func (s Store) userBanned(ctx context.Context, userID string) (bool, error) {

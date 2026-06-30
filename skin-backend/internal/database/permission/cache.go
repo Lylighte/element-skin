@@ -2,8 +2,11 @@ package permission
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
+	"strings"
 	"time"
 
 	core "element-skin/backend/internal/permission"
@@ -15,22 +18,31 @@ type PermissionCache interface {
 	DeleteEffective(ctx context.Context, subjectID string) error
 }
 
+var permissionCachePrefix = catalogCachePrefix()
+
 func encodeBitSet(bits core.BitSet) string {
 	if len(bits) == 0 {
-		return ""
+		return permissionCachePrefix + ":"
 	}
 	buf := make([]byte, len(bits)*8)
 	for i, w := range bits {
 		binary.BigEndian.PutUint64(buf[i*8:], w)
 	}
-	return base64.RawStdEncoding.EncodeToString(buf)
+	return permissionCachePrefix + ":" + base64.RawStdEncoding.EncodeToString(buf)
 }
 
 func decodeBitSet(s string) (core.BitSet, error) {
 	if s == "" {
 		return nil, nil
 	}
-	buf, err := base64.RawStdEncoding.DecodeString(s)
+	prefix, encoded, ok := strings.Cut(s, ":")
+	if !ok || prefix != permissionCachePrefix {
+		return nil, nil
+	}
+	if encoded == "" {
+		return nil, nil
+	}
+	buf, err := base64.RawStdEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, err
 	}
@@ -39,6 +51,14 @@ func decodeBitSet(s string) (core.BitSet, error) {
 		bits[i] = binary.BigEndian.Uint64(buf[i*8:])
 	}
 	return bits, nil
+}
+
+func catalogCachePrefix() string {
+	hash := sha256.New()
+	for _, def := range core.Definitions {
+		fmt.Fprintf(hash, "%d:%s:%d\n", def.ID, def.Code, def.BitIndex)
+	}
+	return base64.RawURLEncoding.EncodeToString(hash.Sum(nil))[:16]
 }
 
 type RedisPermCache struct {
@@ -59,6 +79,9 @@ func (c *RedisPermCache) GetEffective(ctx context.Context, subjectID string) (co
 	bits, err := decodeBitSet(raw)
 	if err != nil {
 		return nil, false, err
+	}
+	if bits == nil {
+		return nil, false, nil
 	}
 	return bits, true, nil
 }
