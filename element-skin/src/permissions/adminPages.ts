@@ -51,6 +51,16 @@ export const adminPageAccess: AdminPageAccess[] = [
     permissions: ['notice.read.any', 'notice.create.any', 'notice.update.any', 'notice.delete.any'],
   },
   {
+    path: '/admin/oauth-apps',
+    permissions: [
+      'oauth_app.read.any',
+      'oauth_app.update.any',
+      'oauth_app.delete.any',
+      'oauth_grant.read.any',
+      'oauth_grant.revoke.any',
+    ],
+  },
+  {
     path: '/admin/mojang',
     permissions: [
       'site_settings.read.any',

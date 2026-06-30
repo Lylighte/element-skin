@@ -68,8 +68,8 @@ export const sitePageAccess: SitePageAccess[] = [
       'oauth_app.create.owned',
       'oauth_app.update.owned',
       'oauth_app.delete.owned',
-      'permission.read.any',
-      'permission.grant.any',
+      'oauth_grant.read.owned',
+      'oauth_grant.revoke.owned',
     ],
   },
   {
