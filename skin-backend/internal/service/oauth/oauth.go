@@ -21,7 +21,9 @@ import (
 const (
 	ClientTypePublic       = "public"
 	ClientTypeConfidential = "confidential"
+	StatusPending          = "pending"
 	StatusActive           = "active"
+	StatusRejected         = "rejected"
 	StatusDisabled         = "disabled"
 
 	authorizationCodeTTL = 10 * time.Minute
@@ -122,7 +124,7 @@ func (s Service) CreateClient(ctx context.Context, actor permission.Actor, input
 		return nil, err
 	}
 	client.OwnerUserID = actor.UserID
-	client.Status = StatusActive
+	client.Status = StatusPending
 	client.CreatedAt = database.NowMS()
 	client.UpdatedAt = client.CreatedAt
 	secret := ""
@@ -163,6 +165,29 @@ func (s Service) ListClients(ctx context.Context, actor permission.Actor, limit 
 	return out, nil
 }
 
+func (s Service) ListClientsForAdmin(ctx context.Context, actor permission.Actor, status string, limit int) ([]map[string]any, error) {
+	if err := actor.Require(permission.MustDefinitionByCode("oauth_app.read.any")); err != nil {
+		return nil, forbidden()
+	}
+	status = strings.TrimSpace(status)
+	if status != "" && status != "all" && !validClientStatus(status) {
+		return nil, badRequest("invalid status")
+	}
+	clients, err := s.DB.OAuth.ListClientsByStatus(ctx, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(clients))
+	for _, client := range clients {
+		codes, err := s.clientPermissionCodes(ctx, client.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, clientResponse(client, codes, ""))
+	}
+	return out, nil
+}
+
 func (s Service) GetClient(ctx context.Context, actor permission.Actor, clientID string) (map[string]any, error) {
 	client, err := s.clientForActor(ctx, actor, clientID, "oauth_app.read.owned", "oauth_app.read.any")
 	if err != nil {
@@ -184,10 +209,13 @@ func (s Service) UpdateClient(ctx context.Context, actor permission.Actor, clien
 	if err != nil {
 		return nil, err
 	}
+	if !actor.Has(permission.MustDefinitionByCode("oauth_app.update.any")) {
+		status = current.Status
+	}
 	if status == "" {
 		status = current.Status
 	}
-	if status != StatusActive && status != StatusDisabled {
+	if !validClientStatus(status) {
 		return nil, badRequest("invalid status")
 	}
 	client.ID = current.ID
@@ -204,6 +232,57 @@ func (s Service) UpdateClient(ctx context.Context, actor permission.Actor, clien
 		return nil, notFound("oauth client not found")
 	}
 	return clientResponse(client, permissionCodes, ""), nil
+}
+
+func (s Service) SubmitClientForReview(ctx context.Context, actor permission.Actor, clientID string) (map[string]any, error) {
+	client, err := s.clientForActor(ctx, actor, clientID, "oauth_app.update.owned", "oauth_app.update.any")
+	if err != nil {
+		return nil, err
+	}
+	client.Status = StatusPending
+	client.UpdatedAt = database.NowMS()
+	ok, err := s.DB.OAuth.UpdateClientStatus(ctx, client.ID, client.Status, client.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, notFound("oauth client not found")
+	}
+	codes, err := s.clientPermissionCodes(ctx, client.ID)
+	if err != nil {
+		return nil, err
+	}
+	return clientResponse(*client, codes, ""), nil
+}
+
+func (s Service) ReviewClient(ctx context.Context, actor permission.Actor, clientID, status string) (map[string]any, error) {
+	if err := actor.Require(permission.MustDefinitionByCode("oauth_app.update.any")); err != nil {
+		return nil, forbidden()
+	}
+	if !validClientStatus(status) || status == StatusPending {
+		return nil, badRequest("invalid status")
+	}
+	client, err := s.DB.OAuth.GetClient(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if client == nil {
+		return nil, notFound("oauth client not found")
+	}
+	client.Status = status
+	client.UpdatedAt = database.NowMS()
+	ok, err := s.DB.OAuth.UpdateClientStatus(ctx, client.ID, status, client.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, notFound("oauth client not found")
+	}
+	codes, err := s.clientPermissionCodes(ctx, client.ID)
+	if err != nil {
+		return nil, err
+	}
+	return clientResponse(*client, codes, ""), nil
 }
 
 func (s Service) RotateClientSecret(ctx context.Context, actor permission.Actor, clientID string) (map[string]any, error) {
@@ -236,12 +315,12 @@ func (s Service) RotateClientSecret(ctx context.Context, actor permission.Actor,
 }
 
 func (s Service) DeleteClient(ctx context.Context, actor permission.Actor, clientID string) error {
-	client, err := s.clientForActor(ctx, actor, clientID, "oauth_app.delete.owned", "oauth_app.update.any")
+	client, err := s.clientForActor(ctx, actor, clientID, "oauth_app.delete.owned", "oauth_app.delete.any")
 	if err != nil {
 		return err
 	}
 	owner := client.OwnerUserID
-	if actor.Has(permission.MustDefinitionByCode("oauth_app.update.any")) {
+	if actor.Has(permission.MustDefinitionByCode("oauth_app.delete.any")) {
 		owner = ""
 	}
 	ok, err := s.DB.OAuth.DeleteClient(ctx, client.ID, owner)
@@ -1190,6 +1269,15 @@ func authorizationRedirect(rawURL, code, state string) (string, error) {
 func validHTTPURL(raw string) bool {
 	u, err := url.Parse(raw)
 	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
+}
+
+func validClientStatus(status string) bool {
+	switch status {
+	case StatusPending, StatusActive, StatusRejected, StatusDisabled:
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeUserCode(raw string) string {

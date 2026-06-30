@@ -226,8 +226,8 @@ func TestAdminRoleDoesNotIncludeSuperAdminOrSystemPermissions(t *testing.T) {
 	if adminRole == nil {
 		t.Fatal("admin role not found")
 	}
-	if len(adminRole.Permissions) != 43 {
-		t.Fatalf("admin role has %d permissions, want 43", len(adminRole.Permissions))
+	if len(adminRole.Permissions) != 44 {
+		t.Fatalf("admin role has %d permissions, want 44", len(adminRole.Permissions))
 	}
 	expectedCodes := []string{
 		"account.ban.any",
@@ -270,6 +270,7 @@ func TestAdminRoleDoesNotIncludeSuperAdminOrSystemPermissions(t *testing.T) {
 		"cache.invalidate.any",
 		"oauth_app.read.any",
 		"oauth_app.update.any",
+		"oauth_app.delete.any",
 		"oauth_grant.read.any",
 		"oauth_grant.revoke.any",
 		"oauth_token.introspect.any",

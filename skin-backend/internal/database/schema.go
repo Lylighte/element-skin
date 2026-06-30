@@ -260,7 +260,7 @@ CREATE TABLE IF NOT EXISTS delegated_clients (
     website_url TEXT NOT NULL DEFAULT '',
     client_type TEXT NOT NULL DEFAULT 'confidential' CHECK(client_type IN ('public', 'confidential')),
     secret_hash TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL CHECK(status IN ('active', 'disabled')),
+    status TEXT NOT NULL CHECK(status IN ('pending', 'active', 'rejected', 'disabled')),
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL,
     FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -441,6 +441,8 @@ ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS redirect_uri TEXT NOT NUL
 ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS website_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS client_type TEXT NOT NULL DEFAULT 'confidential';
 ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS secret_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE delegated_clients DROP CONSTRAINT IF EXISTS delegated_clients_status_check;
+ALTER TABLE delegated_clients ADD CONSTRAINT delegated_clients_status_check CHECK(status IN ('pending', 'active', 'rejected', 'disabled'));
 ALTER TABLE oauth_device_codes ADD COLUMN IF NOT EXISTS user_id TEXT;
 ALTER TABLE oauth_device_codes DROP CONSTRAINT IF EXISTS oauth_device_codes_user_id_fkey;
 ALTER TABLE oauth_device_codes ADD CONSTRAINT oauth_device_codes_user_id_fkey FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL;
