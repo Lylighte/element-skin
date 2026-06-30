@@ -2616,12 +2616,13 @@ easter_eggs
 
 OAuth 协议端点不放入 `/v1`，以符合生态工具和标准发现习惯。
 
-v1 OAuth 协议端点：
+OAuth 协议端点：
 
 ```text
 GET  /.well-known/oauth-authorization-server
 GET  /.well-known/oauth-protected-resource
 GET  /oauth/authorize
+POST /oauth/authorize
 POST /oauth/token
 POST /oauth/revoke
 POST /oauth/introspect
@@ -2650,12 +2651,12 @@ OAuth 应用和授权管理是站点业务能力，因此放入 `/v1`。
 ### 26.1 开发者应用
 
 ```http
-GET    /v1/developer/oauth/apps
-POST   /v1/developer/oauth/apps
-GET    /v1/developer/oauth/apps/{client_id}
-PATCH  /v1/developer/oauth/apps/{client_id}
-DELETE /v1/developer/oauth/apps/{client_id}
-POST   /v1/developer/oauth/apps/{client_id}/secret/rotate
+GET    /v1/oauth/apps
+POST   /v1/oauth/apps
+GET    /v1/oauth/apps/{client_id}
+PATCH  /v1/oauth/apps/{client_id}
+DELETE /v1/oauth/apps/{client_id}
+POST   /v1/oauth/apps/{client_id}/secret
 ```
 
 权限：
@@ -2675,9 +2676,8 @@ oauth_app.delete.owned
 ### 26.2 当前用户授权
 
 ```http
-GET    /v1/users/me/oauth/grants
-GET    /v1/users/me/oauth/grants/{grant_id}
-DELETE /v1/users/me/oauth/grants/{grant_id}
+GET    /v1/oauth/grants
+DELETE /v1/oauth/grants/{grant_id}
 ```
 
 权限：
@@ -2687,24 +2687,166 @@ oauth_grant.read.owned
 oauth_grant.revoke.owned
 ```
 
-### 26.3 管理员 OAuth 管理
+### 26.3 OAuth 协议请求
 
 ```http
-GET    /v1/admin/oauth/apps
-GET    /v1/admin/oauth/apps/{client_id}
-PATCH  /v1/admin/oauth/apps/{client_id}
-GET    /v1/admin/oauth/grants
-DELETE /v1/admin/oauth/grants/{grant_id}
+GET /oauth/authorize
 ```
 
-权限：
+认证：站点登录 Cookie。
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `response_type` | string | 是 | 第一阶段仅接受 `code` |
+| `client_id` | string | 是 | OAuth 应用 ID |
+| `redirect_uri` | string | 是 | 必须等于应用登记回调地址 |
+| `scope` | string | 是 | 以空格分隔的 permission code |
+| `state` | string | 否 | 原样返回 |
+| `code_challenge` | string | 是 | PKCE challenge |
+| `code_challenge_method` | string | 是 | 必须为 `S256` |
+
+响应：
+
+```json
+{
+  "client": {
+    "client_id": "app_id",
+    "name": "Launcher Tool",
+    "description": "工具说明",
+    "redirect_uri": "https://app.example/callback",
+    "website_url": "https://app.example",
+    "client_type": "confidential",
+    "status": "active",
+    "created_at": 1710000000000,
+    "updated_at": 1710000000000
+  },
+  "scopes": [
+    {
+      "code": "account.read.self",
+      "description": "读取自己的账号资料",
+      "resource": "account",
+      "action": "read",
+      "scope": "self"
+    }
+  ],
+  "redirect_uri": "https://app.example/callback",
+  "state": "opaque_state"
+}
+```
+
+```http
+POST /oauth/authorize
+```
+
+认证：站点登录 Cookie。
+
+请求体：
+
+```json
+{
+  "response_type": "code",
+  "client_id": "app_id",
+  "redirect_uri": "https://app.example/callback",
+  "scope": "account.read.self",
+  "state": "opaque_state",
+  "code_challenge": "base64url_sha256",
+  "code_challenge_method": "S256"
+}
+```
+
+响应：
+
+```json
+{
+  "code": "one_time_authorization_code",
+  "redirect_url": "https://app.example/callback?code=one_time_authorization_code&state=opaque_state",
+  "state": "opaque_state"
+}
+```
+
+```http
+POST /oauth/token
+Content-Type: application/x-www-form-urlencoded
+```
+
+支持 `authorization_code` 与 `refresh_token`。
+
+授权码换 token：
 
 ```text
-oauth_app.read.any
-oauth_app.update.any
-oauth_grant.read.any
-oauth_grant.revoke.any
+grant_type=authorization_code
+client_id=app_id
+client_secret=client_secret
+code=one_time_authorization_code
+redirect_uri=https://app.example/callback
+code_verifier=plain_pkce_verifier
 ```
+
+refresh token 轮换：
+
+```text
+grant_type=refresh_token
+client_id=app_id
+client_secret=client_secret
+refresh_token=refresh_token
+```
+
+响应：
+
+```json
+{
+  "access_token": "opaque_access_token",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "opaque_refresh_token",
+  "scope": "account.read.self",
+  "permissions": ["account.read.self"]
+}
+```
+
+```http
+POST /oauth/revoke
+Content-Type: application/x-www-form-urlencoded
+```
+
+请求：
+
+```text
+client_id=app_id
+client_secret=client_secret
+token=opaque_access_or_refresh_token
+```
+
+响应：`200 OK`。未知 token 也返回成功。
+
+```http
+POST /oauth/introspect
+Content-Type: application/x-www-form-urlencoded
+```
+
+认证：站点登录 Cookie 或 OAuth Bearer，且 actor 必须具有 `oauth_token.introspect.any`。
+
+响应：
+
+```json
+{
+  "active": true,
+  "client_id": "app_id",
+  "user_id": "user_id",
+  "grant_id": "grant_id",
+  "exp": 1710003600,
+  "scope": "account.read.self",
+  "permissions": ["account.read.self"]
+}
+```
+
+### 26.4 管理员 OAuth 管理
+
+管理员可以通过同一组 `/v1/oauth/apps/{client_id}` 读取或修改具体 OAuth 应用。具有 `oauth_app.read.any` 或 `oauth_app.update.any` 时，不受应用 owner 限制。
+
+第一阶段暂不提供管理员全量 OAuth app/grant 列表接口。需要管理后台列表视图时再增加明确分页接口。
 
 ## 27. 能力发现 API
 

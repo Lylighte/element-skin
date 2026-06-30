@@ -4,6 +4,7 @@ import (
 	"element-skin/backend/internal/httpapi/admin"
 	"element-skin/backend/internal/httpapi/microsoft"
 	"element-skin/backend/internal/httpapi/notice"
+	"element-skin/backend/internal/httpapi/oauth"
 	"element-skin/backend/internal/httpapi/remote"
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/httpapi/yggdrasil"
@@ -14,11 +15,14 @@ func (r *Router) routes() {
 	yggRoutes := yggdrasil.New(r.cfg, r.db, r.redis, r.settings, r.ygg)
 	microsoftRoutes := microsoft.New(r.cfg, r.db, r.settings, r.auth, r.redis)
 	noticeRoutes := notice.New(r.db, r.auth)
+	oauthRoutes := oauth.New(r.cfg, r.db, r.auth)
 	remoteRoutes := remote.New(r.db, r.auth)
 	adminRoutes := admin.NewWithRedis(r.cfg, r.db, r.redis, r.auth)
 
 	r.handle("GET /", yggRoutes.Metadata)
 	r.handle("GET /v1/capabilities", r.Capabilities)
+	r.handle("GET /.well-known/oauth-authorization-server", oauthRoutes.AuthorizationServerMetadata)
+	r.handle("GET /.well-known/oauth-protected-resource", oauthRoutes.ProtectedResourceMetadata)
 	r.handle("GET /v1/permissions/catalog", r.PermissionCatalog)
 	r.handle("POST /v1/auth/login", siteRoutes.Login)
 	r.handle("POST /v1/auth/logout", siteRoutes.Logout)
@@ -52,6 +56,19 @@ func (r *Router) routes() {
 	r.handle("GET /v1/notifications/{id}", noticeRoutes.Auth(noticeRoutes.Detail))
 	r.handle("POST /v1/notifications/{id}/read", noticeRoutes.Auth(noticeRoutes.MarkRead))
 	r.handle("POST /v1/notifications/{id}/dismiss", noticeRoutes.Auth(noticeRoutes.Dismiss))
+	r.handle("GET /v1/oauth/apps", oauthRoutes.Auth(oauthRoutes.ListApps))
+	r.handle("POST /v1/oauth/apps", oauthRoutes.Auth(oauthRoutes.CreateApp))
+	r.handle("GET /v1/oauth/apps/{client_id}", oauthRoutes.Auth(oauthRoutes.GetApp))
+	r.handle("PATCH /v1/oauth/apps/{client_id}", oauthRoutes.Auth(oauthRoutes.UpdateApp))
+	r.handle("DELETE /v1/oauth/apps/{client_id}", oauthRoutes.Auth(oauthRoutes.DeleteApp))
+	r.handle("POST /v1/oauth/apps/{client_id}/secret", oauthRoutes.Auth(oauthRoutes.RotateSecret))
+	r.handle("GET /v1/oauth/grants", oauthRoutes.Auth(oauthRoutes.ListGrants))
+	r.handle("DELETE /v1/oauth/grants/{grant_id}", oauthRoutes.Auth(oauthRoutes.RevokeGrant))
+	r.handle("GET /oauth/authorize", oauthRoutes.Auth(oauthRoutes.AuthorizeInfo))
+	r.handle("POST /oauth/authorize", oauthRoutes.Auth(oauthRoutes.ApproveAuthorization))
+	r.handle("POST /oauth/token", oauthRoutes.Token)
+	r.handle("POST /oauth/revoke", oauthRoutes.Revoke)
+	r.handle("POST /oauth/introspect", oauthRoutes.Auth(oauthRoutes.Introspect))
 
 	r.handle("POST /authserver/authenticate", yggRoutes.Authenticate)
 	r.handle("POST /authserver/refresh", yggRoutes.Refresh)
