@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"element-skin/backend/internal/database"
 	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/service/oauth"
@@ -129,7 +130,134 @@ func TestServiceRejectsInvalidAuthorizationRequestExactly(t *testing.T) {
 	}
 }
 
+func TestServiceClientCredentialsIssueAppOnlyActorExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "oauth-client-credentials@test.com", "Password123", "OAuthClientCredentials", false)
+	actor, err := db.Permissions.ActorForUser(ctx, user.ID, permissiondb.EffectiveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := oauth.Service{DB: db}
+	clientRes, err := svc.CreateClient(ctx, actor, oauth.ClientInput{
+		Name:            "Server plugin",
+		RedirectURI:     "https://server.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"minecraft_profile.read.public"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientID := clientRes["client_id"].(string)
+	clientSecret := clientRes["client_secret"].(string)
+	if clientID == "" || clientSecret == "" {
+		t.Fatalf("client credentials response missing secret: %#v", clientRes)
+	}
+	grantClientPermission(t, db, clientID, "minecraft_profile.read.public")
+	grantClientPermission(t, db, clientID, "minecraft_session.hasjoined.server")
+
+	token, err := svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Scope:        "minecraft_session.hasjoined.server",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token.AccessToken == "" || token.RefreshToken != "" || token.TokenType != "Bearer" || token.ExpiresIn != 3600 ||
+		token.Scope != "minecraft_session.hasjoined.server" ||
+		len(token.Permissions) != 1 || token.Permissions[0] != "minecraft_session.hasjoined.server" {
+		t.Fatalf("client credentials token mismatch: %#v", token)
+	}
+	appActor, ok, err := svc.ActorForBearer(ctx, token.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || appActor.UserID != "" || appActor.SubjectID != permissiondb.SubjectIDForClient(clientID) ||
+		appActor.SessionKind != permission.SessionKindClient || appActor.Entrypoint != permission.EntrypointAPI ||
+		!appActor.Has(permission.MustDefinitionByCode("minecraft_session.hasjoined.server")) ||
+		appActor.Has(permission.MustDefinitionByCode("minecraft_profile.read.public")) {
+		t.Fatalf("app-only actor mismatch: ok=%v actor=%#v", ok, appActor)
+	}
+
+	if err := db.Permissions.SetPermissionOverrideForSubject(
+		ctx,
+		permissiondb.SubjectIDForClient(clientID),
+		permission.MustDefinitionByCode("minecraft_session.hasjoined.server"),
+		"deny",
+		"",
+	); err != nil {
+		t.Fatal(err)
+	}
+	appActor, ok, err = svc.ActorForBearer(ctx, token.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || appActor.Has(permission.MustDefinitionByCode("minecraft_session.hasjoined.server")) {
+		t.Fatalf("app-only actor should be narrowed after permission revoke: ok=%v actor=%#v", ok, appActor)
+	}
+}
+
+func TestServiceClientCredentialsRejectsPublicClientAndExcessScopeExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "oauth-client-credentials-reject@test.com", "Password123", "OAuthClientReject", false)
+	actor, err := db.Permissions.ActorForUser(ctx, user.ID, permissiondb.EffectiveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := oauth.Service{DB: db}
+	publicClient, err := svc.CreateClient(ctx, actor, oauth.ClientInput{
+		Name:            "Public app",
+		RedirectURI:     "https://public.example/callback",
+		ClientType:      oauth.ClientTypePublic,
+		PermissionCodes: []string{"minecraft_profile.read.public"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType: "client_credentials",
+		ClientID:  publicClient["client_id"].(string),
+	})
+	assertHTTPError(t, err, 400, "client_credentials requires a confidential client")
+
+	confidential, err := svc.CreateClient(ctx, actor, oauth.ClientInput{
+		Name:            "Confidential app",
+		RedirectURI:     "https://confidential.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"minecraft_profile.read.public"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     confidential["client_id"].(string),
+		ClientSecret: confidential["client_secret"].(string),
+		Scope:        "minecraft_session.hasjoined.server",
+	})
+	assertHTTPError(t, err, 403, "permission denied")
+}
+
 func pkceChallenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func grantClientPermission(t *testing.T, db *database.DB, clientID, code string) {
+	t.Helper()
+	def := permission.MustDefinitionByCode(code)
+	if err := db.Permissions.SetPermissionOverrideForSubject(context.Background(), permissiondb.SubjectIDForClient(clientID), def, "allow", ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertHTTPError(t *testing.T, err error, status int, detail string) {
+	t.Helper()
+	var httpErr util.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != status || httpErr.Detail != detail {
+		t.Fatalf("HTTP error mismatch: err=%#v want status=%d detail=%q", err, status, detail)
+	}
 }

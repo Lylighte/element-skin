@@ -36,7 +36,7 @@ func (h Handler) AuthorizationServerMetadata(w http.ResponseWriter, req *http.Re
 		"revocation_endpoint":                            base + "/oauth/revoke",
 		"introspection_endpoint":                         base + "/oauth/introspect",
 		"response_types_supported":                       []string{"code"},
-		"grant_types_supported":                          []string{"authorization_code", "refresh_token"},
+		"grant_types_supported":                          []string{"authorization_code", "refresh_token", "client_credentials"},
 		"code_challenge_methods_supported":               []string{"S256"},
 		"token_endpoint_auth_methods_supported":          []string{"client_secret_basic", "client_secret_post", "none"},
 		"revocation_endpoint_auth_methods_supported":     []string{"client_secret_basic", "client_secret_post", "none"},
@@ -186,6 +186,7 @@ func (h Handler) Token(w http.ResponseWriter, req *http.Request) {
 		ClientSecret: clientSecret,
 		CodeVerifier: req.Form.Get("code_verifier"),
 		RefreshToken: req.Form.Get("refresh_token"),
+		Scope:        req.Form.Get("scope"),
 	})
 	if err != nil {
 		util.Error(w, err)

@@ -16,11 +16,15 @@ type SubjectPermissionOverride struct {
 }
 
 func (s Store) SetSubjectPermissionOverride(ctx context.Context, userID string, def core.Definition, effect string, grantedBySubjectID string) error {
-	if effect != "allow" && effect != "deny" {
-		return errors.New("permission override effect must be allow or deny")
-	}
 	if err := s.EnsureUserSubject(ctx, userID); err != nil {
 		return err
+	}
+	return s.SetPermissionOverrideForSubject(ctx, SubjectIDForUser(userID), def, effect, grantedBySubjectID)
+}
+
+func (s Store) SetPermissionOverrideForSubject(ctx context.Context, subjectID string, def core.Definition, effect string, grantedBySubjectID string) error {
+	if effect != "allow" && effect != "deny" {
+		return errors.New("permission override effect must be allow or deny")
 	}
 	now := time.Now().UnixMilli()
 	_, err := s.conn().Exec(ctx, `
@@ -28,9 +32,9 @@ func (s Store) SetSubjectPermissionOverride(ctx context.Context, userID string, 
 		VALUES ($1,$2,$3,$4,$5)
 		ON CONFLICT (subject_id, permission_id) DO UPDATE
 		SET effect=EXCLUDED.effect, granted_by_subject_id=EXCLUDED.granted_by_subject_id
-	`, SubjectIDForUser(userID), int64(def.ID), effect, nullString(grantedBySubjectID), now)
-		if err == nil && s.Cache != nil {
-		_ = s.Cache.DeleteEffective(ctx, SubjectIDForUser(userID))
+	`, subjectID, int64(def.ID), effect, nullString(grantedBySubjectID), now)
+	if err == nil && s.Cache != nil {
+		_ = s.Cache.DeleteEffective(ctx, subjectID)
 	}
 	return err
 }
@@ -64,16 +68,20 @@ func (s Store) SubjectPermissionOverridesForUser(ctx context.Context, userID str
 }
 
 func (s Store) ClearSubjectPermissionOverride(ctx context.Context, userID string, def core.Definition) (bool, error) {
+	return s.ClearPermissionOverrideForSubject(ctx, SubjectIDForUser(userID), def)
+}
+
+func (s Store) ClearPermissionOverrideForSubject(ctx context.Context, subjectID string, def core.Definition) (bool, error) {
 	tag, err := s.conn().Exec(ctx, `
 		DELETE FROM subject_permission_overrides
 		WHERE subject_id=$1 AND permission_id=$2
-	`, SubjectIDForUser(userID), int64(def.ID))
+	`, subjectID, int64(def.ID))
 	if err != nil {
 		return false, err
 	}
 	affected := tag.RowsAffected() > 0
 	if affected && s.Cache != nil {
-		_ = s.Cache.DeleteEffective(ctx, SubjectIDForUser(userID))
+		_ = s.Cache.DeleteEffective(ctx, subjectID)
 	}
 	return affected, nil
 }
