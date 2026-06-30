@@ -3,11 +3,13 @@ package httpapi
 import (
 	"element-skin/backend/internal/httpapi/admin"
 	"element-skin/backend/internal/httpapi/microsoft"
+	"element-skin/backend/internal/httpapi/minecraft"
 	"element-skin/backend/internal/httpapi/notice"
 	"element-skin/backend/internal/httpapi/oauth"
 	"element-skin/backend/internal/httpapi/remote"
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/httpapi/yggdrasil"
+	"element-skin/backend/internal/permission"
 )
 
 func (r *Router) routes() {
@@ -16,6 +18,7 @@ func (r *Router) routes() {
 	microsoftRoutes := microsoft.New(r.cfg, r.db, r.settings, r.auth, r.redis)
 	noticeRoutes := notice.New(r.db, r.auth)
 	oauthRoutes := oauth.New(r.cfg, r.db, r.auth)
+	minecraftRoutes := minecraft.New(r.db, r.auth, r.ygg)
 	remoteRoutes := remote.New(r.db, r.auth)
 	adminRoutes := admin.NewWithRedis(r.cfg, r.db, r.redis, r.auth)
 
@@ -52,6 +55,12 @@ func (r *Router) routes() {
 	r.handle("GET /v1/public/settings", siteRoutes.PublicSettings)
 	r.handle("GET /v1/public/homepage-media", siteRoutes.PublicHomepageMedia)
 	r.handle("GET /v1/public/fallback-status", siteRoutes.PublicFallbackStatus)
+	r.handle("GET /v1/minecraft/profiles/{path...}", minecraftRoutes.Profiles)
+	r.handle("POST /v1/minecraft/profiles/by-names", minecraftRoutes.ProfilesByNames)
+	r.handle("POST /v1/minecraft/session/has-joined", minecraftRoutes.Auth(
+		minecraftRoutes.HasJoined,
+		permission.MustDefinitionByCode("minecraft_session.hasjoined.server"),
+	))
 	r.handle("GET /v1/notifications", noticeRoutes.Auth(noticeRoutes.List))
 	r.handle("GET /v1/notifications/{id}", noticeRoutes.Auth(noticeRoutes.Detail))
 	r.handle("POST /v1/notifications/{id}/read", noticeRoutes.Auth(noticeRoutes.MarkRead))

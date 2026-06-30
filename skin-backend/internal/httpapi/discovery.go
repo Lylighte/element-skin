@@ -22,6 +22,7 @@ func (r *Router) Capabilities(w http.ResponseWriter, req *http.Request) {
 			"skin_library":      true,
 			"oauth":             true,
 			"device_code":       false,
+			"minecraft_api":     true,
 			"microsoft_import":  true,
 			"remote_ygg_import": true,
 		},
