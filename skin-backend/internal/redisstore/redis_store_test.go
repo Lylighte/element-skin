@@ -3,7 +3,9 @@ package redisstore
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -75,6 +77,12 @@ func TestRedisStoreCacheRoundTripsNormalizationAndTTL(t *testing.T) {
 	}
 	if got, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); err != nil || got != "NEWCODE1" {
 		t.Fatalf("set-if-absent overwrote code=%q err=%v", got, err)
+	}
+	if err := store.DeleteVerificationCode(ctx, "USER@example.com", "RESET"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); !errors.Is(err, ErrCacheMiss) {
+		t.Fatalf("deleted verification code error=%v, want ErrCacheMiss", err)
 	}
 
 	until := time.Now().Add(time.Hour).UnixMilli()
@@ -155,6 +163,119 @@ func TestRedisStoreStateIsAtomicSingleUseAndExpiresExactly(t *testing.T) {
 	server.FastForward(time.Minute)
 	if _, err := store.PopState(ctx, "expires-token"); !errors.Is(err, ErrCacheMiss) {
 		t.Fatalf("state token should expire at TTL boundary, got %v", err)
+	}
+}
+
+func TestRedisStoreOAuthAccessAndPermissionCacheLifecycle(t *testing.T) {
+	store, server := newTestRedisStore(t)
+	ctx := context.Background()
+	token := OAuthAccessToken{
+		TokenHash:     "redis-access-hash",
+		ClientID:      "client-1",
+		UserID:        "user-1",
+		GrantID:       "grant-1",
+		PermissionIDs: []int64{11, 22, 33},
+		ExpiresAt:     5000,
+		CreatedAt:     1000,
+	}
+
+	if _, err := store.GetOAuthAccessToken(ctx, token.TokenHash); !errors.Is(err, ErrCacheMiss) {
+		t.Fatalf("missing oauth access token error=%v, want ErrCacheMiss", err)
+	}
+	if err := store.SetOAuthAccessToken(ctx, token, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetOAuthAccessToken(ctx, token.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, token) {
+		t.Fatalf("oauth access token mismatch:\n got=%#v\nwant=%#v", got, token)
+	}
+	if err := store.DeleteOAuthAccessToken(ctx, token.TokenHash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetOAuthAccessToken(ctx, token.TokenHash); !errors.Is(err, ErrCacheMiss) {
+		t.Fatalf("deleted oauth access token error=%v, want ErrCacheMiss", err)
+	}
+	if err := store.SetOAuthAccessToken(ctx, token, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	server.FastForward(time.Minute)
+	if _, err := store.GetOAuthAccessToken(ctx, token.TokenHash); !errors.Is(err, ErrCacheMiss) {
+		t.Fatalf("expired oauth access token error=%v, want ErrCacheMiss", err)
+	}
+
+	value, found, err := store.GetPermissionCache(ctx, "subject-1")
+	if err != nil || found || value != "" {
+		t.Fatalf("missing permission cache mismatch: value=%q found=%v err=%v", value, found, err)
+	}
+	if err := store.SetPermissionCache(ctx, "subject-1", "encoded-permissions", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	value, found, err = store.GetPermissionCache(ctx, "subject-1")
+	if err != nil || !found || value != "encoded-permissions" {
+		t.Fatalf("permission cache mismatch: value=%q found=%v err=%v", value, found, err)
+	}
+	if err := store.DeletePermissionCache(ctx, "subject-1"); err != nil {
+		t.Fatal(err)
+	}
+	value, found, err = store.GetPermissionCache(ctx, "subject-1")
+	if err != nil || found || value != "" {
+		t.Fatalf("deleted permission cache mismatch: value=%q found=%v err=%v", value, found, err)
+	}
+}
+
+func TestRedisStoreProbeHistoryAppendTrimFilterAndInvalidateExactly(t *testing.T) {
+	store, _ := newTestRedisStore(t)
+	ctx := context.Background()
+	base := time.Now()
+	old := ProbeSample{EndpointID: 1, Note: "old", SessionURL: "https://session.old", AccountURL: "https://account.old", ServicesURL: "https://services.old", CheckedAt: base.Add(-2 * time.Hour).UnixMilli(), Session: "up", Account: "up", Services: "up"}
+	mid := ProbeSample{EndpointID: 2, Note: "mid", SessionURL: "https://session.mid", AccountURL: "https://account.mid", ServicesURL: "https://services.mid", CheckedAt: base.Add(-30 * time.Minute).UnixMilli(), Session: "down", Account: "up", Services: "up"}
+	fresh := ProbeSample{EndpointID: 3, Note: "fresh", SessionURL: "https://session.fresh", AccountURL: "https://account.fresh", ServicesURL: "https://services.fresh", CheckedAt: base.UnixMilli(), Session: "up", Account: "down", Services: "down"}
+
+	if err := store.AppendProbeSamples(ctx, nil, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := store.GetProbeHistory(ctx, time.Time{})
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty probe history mismatch: samples=%#v err=%v", empty, err)
+	}
+	if err := store.AppendProbeSamples(ctx, []ProbeSample{old, mid, fresh}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	all, err := store.GetProbeHistory(ctx, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(all, []ProbeSample{mid, fresh}) {
+		t.Fatalf("probe history order/retention mismatch:\n got=%#v\nwant=%#v", all, []ProbeSample{mid, fresh})
+	}
+	recent, err := store.GetProbeHistory(ctx, base.Add(-20*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(recent, []ProbeSample{fresh}) {
+		t.Fatalf("probe recent history mismatch:\n got=%#v\nwant=%#v", recent, []ProbeSample{fresh})
+	}
+
+	newest := ProbeSample{EndpointID: 4, Note: "newest", CheckedAt: base.Add(time.Minute).UnixMilli(), Session: "up", Account: "up", Services: "down"}
+	if err := store.AppendProbeSamples(ctx, []ProbeSample{newest}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	trimmed, err := store.GetProbeHistory(ctx, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(trimmed, []ProbeSample{mid, fresh, newest}) {
+		t.Fatalf("probe retention trim mismatch:\n got=%#v\nwant=%#v", trimmed, []ProbeSample{newest})
+	}
+	if err := store.InvalidateProbeHistory(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := store.GetProbeHistory(ctx, time.Time{})
+	if err != nil || len(cleared) != 0 {
+		t.Fatalf("cleared probe history mismatch: samples=%#v err=%v", cleared, err)
 	}
 }
 
@@ -363,6 +484,21 @@ func TestRedisStoreRejectsCorruptAndUnencodableJSON(t *testing.T) {
 	}
 	if got, err := server.Get(publicKey); err != nil || got != "{not-json" {
 		t.Fatalf("failed JSON encoding must not overwrite existing cache: value=%q err=%v", got, err)
+	}
+}
+
+func TestRedisStoreOpenReturnsExactConnectionError(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.RedisAddr = "127.0.0.1:1"
+	cfg.RedisPassword = ""
+	cfg.RedisDB = 0
+	cfg.RedisKeyPrefix = "redisstore:open-fail:"
+	store, err := Open(context.Background(), cfg)
+	if store != nil {
+		t.Fatalf("failed Open should not return a store: %#v", store)
+	}
+	if err == nil || !strings.Contains(err.Error(), "connect redis 127.0.0.1:1") {
+		t.Fatalf("Open error mismatch: %v", err)
 	}
 }
 

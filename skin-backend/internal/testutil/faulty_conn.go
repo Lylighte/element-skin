@@ -38,9 +38,12 @@ func (r *faultyRows) Close() {
 }
 
 type FaultyConn struct {
-	pool    *pgxpool.Pool
-	scanErr error
-	errErr  error
+	pool         *pgxpool.Pool
+	scanErr      error
+	scanErrQuery int
+	errErr       error
+	errErrQuery  int
+	queryCount   int
 }
 
 func NewFaultyConn(pool *pgxpool.Pool) *FaultyConn {
@@ -52,7 +55,19 @@ func (fc *FaultyConn) WithScanError(err error) *FaultyConn {
 	return fc
 }
 
+func (fc *FaultyConn) WithScanErrorOnQuery(queryNumber int, err error) *FaultyConn {
+	fc.scanErrQuery = queryNumber
+	fc.scanErr = err
+	return fc
+}
+
 func (fc *FaultyConn) WithRowsErr(err error) *FaultyConn {
+	fc.errErr = err
+	return fc
+}
+
+func (fc *FaultyConn) WithRowsErrOnQuery(queryNumber int, err error) *FaultyConn {
+	fc.errErrQuery = queryNumber
 	fc.errErr = err
 	return fc
 }
@@ -70,7 +85,15 @@ func (fc *FaultyConn) Query(ctx context.Context, sql string, args ...any) (pgx.R
 	if err != nil {
 		return nil, err
 	}
-	return &faultyRows{Rows: rows, scanErr: fc.scanErr, errErr: fc.errErr}, nil
+	fc.queryCount++
+	var scanErr, rowsErr error
+	if fc.scanErrQuery == 0 || fc.scanErrQuery == fc.queryCount {
+		scanErr = fc.scanErr
+	}
+	if fc.errErrQuery == 0 || fc.errErrQuery == fc.queryCount {
+		rowsErr = fc.errErr
+	}
+	return &faultyRows{Rows: rows, scanErr: scanErr, errErr: rowsErr}, nil
 }
 
 func (fc *FaultyConn) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {

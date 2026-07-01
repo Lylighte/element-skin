@@ -1,6 +1,8 @@
 package yggdrasil_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -132,6 +134,93 @@ func TestNewSignerRejectsMalformedAndMissingKeyConfigurationExactly(t *testing.T
 		t.Run(tc.name, func(t *testing.T) {
 			tc.cfg()
 			signer, err := yggdrasil.NewSigner(valid)
+			if signer != nil || err == nil || err.Error() != tc.want {
+				t.Fatalf("NewSigner()=%#v, %v; want nil and %q", signer, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewSignerRejectsNonRSAAndUnparseableKeysExactly(t *testing.T) {
+	dir := t.TempDir()
+	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecdsaPrivateDER, err := x509.MarshalPKCS8PrivateKey(ecdsaKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecdsaPublicDER, err := x509.MarshalPKIXPublicKey(&ecdsaKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaPrivateDER, err := x509.MarshalPKCS8PrivateKey(rsaKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nonRSAPrivate := filepath.Join(dir, "ecdsa-private.pem")
+	if err := os.WriteFile(nonRSAPrivate, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ecdsaPrivateDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nonRSAPublic := filepath.Join(dir, "ecdsa-public.pem")
+	if err := os.WriteFile(nonRSAPublic, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: ecdsaPublicDER}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	validPrivate := filepath.Join(dir, "rsa-private.pem")
+	if err := os.WriteFile(validPrivate, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: rsaPrivateDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	invalidParsePrivate := filepath.Join(dir, "bad-private.pem")
+	if err := os.WriteFile(invalidParsePrivate, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("bad")}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	invalidParsePublic := filepath.Join(dir, "bad-public.pem")
+	if err := os.WriteFile(invalidParsePublic, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("bad")}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name       string
+		privateKey string
+		publicKey  string
+		want       string
+	}{
+		{
+			name:       "non RSA private",
+			privateKey: nonRSAPrivate,
+			publicKey:  nonRSAPublic,
+			want:       "Yggdrasil 私钥不是 RSA 密钥: " + nonRSAPrivate,
+		},
+		{
+			name:       "unparseable private",
+			privateKey: invalidParsePrivate,
+			publicKey:  nonRSAPublic,
+			want:       "无法解析 Yggdrasil RSA 私钥: " + invalidParsePrivate,
+		},
+		{
+			name:       "non RSA public",
+			privateKey: validPrivate,
+			publicKey:  nonRSAPublic,
+			want:       "Yggdrasil 公钥不是 RSA 密钥: " + nonRSAPublic,
+		},
+		{
+			name:       "unparseable public",
+			privateKey: validPrivate,
+			publicKey:  invalidParsePublic,
+			want:       "无法解析 Yggdrasil 公钥: " + invalidParsePublic,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testutil.TestConfig()
+			cfg.PrivateKeyPath = tc.privateKey
+			cfg.PublicKeyPath = tc.publicKey
+			signer, err := yggdrasil.NewSigner(cfg)
 			if signer != nil || err == nil || err.Error() != tc.want {
 				t.Fatalf("NewSigner()=%#v, %v; want nil and %q", signer, err, tc.want)
 			}

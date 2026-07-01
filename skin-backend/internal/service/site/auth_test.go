@@ -352,6 +352,20 @@ func TestAuthRejectsInvalidCredentialsAndRegistrationIdentityConflicts(t *testin
 	}
 }
 
+func TestAuthServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	db.Close()
+
+	if result, err := svc.Login(ctx, "closed-auth@test.com", "Password123"); result != nil || !closedPoolError(err) {
+		t.Fatalf("Login closed database = result=%#v err=%v; want nil and closed pool", result, err)
+	}
+	if id, err := svc.Register(ctx, "closed-register-dependency@test.com", "Password123", "ClosedRegisterDependency", "", ""); id != "" || !closedPoolError(err) {
+		t.Fatalf("Register closed database = id=%q err=%v; want empty id and closed pool", id, err)
+	}
+}
+
 func TestConcurrentRegistrationsKeepDisplayNameUnique(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()

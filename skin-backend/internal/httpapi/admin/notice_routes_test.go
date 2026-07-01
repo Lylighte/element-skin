@@ -187,6 +187,46 @@ func TestNoticeAdminRoutesRejectInvalidInputsExactly(t *testing.T) {
 	}
 }
 
+func TestNoticeAdminRoutesRejectMissingFineGrainedPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	h := admin.New(testutil.TestConfig(), db, nil)
+	adminUser := testutil.CreateUser(t, db, "admin-notice-permissions@test.com", "Password123", "AdminNoticePermissions", true)
+
+	cases := []struct {
+		name        string
+		permission  string
+		makeRequest func() *http.Request
+		call        func(http.ResponseWriter, *http.Request)
+	}{
+		{"list requires notice read", "notice.read.any", func() *http.Request {
+			return httptest.NewRequest(http.MethodGet, "/v1/admin/notifications", nil)
+		}, h.Notices},
+		{"create requires notice create", "notice.create.any", func() *http.Request {
+			return httptest.NewRequest(http.MethodPost, "/v1/admin/notifications", strings.NewReader(`{"title":"Blocked","summary":"Blocked"}`))
+		}, h.CreateNotice},
+		{"patch requires notice update", "notice.update.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodPatch, "/v1/admin/notifications/blocked", strings.NewReader(`{"title":"Blocked"}`))
+			req.SetPathValue("id", "blocked")
+			return req
+		}, h.PatchNotice},
+		{"delete requires notice delete", "notice.delete.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/admin/notifications/blocked", nil)
+			req.SetPathValue("id", "blocked")
+			return req
+		}, h.DeleteNotice},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withAdminActorWithoutPermission(tc.makeRequest(), adminUser.ID, tc.permission)
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("permission denial mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func adminNoticeRequest(method, target, body, userID string) *http.Request {
 	var reader *strings.Reader
 	if body == "" {

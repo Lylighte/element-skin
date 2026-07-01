@@ -86,6 +86,26 @@ func TestHomepageMediaUploadFailsWhenRedisInvalidateFails(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatalf("expected no files after Redis invalidate failure, got %d", len(entries))
 	}
+
+	rec = httptest.NewRecorder()
+	h.UploadHomepagePanorama(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t)))
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("redis fail panorama upload mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	items, err = db.HomepageMedia.List(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected no panorama items after Redis invalidate failure, got %#v", items)
+	}
+	entries, err = os.ReadDir(cfg.CarouselDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected no panorama files after Redis invalidate failure, got %d", len(entries))
+	}
 }
 
 func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
@@ -169,6 +189,364 @@ func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 	}
 }
 
+func TestHomepageMediaUploadAcceptsWebPBytesAndRejectsMalformedMultipartExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.CarouselDir = t.TempDir()
+	h := admin.NewWithRedis(cfg, db, testutil.NewMemoryRedis(), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/admin/homepage-media/image", strings.NewReader("not multipart"))
+	req = withAdminActor(req, "admin-test-user")
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=missing")
+	rec := httptest.NewRecorder()
+	h.UploadHomepageImage(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid multipart form\"}\n" {
+		t.Fatalf("image malformed multipart mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/homepage-media/panorama", strings.NewReader("not multipart"))
+	req = withAdminActor(req, "admin-test-user")
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=missing")
+	rec = httptest.NewRecorder()
+	h.UploadHomepagePanorama(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid multipart form\"}\n" {
+		t.Fatalf("panorama malformed multipart mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = multipartUploadRequest(t, "/v1/admin/homepage-media/image", "not_file", "slide.png", pngBytes(t, 8, 8))
+	rec = httptest.NewRecorder()
+	h.UploadHomepageImage(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"file is required\"}\n" {
+		t.Fatalf("image missing file mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "not_file", "panorama.zip", standardPanoramaZip(t))
+	rec = httptest.NewRecorder()
+	h.UploadHomepagePanorama(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"file is required\"}\n" {
+		t.Fatalf("panorama missing file mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.webp", []byte("webp bytes are stored without image decoding"))
+	rec = httptest.NewRecorder()
+	h.UploadHomepageImage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("webp upload status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	item := decodeMedia(t, rec.Body.Bytes())
+	if item.Type != "image" || !strings.HasSuffix(item.StoragePath, ".webp") || item.Title != "slide.webp" {
+		t.Fatalf("webp homepage media mismatch: %#v", item)
+	}
+	got, err := os.ReadFile(filepath.Join(cfg.CarouselDir, item.StoragePath))
+	if err != nil || string(got) != "webp bytes are stored without image decoding" {
+		t.Fatalf("webp upload should persist exact bytes: got=%q err=%v", got, err)
+	}
+}
+
+func TestHomepageMediaMutationsRejectInvalidRequestsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.CarouselDir = t.TempDir()
+	cache := testutil.NewMemoryRedis()
+	h := admin.NewWithRedis(cfg, db, cache, nil)
+
+	for _, tc := range []struct {
+		name string
+		run  func(*httptest.ResponseRecorder)
+	}{
+		{name: "upload image", run: func(rec *httptest.ResponseRecorder) {
+			req := multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 8, 8))
+			req = httptest.NewRequest(req.Method, req.URL.String(), req.Body)
+			h.UploadHomepageImage(rec, req)
+		}},
+		{name: "upload panorama", run: func(rec *httptest.ResponseRecorder) {
+			req := multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t))
+			req = httptest.NewRequest(req.Method, req.URL.String(), req.Body)
+			h.UploadHomepagePanorama(rec, req)
+		}},
+		{name: "patch", run: func(rec *httptest.ResponseRecorder) {
+			h.PatchHomepageMedia(rec, httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/missing", strings.NewReader(`{}`)))
+		}},
+		{name: "reorder", run: func(rec *httptest.ResponseRecorder) {
+			h.ReorderHomepageMedia(rec, httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/reorder", strings.NewReader(`{"ids":[]}`)))
+		}},
+		{name: "delete", run: func(rec *httptest.ResponseRecorder) {
+			h.DeleteHomepageMedia(rec, httptest.NewRequest(http.MethodDelete, "/v1/admin/homepage-media/missing", nil))
+		}},
+	} {
+		t.Run("permission denied "+tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			tc.run(rec)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("%s permission mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	rec := httptest.NewRecorder()
+	h.UploadHomepageImage(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.gif", []byte("gif")))
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Unsupported file format\"}\n" {
+		t.Fatalf("unsupported image mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	h.UploadHomepageImage(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.png", []byte("not png")))
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid image\"}\n" {
+		t.Fatalf("invalid image mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req := multipartUploadRequestWithFields(t, "/v1/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 8, 8), map[string]string{"overlay_opacity_light": "bad"})
+	h.UploadHomepageImage(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"overlay_opacity_light must be a number\"}\n" {
+		t.Fatalf("image form opacity parse mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = multipartUploadRequestWithFields(t, "/v1/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 8, 8), map[string]string{"duration_ms": "999"})
+	h.UploadHomepageImage(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"duration_ms out of range\"}\n" {
+		t.Fatalf("image duration range mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/missing", strings.NewReader(`{bad`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", "missing")
+	h.PatchHomepageMedia(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json body\"}\n" {
+		t.Fatalf("patch invalid json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/missing", strings.NewReader(`{"duration_ms":999}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", "missing")
+	h.PatchHomepageMedia(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"duration_ms out of range\"}\n" {
+		t.Fatalf("patch duration mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/missing", strings.NewReader(`{"overlay_opacity_dark":0.91}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", "missing")
+	h.PatchHomepageMedia(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"overlay_opacity_dark out of range\"}\n" {
+		t.Fatalf("patch opacity mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/missing", strings.NewReader(`{"title":"x"}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", "missing")
+	h.PatchHomepageMedia(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"homepage media not found\"}\n" {
+		t.Fatalf("patch missing mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "invalid json", body: `{bad`},
+		{name: "empty ids", body: `{"ids":[]}`},
+		{name: "duplicate ids", body: `{"ids":["a","a"]}`},
+		{name: "blank id", body: `{"ids":[""]}`},
+	} {
+		t.Run("reorder "+tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/reorder", strings.NewReader(tc.body))
+			req = withAdminActor(req, "admin-test-user")
+			h.ReorderHomepageMedia(rec, req)
+			wantBody := "{\"detail\":\"ids must be unique non-empty strings\"}\n"
+			if tc.name == "invalid json" {
+				wantBody = "{\"detail\":\"invalid json body\"}\n"
+			}
+			if tc.name == "empty ids" {
+				wantBody = "{\"detail\":\"ids is required\"}\n"
+			}
+			if rec.Code != http.StatusBadRequest || rec.Body.String() != wantBody {
+				t.Fatalf("reorder %s mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/reorder", strings.NewReader(`{"ids":["missing"]}`))
+	req = withAdminActor(req, "admin-test-user")
+	h.ReorderHomepageMedia(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"homepage media not found\"}\n" {
+		t.Fatalf("reorder missing mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/homepage-media/missing", nil)
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", "missing")
+	h.DeleteHomepageMedia(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"homepage media not found\"}\n" {
+		t.Fatalf("delete missing mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHomepageMediaRoutesReturnExactErrorsForClosedDatabaseAndFilesystemFailures(t *testing.T) {
+	t.Run("closed database", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		cfg := testutil.TestConfig()
+		cfg.CarouselDir = t.TempDir()
+		h := admin.NewWithRedis(cfg, db, testutil.NewMemoryRedis(), nil)
+		db.Close()
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/admin/homepage-media", nil)
+		req = withAdminActor(req, "admin-test-user")
+		rec := httptest.NewRecorder()
+		h.ListHomepageMedia(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("list closed database mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+
+		rec = httptest.NewRecorder()
+		h.UploadHomepageImage(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 8, 8)))
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("image upload closed database mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		if entries, err := os.ReadDir(cfg.CarouselDir); err != nil || len(entries) != 0 {
+			t.Fatalf("image upload closed database should leave no files: entries=%d err=%v", len(entries), err)
+		}
+
+		rec = httptest.NewRecorder()
+		h.UploadHomepagePanorama(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t)))
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("panorama upload closed database mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		if entries, err := os.ReadDir(cfg.CarouselDir); err != nil || len(entries) != 0 {
+			t.Fatalf("panorama upload closed database should leave no files: entries=%d err=%v", len(entries), err)
+		}
+
+		req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/missing", strings.NewReader(`{"title":"x"}`))
+		req = withAdminActor(req, "admin-test-user")
+		req.SetPathValue("id", "missing")
+		rec = httptest.NewRecorder()
+		h.PatchHomepageMedia(rec, req)
+		if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"homepage media not found\"}\n" {
+			t.Fatalf("patch closed database mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+
+		req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/reorder", strings.NewReader(`{"ids":["missing"]}`))
+		req = withAdminActor(req, "admin-test-user")
+		rec = httptest.NewRecorder()
+		h.ReorderHomepageMedia(rec, req)
+		if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"homepage media not found\"}\n" {
+			t.Fatalf("reorder closed database mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+
+		req = httptest.NewRequest(http.MethodDelete, "/v1/admin/homepage-media/missing", nil)
+		req = withAdminActor(req, "admin-test-user")
+		req.SetPathValue("id", "missing")
+		rec = httptest.NewRecorder()
+		h.DeleteHomepageMedia(rec, req)
+		if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"homepage media not found\"}\n" {
+			t.Fatalf("delete closed database mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("carousel dir is existing file", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		cfg := testutil.TestConfig()
+		cfg.CarouselDir = filepath.Join(t.TempDir(), "not-a-dir")
+		if err := os.WriteFile(cfg.CarouselDir, []byte("blocks mkdir"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		h := admin.NewWithRedis(cfg, db, testutil.NewMemoryRedis(), nil)
+
+		rec := httptest.NewRecorder()
+		h.UploadHomepageImage(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 8, 8)))
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("image mkdir failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		items, err := db.HomepageMedia.List(context.Background(), false)
+		if err != nil || len(items) != 0 {
+			t.Fatalf("image mkdir failure should leave no rows: items=%#v err=%v", items, err)
+		}
+
+		rec = httptest.NewRecorder()
+		h.UploadHomepagePanorama(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t)))
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("panorama mkdir failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		items, err = db.HomepageMedia.List(context.Background(), false)
+		if err != nil || len(items) != 0 {
+			t.Fatalf("panorama mkdir failure should leave no rows: items=%#v err=%v", items, err)
+		}
+	})
+}
+
+func TestHomepageMediaMutationRedisFailuresKeepExactPersistedSideEffects(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.CarouselDir = t.TempDir()
+	healthy := testutil.NewMemoryRedis()
+	h := admin.NewWithRedis(cfg, db, healthy, nil)
+
+	rec := httptest.NewRecorder()
+	h.UploadHomepageImage(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "first.png", pngBytes(t, 8, 8)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first upload status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	first := decodeMedia(t, rec.Body.Bytes())
+	rec = httptest.NewRecorder()
+	h.UploadHomepageImage(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "second.png", pngBytes(t, 8, 8)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second upload status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	second := decodeMedia(t, rec.Body.Bytes())
+
+	failing := admin.NewWithRedis(cfg, db, &homepageInvalidateFailRedis{Store: testutil.NewMemoryRedis()}, nil)
+	req := httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/"+first.ID, strings.NewReader(`{"title":"Patched before cache failure"}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", first.ID)
+	rec = httptest.NewRecorder()
+	failing.PatchHomepageMedia(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("patch invalidate failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	row, err := db.HomepageMedia.Get(context.Background(), first.ID)
+	if err != nil || row.Title != "Patched before cache failure" {
+		t.Fatalf("patch should persist before invalidate failure: row=%#v err=%v", row, err)
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/reorder", strings.NewReader(`{"ids":["`+second.ID+`","`+first.ID+`"]}`))
+	req = withAdminActor(req, "admin-test-user")
+	rec = httptest.NewRecorder()
+	failing.ReorderHomepageMedia(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("reorder invalidate failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	items, err := db.HomepageMedia.List(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].ID != second.ID || items[0].SortOrder != 0 || items[1].ID != first.ID || items[1].SortOrder != 1 {
+		t.Fatalf("reorder should persist before invalidate failure: %#v", items)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/homepage-media/"+first.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", first.ID)
+	rec = httptest.NewRecorder()
+	failing.DeleteHomepageMedia(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("delete invalidate failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if _, err := db.HomepageMedia.Get(context.Background(), first.ID); err == nil {
+		t.Fatal("delete should remove DB row before invalidate failure")
+	}
+	if _, err := os.Stat(filepath.Join(cfg.CarouselDir, first.StoragePath)); !os.IsNotExist(err) {
+		t.Fatalf("delete should remove file before invalidate failure, stat err=%v", err)
+	}
+}
+
 func TestHomepageMediaPanoramaUploadUsesGeneratedStandardZipAndYawPitchFields(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
@@ -222,6 +600,31 @@ func TestHomepageMediaPanoramaUploadUsesGeneratedStandardZipAndYawPitchFields(t 
 		if _, err := os.Stat(filepath.Join(cfg.CarouselDir, item.ID, name)); err != nil {
 			t.Fatalf("panorama face %s should exist: %v", name, err)
 		}
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/"+item.ID, strings.NewReader(`{"start_yaw":30,"start_pitch":-10,"yaw_speed_dps":-3.5,"pitch_speed_dps":2.25}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", item.ID)
+	rec = httptest.NewRecorder()
+	h.PatchHomepageMedia(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch panorama status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	patched := decodeMedia(t, rec.Body.Bytes())
+	if patched.StartYaw != 30 || patched.StartPitch != -10 || patched.YawSpeedDPS != -3.5 || patched.PitchSpeedDPS != 2.25 {
+		t.Fatalf("patched panorama fields mismatch: %#v", patched)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/homepage-media/"+item.ID, nil)
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", item.ID)
+	rec = httptest.NewRecorder()
+	h.DeleteHomepageMedia(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("delete panorama status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(cfg.CarouselDir, item.ID)); !os.IsNotExist(err) {
+		t.Fatalf("deleted panorama directory should be gone, stat err=%v", err)
 	}
 }
 
@@ -312,6 +715,65 @@ func TestHomepageMediaRejectsInvalidPanoramaInputsExactly(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"overlay_opacity_dark out of range\"}\n" {
 		t.Fatalf("overlay range mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
+
+	for _, tc := range []struct {
+		name   string
+		fields map[string]string
+		body   string
+	}{
+		{name: "overlay opacity dark parse", fields: map[string]string{"overlay_opacity_dark": "bad"}, body: "{\"detail\":\"overlay_opacity_dark must be a number\"}\n"},
+		{name: "start yaw parse", fields: map[string]string{"start_yaw": "bad"}, body: "{\"detail\":\"start_yaw must be a number\"}\n"},
+		{name: "start pitch parse", fields: map[string]string{"start_pitch": "bad"}, body: "{\"detail\":\"start_pitch must be a number\"}\n"},
+		{name: "yaw speed parse", fields: map[string]string{"yaw_speed_dps": "bad"}, body: "{\"detail\":\"yaw_speed_dps must be a number\"}\n"},
+		{name: "pitch speed parse", fields: map[string]string{"pitch_speed_dps": "bad"}, body: "{\"detail\":\"pitch_speed_dps must be a number\"}\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := multipartUploadRequestWithFields(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t), tc.fields)
+			h.UploadHomepagePanorama(rec, req)
+			if rec.Code != http.StatusBadRequest || rec.Body.String() != tc.body {
+				t.Fatalf("%s mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		data []byte
+		body string
+	}{
+		{name: "not zip", data: []byte("not a zip archive"), body: "{\"detail\":\"invalid panorama zip\"}\n"},
+		{name: "nested file", data: panoramaZipWithEntries(t, map[string][]byte{"nested/panorama_0.png": pngBytes(t, 8, 8)}), body: "{\"detail\":\"panorama files must be at zip root\"}\n"},
+		{name: "unexpected file", data: panoramaZipWithEntries(t, map[string][]byte{"panorama_0.png": pngBytes(t, 8, 8), "extra.png": pngBytes(t, 8, 8)}), body: "{\"detail\":\"panorama zip must contain only panorama_0.png through panorama_5.png\"}\n"},
+		{name: "oversized face", data: panoramaZipWithEntries(t, map[string][]byte{"panorama_0.png": bytes.Repeat([]byte{'x'}, maxHomepageFaceBytesForTest()+1)}), body: "{\"detail\":\"panorama face too large\"}\n"},
+		{name: "invalid face image", data: panoramaZipWithEntries(t, map[string][]byte{"panorama_0.png": []byte("not png")}), body: "{\"detail\":\"invalid panorama face image\"}\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			h.UploadHomepagePanorama(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", tc.data))
+			if rec.Code != http.StatusBadRequest || rec.Body.String() != tc.body {
+				t.Fatalf("%s mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	cfg := testutil.TestConfig()
+	cfg.CarouselDir = t.TempDir()
+	h = admin.NewWithRedis(cfg, db, testutil.NewMemoryRedis(), nil)
+	rec = httptest.NewRecorder()
+	h.UploadHomepagePanorama(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("panorama setup status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	item := decodeMedia(t, rec.Body.Bytes())
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/homepage-media/"+item.ID, strings.NewReader(`{"start_yaw":361}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("id", item.ID)
+	rec = httptest.NewRecorder()
+	h.PatchHomepageMedia(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"start_yaw out of range\"}\n" {
+		t.Fatalf("patch panorama yaw range mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
 
 type homepageInvalidateFailRedis struct {
@@ -323,6 +785,10 @@ func (r *homepageInvalidateFailRedis) InvalidatePublicHomepageMedia(context.Cont
 }
 
 func multipartUploadRequest(t *testing.T, path, field, filename string, data []byte) *http.Request {
+	return multipartUploadRequestWithFields(t, path, field, filename, data, nil)
+}
+
+func multipartUploadRequestWithFields(t *testing.T, path, field, filename string, data []byte, fields map[string]string) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -332,6 +798,11 @@ func multipartUploadRequest(t *testing.T, path, field, filename string, data []b
 	}
 	if _, err := part.Write(data); err != nil {
 		t.Fatal(err)
+	}
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
@@ -395,6 +866,29 @@ func invalidPanoramaZip(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func panoramaZipWithEntries(t *testing.T, entries map[string][]byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, data := range entries {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func maxHomepageFaceBytesForTest() int {
+	return 5 * 1024 * 1024
 }
 
 func decodeMedia(t *testing.T, raw []byte) model.HomepageMedia {

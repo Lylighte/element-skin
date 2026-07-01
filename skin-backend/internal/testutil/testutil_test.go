@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/util"
@@ -59,6 +60,48 @@ func TestNewTestAppWithMaxConnections(t *testing.T) {
 	}
 	if got := db.Pool.Stat().MaxConns(); got != 12 {
 		t.Fatalf("MaxConns mismatch: got=%d want=12", got)
+	}
+}
+
+func TestNewTestAppVariantsReturnExactDatabaseHandlerAndRedisState(t *testing.T) {
+	db, handler := NewTestAppTB(t)
+	if db == nil || handler == nil {
+		t.Fatalf("NewTestAppTB returned db=%#v handler=%#v", db, handler)
+	}
+	if count, err := db.Users.Count(context.Background()); err != nil || count != 0 {
+		t.Fatalf("fresh NewTestAppTB user count=%d err=%v; want 0, nil", count, err)
+	}
+
+	db, handler, cache := NewTestAppWithRedisTB(t)
+	if db == nil || handler == nil || cache == nil {
+		t.Fatalf("NewTestAppWithRedisTB returned db=%#v handler=%#v cache=%#v", db, handler, cache)
+	}
+	if err := cache.SetSetting(context.Background(), "exact-test-key", "exact-value", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	value, err := cache.GetSetting(context.Background(), "exact-test-key")
+	if err != nil || value != "exact-value" {
+		t.Fatalf("memory redis setting mismatch: value=%q err=%v", value, err)
+	}
+
+	db, handler, cache = NewTestAppWithMaxConnectionsAndRedisTB(t, 5)
+	if handler == nil || cache == nil {
+		t.Fatalf("NewTestAppWithMaxConnectionsAndRedisTB handler/cache nil: handler=%#v cache=%#v", handler, cache)
+	}
+	if got := db.Pool.Stat().MaxConns(); got != 5 {
+		t.Fatalf("max connections with redis mismatch: got=%d want=5", got)
+	}
+}
+
+func TestNewRedisStoreTBStoresAndCleansExactPrefixedKeys(t *testing.T) {
+	store := NewRedisStoreTB(t, "elementskin:test:new-redis-store:")
+	ctx := context.Background()
+	if err := store.SetSetting(ctx, "redis-store-key", "redis-store-value", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSetting(ctx, "redis-store-key")
+	if err != nil || got != "redis-store-value" {
+		t.Fatalf("NewRedisStoreTB setting mismatch: got=%q err=%v", got, err)
 	}
 }
 

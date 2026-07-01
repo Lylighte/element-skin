@@ -1,6 +1,7 @@
 package microsoft_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +35,14 @@ func TestMicrosoftRoutesAuthURLAndCallbackValidationExactResponses(t *testing.T)
 		t.Fatalf("auth url response mismatch: status=%d body=%q stateLen=%d", rec.Code, rec.Body.String(), states.Len())
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/auth-url", nil)
+	req = withUserActorWithoutPermission(req, "microsoft-auth-user", "microsoft_import.start.owned")
+	rec = httptest.NewRecorder()
+	h.AuthURL(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" || states.Len() != 1 {
+		t.Fatalf("auth URL permission denial mismatch: status=%d body=%q stateLen=%d", rec.Code, rec.Body.String(), states.Len())
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/callback?error="+url.QueryEscape("access_denied"), nil)
 	rec = httptest.NewRecorder()
 	h.Callback(rec, req)
@@ -53,6 +62,16 @@ func TestMicrosoftRoutesAuthURLAndCallbackValidationExactResponses(t *testing.T)
 	h.Callback(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"Invalid or expired state parameter"`) {
 		t.Fatalf("callback missing state token response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	if err := microsoft.SeedStateForTest(states, "wrong-kind-state", map[string]any{"kind": microsoft.TestStateKindProfile, "user_id": "user-id"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/callback?code=code&state=wrong-kind-state", nil)
+	rec = httptest.NewRecorder()
+	h.Callback(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Invalid or expired state parameter\"}\n" || states.Len() != 1 {
+		t.Fatalf("callback wrong state kind mismatch: status=%d body=%q stateLen=%d", rec.Code, rec.Body.String(), states.Len())
 	}
 
 	if err := microsoft.SeedStateForTest(states, "oauth-state", map[string]any{"kind": microsoft.TestStateKindOAuth, "user_id": "user-id"}, time.Minute); err != nil {
@@ -120,4 +139,104 @@ func TestMicrosoftRoutesSettingsFailuresAndDefaultRedirectConsumeStateExactly(t 
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://localhost:5173/dashboard/roles?error=auth_failed" {
 		t.Fatalf("empty site URL fallback mismatch: status=%d location=%q", rec.Code, rec.Header().Get("Location"))
 	}
+}
+
+func TestMicrosoftRoutesReturnExactErrorsForLaterDependencyFailures(t *testing.T) {
+	ctx := context.Background()
+	cfg := testutil.TestConfig()
+	cfg.APIURL = "https://api.example/root"
+
+	t.Run("auth URL redirect URI settings failure keeps state empty", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		states := redisstore.NewMemoryStore()
+		cache := redisstore.NewMemoryStore()
+		if err := cache.SetSetting(ctx, "microsoft_client_id", "client-id", time.Minute); err != nil {
+			t.Fatalf("seed client id cache: %v", err)
+		}
+		db.Close()
+
+		h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: cache}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
+			return next
+		}, states)
+		req := httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/auth-url", nil)
+		req = withUserActor(req, "microsoft-auth-redirect-failure-user")
+		rec := httptest.NewRecorder()
+		h.AuthURL(rec, req)
+
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" || states.Len() != 0 {
+			t.Fatalf("auth URL redirect settings failure mismatch: status=%d body=%q states=%d", rec.Code, rec.Body.String(), states.Len())
+		}
+	})
+
+	t.Run("auth URL state store failure keeps state empty", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		states := redisstore.NewMemoryStore()
+		states.Err = errors.New("state store unavailable")
+		h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
+			return next
+		}, states)
+		req := httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/auth-url", nil)
+		req = withUserActor(req, "microsoft-auth-state-failure-user")
+		rec := httptest.NewRecorder()
+		h.AuthURL(rec, req)
+
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" || states.Len() != 0 {
+			t.Fatalf("auth URL state failure mismatch: status=%d body=%q states=%d", rec.Code, rec.Body.String(), states.Len())
+		}
+	})
+
+	t.Run("callback client secret settings failure consumes state", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		states := redisstore.NewMemoryStore()
+		cache := redisstore.NewMemoryStore()
+		if err := cache.SetSetting(ctx, "microsoft_client_id", "client-id", time.Minute); err != nil {
+			t.Fatalf("seed client id cache: %v", err)
+		}
+		if err := microsoft.SeedStateForTest(states, "client-secret-failure-state", map[string]any{
+			"kind": microsoft.TestStateKindOAuth, "user_id": "user-id",
+		}, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+
+		h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: cache}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
+			return next
+		}, states)
+		req := httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/callback?code=code&state=client-secret-failure-state", nil)
+		rec := httptest.NewRecorder()
+		h.Callback(rec, req)
+
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" || states.Len() != 0 {
+			t.Fatalf("callback client secret settings failure mismatch: status=%d body=%q states=%d", rec.Code, rec.Body.String(), states.Len())
+		}
+	})
+
+	t.Run("callback redirect URI settings failure consumes state", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		states := redisstore.NewMemoryStore()
+		cache := redisstore.NewMemoryStore()
+		if err := cache.SetSetting(ctx, "microsoft_client_id", "client-id", time.Minute); err != nil {
+			t.Fatalf("seed client id cache: %v", err)
+		}
+		if err := cache.SetSetting(ctx, "microsoft_client_secret", "client-secret", time.Minute); err != nil {
+			t.Fatalf("seed client secret cache: %v", err)
+		}
+		if err := microsoft.SeedStateForTest(states, "redirect-failure-state", map[string]any{
+			"kind": microsoft.TestStateKindOAuth, "user_id": "user-id",
+		}, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+
+		h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: cache}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
+			return next
+		}, states)
+		req := httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/callback?code=code&state=redirect-failure-state", nil)
+		rec := httptest.NewRecorder()
+		h.Callback(rec, req)
+
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" || states.Len() != 0 {
+			t.Fatalf("callback redirect settings failure mismatch: status=%d body=%q states=%d", rec.Code, rec.Body.String(), states.Len())
+		}
+	})
 }

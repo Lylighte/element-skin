@@ -82,12 +82,28 @@ func TestWhitelistRoutesRejectInvalidInputsExactly(t *testing.T) {
 		t.Fatalf("missing endpoint id list mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/official-whitelist", strings.NewReader(`{`))
+	req = withAdminActor(req, "admin-test-user")
+	rec = httptest.NewRecorder()
+	h.AddOfficialWhitelist(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("bad whitelist json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodPost, "/v1/admin/official-whitelist", strings.NewReader(`{"username":" ","endpoint_id":1}`))
 	req = withAdminActor(req, "admin-test-user")
 	rec = httptest.NewRecorder()
 	h.AddOfficialWhitelist(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"username is required"`) {
 		t.Fatalf("missing username add mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/official-whitelist", strings.NewReader(`{"username":"Alex"}`))
+	req = withAdminActor(req, "admin-test-user")
+	rec = httptest.NewRecorder()
+	h.AddOfficialWhitelist(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"endpoint_id is required\"}\n" {
+		t.Fatalf("missing endpoint add mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/official-whitelist/Steve", nil)

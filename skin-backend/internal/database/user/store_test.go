@@ -170,6 +170,107 @@ func TestUpdateRollsBackAllUserFieldsWhenOneFieldFails(t *testing.T) {
 	}
 }
 
+func TestUpdateIgnoresUnsupportedFieldsWithoutMutation(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := user.Store{Pool: db.Pool}
+	target := testutil.CreateUser(t, db, "user-update-ignored@test.com", "Password123", "UserUpdateIgnored", false)
+
+	if err := store.Update(ctx, target.ID, map[string]any{"unknown_field": "changed"}); err != nil {
+		t.Fatalf("unsupported-only update should be a no-op, got %v", err)
+	}
+	got, err := store.GetByID(ctx, target.ID)
+	if err != nil || got == nil ||
+		got.ID != target.ID ||
+		got.Email != target.Email ||
+		got.DisplayName != target.DisplayName ||
+		got.PreferredLanguage != target.PreferredLanguage ||
+		got.AvatarHash != nil {
+		t.Fatalf("unsupported-only update mutated user: user=%#v err=%v want=%#v", got, err, target)
+	}
+}
+
+func TestUpdateRollsBackWhenDisplayNameConflicts(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := user.Store{Pool: db.Pool}
+	existing := testutil.CreateUser(t, db, "user-update-name-existing@test.com", "Password123", "ExistingDisplayName", false)
+	target := testutil.CreateUser(t, db, "user-update-name-target@test.com", "Password123", "TargetDisplayName", false)
+
+	err := store.Update(ctx, target.ID, map[string]any{
+		"email":        "changed-name-target@test.com",
+		"display_name": existing.DisplayName,
+	})
+	if !errors.Is(err, user.ErrDisplayNameConflict) {
+		t.Fatalf("display name conflict error=%v; want ErrDisplayNameConflict", err)
+	}
+	got, getErr := store.GetByID(ctx, target.ID)
+	if getErr != nil || got == nil ||
+		got.Email != target.Email ||
+		got.DisplayName != target.DisplayName ||
+		got.PreferredLanguage != target.PreferredLanguage ||
+		got.AvatarHash != nil {
+		t.Fatalf("display name conflict mutated target: user=%#v err=%v want=%#v", got, getErr, target)
+	}
+	takenByExisting, err := store.IsDisplayNameTaken(ctx, existing.DisplayName, existing.ID)
+	if err != nil || takenByExisting {
+		t.Fatalf("existing user should be excluded from own display name check: taken=%v err=%v", takenByExisting, err)
+	}
+	takenByTarget, err := store.IsDisplayNameTaken(ctx, existing.DisplayName, target.ID)
+	if err != nil || !takenByTarget {
+		t.Fatalf("target should see existing display name as taken: taken=%v err=%v", takenByTarget, err)
+	}
+}
+
+func TestStoreMethodsReturnExactClosedPoolErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := user.Store{Pool: db.Pool}
+	db.Close()
+	hash, hashErr := util.HashPassword("ClosedPoolPassword123")
+	if hashErr != nil {
+		t.Fatal(hashErr)
+	}
+
+	if got, err := store.GetByEmail(ctx, "closed-pool@test.com"); got == nil || got.ID != "" || got.Email != "" || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("GetByEmail closed pool = user=%#v err=%v; want zero user and closed pool", got, err)
+	}
+	if got, err := store.GetByID(ctx, "closed-user"); got == nil || got.ID != "" || got.Email != "" || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("GetByID closed pool = user=%#v err=%v; want zero user and closed pool", got, err)
+	}
+	if err := store.Create(ctx, model.User{ID: "closed-create", Email: "closed-create@test.com", Password: hash, DisplayName: "ClosedCreate"}); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Create closed pool error=%v; want closed pool", err)
+	}
+	if err := store.CreateWithProfile(ctx,
+		model.User{ID: "closed-create-profile", Email: "closed-create-profile@test.com", Password: hash, DisplayName: "ClosedCreateProfile"},
+		model.Profile{ID: "closed-profile", UserID: "closed-create-profile", Name: "ClosedProfile", TextureModel: "default"},
+		"", "",
+	); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("CreateWithProfile closed pool error=%v; want closed pool", err)
+	}
+	if count, err := store.Count(ctx); count != 0 || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Count closed pool = count=%d err=%v; want 0 and closed pool", count, err)
+	}
+	if taken, err := store.IsDisplayNameTaken(ctx, "ClosedName", ""); taken || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("IsDisplayNameTaken closed pool = taken=%v err=%v; want false and closed pool", taken, err)
+	}
+	if err := store.Update(ctx, "closed-update", map[string]any{"email": "closed-update@test.com"}); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Update closed pool error=%v; want closed pool", err)
+	}
+	if err := store.UpdatePassword(ctx, "closed-update-password", hash); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("UpdatePassword closed pool error=%v; want closed pool", err)
+	}
+	if updated, err := store.UpdatePasswordAndRevokeRefresh(ctx, "closed-update-password-refresh", hash); updated || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("UpdatePasswordAndRevokeRefresh closed pool = updated=%v err=%v; want false and closed pool", updated, err)
+	}
+	if deleted, err := store.Delete(ctx, "closed-delete"); deleted || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Delete closed pool = deleted=%v err=%v; want false and closed pool", deleted, err)
+	}
+	if banned, err := store.IsBanned(ctx, "closed-ban"); banned || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("IsBanned closed pool = banned=%v err=%v; want false and closed pool", banned, err)
+	}
+}
+
 func TestIsEmailConflictMatchesOnlyUsersEmailConstraint(t *testing.T) {
 	emailConflict := &pgconn.PgError{Code: "23505", ConstraintName: "users_email_key"}
 	otherConflict := &pgconn.PgError{Code: "23505", ConstraintName: "profiles_name_key"}

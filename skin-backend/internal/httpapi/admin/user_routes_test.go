@@ -37,6 +37,16 @@ func withProtectedActor(req *http.Request, userID string) *http.Request {
 	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, defs...))
 }
 
+func withAdminActorWithoutPermission(req *http.Request, userID, excludeCode string) *http.Request {
+	defs := make([]permission.Definition, 0, len(rolePermissions(permission.RoleAdmin)))
+	for _, def := range rolePermissions(permission.RoleAdmin) {
+		if def.Code != excludeCode {
+			defs = append(defs, def)
+		}
+	}
+	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, defs...))
+}
+
 func rolePermissions(roleID string) []permission.Definition {
 	for _, role := range permission.Roles {
 		if role.ID == roleID {
@@ -44,6 +54,75 @@ func rolePermissions(roleID string) []permission.Definition {
 		}
 	}
 	panic("missing role: " + roleID)
+}
+
+func TestAdminUserRoutesRejectMissingFineGrainedPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := admin.New(cfg, db, nil)
+	adminUser := testutil.CreateUser(t, db, "admin-permission-matrix@test.com", "Password123", "AdminPermissionMatrix", true)
+	target := testutil.CreateUser(t, db, "target-permission-matrix@test.com", "Password123", "TargetPermissionMatrix", false)
+
+	cases := []struct {
+		name        string
+		permission  string
+		makeRequest func() *http.Request
+		call        func(http.ResponseWriter, *http.Request)
+	}{
+		{"users list requires user read", "user.read.any", func() *http.Request {
+			return httptest.NewRequest(http.MethodGet, "/v1/admin/users", nil)
+		}, h.Users},
+		{"user detail requires account read", "account.read.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodGet, "/v1/admin/users/"+target.ID, nil)
+			req.SetPathValue("user_id", target.ID)
+			return req
+		}, h.User},
+		{"role grant requires permission grant", "permission.grant.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
+			req.SetPathValue("user_id", target.ID)
+			req.SetPathValue("role_id", permission.RoleAdmin)
+			return req
+		}, h.GrantUserRole},
+		{"role revoke requires permission revoke", "permission.revoke.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
+			req.SetPathValue("user_id", target.ID)
+			req.SetPathValue("role_id", permission.RoleAdmin)
+			return req
+		}, h.RevokeUserRole},
+		{"delete requires account delete", "account.delete.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID, nil)
+			req.SetPathValue("user_id", target.ID)
+			return req
+		}, h.DeleteUser},
+		{"profiles require profile read", "profile.read.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodGet, "/v1/admin/users/"+target.ID+"/profiles", nil)
+			req.SetPathValue("user_id", target.ID)
+			return req
+		}, h.UserProfiles},
+		{"ban requires account ban", "account.ban.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+			req.SetPathValue("user_id", target.ID)
+			return req
+		}, h.BanUser},
+		{"unban requires account unban", "account.unban.any", func() *http.Request {
+			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/unban", nil)
+			req.SetPathValue("user_id", target.ID)
+			return req
+		}, h.UnbanUser},
+		{"reset password requires account update", "account.update.any", func() *http.Request {
+			return httptest.NewRequest(http.MethodPost, "/v1/admin/users/password/reset", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"ResetPassword123"}`))
+		}, h.ResetUserPassword},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withAdminActorWithoutPermission(tc.makeRequest(), adminUser.ID, tc.permission)
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("permission denial mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+			}
+		})
+	}
 }
 
 func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
@@ -146,6 +225,36 @@ func TestRoleGrantAndRevokeControlsExactPermissions(t *testing.T) {
 	}
 	if hasRole, err := db.Permissions.UserHasRole(req.Context(), target.ID, permission.RoleAdmin); err != nil || hasRole {
 		t.Fatalf("target admin role after revoke = %v, %v; want false, nil", hasRole, err)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
+	req = withAdminActor(req, plainAdmin.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("role_id", permission.RoleAdmin)
+	rec = httptest.NewRecorder()
+	h.RevokeUserRole(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"role assignment not found\"}\n" {
+		t.Fatalf("missing role revoke response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/super_admin", nil)
+	req = withAdminActor(req, plainAdmin.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("role_id", permission.RoleSuperAdmin)
+	rec = httptest.NewRecorder()
+	h.RevokeUserRole(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"protected role management required\"}\n" {
+		t.Fatalf("plain admin protected role revoke mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+protectedAdmin.ID+"/roles/super_admin", nil)
+	req = withProtectedActor(req, protectedAdmin.ID)
+	req.SetPathValue("user_id", protectedAdmin.ID)
+	req.SetPathValue("role_id", permission.RoleSuperAdmin)
+	rec = httptest.NewRecorder()
+	h.RevokeUserRole(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"cannot revoke protected role from yourself\"}\n" {
+		t.Fatalf("self protected role revoke mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -761,6 +870,250 @@ func TestUserRoutesDeleteUserAndInvalidateAuthCacheExactly(t *testing.T) {
 	}
 }
 
+func TestUserMutationRoutesPersistChangesBeforeAuthInvalidationFailureExactly(t *testing.T) {
+	t.Run("grant role", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		cfg := testutil.TestConfig()
+		cache := &authInvalidateFailRedis{Store: testutil.NewMemoryRedis(), failAt: 1}
+		h := admin.NewWithRedis(cfg, db, cache, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-grant-invalidate@test.com", "Password123", "AdminGrantInvalidate", true)
+		target := testutil.CreateUser(t, db, "target-grant-invalidate@test.com", "Password123", "TargetGrantInvalidate", false)
+
+		req := httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		req.SetPathValue("role_id", permission.RoleAdmin)
+		rec := httptest.NewRecorder()
+		h.GrantUserRole(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("grant role cache failure response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		if hasRole, err := db.Permissions.UserHasRole(t.Context(), target.ID, permission.RoleAdmin); err != nil || !hasRole {
+			t.Fatalf("grant role should persist before cache failure: has=%v err=%v", hasRole, err)
+		}
+		if len(cache.userIDs) != 1 || cache.userIDs[0] != target.ID {
+			t.Fatalf("grant role cache invalidation targets mismatch: %#v", cache.userIDs)
+		}
+	})
+
+	t.Run("revoke role", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		cfg := testutil.TestConfig()
+		cache := &authInvalidateFailRedis{Store: testutil.NewMemoryRedis(), failAt: 1}
+		h := admin.NewWithRedis(cfg, db, cache, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-revoke-invalidate@test.com", "Password123", "AdminRevokeInvalidate", true)
+		target := testutil.CreateUser(t, db, "target-revoke-invalidate@test.com", "Password123", "TargetRevokeInvalidate", false)
+		if err := db.Permissions.GrantRole(t.Context(), target.ID, permission.RoleAdmin, permissiondb.SubjectIDForUser(adminUser.ID)); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		req.SetPathValue("role_id", permission.RoleAdmin)
+		rec := httptest.NewRecorder()
+		h.RevokeUserRole(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("revoke role cache failure response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		if hasRole, err := db.Permissions.UserHasRole(t.Context(), target.ID, permission.RoleAdmin); err != nil || hasRole {
+			t.Fatalf("revoke role should persist before cache failure: has=%v err=%v", hasRole, err)
+		}
+		if len(cache.userIDs) != 1 || cache.userIDs[0] != target.ID {
+			t.Fatalf("revoke role cache invalidation targets mismatch: %#v", cache.userIDs)
+		}
+	})
+
+	t.Run("ban user", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		cfg := testutil.TestConfig()
+		cache := &authInvalidateFailRedis{Store: testutil.NewMemoryRedis(), failAt: 1}
+		h := admin.NewWithRedis(cfg, db, cache, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-ban-invalidate@test.com", "Password123", "AdminBanInvalidate", true)
+		target := testutil.CreateUser(t, db, "target-ban-invalidate@test.com", "Password123", "TargetBanInvalidate", false)
+		bannedUntil := time.Now().Add(2 * time.Hour).UnixMilli()
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(bannedUntil)+`}`))
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		rec := httptest.NewRecorder()
+		h.BanUser(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("ban user cache failure response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		updated, err := db.Users.GetByID(t.Context(), target.ID)
+		if err != nil || updated == nil || updated.BannedUntil == nil || *updated.BannedUntil != bannedUntil {
+			t.Fatalf("ban should persist exact banned_until before cache failure: user=%#v err=%v", updated, err)
+		}
+		if len(cache.userIDs) != 1 || cache.userIDs[0] != target.ID {
+			t.Fatalf("ban user cache invalidation targets mismatch: %#v", cache.userIDs)
+		}
+	})
+
+	t.Run("unban user", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		cfg := testutil.TestConfig()
+		cache := &authInvalidateFailRedis{Store: testutil.NewMemoryRedis(), failAt: 1}
+		h := admin.NewWithRedis(cfg, db, cache, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-unban-invalidate@test.com", "Password123", "AdminUnbanInvalidate", true)
+		target := testutil.CreateUser(t, db, "target-unban-invalidate@test.com", "Password123", "TargetUnbanInvalidate", false)
+		if err := db.Users.Ban(t.Context(), target.ID, time.Now().Add(time.Hour).UnixMilli()); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/unban", nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		rec := httptest.NewRecorder()
+		h.UnbanUser(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("unban user cache failure response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		updated, err := db.Users.GetByID(t.Context(), target.ID)
+		if err != nil || updated == nil || updated.BannedUntil != nil {
+			t.Fatalf("unban should clear banned_until before cache failure: user=%#v err=%v", updated, err)
+		}
+		if len(cache.userIDs) != 1 || cache.userIDs[0] != target.ID {
+			t.Fatalf("unban user cache invalidation targets mismatch: %#v", cache.userIDs)
+		}
+	})
+
+	t.Run("delete user", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		cfg := testutil.TestConfig()
+		cache := &authInvalidateFailRedis{Store: testutil.NewMemoryRedis(), failAt: 1}
+		h := admin.NewWithRedis(cfg, db, cache, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-delete-invalidate@test.com", "Password123", "AdminDeleteInvalidate", true)
+		target := testutil.CreateUser(t, db, "target-delete-invalidate@test.com", "Password123", "TargetDeleteInvalidate", false)
+
+		req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID, nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		rec := httptest.NewRecorder()
+		h.DeleteUser(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("delete user cache failure response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		if user, err := db.Users.GetByID(t.Context(), target.ID); err != nil || user != nil {
+			t.Fatalf("delete should remove user before cache failure: user=%#v err=%v", user, err)
+		}
+		if len(cache.userIDs) != 1 || cache.userIDs[0] != target.ID {
+			t.Fatalf("delete user cache invalidation targets mismatch: %#v", cache.userIDs)
+		}
+	})
+
+	t.Run("reset password", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		cfg := testutil.TestConfig()
+		cache := &authInvalidateFailRedis{Store: testutil.NewMemoryRedis(), failAt: 1}
+		h := admin.NewWithRedis(cfg, db, cache, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-reset-invalidate@test.com", "Password123", "AdminResetInvalidate", true)
+		target := testutil.CreateUser(t, db, "target-reset-invalidate@test.com", "Password123", "TargetResetInvalidate", false)
+		const refreshHash = "reset_invalidate_refresh"
+		if err := db.Tokens.AddRefresh(t.Context(), refreshHash, target.ID, time.Now().Add(time.Hour).UnixMilli(), time.Now().UnixMilli()); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/password/reset", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"ChangedPassword123"}`))
+		req = withAdminActor(req, adminUser.ID)
+		rec := httptest.NewRecorder()
+		h.ResetUserPassword(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("reset password cache failure response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+		updated, err := db.Users.GetByID(t.Context(), target.ID)
+		if err != nil || updated == nil || !util.VerifyPassword("ChangedPassword123", updated.Password) || util.VerifyPassword("Password123", updated.Password) {
+			t.Fatalf("reset should change password before cache failure: user=%#v err=%v", updated, err)
+		}
+		if refresh, err := db.Tokens.GetRefresh(t.Context(), refreshHash); err != nil || refresh != nil {
+			t.Fatalf("reset should revoke refresh token before cache failure: refresh=%#v err=%v", refresh, err)
+		}
+		if len(cache.userIDs) != 1 || cache.userIDs[0] != target.ID {
+			t.Fatalf("reset password cache invalidation targets mismatch: %#v", cache.userIDs)
+		}
+	})
+}
+
+func TestUserRoutesReturnInternalServerErrorWhenDatabaseIsClosedExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := admin.NewWithRedis(cfg, db, testutil.NewMemoryRedis(), nil)
+	db.Close()
+
+	cases := []struct {
+		name string
+		req  *http.Request
+		call func(http.ResponseWriter, *http.Request)
+	}{
+		{"users", withProtectedActor(httptest.NewRequest(http.MethodGet, "/v1/admin/users", nil), "admin-closed-db"), h.Users},
+		{"user detail", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodGet, "/v1/admin/users/user-closed-db", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			return req
+		}(), "admin-closed-db"), h.User},
+		{"grant role", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodPut, "/v1/admin/users/user-closed-db/roles/admin", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			req.SetPathValue("role_id", permission.RoleAdmin)
+			return req
+		}(), "admin-closed-db"), h.GrantUserRole},
+		{"revoke role", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/user-closed-db/roles/admin", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			req.SetPathValue("role_id", permission.RoleAdmin)
+			return req
+		}(), "admin-closed-db"), h.RevokeUserRole},
+		{"delete user", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/user-closed-db", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			return req
+		}(), "admin-closed-db"), h.DeleteUser},
+		{"user profiles", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodGet, "/v1/admin/users/user-closed-db/profiles", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			return req
+		}(), "admin-closed-db"), h.UserProfiles},
+		{"ban user", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/user-closed-db/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+			req.SetPathValue("user_id", "user-closed-db")
+			return req
+		}(), "admin-closed-db"), h.BanUser},
+		{"unban user", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/user-closed-db/unban", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			return req
+		}(), "admin-closed-db"), h.UnbanUser},
+		{"reset password", withProtectedActor(httptest.NewRequest(http.MethodPost, "/v1/admin/users/password/reset", strings.NewReader(`{"user_id":"user-closed-db","new_password":"ChangedPassword123"}`)), "admin-closed-db"), h.ResetUserPassword},
+		{"user permissions", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodGet, "/v1/admin/users/user-closed-db/permissions", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			return req
+		}(), "admin-closed-db"), h.UserPermissions},
+		{"set permission override", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodPut, "/v1/admin/users/user-closed-db/permissions/notice.create.any", strings.NewReader(`{"effect":"allow"}`))
+			req.SetPathValue("user_id", "user-closed-db")
+			req.SetPathValue("permission_code", "notice.create.any")
+			return req
+		}(), "admin-closed-db"), h.SetUserPermissionOverride},
+		{"clear permission override", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/user-closed-db/permissions/notice.create.any", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			req.SetPathValue("permission_code", "notice.create.any")
+			return req
+		}(), "admin-closed-db"), h.ClearUserPermissionOverride},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			tc.call(rec, tc.req)
+			if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+				t.Fatalf("%s closed database response mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestUserRoutesProtectSuperAdminFromPlainAdminExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
@@ -843,6 +1196,26 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 		t.Fatalf("missing role grant target mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/roles/", nil)
+	req = withProtectedActor(req, superAdmin.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("role_id", "")
+	rec = httptest.NewRecorder()
+	h.GrantUserRole(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"role_id required\"}\n" {
+		t.Fatalf("blank role grant mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/", nil)
+	req = withProtectedActor(req, superAdmin.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("role_id", "")
+	rec = httptest.NewRecorder()
+	h.RevokeUserRole(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"role_id required\"}\n" {
+		t.Fatalf("blank role revoke mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/password/reset", strings.NewReader(`{`))
 	req = withAdminActor(req, "admin-test-user")
 	req = withProtectedActor(req, superAdmin.ID)
@@ -889,6 +1262,117 @@ func TestAdminResetPasswordPreservesCredentialsAndRefreshWhenYggRevocationFails(
 	if cache.deleteCalls != 1 {
 		t.Fatalf("admin reset should attempt one ygg revocation, calls=%d", cache.deleteCalls)
 	}
+}
+
+func TestUserRoutesReturnExactErrorsAfterPrimaryLookupSucceeds(t *testing.T) {
+	t.Run("role attachment failure on list and detail", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		h := admin.New(testutil.TestConfig(), db, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-role-attach-fail@test.com", "Password123", "AdminRoleAttachFail", true)
+		target := testutil.CreateUser(t, db, "target-role-attach-fail@test.com", "Password123", "TargetRoleAttachFail", false)
+		if _, err := db.Pool.Exec(t.Context(), `DROP TABLE subject_roles CASCADE`); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/admin/users?q=TargetRoleAttachFail", nil)
+		req = withAdminActor(req, adminUser.ID)
+		rec := httptest.NewRecorder()
+		h.Users(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("list role attachment failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+
+		req = httptest.NewRequest(http.MethodGet, "/v1/admin/users/"+target.ID, nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		rec = httptest.NewRecorder()
+		h.User(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("detail role lookup failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("grant and revoke persistence failure after target exists", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		h := admin.New(testutil.TestConfig(), db, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-role-write-fail@test.com", "Password123", "AdminRoleWriteFail", true)
+		target := testutil.CreateUser(t, db, "target-role-write-fail@test.com", "Password123", "TargetRoleWriteFail", false)
+		if _, err := db.Pool.Exec(t.Context(), `DROP TABLE subject_roles CASCADE`); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		req.SetPathValue("role_id", permission.RoleAdmin)
+		rec := httptest.NewRecorder()
+		h.GrantUserRole(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("grant role persistence failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+
+		req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		req.SetPathValue("role_id", permission.RoleAdmin)
+		rec = httptest.NewRecorder()
+		h.RevokeUserRole(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("revoke role persistence failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("revoke missing target", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		h := admin.New(testutil.TestConfig(), db, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-revoke-missing@test.com", "Password123", "AdminRevokeMissing", true)
+
+		req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/missing-role-target/roles/admin", nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", "missing-role-target")
+		req.SetPathValue("role_id", permission.RoleAdmin)
+		rec := httptest.NewRecorder()
+		h.RevokeUserRole(rec, req)
+		if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+			t.Fatalf("revoke missing target mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("protected role check dependency failure", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		h := admin.New(testutil.TestConfig(), db, nil)
+		adminUser := testutil.CreateUser(t, db, "admin-protected-check-fail@test.com", "Password123", "AdminProtectedCheckFail", true)
+		target := testutil.CreateUser(t, db, "target-protected-check-fail@test.com", "Password123", "TargetProtectedCheckFail", false)
+		if _, err := db.Pool.Exec(t.Context(), `DROP TABLE subject_roles CASCADE`); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/unban", nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		rec := httptest.NewRecorder()
+		h.UnbanUser(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("unban protected-role check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+
+		req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID, nil)
+		req = withAdminActor(req, adminUser.ID)
+		req.SetPathValue("user_id", target.ID)
+		rec = httptest.NewRecorder()
+		h.DeleteUser(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("delete protected-role check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+
+		req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/password/reset", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"ChangedPassword123"}`))
+		req = withAdminActor(req, adminUser.ID)
+		rec = httptest.NewRecorder()
+		h.ResetUserPassword(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+			t.Fatalf("reset protected-role check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
 }
 
 type deleteYggFailRedis struct {

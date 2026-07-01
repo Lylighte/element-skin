@@ -153,6 +153,114 @@ func TestUserTextureListCursorAdvancesAcrossEqualTimestampsExactly(t *testing.T)
 	}
 }
 
+func TestAddToLibraryDuplicateUploadKeepsExactUsageCount(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	user := testutil.CreateUser(t, db, "texture-duplicate-upload@test.com", "Password123", "TextureDuplicateUpload", false)
+	const hash = "duplicate_upload_hash"
+
+	if err := store.AddToLibrary(ctx, user.ID, hash, "skin", "Original Note", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddToLibrary(ctx, user.ID, hash, "skin", "Ignored Note", false, "slim"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := store.GetInfo(ctx, user.ID, hash, "skin")
+	if err != nil ||
+		info == nil ||
+		info["note"] != "Original Note" ||
+		info["model"] != "default" ||
+		info["is_public"] != 1 {
+		t.Fatalf("duplicate upload changed personal texture info: info=%#v err=%v", info, err)
+	}
+	var name, model string
+	var isPublic int
+	var usage int64
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT name,model,is_public,usage_count
+		FROM skin_library
+		WHERE skin_hash=$1 AND texture_type='skin'
+	`, hash).Scan(&name, &model, &isPublic, &usage); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Original Note" || model != "default" || isPublic != 1 || usage != 1 {
+		t.Fatalf("duplicate upload changed library row: name=%q model=%q public=%d usage=%d", name, model, isPublic, usage)
+	}
+}
+
+func TestUpdateModelForCapeDoesNotModifyProfileTextureModel(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	user := testutil.CreateUser(t, db, "texture-cape-model@test.com", "Password123", "TextureCapeModel", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "texture_cape_model_profile", "TextureCapeModelProfile")
+	const hash = "cape_model_hash"
+	if err := store.AddToLibrary(ctx, user.ID, hash, "cape", "Cape Model", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE profiles SET skin_hash=$1, cape_hash=$1, texture_model='default' WHERE id=$2`, hash, profile.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateModel(ctx, user.ID, hash, "cape", "slim"); err != nil {
+		t.Fatal(err)
+	}
+	var personalModel, libraryModel, profileModel string
+	if err := db.Pool.QueryRow(ctx, `SELECT model FROM user_textures WHERE user_id=$1 AND hash=$2 AND texture_type='cape'`, user.ID, hash).Scan(&personalModel); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT model FROM skin_library WHERE skin_hash=$1 AND texture_type='cape'`, hash).Scan(&libraryModel); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT texture_model FROM profiles WHERE id=$1`, profile.ID).Scan(&profileModel); err != nil {
+		t.Fatal(err)
+	}
+	if personalModel != "slim" || libraryModel != "slim" || profileModel != "default" {
+		t.Fatalf("cape model update mismatch: personal=%q library=%q profile=%q", personalModel, libraryModel, profileModel)
+	}
+}
+
+func TestUserTextureStoreMethodsReturnExactClosedPoolErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	db.Close()
+
+	if err := store.AddToLibrary(ctx, "closed-user", "closed-hash", "skin", "Closed", true, "default"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("AddToLibrary closed pool error=%v; want closed pool", err)
+	}
+	if count, err := store.CountForUser(ctx, "closed-user"); count != 0 || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("CountForUser closed pool = count=%d err=%v; want 0 and closed pool", count, err)
+	}
+	if owned, err := store.VerifyOwnership(ctx, "closed-user", "closed-hash", "skin"); owned || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("VerifyOwnership closed pool = owned=%v err=%v; want false and closed pool", owned, err)
+	}
+	if info, err := store.GetInfo(ctx, "closed-user", "closed-hash", "skin"); info != nil || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("GetInfo closed pool = info=%#v err=%v; want nil and closed pool", info, err)
+	}
+	if page, err := store.ListForUser(ctx, "closed-user", "skin", 1, nil, ""); page != nil || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("ListForUser closed pool = page=%#v err=%v; want nil and closed pool", page, err)
+	}
+	if err := store.UpdateNote(ctx, "closed-user", "closed-hash", "skin", "Closed"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("UpdateNote closed pool error=%v; want closed pool", err)
+	}
+	if err := store.UpdateModel(ctx, "closed-user", "closed-hash", "skin", "slim"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("UpdateModel closed pool error=%v; want closed pool", err)
+	}
+	if err := store.UpdatePublic(ctx, "closed-user", "closed-hash", "skin", true); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("UpdatePublic closed pool error=%v; want closed pool", err)
+	}
+	if deleted, err := store.DeleteFromLibrary(ctx, "closed-user", "closed-hash", "skin"); deleted || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("DeleteFromLibrary closed pool = deleted=%v err=%v; want false and closed pool", deleted, err)
+	}
+	if uploader, exists, err := store.LibraryUploader(ctx, "closed-hash", "skin"); uploader != "" || exists || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("LibraryUploader closed pool = uploader=%q exists=%v err=%v; want empty, false and closed pool", uploader, exists, err)
+	}
+	if err := store.DeleteLibraryTexture(ctx, "closed-hash", "skin"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("DeleteLibraryTexture closed pool error=%v; want closed pool", err)
+	}
+}
+
 func TestUserTextureDeleteOnlyRemovesOnePersonalLibraryRow(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()

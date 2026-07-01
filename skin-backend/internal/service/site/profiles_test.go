@@ -646,6 +646,82 @@ func TestSetProfileTextureSkipsExactNoOpWrites(t *testing.T) {
 	}
 }
 
+func TestProfileServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newSiteService(db, testutil.TestConfig())
+	actor := testUserActor("closed-profile-user")
+	adminActor := testActorWithCodes("closed-profile-admin", "profile.update.any", "profile.delete.any", "account.delete.any")
+	db.Close()
+
+	checks := []struct {
+		name string
+		call func() error
+	}{
+		{name: "create profile", call: func() error {
+			result, err := svc.CreateProfile(ctx, actor, "ClosedProfile", "default")
+			if result != nil {
+				t.Fatalf("CreateProfile closed database returned result=%#v", result)
+			}
+			return err
+		}},
+		{name: "public library", call: func() error {
+			result, err := svc.PublicLibrary(ctx, "", 10, "skin", "", "latest")
+			if result != nil {
+				t.Fatalf("PublicLibrary closed database returned result=%#v", result)
+			}
+			return err
+		}},
+		{name: "list profiles", call: func() error {
+			result, err := svc.ListMyProfiles(ctx, actor, "", 10)
+			if result != nil {
+				t.Fatalf("ListMyProfiles closed database returned result=%#v", result)
+			}
+			return err
+		}},
+		{name: "list textures", call: func() error {
+			result, err := svc.ListMyTextures(ctx, actor, "", 10, "skin")
+			if result != nil {
+				t.Fatalf("ListMyTextures closed database returned result=%#v", result)
+			}
+			return err
+		}},
+		{name: "add wardrobe", call: func() error {
+			return svc.AddTextureToWardrobe(ctx, actor, "closed-hash", "skin")
+		}},
+		{name: "update profile", call: func() error {
+			return svc.UpdateProfile(ctx, actor, "closed-profile", "ClosedProfile")
+		}},
+		{name: "delete profile", call: func() error {
+			return svc.DeleteProfile(ctx, actor, "closed-profile")
+		}},
+		{name: "clear profile texture", call: func() error {
+			return svc.ClearProfileTexture(ctx, actor, "closed-profile", "skin")
+		}},
+		{name: "set profile texture", call: func() error {
+			hash := "closed-hash"
+			return svc.SetProfileTexture(ctx, adminActor, "closed-profile", "skin", &hash)
+		}},
+		{name: "delete profile by id", call: func() error {
+			return svc.DeleteProfileByID(ctx, adminActor, "closed-profile")
+		}},
+		{name: "delete user", call: func() error {
+			ok, err := svc.DeleteUser(ctx, adminActor, "closed-profile-user")
+			if ok {
+				t.Fatal("DeleteUser closed database returned ok=true")
+			}
+			return err
+		}},
+	}
+	for _, tc := range checks {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); !closedPoolError(err) {
+				t.Fatalf("%s closed database error=%v; want closed pool", tc.name, err)
+			}
+		})
+	}
+}
+
 func assertServicePublicUsage(t *testing.T, svc anyPublicLibrary, hash string, want int64) {
 	t.Helper()
 	page, err := svc.PublicLibrary(context.Background(), "", 10, "skin", "", "most_used")
