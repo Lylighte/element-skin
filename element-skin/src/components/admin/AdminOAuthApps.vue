@@ -17,21 +17,32 @@
     </PageHeader>
 
     <UiCard shadow="never">
-      <el-table :data="apps" class="modern-table w-full" v-loading="loading">
-        <el-table-column label="应用" min-width="260">
+      <el-table
+        :data="apps"
+        class="modern-table w-full"
+        v-loading="loading"
+        @row-click="openDetails"
+      >
+        <el-table-column label="应用" min-width="280">
           <template #default="{ row }">
-            <div class="font-semibold text-[var(--color-heading)]">{{ row.name }}</div>
-            <div class="mt-1 break-all font-mono text-xs text-[var(--color-text-light)]">
-              {{ row.client_id }}
+            <div class="flex min-w-0 flex-col">
+              <span class="font-semibold text-[var(--color-heading)]">{{ row.name }}</span>
+              <span class="mt-1 truncate text-sm text-[var(--color-text-light)]">
+                {{ row.description || '开发者未填写说明' }}
+              </span>
             </div>
-            <div class="mt-1 text-xs text-[var(--color-text-light)]">
-              所有者：{{ row.owner_user_id }}
-            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="所有者" min-width="180">
+          <template #default="{ row }">
+            <span class="font-mono text-xs text-[var(--color-text-light)]">
+              {{ row.owner_user_id }}
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="类型" width="120" align="center">
           <template #default="{ row }">
-            <el-tag size="small">{{ row.client_type }}</el-tag>
+            <el-tag size="small">{{ clientTypeLabel(row.client_type) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="110" align="center">
@@ -41,29 +52,8 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="申请权限" min-width="320">
-          <template #default="{ row }">
-            <div class="flex flex-wrap gap-2">
-              <PermissionToneTag
-                v-for="code in row.permissions"
-                :key="code"
-                :label="permissionLabel(code)"
-                :title="code"
-                tone="violet"
-              />
-              <el-text v-if="row.permissions.length === 0" size="small" type="info">
-                未申请权限
-              </el-text>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="回调地址" min-width="260">
-          <template #default="{ row }">
-            <div class="truncate text-sm">{{ row.redirect_uri }}</div>
-            <div class="mt-1 truncate text-xs text-[var(--color-text-light)]">
-              {{ row.website_url || '-' }}
-            </div>
-          </template>
+        <el-table-column label="申请权限" width="110" align="center">
+          <template #default="{ row }">{{ row.permissions.length }}</template>
         </el-table-column>
         <el-table-column label="更新时间" width="160">
           <template #default="{ row }">
@@ -72,46 +62,27 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
-            <div class="flex flex-wrap justify-end gap-1">
-              <el-button
-                v-if="row.status !== 'active'"
-                link
-                type="success"
-                :loading="reviewingId === row.client_id"
-                @click="review(row.client_id, 'active')"
-              >
-                通过
-              </el-button>
-              <el-button
-                v-if="row.status !== 'rejected'"
-                link
-                type="danger"
-                :loading="reviewingId === row.client_id"
-                @click="review(row.client_id, 'rejected')"
-              >
-                驳回
-              </el-button>
-              <el-button
-                v-if="row.status !== 'disabled'"
-                link
-                type="warning"
-                :loading="reviewingId === row.client_id"
-                @click="review(row.client_id, 'disabled')"
-              >
-                停用
-              </el-button>
-            </div>
+            <el-button link type="primary" @click.stop="openDetails(row)">详情</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <el-empty v-if="!loading && apps.length === 0" description="暂无第三方应用申请" />
     </UiCard>
+
+    <AdminOAuthAppDetailDialog
+      v-model:visible="detailVisible"
+      :app="selectedApp"
+      :catalog="catalog"
+      :reviewing="reviewingId === selectedApp?.client_id"
+      @review="review"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Link, Refresh } from '@element-plus/icons-vue'
 import {
@@ -123,7 +94,7 @@ import {
 } from '@/api/oauth'
 import type { PermissionDefinition } from '@/api/types'
 import UiCard from '@/components/ui/UiCard.vue'
-import PermissionToneTag from '@/components/admin/users/PermissionToneTag.vue'
+import AdminOAuthAppDetailDialog from '@/components/admin/oauth/AdminOAuthAppDetailDialog.vue'
 import { getErrorMessage } from '@/utils/error'
 
 const status = ref<OAuthClientStatus | 'all'>('pending')
@@ -131,6 +102,12 @@ const apps = ref<OAuthClient[]>([])
 const catalog = ref<PermissionDefinition[]>([])
 const loading = ref(false)
 const reviewingId = ref('')
+const detailVisible = ref(false)
+const selectedClientId = ref('')
+
+const selectedApp = computed(
+  () => apps.value.find((app) => app.client_id === selectedClientId.value) ?? null,
+)
 
 onMounted(async () => {
   await Promise.all([loadCatalog(), loadApps()])
@@ -166,8 +143,9 @@ async function review(clientId: string, nextStatus: Exclude<OAuthClientStatus, '
   }
 }
 
-function permissionLabel(code: string) {
-  return catalog.value.find((item) => item.code === code)?.description || code
+function openDetails(app: OAuthClient) {
+  selectedClientId.value = app.client_id
+  detailVisible.value = true
 }
 
 function statusLabel(appStatus: OAuthClientStatus) {
@@ -185,6 +163,10 @@ function statusType(appStatus: OAuthClientStatus) {
   if (appStatus === 'rejected') return 'danger'
   if (appStatus === 'pending') return 'warning'
   return 'info'
+}
+
+function clientTypeLabel(clientType: OAuthClient['client_type']) {
+  return clientType === 'confidential' ? '机密应用' : '公开应用'
 }
 
 function formatDate(value?: number) {
