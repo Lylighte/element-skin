@@ -16,10 +16,10 @@ import (
 )
 
 type probeRoute struct {
-	Method  string
-	Path    string
-	Status  int
-	Calls   int32
+	Method string
+	Path   string
+	Status int
+	Calls  int32
 }
 
 func TestProbeRunMarksUpFor200And404AndDownOtherwise(t *testing.T) {
@@ -28,16 +28,16 @@ func TestProbeRunMarksUpFor200And404AndDownOtherwise(t *testing.T) {
 
 	// endpoint 1: session 200, account 404, services 500
 	ep1Routes := map[string]int{
-		"/session/minecraft/profile/" + probe.TestUUID:        http.StatusOK,
-		"/users/profiles/minecraft/" + probe.TestName:          http.StatusNotFound,
-		"/minecraft/profile/lookup/name/" + probe.TestName:     http.StatusInternalServerError,
+		"/session/minecraft/profile/" + probe.TestUUID:     http.StatusOK,
+		"/users/profiles/minecraft/" + probe.TestName:      http.StatusNotFound,
+		"/minecraft/profile/lookup/name/" + probe.TestName: http.StatusInternalServerError,
 	}
 	server1 := newCountingServer(t, ep1Routes)
 	defer server1.Close()
 	// endpoint 2: every API returns 200
 	ep2Routes := map[string]int{
-		"/session/minecraft/profile/" + probe.TestUUID:    http.StatusOK,
-		"/users/profiles/minecraft/" + probe.TestName:     http.StatusOK,
+		"/session/minecraft/profile/" + probe.TestUUID:     http.StatusOK,
+		"/users/profiles/minecraft/" + probe.TestName:      http.StatusOK,
 		"/minecraft/profile/lookup/name/" + probe.TestName: http.StatusOK,
 	}
 	server2 := newCountingServer(t, ep2Routes)
@@ -152,7 +152,7 @@ func TestProbeReadIntervalRespectsBoundsAndDefault(t *testing.T) {
 		expected time.Duration
 	}{
 		{"600", 10 * time.Minute},
-		{"30", time.Minute},     // below the floor → clamp to minInterval
+		{"30", time.Minute},       // below the floor → clamp to minInterval
 		{"-50", 10 * time.Minute}, // negative → fall back to default
 		{"abc", 10 * time.Minute},
 		{"3600", time.Hour},
@@ -162,6 +162,22 @@ func TestProbeReadIntervalRespectsBoundsAndDefault(t *testing.T) {
 		if got != c.expected {
 			t.Fatalf("ReadInterval(%q) = %s, want %s", c.raw, got, c.expected)
 		}
+	}
+}
+
+func TestProbeRunLoopRunsOnceAndStopsOnCanceledContext(t *testing.T) {
+	db, _, redis := testutil.NewTestAppWithRedisTB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	probe.RunLoop(ctx, db, redis, fakeIntervalReader{value: "600"})
+
+	samples, err := redis.GetProbeHistory(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(samples) != 0 {
+		t.Fatalf("canceled probe loop should not append history: %#v", samples)
 	}
 }
 
@@ -187,8 +203,8 @@ func TestProbeRunRetainsHistoryWindow(t *testing.T) {
 	ctx := context.Background()
 
 	server := newCountingServer(t, map[string]int{
-		"/session/minecraft/profile/" + probe.TestUUID:    http.StatusOK,
-		"/users/profiles/minecraft/" + probe.TestName:     http.StatusOK,
+		"/session/minecraft/profile/" + probe.TestUUID:     http.StatusOK,
+		"/users/profiles/minecraft/" + probe.TestName:      http.StatusOK,
 		"/minecraft/profile/lookup/name/" + probe.TestName: http.StatusOK,
 	})
 	defer server.Close()

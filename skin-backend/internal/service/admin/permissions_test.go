@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	permissiondb "element-skin/backend/internal/database/permission"
@@ -140,6 +141,17 @@ func TestPermissionServiceRejectsUnauthorizedAndInvalidOverridePathsExactly(t *t
 	if err := svc.ClearUserPermissionOverride(ctx, reader, target.ID, "notice.create.any"); !httpErrorIs(err, http.StatusNotFound, "permission override not found") {
 		t.Fatalf("clear missing override error mismatch: %#v", err)
 	}
+
+	writer := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any")
+	if err := svc.SetUserPermissionOverride(ctx, writer, "missing-user", "notice.create.any", "allow"); !httpErrorIs(err, http.StatusNotFound, "user not found") {
+		t.Fatalf("set missing user error mismatch: %#v", err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, writer, "missing-user", "notice.create.any"); !httpErrorIs(err, http.StatusNotFound, "user not found") {
+		t.Fatalf("clear missing user error mismatch: %#v", err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, writer, target.ID, "missing.permission.any"); !httpErrorIs(err, http.StatusNotFound, "permission not found") {
+		t.Fatalf("clear missing permission error mismatch: %#v", err)
+	}
 }
 
 func TestPermissionServiceProtectsProtectedPermissionsExactly(t *testing.T) {
@@ -185,6 +197,53 @@ func TestPermissionServiceClearRequiresOppositePermissionForDenyOverrides(t *tes
 	}
 	if err := svc.ClearUserPermissionOverride(ctx, granter, target.ID, "notice.create.any"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPermissionServiceClearRequiresRevokePermissionForAllowOverrides(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-clear-allow@test.com", "Password123", "AdminClearAllow", true)
+	target := testutil.CreateUser(t, db, "target-clear-allow@test.com", "Password123", "TargetClearAllow", false)
+	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	granter := actorWithPermissions(adminUser.ID, "permission.grant.any")
+	revoker := actorWithPermissions(adminUser.ID, "permission.revoke.any")
+
+	if err := svc.SetUserPermissionOverride(ctx, granter, target.ID, "notice.create.any", "allow"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, granter, target.ID, "notice.create.any"); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("clear allow with grant permission should fail: %#v", err)
+	}
+	overrides, err := db.Permissions.SubjectPermissionOverridesForUser(ctx, target.ID)
+	if err != nil || len(overrides) != 1 || overrides[0].PermissionCode != "notice.create.any" || overrides[0].Effect != "allow" {
+		t.Fatalf("failed clear must preserve allow override: overrides=%#v err=%v", overrides, err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, revoker, target.ID, "notice.create.any"); err != nil {
+		t.Fatal(err)
+	}
+	overrides, err = db.Permissions.SubjectPermissionOverridesForUser(ctx, target.ID)
+	if err != nil || len(overrides) != 0 {
+		t.Fatalf("revoker should clear allow override exactly: overrides=%#v err=%v", overrides, err)
+	}
+}
+
+func TestPermissionServiceClosedDatabasePropagatesExactDependencyErrors(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-perms-closed@test.com", "Password123", "AdminPermsClosed", true)
+	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	actor := actorWithPermissions(adminUser.ID, "permission.read.any", "permission.grant.any", "permission.revoke.any")
+	db.Close()
+
+	if _, err := svc.UserPermissions(ctx, actor, adminUser.ID); err == nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("UserPermissions closed db error mismatch: %#v", err)
+	}
+	if err := svc.SetUserPermissionOverride(ctx, actor, adminUser.ID, "notice.create.any", "allow"); err == nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("SetUserPermissionOverride closed db error mismatch: %#v", err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, actor, adminUser.ID, "notice.create.any"); err == nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("ClearUserPermissionOverride closed db error mismatch: %#v", err)
 	}
 }
 

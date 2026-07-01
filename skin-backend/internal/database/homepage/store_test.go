@@ -2,6 +2,7 @@ package homepage_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,8 @@ import (
 	"element-skin/backend/internal/database/homepage"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/testutil"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func TestMigrateHomepageMediaFilesCreatesHomepageMediaOnceInFilenameOrder(t *testing.T) {
@@ -104,6 +107,58 @@ func TestHomepageStorePatchReorderAndDeleteExactState(t *testing.T) {
 	}
 	if deleted.ID != "two" {
 		t.Fatalf("deleted item mismatch: %#v", deleted)
+	}
+}
+
+func TestHomepageStoreListGetPatchDefaultsAndReorderRollback(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	now := database.NowMS()
+	enabled := testMedia("enabled", 0, now)
+	disabled := testMedia("disabled", 1, now)
+	disabled.Enabled = false
+	if err := db.HomepageMedia.Create(ctx, enabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.HomepageMedia.Create(ctx, disabled); err != nil {
+		t.Fatal(err)
+	}
+
+	enabledOnly, err := db.HomepageMedia.List(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(enabledOnly) != 1 || enabledOnly[0].ID != enabled.ID || enabledOnly[0].Enabled != true {
+		t.Fatalf("enabled-only list mismatch: %#v", enabledOnly)
+	}
+	got, err := db.HomepageMedia.Get(ctx, disabled.ID)
+	if err != nil || got.ID != disabled.ID || got.StoragePath != disabled.StoragePath || got.Enabled != false {
+		t.Fatalf("Get disabled media mismatch: got=%#v err=%v", got, err)
+	}
+	if missing, err := db.HomepageMedia.Get(ctx, "missing-homepage-media"); !errors.Is(err, pgx.ErrNoRows) || missing.ID != "" {
+		t.Fatalf("missing Get should return zero media and pgx.ErrNoRows: media=%#v err=%v", missing, err)
+	}
+
+	patched, err := db.HomepageMedia.Patch(ctx, enabled.ID, homepage.Patch{UpdatedAt: now + 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patched.ID != enabled.ID || patched.Title != enabled.Title || patched.DurationMS != enabled.DurationMS ||
+		patched.YawSpeedDPS != enabled.YawSpeedDPS || patched.UpdatedAt != now+1 {
+		t.Fatalf("empty patch should only update timestamp: %#v want base=%#v updated_at=%d", patched, enabled, now+1)
+	}
+
+	err = db.HomepageMedia.Reorder(ctx, []string{enabled.ID, "missing-homepage-media"}, now+2)
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("reorder with missing id error=%v; want pgx.ErrNoRows", err)
+	}
+	items, err := db.HomepageMedia.List(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].ID != enabled.ID || items[0].SortOrder != 0 ||
+		items[1].ID != disabled.ID || items[1].SortOrder != 1 {
+		t.Fatalf("failed reorder should roll back all sort orders: %#v", items)
 	}
 }
 
