@@ -52,9 +52,6 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="申请权限" width="110" align="center">
-          <template #default="{ row }">{{ row.permissions.length }}</template>
-        </el-table-column>
         <el-table-column label="更新时间" width="160">
           <template #default="{ row }">
             <span class="text-xs text-[var(--color-text-light)]">
@@ -75,6 +72,7 @@
       v-model:visible="detailVisible"
       :app="selectedApp"
       :catalog="catalog"
+      :loading="detailLoading"
       :reviewing="reviewingId === selectedApp?.client_id"
       @review="review"
     />
@@ -82,14 +80,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Link, Refresh } from '@element-plus/icons-vue'
 import {
+  getAdminOAuthApp,
   getPermissionCatalog,
   listAdminOAuthApps,
   reviewAdminOAuthApp,
   type OAuthClient,
+  type OAuthClientSummary,
   type OAuthClientStatus,
 } from '@/api/oauth'
 import type { PermissionDefinition } from '@/api/types'
@@ -98,16 +98,13 @@ import AdminOAuthAppDetailDialog from '@/components/admin/oauth/AdminOAuthAppDet
 import { getErrorMessage } from '@/utils/error'
 
 const status = ref<OAuthClientStatus | 'all'>('pending')
-const apps = ref<OAuthClient[]>([])
+const apps = ref<OAuthClientSummary[]>([])
 const catalog = ref<PermissionDefinition[]>([])
 const loading = ref(false)
+const detailLoading = ref(false)
 const reviewingId = ref('')
 const detailVisible = ref(false)
-const selectedClientId = ref('')
-
-const selectedApp = computed(
-  () => apps.value.find((app) => app.client_id === selectedClientId.value) ?? null,
-)
+const selectedApp = ref<OAuthClient | null>(null)
 
 onMounted(async () => {
   await Promise.all([loadCatalog(), loadApps()])
@@ -134,7 +131,12 @@ async function review(clientId: string, nextStatus: Exclude<OAuthClientStatus, '
   reviewingId.value = clientId
   try {
     const res = await reviewAdminOAuthApp(clientId, nextStatus)
-    apps.value = apps.value.map((app) => (app.client_id === clientId ? res.data : app))
+    apps.value = apps.value.map((app) =>
+      app.client_id === clientId ? summaryFromClient(res.data) : app,
+    )
+    if (selectedApp.value?.client_id === clientId) {
+      selectedApp.value = res.data
+    }
     ElMessage.success('应用状态已更新')
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '更新应用状态失败'))
@@ -143,9 +145,19 @@ async function review(clientId: string, nextStatus: Exclude<OAuthClientStatus, '
   }
 }
 
-function openDetails(app: OAuthClient) {
-  selectedClientId.value = app.client_id
+async function openDetails(app: OAuthClientSummary) {
+  selectedApp.value = null
   detailVisible.value = true
+  detailLoading.value = true
+  try {
+    const res = await getAdminOAuthApp(app.client_id)
+    selectedApp.value = res.data
+  } catch (error) {
+    detailVisible.value = false
+    ElMessage.error(getErrorMessage(error, '加载应用详情失败'))
+  } finally {
+    detailLoading.value = false
+  }
 }
 
 function statusLabel(appStatus: OAuthClientStatus) {
@@ -167,6 +179,19 @@ function statusType(appStatus: OAuthClientStatus) {
 
 function clientTypeLabel(clientType: OAuthClient['client_type']) {
   return clientType === 'confidential' ? '机密应用' : '公开应用'
+}
+
+function summaryFromClient(app: OAuthClient): OAuthClientSummary {
+  return {
+    client_id: app.client_id,
+    owner_user_id: app.owner_user_id,
+    name: app.name,
+    description: app.description,
+    client_type: app.client_type,
+    status: app.status,
+    created_at: app.created_at,
+    updated_at: app.updated_at,
+  }
 }
 
 function formatDate(value?: number) {

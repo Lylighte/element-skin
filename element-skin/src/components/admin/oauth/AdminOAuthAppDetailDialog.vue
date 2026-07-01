@@ -1,113 +1,115 @@
 <template>
   <UiDialog v-model="visible" destroy-on-close align-center variant="wide-form">
-    <div v-if="app" class="p-6">
-      <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div class="min-w-0">
-          <div class="mb-2 flex flex-wrap items-center gap-2">
-            <h2 class="m-0 break-words text-xl font-semibold text-[var(--color-heading)]">
-              {{ app.name }}
-            </h2>
-            <el-tag size="small" :type="statusType(app.status)">
-              {{ statusLabel(app.status) }}
-            </el-tag>
-            <el-tag size="small">{{ clientTypeLabel(app.client_type) }}</el-tag>
+    <div v-loading="loading" class="min-h-[320px] p-6">
+      <div v-if="app">
+        <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
+          <div class="min-w-0">
+            <div class="mb-2 flex flex-wrap items-center gap-2">
+              <h2 class="m-0 break-words text-xl font-semibold text-[var(--color-heading)]">
+                {{ app.name }}
+              </h2>
+              <el-tag size="small" :type="statusType(app.status)">
+                {{ statusLabel(app.status) }}
+              </el-tag>
+              <el-tag size="small">{{ clientTypeLabel(app.client_type) }}</el-tag>
+            </div>
+            <el-text copyable class="font-mono text-xs text-[var(--color-text-light)]">
+              {{ app.client_id }}
+            </el-text>
           </div>
-          <el-text copyable class="font-mono text-xs text-[var(--color-text-light)]">
-            {{ app.client_id }}
-          </el-text>
+
+          <div class="flex flex-wrap justify-end gap-2">
+            <el-button
+              v-if="app.status !== 'active'"
+              type="success"
+              plain
+              :loading="reviewing"
+              @click="$emit('review', app.client_id, 'active')"
+            >
+              通过
+            </el-button>
+            <el-button
+              v-if="app.status !== 'rejected'"
+              type="danger"
+              plain
+              :loading="reviewing"
+              @click="$emit('review', app.client_id, 'rejected')"
+            >
+              驳回
+            </el-button>
+            <el-button
+              v-if="app.status !== 'disabled'"
+              type="warning"
+              plain
+              :loading="reviewing"
+              @click="$emit('review', app.client_id, 'disabled')"
+            >
+              停用
+            </el-button>
+          </div>
         </div>
 
-        <div class="flex flex-wrap justify-end gap-2">
-          <el-button
-            v-if="app.status !== 'active'"
-            type="success"
-            plain
-            :loading="reviewing"
-            @click="$emit('review', app.client_id, 'active')"
-          >
-            通过
-          </el-button>
-          <el-button
-            v-if="app.status !== 'rejected'"
-            type="danger"
-            plain
-            :loading="reviewing"
-            @click="$emit('review', app.client_id, 'rejected')"
-          >
-            驳回
-          </el-button>
-          <el-button
-            v-if="app.status !== 'disabled'"
-            type="warning"
-            plain
-            :loading="reviewing"
-            @click="$emit('review', app.client_id, 'disabled')"
-          >
-            停用
-          </el-button>
-        </div>
-      </div>
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div class="space-y-4">
+            <UiCard shadow="never">
+              <template #header>
+                <div class="font-semibold text-[var(--color-heading)]">申请信息</div>
+              </template>
+              <el-descriptions :column="1" border>
+                <el-descriptions-item label="所有者">
+                  <span class="font-mono text-xs">{{ app.owner_user_id }}</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="回调地址">
+                  <el-text copyable class="break-all">{{ app.redirect_uri }}</el-text>
+                </el-descriptions-item>
+                <el-descriptions-item label="站点地址">
+                  <span class="break-all">{{ app.website_url || '-' }}</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="创建时间">
+                  {{ formatDate(app.created_at) }}
+                </el-descriptions-item>
+                <el-descriptions-item label="更新时间">
+                  {{ formatDate(app.updated_at) }}
+                </el-descriptions-item>
+              </el-descriptions>
+            </UiCard>
 
-      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div class="space-y-4">
+            <UiCard shadow="never">
+              <template #header>
+                <div class="font-semibold text-[var(--color-heading)]">应用说明</div>
+              </template>
+              <p class="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--color-text)]">
+                {{ app.description || '开发者未填写说明。' }}
+              </p>
+            </UiCard>
+          </div>
+
           <UiCard shadow="never">
             <template #header>
-              <div class="font-semibold text-[var(--color-heading)]">申请信息</div>
+              <div class="font-semibold text-[var(--color-heading)]">申请权限</div>
             </template>
-            <el-descriptions :column="1" border>
-              <el-descriptions-item label="所有者">
-                <span class="font-mono text-xs">{{ app.owner_user_id }}</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="回调地址">
-                <el-text copyable class="break-all">{{ app.redirect_uri }}</el-text>
-              </el-descriptions-item>
-              <el-descriptions-item label="站点地址">
-                <span class="break-all">{{ app.website_url || '-' }}</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="创建时间">
-                {{ formatDate(app.created_at) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="更新时间">
-                {{ formatDate(app.updated_at) }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </UiCard>
-
-          <UiCard shadow="never">
-            <template #header>
-              <div class="font-semibold text-[var(--color-heading)]">应用说明</div>
-            </template>
-            <p class="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--color-text)]">
-              {{ app.description || '开发者未填写说明。' }}
-            </p>
+            <div v-if="app.permissions.length > 0" class="space-y-4">
+              <section v-for="group in groupedPermissions" :key="group.name">
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <span class="text-sm font-semibold text-[var(--color-heading)]">
+                    {{ group.name }}
+                  </span>
+                  <el-tag size="small" effect="plain">{{ group.items.length }} 项</el-tag>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <PermissionToneTag
+                    v-for="code in group.items"
+                    :key="code"
+                    :label="permissionLabel(code)"
+                    :title="code"
+                    tone="violet"
+                  />
+                </div>
+              </section>
+            </div>
+            <el-empty v-else description="未申请权限" :image-size="80" />
           </UiCard>
         </div>
-
-        <UiCard shadow="never">
-          <template #header>
-            <div class="font-semibold text-[var(--color-heading)]">申请权限</div>
-          </template>
-          <div v-if="app.permissions.length > 0" class="space-y-4">
-            <section v-for="group in groupedPermissions" :key="group.name">
-              <div class="mb-2 flex items-center justify-between gap-3">
-                <span class="text-sm font-semibold text-[var(--color-heading)]">
-                  {{ group.name }}
-                </span>
-                <el-tag size="small" effect="plain">{{ group.items.length }} 项</el-tag>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <PermissionToneTag
-                  v-for="code in group.items"
-                  :key="code"
-                  :label="permissionLabel(code)"
-                  :title="code"
-                  tone="violet"
-                />
-              </div>
-            </section>
-          </div>
-          <el-empty v-else description="未申请权限" :image-size="80" />
-        </UiCard>
       </div>
     </div>
   </UiDialog>
@@ -126,6 +128,7 @@ const visible = defineModel<boolean>('visible', { required: true })
 const props = defineProps<{
   app: OAuthClient | null
   catalog: PermissionDefinition[]
+  loading: boolean
   reviewing: boolean
 }>()
 

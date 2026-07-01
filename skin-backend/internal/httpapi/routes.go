@@ -123,6 +123,7 @@ func (r *Router) routes() {
 	r.handle("POST /v1/admin/users/{user_id}/unban", adminRoutes.Auth(adminRoutes.UnbanUser))
 	r.handle("POST /v1/admin/users/password/reset", adminRoutes.Auth(adminRoutes.ResetUserPassword))
 	r.handle("GET /v1/admin/oauth/apps", oauthRoutes.Auth(oauthRoutes.ListAdminApps))
+	r.handle("GET /v1/admin/oauth/apps/{client_id}", oauthRoutes.Auth(oauthRoutes.GetApp))
 	r.handle("PATCH /v1/admin/oauth/apps/{client_id}/review", oauthRoutes.Auth(oauthRoutes.ReviewApp))
 	r.handle("GET /v1/admin/profiles", adminRoutes.Auth(adminRoutes.Profiles))
 	r.handle("PATCH /v1/admin/profiles/{profile_id}", adminRoutes.Auth(adminRoutes.UpdateProfile))

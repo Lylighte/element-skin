@@ -265,6 +265,31 @@ func TestOAuthAppManagementRoutesCoverReviewSecretListsAndDelete(t *testing.T) {
 	if len(adminItems) != 1 || adminItems[0].(map[string]any)["client_id"] != clientID {
 		t.Fatalf("admin pending list mismatch: %#v", adminItems)
 	}
+	adminSummary := adminItems[0].(map[string]any)
+	if _, ok := adminSummary["permissions"]; ok {
+		t.Fatalf("admin list must not include permissions: %#v", adminSummary)
+	}
+	if _, ok := adminSummary["redirect_uri"]; ok {
+		t.Fatalf("admin list must not include redirect_uri: %#v", adminSummary)
+	}
+	if adminSummary["name"] != "Route managed app updated" || adminSummary["status"] != "pending" ||
+		adminSummary["client_type"] != "confidential" {
+		t.Fatalf("admin summary fields mismatch: %#v", adminSummary)
+	}
+	adminDetailRes := doJSON(t, router, http.MethodGet, "/v1/admin/oauth/apps/"+clientID, nil, adminSession, "")
+	if adminDetailRes.Code != http.StatusOK {
+		t.Fatalf("admin detail status=%d body=%s", adminDetailRes.Code, adminDetailRes.Body.String())
+	}
+	adminDetail := decodeMap(t, adminDetailRes.Body.Bytes())
+	if adminDetail["client_id"] != clientID ||
+		adminDetail["redirect_uri"] != "https://route.example/new-callback" ||
+		adminDetail["website_url"] != "https://route.example/docs" {
+		t.Fatalf("admin detail fields mismatch: %#v", adminDetail)
+	}
+	adminPermissions := adminDetail["permissions"].([]any)
+	if len(adminPermissions) != 1 || adminPermissions[0] != "account.read.self" {
+		t.Fatalf("admin detail permissions mismatch: %#v", adminPermissions)
+	}
 	reviewRes := doJSON(t, router, http.MethodPatch, "/v1/admin/oauth/apps/"+clientID+"/review", map[string]any{"status": "active"}, adminSession, "")
 	if reviewRes.Code != http.StatusOK || decodeMap(t, reviewRes.Body.Bytes())["status"] != "active" {
 		t.Fatalf("review app mismatch: status=%d body=%s", reviewRes.Code, reviewRes.Body.String())

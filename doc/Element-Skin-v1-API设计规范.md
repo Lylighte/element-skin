@@ -3179,9 +3179,119 @@ Content-Type: application/x-www-form-urlencoded
 
 ### 27.4 管理员 OAuth 管理
 
-管理员可以通过同一组 `/v1/oauth/apps/{client_id}` 读取或修改具体 OAuth 应用。具有 `oauth_app.read.any` 或 `oauth_app.update.any` 时，不受应用 owner 限制。
+管理员 OAuth 管理接口用于后台审核和管理全站第三方应用。
 
-第一阶段暂不提供管理员全量 OAuth app/grant 列表接口。需要管理后台列表视图时再增加明确分页接口。
+列表接口必须保持轻量，不返回权限列表、回调地址、站点地址或密钥信息。管理后台需要展示详情时，必须在用户打开具体应用后再请求详情接口。
+
+```http
+GET /v1/admin/oauth/apps
+```
+
+权限：
+
+```text
+oauth_app.read.any
+```
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `status` | string | 否 | `all`、`pending`、`active`、`rejected`、`disabled`，默认 `all` |
+| `limit` | integer | 否 | 返回数量上限，默认 `100` |
+
+响应：
+
+```json
+{
+  "items": [
+    {
+      "client_id": "app_id",
+      "owner_user_id": "user_id",
+      "name": "Launcher Tool",
+      "description": "工具说明",
+      "client_type": "confidential",
+      "status": "pending",
+      "created_at": 1710000000000,
+      "updated_at": 1710000000000
+    }
+  ]
+}
+```
+
+响应约束：
+
+- 不返回 `permissions`。
+- 不返回 `redirect_uri`。
+- 不返回 `website_url`。
+- 不返回 `client_secret`。
+- 后端不得为了列表展示预加载每个应用的权限明细。
+
+```http
+GET /v1/admin/oauth/apps/{client_id}
+```
+
+权限：
+
+```text
+oauth_app.read.any
+```
+
+响应：
+
+```json
+{
+  "client_id": "app_id",
+  "owner_user_id": "user_id",
+  "name": "Launcher Tool",
+  "description": "工具说明",
+  "redirect_uri": "https://app.example/callback",
+  "website_url": "https://app.example",
+  "client_type": "confidential",
+  "status": "pending",
+  "created_at": 1710000000000,
+  "updated_at": 1710000000000,
+  "permissions": ["account.read.self"]
+}
+```
+
+```http
+PATCH /v1/admin/oauth/apps/{client_id}/review
+```
+
+权限：
+
+```text
+oauth_app.update.any
+```
+
+请求：
+
+```json
+{
+  "status": "active"
+}
+```
+
+`status` 只能为 `active`、`rejected` 或 `disabled`，不能通过审核接口写回 `pending`。
+
+响应：
+
+```json
+{
+  "client_id": "app_id",
+  "owner_user_id": "user_id",
+  "name": "Launcher Tool",
+  "description": "工具说明",
+  "redirect_uri": "https://app.example/callback",
+  "website_url": "https://app.example",
+  "client_type": "confidential",
+  "status": "active",
+  "created_at": 1710000000000,
+  "updated_at": 1710000000000,
+  "permissions": ["account.read.self"]
+}
+```
 
 ## 28. 能力发现 API
 

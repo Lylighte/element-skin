@@ -214,6 +214,19 @@ func publicClient(client model.OAuthClient) map[string]any {
 	}
 }
 
+func adminClientSummary(client model.OAuthClient) map[string]any {
+	return map[string]any{
+		"client_id":     client.ID,
+		"owner_user_id": client.OwnerUserID,
+		"name":          client.Name,
+		"description":   client.Description,
+		"client_type":   client.ClientType,
+		"status":        client.Status,
+		"created_at":    client.CreatedAt,
+		"updated_at":    client.UpdatedAt,
+	}
+}
+
 func grantResponse(grant model.OAuthGrant, permissions []string) map[string]any {
 	return map[string]any{
 		"id":          grant.ID,
