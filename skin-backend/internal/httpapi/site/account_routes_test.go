@@ -208,6 +208,101 @@ func TestAccountRoutesRejectMissingPrincipalAndMalformedPayloadsExactly(t *testi
 	}
 }
 
+func TestAccountRoutesRejectMissingPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-account-perms@test.com", "Password123", "SiteAccountPerms", false)
+
+	cases := []struct {
+		name       string
+		permission string
+		makeReq    func() *http.Request
+		call       func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "me", permission: "account.read.self", makeReq: func() *http.Request {
+			return httptest.NewRequest(http.MethodGet, "/v1/users/me", nil)
+		}, call: h.Me},
+		{name: "update me", permission: "account.update.self", makeReq: func() *http.Request {
+			return httptest.NewRequest(http.MethodPatch, "/v1/users/me", strings.NewReader(`{"display_name":"Blocked"}`))
+		}, call: h.UpdateMe},
+		{name: "delete me", permission: "account.delete.self", makeReq: func() *http.Request {
+			return httptest.NewRequest(http.MethodDelete, "/v1/users/me", nil)
+		}, call: h.DeleteMe},
+		{name: "change password", permission: "account_password.update.self", makeReq: func() *http.Request {
+			return httptest.NewRequest(http.MethodPost, "/v1/users/me/password", strings.NewReader(`{"old_password":"Password123","new_password":"NewPassword123"}`))
+		}, call: h.ChangePassword},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withUserActorWithoutPermission(tc.makeReq(), user.ID, tc.permission)
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("%s permission mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	unchanged, err := db.Users.GetByID(t.Context(), user.ID)
+	if err != nil || unchanged == nil || unchanged.DisplayName != "SiteAccountPerms" || !util.VerifyPassword("Password123", unchanged.Password) {
+		t.Fatalf("permission denials must not mutate account: user=%#v err=%v", unchanged, err)
+	}
+}
+
+type invalidateAuthUserFailStore struct {
+	redisstore.Store
+}
+
+func (s invalidateAuthUserFailStore) InvalidateAuthUser(context.Context, string) error {
+	return errors.New("invalidate auth user failed")
+}
+
+func TestAccountRoutesReturnExactErrorWhenAuthCacheInvalidationFails(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	baseRedis := testutil.NewMemoryRedis()
+	redis := invalidateAuthUserFailStore{Store: baseRedis}
+	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-account-invalidate@test.com", "Password123", "SiteAccountInvalidate", false)
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/users/me", strings.NewReader(`{"display_name":"InvalidateChanged"}`))
+	req = withUserActor(req, user.ID)
+	rec := httptest.NewRecorder()
+	h.UpdateMe(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("update invalidate failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	updated, err := db.Users.GetByID(t.Context(), user.ID)
+	if err != nil || updated == nil || updated.DisplayName != "InvalidateChanged" {
+		t.Fatalf("update should persist before invalidate failure: user=%#v err=%v", updated, err)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/users/me/password", strings.NewReader(`{"old_password":"Password123","new_password":"NewPassword123"}`))
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.ChangePassword(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("password invalidate failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	updated, err = db.Users.GetByID(t.Context(), user.ID)
+	if err != nil || updated == nil || !util.VerifyPassword("NewPassword123", updated.Password) {
+		t.Fatalf("password should persist before invalidate failure: user=%#v err=%v", updated, err)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/users/me", nil)
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.DeleteMe(rec, req)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("delete invalidate failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	deleted, err := db.Users.GetByID(t.Context(), user.ID)
+	if err != nil || deleted != nil {
+		t.Fatalf("delete should remove user before invalidate failure: user=%#v err=%v", deleted, err)
+	}
+}
+
 func TestDeleteMeErrorPaths(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()

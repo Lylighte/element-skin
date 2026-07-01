@@ -32,10 +32,17 @@ func TestRequestContextAndValueHelpersPreserveExactValues(t *testing.T) {
 	if !shared.CurrentActor(req).Has(permission.MustDefinitionByCode("permission_protected.manage.any")) {
 		t.Fatal("explicit protected permission should be preserved")
 	}
+	if err := shared.RequirePermission(req, permission.MustDefinitionByCode("permission_protected.manage.any")); err != nil {
+		t.Fatalf("RequirePermission granted error=%v, want nil", err)
+	}
 
 	req = req.WithContext(shared.WithActorPermissions(context.Background(), "user-456"))
 	if shared.CurrentActor(req).Has(permission.MustDefinitionByCode("permission_protected.manage.any")) {
 		t.Fatal("omitted protected permission must default to false")
+	}
+	err := shared.RequirePermission(req, permission.MustDefinitionByCode("permission_protected.manage.any"))
+	if httpErr, ok := err.(util.HTTPError); !ok || httpErr.Status != http.StatusForbidden || httpErr.Detail != "permission denied" {
+		t.Fatalf("RequirePermission denied error=%#v, want exact forbidden HTTPError", err)
 	}
 
 	value := map[string]any{"enabled": true}

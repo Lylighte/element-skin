@@ -317,6 +317,15 @@ func TestMemoryStoreSetsVerificationCodeOnlyWhenAbsent(t *testing.T) {
 	if stored, err := store.GetVerificationCode(ctx, "user@example.com", "reset"); err != nil || stored != "NEWCODE1" {
 		t.Fatalf("existing code was overwritten: code=%q err=%v", stored, err)
 	}
+
+	store.Err = errors.New("forced verification memory error")
+	set, err = store.SetVerificationCodeIfAbsent(ctx, "new@example.com", "reset", "NEWCODE2", time.Minute)
+	if set || err == nil || err.Error() != "forced verification memory error" {
+		t.Fatalf("set-if-absent backing error = %v, %v; want false and forced verification memory error", set, err)
+	}
+	if err := store.DeleteVerificationCode(ctx, "new@example.com", "reset"); err == nil || err.Error() != "forced verification memory error" {
+		t.Fatalf("DeleteVerificationCode backing error=%v; want forced verification memory error", err)
+	}
 }
 
 func TestMemoryStoreYggTokenLifecycleAndTrim(t *testing.T) {
@@ -382,6 +391,15 @@ func TestMemoryStoreYggSessionTTL(t *testing.T) {
 	ctx := context.Background()
 	if _, err := store.GetYggSession(ctx, "missing-server"); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("missing ygg session should miss, got %v", err)
+	}
+	ip := "127.0.0.1"
+	session := model.Session{ServerID: "active-server", AccessToken: "active-access", IP: &ip, CreatedAt: 1234}
+	if err := store.SetYggSession(ctx, session, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetYggSession(ctx, "active-server")
+	if err != nil || got.ServerID != session.ServerID || got.AccessToken != session.AccessToken || got.IP == nil || *got.IP != ip || got.CreatedAt != session.CreatedAt {
+		t.Fatalf("active ygg session mismatch: got=%#v err=%v want=%#v", got, err, session)
 	}
 	if err := store.SetYggSession(ctx, model.Session{ServerID: "server", AccessToken: "access", CreatedAt: 1}, time.Nanosecond); err != nil {
 		t.Fatal(err)

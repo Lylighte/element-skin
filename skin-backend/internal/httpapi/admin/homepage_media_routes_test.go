@@ -108,6 +108,44 @@ func TestHomepageMediaUploadFailsWhenRedisInvalidateFails(t *testing.T) {
 	}
 }
 
+func TestHomepageMediaUploadDatabaseFailureCleansFilesExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.CarouselDir = t.TempDir()
+	h := admin.NewWithRedis(cfg, db, testutil.NewMemoryRedis(), nil)
+	if _, err := db.Pool.Exec(context.Background(), `ALTER TABLE homepage_media ADD CONSTRAINT reject_homepage_media_insert CHECK (FALSE)`); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.UploadHomepageImage(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 64, 64)))
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("image database failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	items, err := db.HomepageMedia.List(context.Background(), false)
+	if err != nil || len(items) != 0 {
+		t.Fatalf("failed image upload must leave no rows: items=%#v err=%v", items, err)
+	}
+	entries, err := os.ReadDir(cfg.CarouselDir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("failed image upload must remove file: entries=%#v err=%v", entries, err)
+	}
+
+	rec = httptest.NewRecorder()
+	h.UploadHomepagePanorama(rec, multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t)))
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+		t.Fatalf("panorama database failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	items, err = db.HomepageMedia.List(context.Background(), false)
+	if err != nil || len(items) != 0 {
+		t.Fatalf("failed panorama upload must leave no rows: items=%#v err=%v", items, err)
+	}
+	entries, err = os.ReadDir(cfg.CarouselDir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("failed panorama upload must remove directory: entries=%#v err=%v", entries, err)
+	}
+}
+
 func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()

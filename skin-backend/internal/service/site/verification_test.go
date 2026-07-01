@@ -92,6 +92,75 @@ func TestVerificationRejectsInvalidRequestsAndHidesMissingResetAccount(t *testin
 	}
 }
 
+type verificationCodeFailStore struct {
+	redisstore.Store
+	failSet     bool
+	failGet     bool
+	failConsume bool
+}
+
+func (s *verificationCodeFailStore) SetVerificationCode(ctx context.Context, email, typ, code string, ttl time.Duration) error {
+	if s.failSet {
+		return errors.New("set verification failed")
+	}
+	return s.Store.SetVerificationCode(ctx, email, typ, code, ttl)
+}
+
+func (s *verificationCodeFailStore) GetVerificationCode(ctx context.Context, email, typ string) (string, error) {
+	if s.failGet {
+		return "", errors.New("get verification failed")
+	}
+	return s.Store.GetVerificationCode(ctx, email, typ)
+}
+
+func (s *verificationCodeFailStore) ConsumeVerificationCode(ctx context.Context, email, typ, code string) (bool, error) {
+	if s.failConsume {
+		return false, errors.New("consume verification failed")
+	}
+	return s.Store.ConsumeVerificationCode(ctx, email, typ, code)
+}
+
+func TestVerificationPropagatesRedisErrorsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "verify-redis-error@test.com", "Password123", "VerifyRedisError", false)
+	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
+		t.Fatal(err)
+	}
+
+	setFail := &verificationCodeFailStore{Store: testutil.NewMemoryRedis(), failSet: true}
+	svc := site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: setFail, Settings: settingssvc.Settings{DB: db, Redis: setFail}}
+	if _, err := svc.SendVerificationCode(ctx, "verify-default-type@test.com", ""); err == nil || err.Error() != "set verification failed" {
+		t.Fatalf("SendVerificationCode Redis set error=%v; want exact set failure", err)
+	}
+	if _, err := svc.Redis.GetVerificationCode(ctx, "verify-default-type@test.com", "register"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("failed send must not store default register code, got %v", err)
+	}
+
+	getFail := &verificationCodeFailStore{Store: testutil.NewMemoryRedis(), failGet: true}
+	svc = site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: getFail, Settings: settingssvc.Settings{DB: db, Redis: getFail}}
+	ok, err := svc.VerifyCode(ctx, user.Email, "RESETERR", "reset")
+	if ok || err == nil || err.Error() != "get verification failed" {
+		t.Fatalf("VerifyCode Redis get error mismatch: ok=%v err=%v", ok, err)
+	}
+	if err := svc.ResetPassword(ctx, user.Email, "NewPassword123", "RESETERR"); err == nil || err.Error() != "get verification failed" {
+		t.Fatalf("ResetPassword VerifyCode Redis error=%v; want exact get failure", err)
+	}
+
+	consumeFail := &verificationCodeFailStore{Store: testutil.NewMemoryRedis(), failConsume: true}
+	svc = site.Site{DB: db, Cfg: testutil.TestConfig(), Redis: consumeFail, Settings: settingssvc.Settings{DB: db, Redis: consumeFail}}
+	if err := consumeFail.Store.SetVerificationCode(ctx, user.Email, "reset", "RESETERR", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ResetPassword(ctx, user.Email, "NewPassword123", "RESETERR"); err == nil || err.Error() != "consume verification failed" {
+		t.Fatalf("ResetPassword consume Redis error=%v; want exact consume failure", err)
+	}
+	unchanged, err := db.Users.GetByID(ctx, user.ID)
+	if err != nil || unchanged == nil || !util.VerifyPassword("Password123", unchanged.Password) {
+		t.Fatalf("consume failure must preserve password: user=%#v err=%v", unchanged, err)
+	}
+}
+
 func TestResetPasswordRejectsDisabledWeakAndBadCodesExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()

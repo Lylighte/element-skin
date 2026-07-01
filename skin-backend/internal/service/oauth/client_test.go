@@ -210,6 +210,18 @@ func TestServiceClientManagementRejectsUnauthorizedMissingAndInvalidStateExactly
 		t.Fatal(err)
 	}
 	clientID := created["client_id"].(string)
+	keptStatus, err := svc.UpdateClient(ctx, adminActor, clientID, oauth.ClientInput{
+		Name:            "Reject state app kept",
+		RedirectURI:     "https://reject-state.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"account.read.self"},
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keptStatus["status"] != oauth.StatusPending || keptStatus["name"] != "Reject state app kept" {
+		t.Fatalf("admin update with empty status should preserve current status: %#v", keptStatus)
+	}
 	if _, err := svc.UpdateClient(ctx, adminActor, clientID, oauth.ClientInput{
 		Name:            "Reject state app updated",
 		RedirectURI:     "https://reject-state.example/callback",
@@ -217,6 +229,24 @@ func TestServiceClientManagementRejectsUnauthorizedMissingAndInvalidStateExactly
 		PermissionCodes: []string{"account.read.self"},
 	}, "archived"); !isHTTPError(err, 400, "invalid status") {
 		t.Fatalf("update invalid status mismatch: %#v", err)
+	}
+	if err := svc.ClearClientPermissionOverride(ctx, adminActor, clientID, "not.a.permission"); !isHTTPError(err, 400, "invalid permission") {
+		t.Fatalf("clear invalid permission mismatch: %#v", err)
+	}
+	if err := svc.ClearClientPermissionOverride(ctx, adminActor, clientID, "account.read.self"); !isHTTPError(err, 404, "permission override not found") {
+		t.Fatalf("clear missing permission override mismatch: %#v", err)
+	}
+	if err := svc.SetClientPermissionOverride(ctx, adminActor, clientID, "account.update.self", "deny"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ClearClientPermissionOverride(ctx, adminActor, clientID, "account.update.self"); err != nil {
+		t.Fatalf("clear existing permission override failed: %v", err)
+	}
+	if err := svc.DeleteClient(ctx, adminActor, clientID); err != nil {
+		t.Fatalf("admin delete client failed: %v", err)
+	}
+	if _, err := svc.GetClient(ctx, adminActor, clientID); !isHTTPError(err, 404, "oauth client not found") {
+		t.Fatalf("admin deleted client should be gone: %#v", err)
 	}
 }
 

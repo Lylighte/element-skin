@@ -28,6 +28,12 @@ func TestUserTextureLibraryCRUDAndPagination(t *testing.T) {
 	if ok, err := store.VerifyOwnership(ctx, user.ID, "domain_texture_user_hash", "skin"); err != nil || !ok {
 		t.Fatalf("ownership mismatch: ok=%v err=%v", ok, err)
 	}
+	if ok, err := store.VerifyOwnership(ctx, user.ID, "missing_texture", "skin"); err != nil || ok {
+		t.Fatalf("missing ownership should be false: ok=%v err=%v", ok, err)
+	}
+	if info, err := store.GetInfo(ctx, user.ID, "missing_texture", "skin"); err != nil || info != nil {
+		t.Fatalf("missing personal texture info should be nil: info=%#v err=%v", info, err)
+	}
 	if count, err := store.CountForUser(ctx, user.ID); err != nil || count != 1 {
 		t.Fatalf("count mismatch: count=%d err=%v", count, err)
 	}
@@ -71,6 +77,9 @@ func TestUserTextureLibraryCRUDAndPagination(t *testing.T) {
 	}
 	if uploader, exists, err := store.LibraryUploader(ctx, "missing_texture", "skin"); err != nil || exists || uploader != "" {
 		t.Fatalf("missing LibraryUploader should return exists=false: uploader=%q exists=%v err=%v", uploader, exists, err)
+	}
+	if deleted, err := store.DeleteFromLibrary(ctx, user.ID, "missing_texture", "skin"); err != nil || deleted {
+		t.Fatalf("delete missing library row should return false: deleted=%v err=%v", deleted, err)
 	}
 	if err := store.RecountUsage(ctx, "domain_texture_user_hash", "elytra"); err == nil || err.Error() != "invalid texture_type" {
 		t.Fatalf("invalid recount texture type should reject, got %v", err)
