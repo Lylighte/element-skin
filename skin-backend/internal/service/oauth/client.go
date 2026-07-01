@@ -73,11 +73,7 @@ func (s Service) ListClientsForAdmin(ctx context.Context, actor permission.Actor
 	}
 	out := make([]map[string]any, 0, len(clients))
 	for _, client := range clients {
-		codes, err := s.clientPermissionCodes(ctx, client.ID)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, clientResponse(client, codes, ""))
+		out = append(out, adminClientSummary(client))
 	}
 	return out, nil
 }

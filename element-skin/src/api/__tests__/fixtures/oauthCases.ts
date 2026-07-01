@@ -3,11 +3,14 @@ import {
   createOAuthApp,
   decideDeviceAuthorization,
   deleteOAuthApp,
+  getAdminOAuthApp,
   getDeviceAuthorization,
   getOAuthClientPermissions,
   getPermissionCatalog,
+  listAdminOAuthApps,
   listOAuthApps,
   rotateOAuthSecret,
+  reviewAdminOAuthApp,
   setOAuthClientPermission,
   updateOAuthApp,
 } from '../../oauth'
@@ -69,7 +72,8 @@ export function oauthApiCases(): ApiCase[] {
     {
       name: 'setOAuthClientPermission puts permission override',
       method: 'put',
-      call: () => setOAuthClientPermission('client-1', 'minecraft_session.hasjoined.server', 'allow'),
+      call: () =>
+        setOAuthClientPermission('client-1', 'minecraft_session.hasjoined.server', 'allow'),
       args: [
         '/v1/oauth/apps/client-1/permissions/minecraft_session.hasjoined.server',
         { effect: 'allow' },
@@ -80,6 +84,24 @@ export function oauthApiCases(): ApiCase[] {
       method: 'delete',
       call: () => clearOAuthClientPermission('client-1', 'minecraft_session.hasjoined.server'),
       args: ['/v1/oauth/apps/client-1/permissions/minecraft_session.hasjoined.server'],
+    },
+    {
+      name: 'listAdminOAuthApps gets filtered lightweight admin list',
+      method: 'get',
+      call: () => listAdminOAuthApps('pending', 20),
+      args: ['/v1/admin/oauth/apps', { params: { status: 'pending', limit: 20 } }],
+    },
+    {
+      name: 'getAdminOAuthApp gets admin app detail on demand',
+      method: 'get',
+      call: () => getAdminOAuthApp('client-1'),
+      args: ['/v1/admin/oauth/apps/client-1'],
+    },
+    {
+      name: 'reviewAdminOAuthApp patches admin review status',
+      method: 'patch',
+      call: () => reviewAdminOAuthApp('client-1', 'active'),
+      args: ['/v1/admin/oauth/apps/client-1/review', { status: 'active' }],
     },
     {
       name: 'getDeviceAuthorization gets user code details',

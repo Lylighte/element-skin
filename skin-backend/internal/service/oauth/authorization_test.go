@@ -365,6 +365,20 @@ func TestServiceOAuthPermissionCodeDependencyErrorsExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	adminList, err := svc.ListClientsForAdmin(ctx, adminActor, "all", 10)
+	if err != nil {
+		t.Fatalf("admin lightweight list should not load permission details: %v", err)
+	}
+	if len(adminList) != 1 || adminList[0]["client_id"] != clientID || adminList[0]["status"] != oauth.StatusActive {
+		t.Fatalf("admin lightweight list mismatch after permission table drop: %#v", adminList)
+	}
+	if _, ok := adminList[0]["permissions"]; ok {
+		t.Fatalf("admin lightweight list must not include permissions: %#v", adminList[0])
+	}
+	if _, ok := adminList[0]["redirect_uri"]; ok {
+		t.Fatalf("admin lightweight list must not include redirect_uri: %#v", adminList[0])
+	}
+
 	checks := []struct {
 		name string
 		call func() error
@@ -375,10 +389,6 @@ func TestServiceOAuthPermissionCodeDependencyErrorsExactly(t *testing.T) {
 		}},
 		{name: "list owned clients", call: func() error {
 			_, err := svc.ListClients(ctx, ownerActor, 10)
-			return err
-		}},
-		{name: "list admin clients", call: func() error {
-			_, err := svc.ListClientsForAdmin(ctx, adminActor, "all", 10)
 			return err
 		}},
 		{name: "update client", call: func() error {

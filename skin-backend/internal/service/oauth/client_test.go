@@ -83,6 +83,17 @@ func TestServiceClientManagementReviewSecretDeleteAndAdminListExactly(t *testing
 	if len(pendingList) != 1 || pendingList[0]["client_id"] != clientID || pendingList[0]["status"] != oauth.StatusPending {
 		t.Fatalf("pending admin list mismatch: %#v", pendingList)
 	}
+	if pendingList[0]["name"] != "Managed app" ||
+		pendingList[0]["description"] != "Original description" ||
+		pendingList[0]["client_type"] != oauth.ClientTypeConfidential {
+		t.Fatalf("pending admin summary fields mismatch: %#v", pendingList[0])
+	}
+	if _, ok := pendingList[0]["permissions"]; ok {
+		t.Fatalf("pending admin list must not load permissions: %#v", pendingList[0])
+	}
+	if _, ok := pendingList[0]["redirect_uri"]; ok {
+		t.Fatalf("pending admin list must not load redirect uri: %#v", pendingList[0])
+	}
 	allList, err := svc.ListClientsForAdmin(ctx, adminActor, "all", 10)
 	if err != nil {
 		t.Fatal(err)

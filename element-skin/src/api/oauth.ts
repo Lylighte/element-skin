@@ -18,6 +18,11 @@ export interface OAuthClient {
   client_secret?: string
 }
 
+export type OAuthClientSummary = Omit<
+  OAuthClient,
+  'redirect_uri' | 'website_url' | 'permissions' | 'client_secret'
+>
+
 export interface OAuthGrant {
   id: string
   user_id: string
@@ -117,12 +122,19 @@ export function clearOAuthClientPermission(clientId: string, permissionCode: str
 }
 
 export function listAdminOAuthApps(status: OAuthClientStatus | 'all' = 'all', limit = 100) {
-  return apiClient.get<{ items: OAuthClient[] }>('/v1/admin/oauth/apps', {
+  return apiClient.get<{ items: OAuthClientSummary[] }>('/v1/admin/oauth/apps', {
     params: { status, limit },
   })
 }
 
-export function reviewAdminOAuthApp(clientId: string, status: Exclude<OAuthClientStatus, 'pending'>) {
+export function getAdminOAuthApp(clientId: string) {
+  return apiClient.get<OAuthClient>(`/v1/admin/oauth/apps/${clientId}`)
+}
+
+export function reviewAdminOAuthApp(
+  clientId: string,
+  status: Exclude<OAuthClientStatus, 'pending'>,
+) {
   return apiClient.patch<OAuthClient>(`/v1/admin/oauth/apps/${clientId}/review`, { status })
 }
 
