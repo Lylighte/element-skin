@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -25,6 +26,23 @@ func TestUUIDNoDashFromReaderSetsVersionAndVariant(t *testing.T) {
 	}
 	if !strings.Contains("89ab", string(id[16])) {
 		t.Fatalf("uuid variant should be RFC 4122, got %q from %s", id[16], id)
+	}
+}
+
+func TestGenerateUUIDNoDashReturnsRFC4122Version4Shape(t *testing.T) {
+	id, err := GenerateUUIDNoDash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := hex.DecodeString(id)
+	if err != nil || len(decoded) != 16 {
+		t.Fatalf("GenerateUUIDNoDash produced non-hex UUID: id=%q decoded=%x err=%v", id, decoded, err)
+	}
+	if id[12] != '4' {
+		t.Fatalf("GenerateUUIDNoDash version nibble=%q, want 4 in %s", id[12], id)
+	}
+	if !strings.Contains("89ab", string(id[16])) {
+		t.Fatalf("GenerateUUIDNoDash variant nibble=%q, want RFC 4122 in %s", id[16], id)
 	}
 }
 

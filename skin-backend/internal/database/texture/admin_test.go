@@ -41,6 +41,9 @@ func TestAdminTextureUpdateListDeleteAndMissingSentinel(t *testing.T) {
 	if err := store.AdminDelete(ctx, "missing_domain_texture", "skin", user.ID, false); !errors.Is(err, texture.ErrNotFound) {
 		t.Fatalf("per-user delete missing texture should return ErrNotFound, got %v", err)
 	}
+	if err := store.AdminDelete(ctx, "missing_domain_texture", "skin", "", true); err != nil {
+		t.Fatalf("force delete missing texture should be idempotent, got %v", err)
+	}
 	if err := store.AdminDelete(ctx, "domain_texture_admin_hash", "skin", "", true); err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +100,35 @@ func TestAdminTextureUpdatesAreScopedByTextureType(t *testing.T) {
 	}
 	if exists, err := store.ExistsHash(ctx, "missing_hash"); err != nil || exists {
 		t.Fatalf("missing hash should not exist: exists=%v err=%v", exists, err)
+	}
+}
+
+func TestAdminTextureStoreMethodsReturnExactClosedPoolErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	store := texture.Store{Pool: db.Pool}
+	db.Close()
+
+	if page, err := store.ListAll(ctx, 1, nil, "", "", "skin"); page != nil || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("ListAll closed pool = page=%#v err=%v; want nil and closed pool", page, err)
+	}
+	if err := store.AdminUpdatePublic(ctx, "closed-hash", "skin", true); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("AdminUpdatePublic closed pool error=%v; want closed pool", err)
+	}
+	if err := store.AdminUpdateNote(ctx, "closed-hash", "skin", "Closed"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("AdminUpdateNote closed pool error=%v; want closed pool", err)
+	}
+	if err := store.AdminUpdateModel(ctx, "closed-hash", "skin", "slim"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("AdminUpdateModel closed pool error=%v; want closed pool", err)
+	}
+	if exists, err := store.Exists(ctx, "closed-hash", "skin"); exists || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Exists closed pool = exists=%v err=%v; want false and closed pool", exists, err)
+	}
+	if exists, err := store.ExistsHash(ctx, "closed-hash"); exists || err == nil || err.Error() != "closed pool" {
+		t.Fatalf("ExistsHash closed pool = exists=%v err=%v; want false and closed pool", exists, err)
+	}
+	if err := store.AdminDelete(ctx, "closed-hash", "skin", "closed-user", false); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("AdminDelete closed pool error=%v; want closed pool", err)
 	}
 }
 

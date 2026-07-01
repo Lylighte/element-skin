@@ -189,3 +189,48 @@ func TestInviteRoutesDeleteMissingInviteIsIdempotent(t *testing.T) {
 		t.Fatalf("idempotent delete must not create a row: invite=%#v err=%v", invite, err)
 	}
 }
+
+func TestInviteRoutesRejectMissingPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	h := admin.New(testutil.TestConfig(), db, nil)
+
+	tests := []struct {
+		name       string
+		permission string
+		request    *http.Request
+		call       func(http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:       "list",
+			permission: "invite.read.any",
+			request:    httptest.NewRequest(http.MethodGet, "/v1/admin/invites", nil),
+			call:       h.Invites,
+		},
+		{
+			name:       "create",
+			permission: "invite.create.any",
+			request:    httptest.NewRequest(http.MethodPost, "/v1/admin/invites", strings.NewReader(`{"code":"blocked-invite"}`)),
+			call:       h.CreateInvite,
+		},
+		{
+			name:       "delete",
+			permission: "invite.delete.any",
+			request:    httptest.NewRequest(http.MethodDelete, "/v1/admin/invites/blocked-invite", nil),
+			call:       h.DeleteInvite,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withAdminActorWithoutPermission(tc.request, "admin-test-user", tc.permission)
+			req.SetPathValue("code", "blocked-invite")
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("%s missing permission response mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+	if invite, err := db.Invites.Get(context.Background(), "blocked-invite"); err != nil || invite != nil {
+		t.Fatalf("permission-denied invite requests must not persist rows: invite=%#v err=%v", invite, err)
+	}
+}

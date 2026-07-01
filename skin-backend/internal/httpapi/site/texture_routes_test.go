@@ -75,6 +75,21 @@ func TestTextureRoutesUploadAndUploadApplyExactResponses(t *testing.T) {
 		t.Fatalf("upload texture should persist library row: info=%#v err=%v", info, err)
 	}
 
+	req = textureMultipartRequest(t, "/v1/users/me/textures", map[string]string{
+		"note": "Default Skin Type",
+	}, "file", "default-skin.png", routePNGWithColor(t, 64, 64, color.RGBA{R: 90, G: 180, B: 40, A: 255}))
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.UploadMyTexture(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"texture_type":"skin"`) {
+		t.Fatalf("upload default texture_type response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	defaultHash := jsonStringField(t, rec.Body.String(), "hash")
+	defaultInfo, err := db.Textures.GetInfo(req.Context(), user.ID, defaultHash, "skin")
+	if err != nil || defaultInfo == nil || defaultInfo["note"] != "Default Skin Type" || defaultInfo["is_public"] != 0 {
+		t.Fatalf("empty texture_type should persist as private skin: info=%#v err=%v", defaultInfo, err)
+	}
+
 	applyData := routePNGWithColor(t, 64, 64, color.RGBA{R: 200, G: 80, B: 120, A: 255})
 	storage, err := texturesvc.NewTextureStorage(cfg.TexturesDir)
 	if err != nil {
@@ -457,12 +472,46 @@ func TestTextureRoutesRejectMalformedUploadsExactly(t *testing.T) {
 		t.Fatalf("missing upload file mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodPost, "/v1/users/me/textures/upload-and-apply", strings.NewReader("not multipart"))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=missing")
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.UploadAndApplyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid multipart form\"}\n" {
+		t.Fatalf("malformed upload apply multipart mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
 	req = textureMultipartRequest(t, "/v1/users/me/textures/upload-and-apply", map[string]string{"texture_type": "skin"}, "file", "skin.png", routePNG(t, 64, 64))
 	req = withUserActor(req, user.ID)
 	rec = httptest.NewRecorder()
 	h.UploadAndApplyTexture(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"uuid and texture_type are required\"}\n" {
 		t.Fatalf("upload apply missing uuid mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = textureMultipartRequest(t, "/v1/users/me/textures/upload-and-apply", map[string]string{"uuid": "profile-id", "texture_type": "skin"}, "not_file", "skin.png", routePNG(t, 64, 64))
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.UploadAndApplyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"file is required\"}\n" {
+		t.Fatalf("upload apply missing file mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = textureMultipartRequest(t, "/v1/users/me/textures/upload-and-apply", map[string]string{"uuid": "profile-id", "texture_type": "skin"}, "file", "bad.png", []byte("not a valid png image"))
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.UploadAndApplyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Image must be PNG format\"}\n" {
+		t.Fatalf("upload apply invalid image mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/users/me/textures/hash/apply", strings.NewReader(`{`))
+	req.SetPathValue("hash", "hash")
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.ApplyTexture(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("apply bad json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
 	if count, err := db.Textures.CountForUser(req.Context(), user.ID); err != nil || count != 0 {

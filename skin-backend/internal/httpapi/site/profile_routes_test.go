@@ -102,6 +102,71 @@ func TestProfileRoutesUpdateClearAndDeleteExactState(t *testing.T) {
 	}
 }
 
+func TestProfileRoutesUseProfileIDPathValueAndRejectMissingPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-profile-perms@test.com", "Password123", "SiteProfilePerms", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "site_profile_perms", "ProfilePerms")
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/users/me/profiles/"+profile.ID, strings.NewReader(`{"name":"PermsRenamed"}`))
+	req.SetPathValue("profile_id", profile.ID)
+	req = withUserActor(req, user.ID)
+	rec := httptest.NewRecorder()
+	h.UpdateProfile(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("profile_id path update mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	renamed, err := db.Profiles.GetByID(req.Context(), profile.ID)
+	if err != nil || renamed == nil || renamed.Name != "PermsRenamed" {
+		t.Fatalf("profile_id path should update exact profile: profile=%#v err=%v", renamed, err)
+	}
+
+	cases := []struct {
+		name       string
+		permission string
+		makeReq    func() *http.Request
+		call       func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "create", permission: "profile.create.owned", makeReq: func() *http.Request {
+			return httptest.NewRequest(http.MethodPost, "/v1/users/me/profiles", strings.NewReader(`{"name":"NoCreate"}`))
+		}, call: h.CreateProfile},
+		{name: "update", permission: "profile.update.owned", makeReq: func() *http.Request {
+			req := httptest.NewRequest(http.MethodPatch, "/v1/users/me/profiles/"+profile.ID, strings.NewReader(`{"name":"NoUpdate"}`))
+			req.SetPathValue("pid", profile.ID)
+			return req
+		}, call: h.UpdateProfile},
+		{name: "delete", permission: "profile.delete.owned", makeReq: func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/users/me/profiles/"+profile.ID, nil)
+			req.SetPathValue("pid", profile.ID)
+			return req
+		}, call: h.DeleteProfile},
+		{name: "clear skin", permission: "texture.clear.owned", makeReq: func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/users/me/profiles/"+profile.ID+"/skin", nil)
+			req.SetPathValue("pid", profile.ID)
+			return req
+		}, call: h.ClearProfileSkin},
+		{name: "clear cape", permission: "texture.clear.owned", makeReq: func() *http.Request {
+			req := httptest.NewRequest(http.MethodDelete, "/v1/users/me/profiles/"+profile.ID+"/cape", nil)
+			req.SetPathValue("pid", profile.ID)
+			return req
+		}, call: h.ClearProfileCape},
+		{name: "list", permission: "profile.read.owned", makeReq: func() *http.Request {
+			return httptest.NewRequest(http.MethodGet, "/v1/users/me/profiles", nil)
+		}, call: h.ListMyProfiles},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withUserActorWithoutPermission(tc.makeReq(), user.ID, tc.permission)
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("%s permission mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestProfileRoutesRejectForeignProfileExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
@@ -181,6 +246,15 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	stillExisting, err := db.Profiles.GetByID(req.Context(), existing.ID)
 	if err != nil || stillExisting == nil || stillExisting.Name != "ExistingRole" {
 		t.Fatalf("unrelated profile should remain unchanged: profile=%#v err=%v", stillExisting, err)
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/v1/users/me/profiles/"+target.ID, strings.NewReader(`{`))
+	req.SetPathValue("pid", target.ID)
+	req = withUserActor(req, user.ID)
+	rec = httptest.NewRecorder()
+	h.UpdateProfile(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("update bad json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

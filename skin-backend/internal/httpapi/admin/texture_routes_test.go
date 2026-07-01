@@ -215,6 +215,54 @@ func TestTextureRoutesQueryTypeOverridesBodyTypeExactly(t *testing.T) {
 	}
 }
 
+func TestTextureRoutesRejectMissingPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	h := admin.New(testutil.TestConfig(), db, nil)
+
+	tests := []struct {
+		name       string
+		permission string
+		request    *http.Request
+		call       func(http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:       "list",
+			permission: "texture.read.any",
+			request:    httptest.NewRequest(http.MethodGet, "/v1/admin/textures", nil),
+			call:       h.Textures,
+		},
+		{
+			name:       "update metadata",
+			permission: "texture.update_metadata.any",
+			request:    httptest.NewRequest(http.MethodPatch, "/v1/admin/textures/blocked_hash", strings.NewReader(`{"note":"blocked"}`)),
+			call:       h.UpdateTexture,
+		},
+		{
+			name:       "update visibility",
+			permission: "texture.update_visibility.any",
+			request:    httptest.NewRequest(http.MethodPatch, "/v1/admin/textures/blocked_hash", strings.NewReader(`{"is_public":false}`)),
+			call:       h.UpdateTexture,
+		},
+		{
+			name:       "delete",
+			permission: "texture.delete.any",
+			request:    httptest.NewRequest(http.MethodDelete, "/v1/admin/textures/blocked_hash", nil),
+			call:       h.DeleteTexture,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withAdminActorWithoutPermission(tc.request, "admin-test-user", tc.permission)
+			req.SetPathValue("hash", "blocked_hash")
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("%s missing permission response mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestAdminTexturePatchRollsBackAllFieldsOnDatabaseFailure(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	h := admin.New(testutil.TestConfig(), db, nil)

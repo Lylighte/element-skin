@@ -83,6 +83,45 @@ func TestNewSignerRegeneratesMissingPublicKeyFromPrivateKey(t *testing.T) {
 	}
 }
 
+func TestNewSignerAcceptsPKCS1PrivateKeyExactly(t *testing.T) {
+	dir := t.TempDir()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privatePEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	})
+	publicDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER})
+
+	cfg := testutil.TestConfig()
+	cfg.PrivateKeyPath = filepath.Join(dir, "pkcs1-private.pem")
+	cfg.PublicKeyPath = filepath.Join(dir, "pkcs1-public.pem")
+	if err := os.WriteFile(cfg.PrivateKeyPath, privatePEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.PublicKeyPath, publicPEM, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	signer, err := yggdrasil.NewSigner(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signer.PublicKeyPEM() != string(publicPEM) {
+		t.Fatalf("PKCS#1 signer public key mismatch: got=%q want=%q", signer.PublicKeyPEM(), string(publicPEM))
+	}
+	signature, err := signer.SignPropertyValue("pkcs1-value")
+	if err != nil || signature == "" {
+		t.Fatalf("PKCS#1 signer should produce signature: signature=%q err=%v", signature, err)
+	}
+}
+
 func TestNewSignerRejectsMalformedAndMissingKeyConfigurationExactly(t *testing.T) {
 	valid := testutil.TestConfig()
 	dir := t.TempDir()

@@ -505,6 +505,36 @@ func TestNoticeServicePatchReplacesAllEditableFieldsExactly(t *testing.T) {
 	}
 }
 
+func TestNoticeServicePropagatesDatabaseErrorsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	svc := noticesvc.Service{DB: db}
+	ctx := context.Background()
+	db.Close()
+	user := noticesvc.CurrentUser{ID: "notice-db-error-user"}
+
+	if _, err := svc.GetForUser(ctx, "notice-id", user); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("GetForUser database error=%v; want closed pool", err)
+	}
+	if err := svc.MarkRead(ctx, "notice-id", user); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("MarkRead database error=%v; want closed pool", err)
+	}
+	if err := svc.Dismiss(ctx, "notice-id", user); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Dismiss database error=%v; want closed pool", err)
+	}
+	if _, err := svc.Create(ctx, noticesvc.CreateInput{Title: "DB Error", Summary: "summary"}, "admin-id"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Create database error=%v; want closed pool", err)
+	}
+	if _, err := svc.Patch(ctx, "notice-id", noticesvc.PatchInput{Title: ptrString("DB Error")}, "admin-id"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Patch database error=%v; want closed pool", err)
+	}
+	if err := svc.Delete(ctx, "notice-id"); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("Delete database error=%v; want closed pool", err)
+	}
+	if err := svc.DeleteExpired(ctx, database.NowMS()); err == nil || err.Error() != "closed pool" {
+		t.Fatalf("DeleteExpired database error=%v; want closed pool", err)
+	}
+}
+
 func httpError(err error, status int, detail string) bool {
 	he, ok := err.(util.HTTPError)
 	return ok && he.Status == status && he.Detail == detail
