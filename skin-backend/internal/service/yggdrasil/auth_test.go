@@ -3,6 +3,7 @@ package yggdrasil_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -223,6 +224,232 @@ func TestYggdrasilAuthenticateProfileNameBindsSelectedProfileAndMultiProfileEmai
 	}
 }
 
+func TestYggdrasilAuthenticateDefaultsClientTokenToAccessToken(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "ygg-default-client@test.com", "Password123", "YggDefaultClient", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "ygg_default_client_profile", "YggDefaultClientProfile")
+	redis := testutil.NewMemoryRedis()
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: redis}
+
+	response, err := ygg.Authenticate(ctx, user.Email, "Password123", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access := response["accessToken"].(string)
+	if access == "" || response["clientToken"] != access {
+		t.Fatalf("empty client token response=%#v; want client token equal access token", response)
+	}
+	selected := response["selectedProfile"].(map[string]any)
+	if selected["id"] != profile.ID || selected["name"] != profile.Name {
+		t.Fatalf("selected profile=%#v; want exact single profile", selected)
+	}
+	token, err := redis.GetYggToken(ctx, access)
+	if err != nil ||
+		token.AccessToken != access ||
+		token.ClientToken != access ||
+		token.UserID != user.ID ||
+		token.ProfileID == nil ||
+		*token.ProfileID != profile.ID {
+		t.Fatalf("stored default-client token=%#v err=%v", token, err)
+	}
+}
+
+func TestYggdrasilRedisDependencyErrorsArePropagatedExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "ygg-redis-fail@test.com", "Password123", "YggRedisFail", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "ygg_redis_fail_profile", "YggRedisFailProfile")
+	forced := errors.New("forced redis ygg failure")
+
+	failingSet := redisstore.NewMemoryStore()
+	failingSet.Err = forced
+	yggSet := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: failingSet}
+	if response, err := yggSet.Authenticate(ctx, user.Email, "Password123", "client", false); response != nil || !errors.Is(err, forced) {
+		t.Fatalf("Authenticate redis failure response=%#v err=%v; want nil and forced error", response, err)
+	}
+
+	token := model.Token{
+		AccessToken: "redis_fail_access",
+		ClientToken: "redis_fail_client",
+		UserID:      user.ID,
+		ProfileID:   &profile.ID,
+		CreatedAt:   database.NowMS(),
+	}
+	for _, tc := range []struct {
+		name string
+		call func(yggdrasil.Yggdrasil) error
+	}{
+		{name: "refresh", call: func(y yggdrasil.Yggdrasil) error {
+			_, err := y.Refresh(ctx, token.AccessToken, token.ClientToken, "", false)
+			return err
+		}},
+		{name: "validate", call: func(y yggdrasil.Yggdrasil) error {
+			return y.Validate(ctx, token.AccessToken, token.ClientToken)
+		}},
+		{name: "token", call: func(y yggdrasil.Yggdrasil) error {
+			got, err := y.Token(ctx, token.AccessToken)
+			if got != (model.Token{}) {
+				t.Fatalf("Token redis failure returned token=%#v, want zero token", got)
+			}
+			return err
+		}},
+		{name: "invalidate", call: func(y yggdrasil.Yggdrasil) error {
+			return y.Invalidate(ctx, token.AccessToken)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := redisstore.NewMemoryStore()
+			if err := cache.SetYggToken(ctx, token, time.Minute); err != nil {
+				t.Fatal(err)
+			}
+			cache.Err = forced
+			ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: cache}
+			if err := tc.call(ygg); !errors.Is(err, forced) {
+				t.Fatalf("%s redis error=%v; want forced error", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestYggdrasilMissingRedisTokensReturnExactProtocolErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+
+	if response, err := ygg.Refresh(ctx, "missing_refresh_access", "client", "", false); response != nil || !yggError(err, 403, "ForbiddenOperationException", "Invalid token.") {
+		t.Fatalf("missing refresh response=%#v err=%v; want nil and exact invalid-token ygg error", response, err)
+	}
+	if err := ygg.Invalidate(ctx, "missing_invalidate_access"); err != nil {
+		t.Fatalf("missing invalidate token should be a no-op, got %v", err)
+	}
+}
+
+func TestYggdrasilRefreshPropagatesReplaceFailureAndKeepsOldToken(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "ygg-replace-fail@test.com", "Password123", "YggReplaceFail", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "ygg_replace_fail_profile", "YggReplaceFailProfile")
+	forced := errors.New("replace token failed")
+	old := model.Token{
+		AccessToken: "replace_fail_old_access",
+		ClientToken: "replace_fail_client",
+		UserID:      user.ID,
+		ProfileID:   &profile.ID,
+		CreatedAt:   database.NowMS(),
+	}
+	cache := &replaceFailStore{Store: testutil.NewMemoryRedis(), err: forced}
+	if err := cache.Store.SetYggToken(ctx, old, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: cache}
+
+	response, err := ygg.Refresh(ctx, old.AccessToken, old.ClientToken, "", false)
+	if response != nil || !errors.Is(err, forced) {
+		t.Fatalf("replace failure response=%#v err=%v; want nil and forced error", response, err)
+	}
+	if cache.replaceCalls != 1 || cache.oldAccess != old.AccessToken || cache.nextToken.AccessToken == "" || cache.nextToken.AccessToken == old.AccessToken {
+		t.Fatalf("replace call mismatch: calls=%d old=%q next=%#v", cache.replaceCalls, cache.oldAccess, cache.nextToken)
+	}
+	got, err := cache.Store.GetYggToken(ctx, old.AccessToken)
+	if err != nil || !sameToken(got, old) {
+		t.Fatalf("replace failure must preserve old token: got=%#v err=%v want=%#v", got, err, old)
+	}
+}
+
+func TestYggdrasilProfileStoreDependencyErrorsAreExact(t *testing.T) {
+	t.Run("authenticate profile lookup after email credentials", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		ctx := context.Background()
+		user := testutil.CreateUser(t, db, "ygg-profile-db-auth@test.com", "Password123", "YggProfileDBAuth", false)
+		if _, err := db.Pool.Exec(ctx, `ALTER TABLE profiles RENAME TO profiles_unavailable`); err != nil {
+			t.Fatal(err)
+		}
+		ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+
+		response, err := ygg.Authenticate(ctx, user.Email, "Password123", "client", false)
+		assertPgCode(t, err, "42P01")
+		if response != nil {
+			t.Fatalf("profile lookup failure response=%#v; want nil", response)
+		}
+	})
+
+	t.Run("authenticate username profile lookup", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		ctx := context.Background()
+		if _, err := db.Pool.Exec(ctx, `ALTER TABLE profiles RENAME TO profiles_unavailable`); err != nil {
+			t.Fatal(err)
+		}
+		ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: testutil.NewMemoryRedis()}
+
+		response, err := ygg.Authenticate(ctx, "missing_profile_name", "Password123", "client", false)
+		assertPgCode(t, err, "42P01")
+		if response != nil {
+			t.Fatalf("username profile lookup failure response=%#v; want nil", response)
+		}
+	})
+
+	t.Run("refresh bound token ownership", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		ctx := context.Background()
+		user := testutil.CreateUser(t, db, "ygg-profile-db-refresh@test.com", "Password123", "YggProfileDBRefresh", false)
+		profile := testutil.CreateProfile(t, db, user.ID, "ygg_profile_db_refresh", "YggProfileDBRefreshProfile")
+		old := model.Token{
+			AccessToken: "profile_db_refresh_access",
+			ClientToken: "profile_db_refresh_client",
+			UserID:      user.ID,
+			ProfileID:   &profile.ID,
+			CreatedAt:   database.NowMS(),
+		}
+		cache := testutil.NewMemoryRedis()
+		if err := cache.SetYggToken(ctx, old, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Pool.Exec(ctx, `ALTER TABLE profiles RENAME TO profiles_unavailable`); err != nil {
+			t.Fatal(err)
+		}
+		ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: cache}
+
+		response, err := ygg.Refresh(ctx, old.AccessToken, old.ClientToken, "", false)
+		assertPgCode(t, err, "42P01")
+		if response != nil {
+			t.Fatalf("refresh profile dependency failure response=%#v; want nil", response)
+		}
+		got, tokenErr := cache.GetYggToken(ctx, old.AccessToken)
+		if tokenErr != nil || !sameToken(got, old) {
+			t.Fatalf("profile dependency failure must preserve old token: got=%#v err=%v want=%#v", got, tokenErr, old)
+		}
+	})
+
+	t.Run("validate bound token ownership", func(t *testing.T) {
+		db, _ := testutil.NewTestApp(t)
+		ctx := context.Background()
+		user := testutil.CreateUser(t, db, "ygg-profile-db-validate@test.com", "Password123", "YggProfileDBValidate", false)
+		profile := testutil.CreateProfile(t, db, user.ID, "ygg_profile_db_validate", "YggProfileDBValidateProfile")
+		token := model.Token{
+			AccessToken: "profile_db_validate_access",
+			ClientToken: "profile_db_validate_client",
+			UserID:      user.ID,
+			ProfileID:   &profile.ID,
+			CreatedAt:   database.NowMS(),
+		}
+		cache := testutil.NewMemoryRedis()
+		if err := cache.SetYggToken(ctx, token, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Pool.Exec(ctx, `ALTER TABLE profiles RENAME TO profiles_unavailable`); err != nil {
+			t.Fatal(err)
+		}
+		ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: cache}
+
+		assertPgCode(t, ygg.Validate(ctx, token.AccessToken, token.ClientToken), "42P01")
+		got, tokenErr := cache.GetYggToken(ctx, token.AccessToken)
+		if tokenErr != nil || !sameToken(got, token) {
+			t.Fatalf("validate profile dependency failure must preserve token: got=%#v err=%v want=%#v", got, tokenErr, token)
+		}
+	})
+}
+
 func TestYggdrasilSignoutInvalidateAndTokenLimitUseRedisOnly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
@@ -396,6 +623,61 @@ func TestYggdrasilAuthenticateRevokesNewTokenWhenLimitTrimFails(t *testing.T) {
 	}
 }
 
+func TestYggdrasilClosedDatabasePropagatesExactDependencyErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "ygg-closed-db@test.com", "Password123", "YggClosedDB", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "ygg_closed_db_profile", "YggClosedDBProfile")
+	cache := testutil.NewMemoryRedis()
+	profileID := profile.ID
+	token := model.Token{
+		AccessToken: "closed_db_access",
+		ClientToken: "closed_db_client",
+		UserID:      user.ID,
+		ProfileID:   &profileID,
+		CreatedAt:   database.NowMS(),
+	}
+	if err := cache.SetYggToken(ctx, token, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: testutil.TestConfig(), Redis: cache}
+	db.Close()
+
+	checks := []struct {
+		name string
+		call func() error
+	}{
+		{name: "authenticate", call: func() error {
+			_, err := ygg.Authenticate(ctx, user.Email, "Password123", "client", false)
+			return err
+		}},
+		{name: "refresh", call: func() error {
+			_, err := ygg.Refresh(ctx, token.AccessToken, token.ClientToken, "", false)
+			return err
+		}},
+		{name: "validate", call: func() error {
+			return ygg.Validate(ctx, token.AccessToken, token.ClientToken)
+		}},
+		{name: "token", call: func() error {
+			_, err := ygg.Token(ctx, token.AccessToken)
+			return err
+		}},
+		{name: "invalidate", call: func() error {
+			return ygg.Invalidate(ctx, token.AccessToken)
+		}},
+		{name: "signout", call: func() error {
+			return ygg.Signout(ctx, user.Email, "Password123")
+		}},
+	}
+	for _, tc := range checks {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); err == nil || !strings.Contains(err.Error(), "closed pool") {
+				t.Fatalf("%s closed DB error mismatch: %v", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestYggdrasilRefreshPreservesOldTokenWhenResponseUserLookupFails(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
@@ -532,6 +814,42 @@ func (s *trimFailStore) SetYggToken(ctx context.Context, token model.Token, ttl 
 func (s *trimFailStore) TrimYggTokensByUser(context.Context, string, int) error {
 	s.trimCalls++
 	return errors.New("token limit trim failed")
+}
+
+type replaceFailStore struct {
+	redisstore.Store
+	err          error
+	replaceCalls int
+	oldAccess    string
+	nextToken    model.Token
+}
+
+func (s *replaceFailStore) ReplaceYggToken(_ context.Context, oldAccess string, token model.Token, _ time.Duration) (bool, error) {
+	s.replaceCalls++
+	s.oldAccess = oldAccess
+	s.nextToken = token
+	return false, s.err
+}
+
+func assertPgCode(t *testing.T, err error, code string) {
+	t.Helper()
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != code {
+		t.Fatalf("PostgreSQL error=%#v, want code %s", err, code)
+	}
+}
+
+func sameToken(got, want model.Token) bool {
+	if got.AccessToken != want.AccessToken ||
+		got.ClientToken != want.ClientToken ||
+		got.UserID != want.UserID ||
+		got.CreatedAt != want.CreatedAt {
+		return false
+	}
+	if got.ProfileID == nil || want.ProfileID == nil {
+		return got.ProfileID == nil && want.ProfileID == nil
+	}
+	return *got.ProfileID == *want.ProfileID
 }
 
 func yggError(err error, status int, yggCode, detail string) bool {

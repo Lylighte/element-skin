@@ -251,6 +251,134 @@ func TestLookupRoutesFallbackMissesReturnExactNoContent(t *testing.T) {
 	}
 }
 
+func TestLookupRoutesWriteExactFallbackResponses(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	redis := testutil.NewMemoryRedis()
+	requests := make([]string, 0, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		requests = append(requests, req.Method+" "+req.URL.RequestURI())
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/session/minecraft/hasJoined":
+			if req.URL.Query().Get("username") != "RemoteJoin" ||
+				req.URL.Query().Get("serverId") != "remote-server" ||
+				req.URL.Query().Get("ip") != "127.0.0.2" {
+				t.Fatalf("hasJoined fallback query mismatch: %s", req.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"id":"remote_join_id","name":"RemoteJoin"}`))
+		case req.Method == http.MethodGet && req.URL.Path == "/session/minecraft/profile/remote-profile":
+			if req.URL.Query().Get("unsigned") != "false" {
+				t.Fatalf("profile fallback unsigned=%q, want false", req.URL.Query().Get("unsigned"))
+			}
+			_, _ = w.Write([]byte(`{"id":"remote-profile","name":"RemoteProfile"}`))
+		case req.Method == http.MethodGet && req.URL.Path == "/users/profiles/minecraft/RemoteName":
+			_, _ = w.Write([]byte(`{"id":"remote_name_id","name":"RemoteName"}`))
+		case req.Method == http.MethodGet && req.URL.Path == "/minecraft/profile/lookup/name/RemoteServices":
+			_, _ = w.Write([]byte(`{"id":"remote_services_id","name":"RemoteServices"}`))
+		default:
+			t.Fatalf("unexpected fallback request: %s %s", req.Method, req.URL.RequestURI())
+		}
+	}))
+	defer server.Close()
+	if err := db.Fallbacks.SaveEndpoints(t.Context(), []dbfallback.Endpoint{{
+		Priority:        1,
+		SessionURL:      server.URL,
+		AccountURL:      server.URL,
+		ServicesURL:     server.URL,
+		CacheTTL:        60,
+		EnableHasJoined: true,
+		EnableProfile:   true,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	h := yggdrasil.New(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+
+	req := httptest.NewRequest(http.MethodGet, "/sessionserver/session/minecraft/hasJoined?username=RemoteJoin&serverId=remote-server&ip=127.0.0.2", nil)
+	rec := httptest.NewRecorder()
+	h.HasJoined(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"id":"remote_join_id","name":"RemoteJoin"}` {
+		t.Fatalf("fallback hasJoined response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/sessionserver/session/minecraft/profile/remote-profile?unsigned=false", nil)
+	req.SetPathValue("uuid", "remote-profile")
+	rec = httptest.NewRecorder()
+	h.Profile(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"id":"remote-profile","name":"RemoteProfile"}` {
+		t.Fatalf("fallback profile response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/profiles/minecraft/RemoteName", nil)
+	req.SetPathValue("playerName", "RemoteName")
+	rec = httptest.NewRecorder()
+	h.LookupName(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"id":"remote_name_id","name":"RemoteName"}` {
+		t.Fatalf("fallback account lookup response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/minecraft/profile/lookup/name/RemoteServices", nil)
+	req.SetPathValue("playerName", "RemoteServices")
+	rec = httptest.NewRecorder()
+	h.LookupName(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"id":"remote_services_id","name":"RemoteServices"}` {
+		t.Fatalf("fallback services lookup response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(requests) != 4 {
+		t.Fatalf("fallback requests=%#v; want four exact fallback calls", requests)
+	}
+}
+
+func TestLookupRoutesReturnExactDependencyErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call func(*yggdrasil.Handler, *httptest.ResponseRecorder)
+	}{
+		{
+			name: "hasJoined",
+			call: func(h *yggdrasil.Handler, rec *httptest.ResponseRecorder) {
+				req := httptest.NewRequest(http.MethodGet, "/sessionserver/session/minecraft/hasJoined?username=Player&serverId=server", nil)
+				h.HasJoined(rec, req)
+			},
+		},
+		{
+			name: "profile",
+			call: func(h *yggdrasil.Handler, rec *httptest.ResponseRecorder) {
+				req := httptest.NewRequest(http.MethodGet, "/sessionserver/session/minecraft/profile/profile-id", nil)
+				req.SetPathValue("uuid", "profile-id")
+				h.Profile(rec, req)
+			},
+		},
+		{
+			name: "lookupName",
+			call: func(h *yggdrasil.Handler, rec *httptest.ResponseRecorder) {
+				req := httptest.NewRequest(http.MethodGet, "/api/profiles/minecraft/Player", nil)
+				req.SetPathValue("playerName", "Player")
+				h.LookupName(rec, req)
+			},
+		},
+		{
+			name: "lookupNames",
+			call: func(h *yggdrasil.Handler, rec *httptest.ResponseRecorder) {
+				req := httptest.NewRequest(http.MethodPost, "/api/profiles/minecraft", strings.NewReader(`["Player"]`))
+				h.LookupNames(rec, req)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, _ := testutil.NewTestApp(t)
+			cfg := testutil.TestConfig()
+			redis := testutil.NewMemoryRedis()
+			h := yggdrasil.New(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+			db.Close()
+			rec := httptest.NewRecorder()
+			tc.call(&h, rec)
+			if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
+				t.Fatalf("%s dependency error mismatch: status=%d body=%q", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestWriteFallbackForTest(t *testing.T) {
 	rec := httptest.NewRecorder()
 	if !yggdrasil.WriteFallbackForTest(rec, &fallbacksvc.FallbackResponse{Status: http.StatusAccepted, Body: []byte(`{"ok":true}`)}) {

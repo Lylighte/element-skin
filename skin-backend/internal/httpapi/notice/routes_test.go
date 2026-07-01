@@ -145,6 +145,30 @@ func TestNoticeRoutesErrorsAndAuthWrapperExactly(t *testing.T) {
 	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
 		t.Fatalf("dismiss without notice.dismiss.owned mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/notifications/missing/read", nil)
+	req.SetPathValue("id", "missing")
+	rec = httptest.NewRecorder()
+	h.MarkRead(rec, req.WithContext(shared.WithActorPermissions(context.Background(), user.ID)))
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("mark read without notice.read.owned mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = userRequest(http.MethodPost, "/v1/notifications/missing/read", user.ID, false)
+	req.SetPathValue("id", "missing")
+	rec = httptest.NewRecorder()
+	h.MarkRead(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"notice not found\"}\n" {
+		t.Fatalf("mark read missing notice mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = userRequest(http.MethodPost, "/v1/notifications/missing/dismiss", user.ID, false)
+	req.SetPathValue("id", "missing")
+	rec = httptest.NewRecorder()
+	h.Dismiss(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"notice not found\"}\n" {
+		t.Fatalf("dismiss missing notice mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
 
 func userRequest(method, target, userID string, isAdmin bool) *http.Request {

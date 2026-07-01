@@ -1,0 +1,238 @@
+package admin_test
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"testing"
+
+	permissiondb "element-skin/backend/internal/database/permission"
+	"element-skin/backend/internal/permission"
+	"element-skin/backend/internal/redisstore"
+	adminsvc "element-skin/backend/internal/service/admin"
+	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
+)
+
+func TestPermissionServiceUserPermissionsReturnsExactCatalogRolesAndOverrides(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-perms-read@test.com", "Password123", "AdminPermsRead", true)
+	target := testutil.CreateUser(t, db, "target-perms-read@test.com", "Password123", "TargetPermsRead", false)
+	actor := actorWithPermissions(adminUser.ID, "permission.read.any")
+	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+
+	if err := db.Permissions.GrantRole(ctx, target.ID, permission.RoleModerator, actor.SubjectID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Permissions.SetSubjectPermissionOverride(ctx, target.ID, permission.MustDefinitionByCode("notice.create.any"), "allow", actor.SubjectID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Permissions.SetSubjectPermissionOverride(ctx, target.ID, permission.MustDefinitionByCode("texture.delete.owned"), "deny", actor.SubjectID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.UserPermissions(ctx, actor, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stringSliceEqual(got.Roles, []string{permission.RoleModerator, permission.RoleUser}) {
+		t.Fatalf("roles mismatch: got=%v", got.Roles)
+	}
+	if !containsExact(got.EffectivePermissions, "notice.create.any") {
+		t.Fatalf("effective permissions should include override allow: %v", got.EffectivePermissions)
+	}
+	if containsExact(got.EffectivePermissions, "texture.delete.owned") {
+		t.Fatalf("effective permissions should exclude override deny: %v", got.EffectivePermissions)
+	}
+	wantOverrides := []adminsvc.PermissionOverrideResponse{
+		{PermissionCode: "texture.delete.owned", Effect: "deny"},
+		{PermissionCode: "notice.create.any", Effect: "allow"},
+	}
+	if len(got.Overrides) != 2 {
+		t.Fatalf("override count=%d want 2: %#v", len(got.Overrides), got.Overrides)
+	}
+	for _, want := range wantOverrides {
+		if !hasOverride(got.Overrides, want.PermissionCode, want.Effect) {
+			t.Fatalf("missing override %#v in %#v", want, got.Overrides)
+		}
+	}
+	if len(got.Catalog.Permissions) != len(permission.Definitions) || len(got.Catalog.Roles) != len(permission.Roles) {
+		t.Fatalf("catalog size mismatch: permissions=%d/%d roles=%d/%d",
+			len(got.Catalog.Permissions), len(permission.Definitions), len(got.Catalog.Roles), len(permission.Roles))
+	}
+	first := got.Catalog.Permissions[0]
+	def := permission.Definitions[0]
+	if first.ID != int64(def.ID) || first.Code != def.Code || first.BitIndex != def.BitIndex ||
+		first.Resource != def.Resource.Code || first.Action != def.Action.Code || first.Scope != def.Scope.Code {
+		t.Fatalf("first catalog permission mismatch: got=%#v want=%#v", first, def)
+	}
+}
+
+func TestPermissionServiceSetAndClearOverrideInvalidatesAuthCacheExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-perms-write@test.com", "Password123", "AdminPermsWrite", true)
+	target := testutil.CreateUser(t, db, "target-perms-write@test.com", "Password123", "TargetPermsWrite", false)
+	cache := redisstore.NewMemoryStore()
+	svc := adminsvc.PermissionService{DB: db, Redis: cache}
+	actor := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any")
+	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SetUserPermissionOverride(ctx, actor, target.ID, "notice.create.any", "allow"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("auth cache should be invalidated after set, err=%v", err)
+	}
+	overrides, err := db.Permissions.SubjectPermissionOverridesForUser(ctx, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(overrides) != 1 || overrides[0].PermissionID != permission.MustDefinitionByCode("notice.create.any").ID ||
+		overrides[0].PermissionCode != "notice.create.any" || overrides[0].Effect != "allow" || overrides[0].CreatedAt <= 0 {
+		t.Fatalf("stored override mismatch: %#v", overrides)
+	}
+
+	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, actor, target.ID, "notice.create.any"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("auth cache should be invalidated after clear, err=%v", err)
+	}
+	overrides, err = db.Permissions.SubjectPermissionOverridesForUser(ctx, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(overrides) != 0 {
+		t.Fatalf("override should be cleared exactly: %#v", overrides)
+	}
+}
+
+func TestPermissionServiceRejectsUnauthorizedAndInvalidOverridePathsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-perms-errors@test.com", "Password123", "AdminPermsErrors", true)
+	target := testutil.CreateUser(t, db, "target-perms-errors@test.com", "Password123", "TargetPermsErrors", false)
+	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	reader := actorWithPermissions(adminUser.ID, "permission.read.any")
+
+	if _, err := svc.UserPermissions(ctx, permission.Actor{}, target.ID); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("read without permission error mismatch: %#v", err)
+	}
+	if _, err := svc.UserPermissions(ctx, reader, "missing-user"); !httpErrorIs(err, http.StatusNotFound, "user not found") {
+		t.Fatalf("missing user read error mismatch: %#v", err)
+	}
+	if err := svc.SetUserPermissionOverride(ctx, reader, target.ID, "missing.permission.any", "allow"); !httpErrorIs(err, http.StatusNotFound, "permission not found") {
+		t.Fatalf("missing permission set error mismatch: %#v", err)
+	}
+	if err := svc.SetUserPermissionOverride(ctx, reader, target.ID, "notice.create.any", "maybe"); !httpErrorIs(err, http.StatusBadRequest, "effect must be allow or deny") {
+		t.Fatalf("invalid effect error mismatch: %#v", err)
+	}
+	if err := svc.SetUserPermissionOverride(ctx, reader, target.ID, "notice.create.any", "allow"); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("grant without permission error mismatch: %#v", err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, reader, target.ID, "notice.create.any"); !httpErrorIs(err, http.StatusNotFound, "permission override not found") {
+		t.Fatalf("clear missing override error mismatch: %#v", err)
+	}
+}
+
+func TestPermissionServiceProtectsProtectedPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-protected@test.com", "Password123", "AdminProtected", true)
+	target := testutil.CreateUser(t, db, "target-protected@test.com", "Password123", "TargetProtected", false)
+	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	grantOnly := actorWithPermissions(adminUser.ID, "permission.grant.any")
+
+	err := svc.SetUserPermissionOverride(ctx, grantOnly, target.ID, "permission_protected.manage.any", "allow")
+	if !httpErrorIs(err, http.StatusForbidden, "protected permission management required") {
+		t.Fatalf("protected grant without manage error mismatch: %#v", err)
+	}
+	selfManager := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission_protected.manage.any")
+	err = svc.SetUserPermissionOverride(ctx, selfManager, adminUser.ID, "permission_protected.manage.any", "allow")
+	if !httpErrorIs(err, http.StatusForbidden, "cannot modify protected permission on yourself") {
+		t.Fatalf("self protected grant error mismatch: %#v", err)
+	}
+	manager := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any", "permission_protected.manage.any")
+	if err := svc.SetUserPermissionOverride(ctx, manager, target.ID, "permission_protected.manage.any", "allow"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, manager, target.ID, "permission_protected.manage.any"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPermissionServiceClearRequiresOppositePermissionForDenyOverrides(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-clear-deny@test.com", "Password123", "AdminClearDeny", true)
+	target := testutil.CreateUser(t, db, "target-clear-deny@test.com", "Password123", "TargetClearDeny", false)
+	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	revoker := actorWithPermissions(adminUser.ID, "permission.revoke.any")
+	granter := actorWithPermissions(adminUser.ID, "permission.grant.any")
+
+	if err := svc.SetUserPermissionOverride(ctx, revoker, target.ID, "notice.create.any", "deny"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, revoker, target.ID, "notice.create.any"); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("clear deny with revoke permission should fail: %#v", err)
+	}
+	if err := svc.ClearUserPermissionOverride(ctx, granter, target.ID, "notice.create.any"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func actorWithPermissions(userID string, codes ...string) permission.Actor {
+	bits := permission.NewBitSet(len(permission.Definitions))
+	for _, code := range codes {
+		bits.Set(permission.MustDefinitionByCode(code).BitIndex)
+	}
+	return permission.Actor{
+		SubjectID:   permissiondb.SubjectIDForUser(userID),
+		UserID:      userID,
+		SessionKind: permission.SessionKindWeb,
+		Entrypoint:  permission.EntrypointAdmin,
+		Permissions: bits,
+	}
+}
+
+func httpErrorIs(err error, status int, detail string) bool {
+	var httpErr util.HTTPError
+	return errors.As(err, &httpErr) && httpErr.Status == status && httpErr.Detail == detail
+}
+
+func containsExact(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceEqual(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func hasOverride(overrides []adminsvc.PermissionOverrideResponse, code, effect string) bool {
+	for _, override := range overrides {
+		if override.PermissionCode == code && override.Effect == effect && override.CreatedAt > 0 {
+			return true
+		}
+	}
+	return false
+}

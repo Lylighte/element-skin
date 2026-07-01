@@ -175,4 +175,36 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	if got, err := db.Profiles.GetByID(req.Context(), existing.ID); err != nil || got == nil || got.Name != "AdminExisting" {
 		t.Fatalf("existing profile should remain unchanged: profile=%#v err=%v", got, err)
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/admin/profiles", nil)
+	rec = httptest.NewRecorder()
+	h.Profiles(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("profile list permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/profiles/"+target.ID, strings.NewReader(`{"name":"Denied"}`))
+	req.SetPathValue("profile_id", target.ID)
+	rec = httptest.NewRecorder()
+	h.UpdateProfile(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("profile update permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/profiles/"+target.ID, nil)
+	req.SetPathValue("profile_id", target.ID)
+	rec = httptest.NewRecorder()
+	h.DeleteProfile(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("profile delete permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/profiles/"+target.ID+"/cape", strings.NewReader(`{`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("profile_id", target.ID)
+	rec = httptest.NewRecorder()
+	h.UpdateProfileCape(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("profile cape bad json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }

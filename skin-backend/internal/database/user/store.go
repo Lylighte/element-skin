@@ -302,7 +302,13 @@ func (s Store) Delete(ctx context.Context, id string) (bool, error) {
 func (s Store) IsBanned(ctx context.Context, id string) (bool, error) {
 	var until *int64
 	err := s.Pool.QueryRow(ctx, `SELECT banned_until FROM users WHERE id=$1`, id).Scan(&until)
-	if errors.Is(err, pgx.ErrNoRows) || until == nil {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if until == nil {
 		return false, nil
 	}
 	return *until > time.Now().UnixMilli(), err

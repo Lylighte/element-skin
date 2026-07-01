@@ -59,6 +59,59 @@ func TestMinecraftRoutesReturnExactProfileAndTextureResponses(t *testing.T) {
 	if textureBody["profile_id"] != profile.ID || property["name"] != "textures" || property["value"] == "" || property["signature"] == "" {
 		t.Fatalf("textures property body mismatch: %#v", textureBody)
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/minecraft/profiles/by-name/"+profile.Name, nil)
+	req.SetPathValue("path", "by-name/"+profile.Name)
+	rec = httptest.NewRecorder()
+	h.Profiles(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profiles dispatcher by-name status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var dispatchedByName map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &dispatchedByName); err != nil {
+		t.Fatal(err)
+	}
+	if dispatchedByName["id"] != profile.ID || dispatchedByName["name"] != profile.Name {
+		t.Fatalf("profiles dispatcher by-name mismatch: %#v", dispatchedByName)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/minecraft/profiles/"+profile.ID, nil)
+	req.SetPathValue("path", profile.ID)
+	rec = httptest.NewRecorder()
+	h.Profiles(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profiles dispatcher by-id status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var dispatchedByID map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &dispatchedByID); err != nil {
+		t.Fatal(err)
+	}
+	if dispatchedByID["id"] != profile.ID || dispatchedByID["name"] != profile.Name {
+		t.Fatalf("profiles dispatcher by-id mismatch: %#v", dispatchedByID)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/minecraft/profiles/"+profile.ID+"/textures-property", nil)
+	req.SetPathValue("path", profile.ID+"/textures-property")
+	rec = httptest.NewRecorder()
+	h.Profiles(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profiles dispatcher textures status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var dispatchedTexture map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &dispatchedTexture); err != nil {
+		t.Fatal(err)
+	}
+	if dispatchedTexture["profile_id"] != profile.ID {
+		t.Fatalf("profiles dispatcher textures mismatch: %#v", dispatchedTexture)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/minecraft/profiles/", nil)
+	req.SetPathValue("path", "")
+	rec = httptest.NewRecorder()
+	h.Profiles(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"minecraft route not found\"}\n" {
+		t.Fatalf("profiles dispatcher not found mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
 
 func TestMinecraftRoutesValidateBulkBodyAndMissingProfilesExactly(t *testing.T) {
@@ -86,6 +139,37 @@ func TestMinecraftRoutesValidateBulkBodyAndMissingProfilesExactly(t *testing.T) 
 	h.ProfileByID(rec, req)
 	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"minecraft profile not found\"}\n" {
 		t.Fatalf("missing profile response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/minecraft/profiles/by-name/Missing", nil)
+	req.SetPathValue("name", "Missing")
+	rec = httptest.NewRecorder()
+	h.ProfileByName(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"minecraft profile not found\"}\n" {
+		t.Fatalf("missing profile by name mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/minecraft/profiles/missing-profile/textures-property", nil)
+	req.SetPathValue("profile_id", "missing-profile")
+	rec = httptest.NewRecorder()
+	h.TexturesProperty(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"minecraft profile not found\"}\n" {
+		t.Fatalf("missing textures property mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	names := make([]string, 101)
+	for i := range names {
+		names[i] = "Player"
+	}
+	body, err := json.Marshal(map[string]any{"names": names})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/minecraft/profiles/by-names", strings.NewReader(string(body)))
+	rec = httptest.NewRecorder()
+	h.ProfilesByNames(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"too many names\"}\n" {
+		t.Fatalf("too many bulk names mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -117,6 +201,30 @@ func TestMinecraftHasJoinedRouteUsesCurrentActorExactly(t *testing.T) {
 	profileBody := body["profile"].(map[string]any)
 	if body["joined"] != true || profileBody["id"] != profile.ID || profileBody["name"] != profile.Name {
 		t.Fatalf("has joined body mismatch: %#v", body)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/minecraft/session/has-joined", strings.NewReader(`[`))
+	req = req.WithContext(shared.WithActor(req.Context(), clientActorWith("minecraft_session.hasjoined.server")))
+	rec = httptest.NewRecorder()
+	h.HasJoined(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("has joined invalid json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/minecraft/session/has-joined", strings.NewReader(`{"username":"MinecraftJoined"}`))
+	req = req.WithContext(shared.WithActor(req.Context(), clientActorWith("minecraft_session.hasjoined.server")))
+	rec = httptest.NewRecorder()
+	h.HasJoined(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"username and server_id are required\"}\n" {
+		t.Fatalf("has joined missing fields mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/minecraft/session/has-joined", strings.NewReader(`{"username":"MinecraftJoined","server_id":"route-server"}`))
+	req = req.WithContext(shared.WithActor(req.Context(), clientActorWith()))
+	rec = httptest.NewRecorder()
+	h.HasJoined(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("has joined missing permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

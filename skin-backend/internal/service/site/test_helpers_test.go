@@ -2,6 +2,7 @@ package site_test
 
 import (
 	"errors"
+	"strings"
 
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
@@ -19,4 +20,8 @@ func newSiteService(db *database.DB, cfg config.Config) site.Site {
 func httpError(err error, status int, detail string) bool {
 	var httpErr util.HTTPError
 	return errors.As(err, &httpErr) && httpErr.Status == status && httpErr.Detail == detail
+}
+
+func closedPoolError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "closed pool")
 }

@@ -3,6 +3,7 @@ package redisstore_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -111,6 +112,99 @@ func TestMemoryStoreVerificationRateLimitAndAuthCache(t *testing.T) {
 	}
 	if _, err := store.GetAuthUser(ctx, "u1"); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("invalidated auth cache should miss, got %v", err)
+	}
+}
+
+func TestMemoryStoreOAuthAccessTokenLifecycleAndTTL(t *testing.T) {
+	store := redisstore.NewMemoryStore()
+	ctx := context.Background()
+	token := redisstore.OAuthAccessToken{
+		TokenHash:     "access-hash-1",
+		ClientID:      "client-1",
+		UserID:        "user-1",
+		GrantID:       "grant-1",
+		PermissionIDs: []int64{101, 202},
+		ExpiresAt:     5000,
+		CreatedAt:     1000,
+	}
+
+	if _, err := store.GetOAuthAccessToken(ctx, token.TokenHash); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("missing oauth access token should miss, got %v", err)
+	}
+	if err := store.SetOAuthAccessToken(ctx, token, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetOAuthAccessToken(ctx, token.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, token) {
+		t.Fatalf("oauth access token mismatch:\n got=%#v\nwant=%#v", got, token)
+	}
+	if err := store.DeleteOAuthAccessToken(ctx, token.TokenHash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetOAuthAccessToken(ctx, token.TokenHash); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("deleted oauth access token should miss, got %v", err)
+	}
+
+	if err := store.SetOAuthAccessToken(ctx, token, time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	if _, err := store.GetOAuthAccessToken(ctx, token.TokenHash); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("expired oauth access token should miss, got %v", err)
+	}
+}
+
+func TestMemoryStorePermissionCacheLifecycleAndErrors(t *testing.T) {
+	store := redisstore.NewMemoryStore()
+	ctx := context.Background()
+
+	value, found, err := store.GetPermissionCache(ctx, "subject-1")
+	if err != nil || found || value != "" {
+		t.Fatalf("missing permission cache mismatch: value=%q found=%v err=%v", value, found, err)
+	}
+	if err := store.SetPermissionCache(ctx, "subject-1", "encoded-permissions", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if store.Len() != 1 {
+		t.Fatalf("memory store length=%d, want 1", store.Len())
+	}
+	value, found, err = store.GetPermissionCache(ctx, "subject-1")
+	if err != nil || !found || value != "encoded-permissions" {
+		t.Fatalf("permission cache mismatch: value=%q found=%v err=%v", value, found, err)
+	}
+	if err := store.DeletePermissionCache(ctx, "subject-1"); err != nil {
+		t.Fatal(err)
+	}
+	value, found, err = store.GetPermissionCache(ctx, "subject-1")
+	if err != nil || found || value != "" {
+		t.Fatalf("deleted permission cache mismatch: value=%q found=%v err=%v", value, found, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, op := range []struct {
+		name string
+		run  func() error
+	}{
+		{name: "set", run: func() error { return store.SetPermissionCache(ctx, "subject-1", "x", time.Minute) }},
+		{name: "delete", run: func() error { return store.DeletePermissionCache(ctx, "subject-1") }},
+		{name: "oauth delete", run: func() error { return store.DeleteOAuthAccessToken(ctx, "access-hash-1") }},
+	} {
+		t.Run(op.name, func(t *testing.T) {
+			store.Err = errors.New("forced memory error")
+			if err := op.run(); err == nil || err.Error() != "forced memory error" {
+				t.Fatalf("%s should return forced memory error, got %v", op.name, err)
+			}
+			store.Err = nil
+		})
+	}
+	store.Err = errors.New("forced memory error")
+	if _, found, err := store.GetPermissionCache(ctx, "subject-1"); err == nil || found {
+		t.Fatalf("permission cache get should return forced error and found=false: found=%v err=%v", found, err)
 	}
 }
 
@@ -286,12 +380,47 @@ func TestMemoryStoreYggTokenLifecycleAndTrim(t *testing.T) {
 func TestMemoryStoreYggSessionTTL(t *testing.T) {
 	store := redisstore.NewMemoryStore()
 	ctx := context.Background()
+	if _, err := store.GetYggSession(ctx, "missing-server"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("missing ygg session should miss, got %v", err)
+	}
 	if err := store.SetYggSession(ctx, model.Session{ServerID: "server", AccessToken: "access", CreatedAt: 1}, time.Nanosecond); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Millisecond)
 	if _, err := store.GetYggSession(ctx, "server"); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("expired ygg session should miss, got %v", err)
+	}
+}
+
+func TestMemoryStoreYggOperationsReturnBackingErrorsExactly(t *testing.T) {
+	store := redisstore.NewMemoryStore()
+	ctx := context.Background()
+	forced := errors.New("forced ygg memory error")
+	store.Err = forced
+
+	if err := store.SetYggToken(ctx, model.Token{AccessToken: "access", UserID: "user", CreatedAt: 1}, time.Minute); !errors.Is(err, forced) {
+		t.Fatalf("SetYggToken error=%v, want forced", err)
+	}
+	if _, err := store.GetYggToken(ctx, "access"); !errors.Is(err, forced) {
+		t.Fatalf("GetYggToken error=%v, want forced", err)
+	}
+	if replaced, err := store.ReplaceYggToken(ctx, "old", model.Token{AccessToken: "new", UserID: "user", CreatedAt: 2}, time.Minute); !errors.Is(err, forced) || replaced {
+		t.Fatalf("ReplaceYggToken mismatch: replaced=%v err=%v", replaced, err)
+	}
+	if err := store.DeleteYggToken(ctx, "access"); !errors.Is(err, forced) {
+		t.Fatalf("DeleteYggToken error=%v, want forced", err)
+	}
+	if err := store.DeleteYggTokensByUser(ctx, "user"); !errors.Is(err, forced) {
+		t.Fatalf("DeleteYggTokensByUser error=%v, want forced", err)
+	}
+	if err := store.TrimYggTokensByUser(ctx, "user", 0); !errors.Is(err, forced) {
+		t.Fatalf("TrimYggTokensByUser error=%v, want forced", err)
+	}
+	if err := store.SetYggSession(ctx, model.Session{ServerID: "server"}, time.Minute); !errors.Is(err, forced) {
+		t.Fatalf("SetYggSession error=%v, want forced", err)
+	}
+	if _, err := store.GetYggSession(ctx, "server"); !errors.Is(err, forced) {
+		t.Fatalf("GetYggSession error=%v, want forced", err)
 	}
 }
 

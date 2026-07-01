@@ -16,7 +16,9 @@ import (
 	"element-skin/backend/internal/database"
 	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/httpapi"
+	oauthapi "element-skin/backend/internal/httpapi/oauth"
 	"element-skin/backend/internal/permission"
+	"element-skin/backend/internal/redisstore"
 	sitesvc "element-skin/backend/internal/service/site"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
@@ -27,8 +29,10 @@ func TestOAuthAuthorizationCodeFlowIssuesDelegatedBearerForV1API(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "oauth-flow@test.com", "Password123", "OAuthFlow", false)
+	admin := testutil.CreateUser(t, db, "oauth-flow-admin@test.com", "Password123", "OAuthFlowAdmin", true, true)
 	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	session := webCookie(t, cfg.JWTSecret, user.ID)
+	adminSession := webCookie(t, cfg.JWTSecret, admin.ID)
 
 	createRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps", map[string]any{
 		"name":         "Flow app",
@@ -54,6 +58,22 @@ func TestOAuthAuthorizationCodeFlowIssuesDelegatedBearerForV1API(t *testing.T) {
 
 	verifier := "test-verifier-abcdefghijklmnopqrstuvwxyz"
 	challenge := pkceChallenge(verifier)
+	infoReq := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id="+url.QueryEscape(clientID)+
+		"&redirect_uri="+url.QueryEscape("https://client.example/callback")+
+		"&scope="+url.QueryEscape("account.read.self")+
+		"&state=state-info&code_challenge="+url.QueryEscape(challenge)+
+		"&code_challenge_method=S256", nil)
+	infoReq.AddCookie(session)
+	infoRec := httptest.NewRecorder()
+	router.ServeHTTP(infoRec, infoReq)
+	if infoRec.Code != http.StatusOK {
+		t.Fatalf("authorize info status=%d body=%s", infoRec.Code, infoRec.Body.String())
+	}
+	info := decodeMap(t, infoRec.Body.Bytes())
+	if info["redirect_uri"] != "https://client.example/callback" || info["state"] != "state-info" ||
+		len(info["scopes"].([]any)) != 1 || info["client"].(map[string]any)["client_id"] != clientID {
+		t.Fatalf("authorize info mismatch: %#v", info)
+	}
 	authRes := doJSON(t, router, http.MethodPost, "/oauth/authorize", map[string]any{
 		"response_type":         "code",
 		"client_id":             clientID,
@@ -122,9 +142,148 @@ func TestOAuthAuthorizationCodeFlowIssuesDelegatedBearerForV1API(t *testing.T) {
 	if refreshed["access_token"] == access || refreshed["refresh_token"] == refresh || refreshed["scope"] != "account.read.self" {
 		t.Fatalf("refresh should rotate tokens and preserve scope: %#v", refreshed)
 	}
+	introspectForm := url.Values{}
+	introspectForm.Set("token", refreshed["access_token"].(string))
+	introspectRes := doForm(t, router, "/oauth/introspect", introspectForm, adminSession.Value, "")
+	if introspectRes.Code != http.StatusOK {
+		t.Fatalf("introspect status=%d body=%s", introspectRes.Code, introspectRes.Body.String())
+	}
+	introspection := decodeMap(t, introspectRes.Body.Bytes())
+	if introspection["active"] != true || introspection["client_id"] != clientID || introspection["user_id"] != user.ID ||
+		introspection["scope"] != "account.read.self" {
+		t.Fatalf("introspection mismatch: %#v", introspection)
+	}
+	revokeForm := url.Values{}
+	revokeForm.Set("client_id", clientID)
+	revokeForm.Set("client_secret", clientSecret)
+	revokeForm.Set("token", refreshed["access_token"].(string))
+	revokeRes := doForm(t, router, "/oauth/revoke", revokeForm, "", "")
+	if revokeRes.Code != http.StatusOK || revokeRes.Body.String() != "" {
+		t.Fatalf("revoke access mismatch: status=%d body=%s", revokeRes.Code, revokeRes.Body.String())
+	}
+	introspectRes = doForm(t, router, "/oauth/introspect", introspectForm, adminSession.Value, "")
+	if introspectRes.Code != http.StatusOK || introspectRes.Body.String() != "{\"active\":false}\n" {
+		t.Fatalf("inactive introspection mismatch: status=%d body=%s", introspectRes.Code, introspectRes.Body.String())
+	}
 	reuseRes := doForm(t, router, "/oauth/token", refreshForm, "", "")
 	if reuseRes.Code != http.StatusBadRequest || !strings.Contains(reuseRes.Body.String(), "invalid refresh_token") {
 		t.Fatalf("refresh reuse mismatch: status=%d body=%s", reuseRes.Code, reuseRes.Body.String())
+	}
+	grantsRes := doJSON(t, router, http.MethodGet, "/v1/oauth/grants?limit=10", nil, session, "")
+	if grantsRes.Code != http.StatusOK {
+		t.Fatalf("grant list status=%d body=%s", grantsRes.Code, grantsRes.Body.String())
+	}
+	grants := decodeMap(t, grantsRes.Body.Bytes())["items"].([]any)
+	if len(grants) != 1 || grants[0].(map[string]any)["client_id"] != clientID ||
+		grants[0].(map[string]any)["status"] != "active" {
+		t.Fatalf("grant list mismatch: %#v", grants)
+	}
+	grantPermissions := grants[0].(map[string]any)["permissions"].([]any)
+	if len(grantPermissions) != 1 || grantPermissions[0] != "account.read.self" {
+		t.Fatalf("grant permission list mismatch: %#v", grantPermissions)
+	}
+	grantID := grants[0].(map[string]any)["id"].(string)
+	revokeGrantRes := doJSON(t, router, http.MethodDelete, "/v1/oauth/grants/"+grantID, nil, session, "")
+	if revokeGrantRes.Code != http.StatusOK || revokeGrantRes.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("revoke grant mismatch: status=%d body=%s", revokeGrantRes.Code, revokeGrantRes.Body.String())
+	}
+	revokeGrantAgainRes := doJSON(t, router, http.MethodDelete, "/v1/oauth/grants/"+grantID, nil, session, "")
+	if revokeGrantAgainRes.Code != http.StatusNotFound || !strings.Contains(revokeGrantAgainRes.Body.String(), "oauth grant not found") {
+		t.Fatalf("revoke grant replay mismatch: status=%d body=%s", revokeGrantAgainRes.Code, revokeGrantAgainRes.Body.String())
+	}
+}
+
+func TestOAuthAppManagementRoutesCoverReviewSecretListsAndDelete(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	cfg := testutil.TestConfig()
+	owner := testutil.CreateUser(t, db, "oauth-app-owner@test.com", "Password123", "OAuthAppOwner", false)
+	admin := testutil.CreateUser(t, db, "oauth-app-admin@test.com", "Password123", "OAuthAppAdmin", true, true)
+	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	ownerSession := webCookie(t, cfg.JWTSecret, owner.ID)
+	adminSession := webCookie(t, cfg.JWTSecret, admin.ID)
+
+	createRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps", map[string]any{
+		"name":         "Route managed app",
+		"description":  "Route app description",
+		"redirect_uri": "https://route.example/callback",
+		"website_url":  "https://route.example",
+		"client_type":  "confidential",
+		"permissions":  []string{"account.read.self", "account.update.self"},
+	}, ownerSession, "")
+	if createRes.Code != http.StatusCreated {
+		t.Fatalf("create app status=%d body=%s", createRes.Code, createRes.Body.String())
+	}
+	app := decodeMap(t, createRes.Body.Bytes())
+	clientID := app["client_id"].(string)
+	firstSecret := app["client_secret"].(string)
+	if clientID == "" || firstSecret == "" || app["status"] != "pending" {
+		t.Fatalf("created app mismatch: %#v", app)
+	}
+
+	listRes := doJSON(t, router, http.MethodGet, "/v1/oauth/apps?limit=5", nil, ownerSession, "")
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("list apps status=%d body=%s", listRes.Code, listRes.Body.String())
+	}
+	list := decodeMap(t, listRes.Body.Bytes())["items"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["client_id"] != clientID {
+		t.Fatalf("owned app list mismatch: %#v", list)
+	}
+	getRes := doJSON(t, router, http.MethodGet, "/v1/oauth/apps/"+clientID, nil, ownerSession, "")
+	if getRes.Code != http.StatusOK {
+		t.Fatalf("get app status=%d body=%s", getRes.Code, getRes.Body.String())
+	}
+	got := decodeMap(t, getRes.Body.Bytes())
+	if got["client_id"] != clientID || got["name"] != "Route managed app" {
+		t.Fatalf("get app mismatch: %#v", got)
+	}
+	updateRes := doJSON(t, router, http.MethodPatch, "/v1/oauth/apps/"+clientID, map[string]any{
+		"name":         "Route managed app updated",
+		"description":  "Updated route description",
+		"redirect_uri": "https://route.example/new-callback",
+		"website_url":  "https://route.example/docs",
+		"client_type":  "confidential",
+		"permissions":  []string{"account.read.self"},
+		"status":       "active",
+	}, ownerSession, "")
+	if updateRes.Code != http.StatusOK {
+		t.Fatalf("update app status=%d body=%s", updateRes.Code, updateRes.Body.String())
+	}
+	updated := decodeMap(t, updateRes.Body.Bytes())
+	if updated["name"] != "Route managed app updated" || updated["status"] != "pending" ||
+		updated["redirect_uri"] != "https://route.example/new-callback" {
+		t.Fatalf("owner update app mismatch: %#v", updated)
+	}
+	submitRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps/"+clientID+"/review-submission", nil, ownerSession, "")
+	if submitRes.Code != http.StatusOK || decodeMap(t, submitRes.Body.Bytes())["status"] != "pending" {
+		t.Fatalf("submit app mismatch: status=%d body=%s", submitRes.Code, submitRes.Body.String())
+	}
+	adminListRes := doJSON(t, router, http.MethodGet, "/v1/admin/oauth/apps?status=pending&limit=10", nil, adminSession, "")
+	if adminListRes.Code != http.StatusOK {
+		t.Fatalf("admin list status=%d body=%s", adminListRes.Code, adminListRes.Body.String())
+	}
+	adminItems := decodeMap(t, adminListRes.Body.Bytes())["items"].([]any)
+	if len(adminItems) != 1 || adminItems[0].(map[string]any)["client_id"] != clientID {
+		t.Fatalf("admin pending list mismatch: %#v", adminItems)
+	}
+	reviewRes := doJSON(t, router, http.MethodPatch, "/v1/admin/oauth/apps/"+clientID+"/review", map[string]any{"status": "active"}, adminSession, "")
+	if reviewRes.Code != http.StatusOK || decodeMap(t, reviewRes.Body.Bytes())["status"] != "active" {
+		t.Fatalf("review app mismatch: status=%d body=%s", reviewRes.Code, reviewRes.Body.String())
+	}
+	secretRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps/"+clientID+"/secret", nil, ownerSession, "")
+	if secretRes.Code != http.StatusOK {
+		t.Fatalf("rotate secret status=%d body=%s", secretRes.Code, secretRes.Body.String())
+	}
+	rotated := decodeMap(t, secretRes.Body.Bytes())
+	if rotated["client_secret"] == "" || rotated["client_secret"] == firstSecret || rotated["status"] != "active" {
+		t.Fatalf("rotated secret mismatch: %#v", rotated)
+	}
+	deleteRes := doJSON(t, router, http.MethodDelete, "/v1/oauth/apps/"+clientID, nil, ownerSession, "")
+	if deleteRes.Code != http.StatusOK || deleteRes.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("delete app mismatch: status=%d body=%s", deleteRes.Code, deleteRes.Body.String())
+	}
+	missingRes := doJSON(t, router, http.MethodGet, "/v1/oauth/apps/"+clientID, nil, ownerSession, "")
+	if missingRes.Code != http.StatusNotFound || !strings.Contains(missingRes.Body.String(), "oauth client not found") {
+		t.Fatalf("deleted get mismatch: status=%d body=%s", missingRes.Code, missingRes.Body.String())
 	}
 }
 
@@ -159,6 +318,16 @@ func TestOAuthClientCredentialsTokenWorksForMinecraftOnly(t *testing.T) {
 	grants := stringSet(metadata["grant_types_supported"].([]any))
 	if !grants["authorization_code"] || !grants["refresh_token"] || !grants["client_credentials"] {
 		t.Fatalf("metadata grant types mismatch: %#v", grants)
+	}
+	protectedRes := doJSON(t, router, http.MethodGet, "/.well-known/oauth-protected-resource", nil, nil, "")
+	if protectedRes.Code != http.StatusOK {
+		t.Fatalf("protected resource metadata status=%d body=%s", protectedRes.Code, protectedRes.Body.String())
+	}
+	protected := decodeMap(t, protectedRes.Body.Bytes())
+	if protected["resource"] != "http://localhost:8000/v1" ||
+		len(protected["authorization_servers"].([]any)) != 1 ||
+		protected["authorization_servers"].([]any)[0] != "http://localhost:8000" {
+		t.Fatalf("protected resource metadata mismatch: %#v", protected)
 	}
 
 	createRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps", map[string]any{
@@ -197,6 +366,18 @@ func TestOAuthClientCredentialsTokenWorksForMinecraftOnly(t *testing.T) {
 	access := token["access_token"].(string)
 	if access == "" || token["refresh_token"] != nil || token["scope"] != "minecraft_session.hasjoined.server" {
 		t.Fatalf("client credentials token response mismatch: %#v", token)
+	}
+	basicForm := url.Values{}
+	basicForm.Set("grant_type", "client_credentials")
+	basicForm.Set("scope", "minecraft_session.hasjoined.server")
+	basicTokenRes := doFormBasic(t, router, "/oauth/token", basicForm, clientID, clientSecret)
+	if basicTokenRes.Code != http.StatusOK {
+		t.Fatalf("basic client credentials token status=%d body=%s", basicTokenRes.Code, basicTokenRes.Body.String())
+	}
+	basicToken := decodeMap(t, basicTokenRes.Body.Bytes())
+	if basicToken["access_token"] == "" || basicToken["scope"] != "minecraft_session.hasjoined.server" ||
+		basicToken["refresh_token"] != nil {
+		t.Fatalf("basic client credentials token mismatch: %#v", basicToken)
 	}
 
 	meRes := doJSON(t, router, http.MethodGet, "/v1/users/me", nil, nil, access)
@@ -335,6 +516,137 @@ func TestOAuthClientPermissionRoutesManageClientSubjectExactly(t *testing.T) {
 	}
 }
 
+func TestOAuthRoutesRejectMalformedInputsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	cfg := testutil.TestConfig()
+	adminUser := testutil.CreateUser(t, db, "oauth-route-errors-admin@test.com", "Password123", "OAuthRouteErrorsAdmin", true, true)
+	user := testutil.CreateUser(t, db, "oauth-route-errors-user@test.com", "Password123", "OAuthRouteErrorsUser", false)
+	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	adminSession := webCookie(t, cfg.JWTSecret, adminUser.ID)
+	userSession := webCookie(t, cfg.JWTSecret, user.ID)
+
+	createRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps", map[string]any{
+		"name":         "Malformed route app",
+		"redirect_uri": "https://malformed.example/callback",
+		"client_type":  "confidential",
+		"permissions":  []string{"account.read.self"},
+	}, userSession, "")
+	if createRes.Code != http.StatusCreated {
+		t.Fatalf("create route error app status=%d body=%s", createRes.Code, createRes.Body.String())
+	}
+	clientID := decodeMap(t, createRes.Body.Bytes())["client_id"].(string)
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+		cookie *http.Cookie
+	}{
+		{name: "create app", method: http.MethodPost, path: "/v1/oauth/apps", cookie: userSession},
+		{name: "update app", method: http.MethodPatch, path: "/v1/oauth/apps/" + clientID, cookie: userSession},
+		{name: "review app", method: http.MethodPatch, path: "/v1/admin/oauth/apps/" + clientID + "/review", cookie: adminSession},
+		{name: "permission override", method: http.MethodPut, path: "/v1/oauth/apps/" + clientID + "/permissions/account.read.self", cookie: adminSession},
+		{name: "authorize", method: http.MethodPost, path: "/oauth/authorize", cookie: userSession},
+		{name: "device decision", method: http.MethodPost, path: "/oauth/device", cookie: userSession},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := doRaw(t, router, tc.method, tc.path, "{bad", "application/json", tc.cookie, "")
+			if res.Code != http.StatusBadRequest || res.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+				t.Fatalf("%s invalid json mismatch: status=%d body=%s", tc.name, res.Code, res.Body.String())
+			}
+		})
+	}
+
+	reviewRes := doJSON(t, router, http.MethodPatch, "/v1/admin/oauth/apps/"+clientID+"/review", map[string]any{"status": "pending"}, adminSession, "")
+	if reviewRes.Code != http.StatusBadRequest || reviewRes.Body.String() != "{\"detail\":\"invalid status\"}\n" {
+		t.Fatalf("invalid review status mismatch: status=%d body=%s", reviewRes.Code, reviewRes.Body.String())
+	}
+	grantRes := doJSON(t, router, http.MethodPut, "/v1/oauth/apps/"+clientID+"/permissions/nope.nope.nope", map[string]any{"effect": "allow"}, adminSession, "")
+	if grantRes.Code != http.StatusBadRequest || grantRes.Body.String() != "{\"detail\":\"invalid permission\"}\n" {
+		t.Fatalf("invalid client permission mismatch: status=%d body=%s", grantRes.Code, grantRes.Body.String())
+	}
+	clearRes := doJSON(t, router, http.MethodDelete, "/v1/oauth/apps/"+clientID+"/permissions/nope.nope.nope", nil, adminSession, "")
+	if clearRes.Code != http.StatusBadRequest || clearRes.Body.String() != "{\"detail\":\"invalid permission\"}\n" {
+		t.Fatalf("clear invalid client permission mismatch: status=%d body=%s", clearRes.Code, clearRes.Body.String())
+	}
+
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{name: "device code", path: "/oauth/device/code"},
+		{name: "token", path: "/oauth/token"},
+		{name: "revoke", path: "/oauth/revoke"},
+		{name: "introspect", path: "/oauth/introspect"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := doRaw(t, router, http.MethodPost, tc.path, "%zz", "application/x-www-form-urlencoded", adminSession, "")
+			if res.Code != http.StatusBadRequest || res.Body.String() != "{\"detail\":\"invalid form\"}\n" {
+				t.Fatalf("%s invalid form mismatch: status=%d body=%s", tc.name, res.Code, res.Body.String())
+			}
+		})
+	}
+}
+
+func TestOAuthHandlerForwardsServiceErrorsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	cfg := testutil.TestConfig()
+	cfg.APIURL = ""
+	cfg.SiteURL = "https://skin.example"
+	handler := oauthapi.New(cfg, db, redisstore.NewMemoryStore(), nil)
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+		status int
+		body   string
+		call   func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "list apps", method: http.MethodGet, path: "/v1/oauth/apps", status: http.StatusForbidden, body: "{\"detail\":\"permission denied\"}\n", call: handler.ListApps},
+		{name: "admin list apps", method: http.MethodGet, path: "/v1/admin/oauth/apps", status: http.StatusForbidden, body: "{\"detail\":\"permission denied\"}\n", call: handler.ListAdminApps},
+		{name: "submit review", method: http.MethodPost, path: "/v1/oauth/apps/missing/review-submission", status: http.StatusNotFound, body: "{\"detail\":\"oauth client not found\"}\n", call: func(rec http.ResponseWriter, req *http.Request) {
+			req.SetPathValue("client_id", "missing")
+			handler.SubmitAppReview(rec, req)
+		}},
+		{name: "rotate secret", method: http.MethodPost, path: "/v1/oauth/apps/missing/secret", status: http.StatusNotFound, body: "{\"detail\":\"oauth client not found\"}\n", call: func(rec http.ResponseWriter, req *http.Request) {
+			req.SetPathValue("client_id", "missing")
+			handler.RotateSecret(rec, req)
+		}},
+		{name: "delete app", method: http.MethodDelete, path: "/v1/oauth/apps/missing", status: http.StatusNotFound, body: "{\"detail\":\"oauth client not found\"}\n", call: func(rec http.ResponseWriter, req *http.Request) {
+			req.SetPathValue("client_id", "missing")
+			handler.DeleteApp(rec, req)
+		}},
+		{name: "client permissions", method: http.MethodGet, path: "/v1/oauth/apps/missing/permissions", status: http.StatusForbidden, body: "{\"detail\":\"permission denied\"}\n", call: func(rec http.ResponseWriter, req *http.Request) {
+			req.SetPathValue("client_id", "missing")
+			handler.ClientPermissions(rec, req)
+		}},
+		{name: "list grants", method: http.MethodGet, path: "/v1/oauth/grants", status: http.StatusForbidden, body: "{\"detail\":\"permission denied\"}\n", call: handler.ListGrants},
+		{name: "authorize info", method: http.MethodGet, path: "/oauth/authorize", status: http.StatusBadRequest, body: "{\"detail\":\"response_type must be code\"}\n", call: handler.AuthorizeInfo},
+		{name: "device info", method: http.MethodGet, path: "/oauth/device?user_code=missing", status: http.StatusForbidden, body: "{\"detail\":\"permission denied\"}\n", call: handler.DeviceInfo},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != tc.status || rec.Body.String() != tc.body {
+				t.Fatalf("%s service error mismatch: status=%d body=%s", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ProtectedResourceMetadata(rec, httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("site-url protected metadata status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	protected := decodeMap(t, rec.Body.Bytes())
+	if protected["resource"] != "https://skin.example/v1" ||
+		protected["authorization_servers"].([]any)[0] != "https://skin.example" {
+		t.Fatalf("site-url protected metadata mismatch: %#v", protected)
+	}
+}
+
 func webCookie(t *testing.T, secret, userID string) *http.Cookie {
 	t.Helper()
 	token, err := util.CreateAccessToken(secret, userID, time.Hour)
@@ -376,6 +688,23 @@ func doJSON(t *testing.T, router http.Handler, method, path string, body any, co
 	return rec
 }
 
+func doRaw(t *testing.T, router http.Handler, method, path, body, contentType string, cookie *http.Cookie, bearer string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
 func doForm(t *testing.T, router http.Handler, path string, form url.Values, cookieValue, bearer string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
@@ -386,6 +715,16 @@ func doForm(t *testing.T, router http.Handler, path string, form url.Values, coo
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+func doFormBasic(t *testing.T, router http.Handler, path string, form url.Values, username, password string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(username, password)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec

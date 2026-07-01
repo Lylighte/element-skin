@@ -300,6 +300,139 @@ func TestTextureRoutesRejectInvalidInputsWithExactErrors(t *testing.T) {
 	}
 }
 
+func TestTextureRoutesRejectMissingFineGrainedPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	user := testutil.CreateUser(t, db, "site-texture-permissions@test.com", "Password123", "SiteTexturePermissions", false)
+
+	cases := []struct {
+		name        string
+		permission  string
+		makeRequest func() *http.Request
+		call        func(http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:       "list requires read",
+			permission: "texture.read.owned",
+			makeRequest: func() *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/v1/users/me/textures", nil)
+			},
+			call: h.ListMyTextures,
+		},
+		{
+			name:       "upload requires create",
+			permission: "texture.create.owned",
+			makeRequest: func() *http.Request {
+				return textureMultipartRequest(t, "/v1/users/me/textures", map[string]string{"texture_type": "skin"}, "file", "skin.png", routePNG(t, 64, 64))
+			},
+			call: h.UploadMyTexture,
+		},
+		{
+			name:       "upload apply requires create",
+			permission: "texture.create.owned",
+			makeRequest: func() *http.Request {
+				return textureMultipartRequest(t, "/v1/users/me/textures/upload-and-apply", map[string]string{"uuid": "profile-id", "texture_type": "skin"}, "file", "skin.png", routePNG(t, 64, 64))
+			},
+			call: h.UploadAndApplyTexture,
+		},
+		{
+			name:       "upload apply requires apply",
+			permission: "texture.apply.owned",
+			makeRequest: func() *http.Request {
+				return textureMultipartRequest(t, "/v1/users/me/textures/upload-and-apply", map[string]string{"uuid": "profile-id", "texture_type": "skin"}, "file", "skin.png", routePNG(t, 64, 64))
+			},
+			call: h.UploadAndApplyTexture,
+		},
+		{
+			name:       "detail requires read",
+			permission: "texture.read.owned",
+			makeRequest: func() *http.Request {
+				req := httptest.NewRequest(http.MethodGet, "/v1/users/me/textures/hash/skin", nil)
+				req.SetPathValue("hash", "hash")
+				req.SetPathValue("texture_type", "skin")
+				return req
+			},
+			call: h.TextureDetail,
+		},
+		{
+			name:       "update note requires metadata",
+			permission: "texture.update_metadata.owned",
+			makeRequest: func() *http.Request {
+				req := httptest.NewRequest(http.MethodPatch, "/v1/users/me/textures/hash/skin", strings.NewReader(`{"note":"blocked"}`))
+				req.SetPathValue("hash", "hash")
+				req.SetPathValue("texture_type", "skin")
+				return req
+			},
+			call: h.UpdateTexture,
+		},
+		{
+			name:       "update model requires metadata",
+			permission: "texture.update_metadata.owned",
+			makeRequest: func() *http.Request {
+				req := httptest.NewRequest(http.MethodPatch, "/v1/users/me/textures/hash/skin", strings.NewReader(`{"model":"slim"}`))
+				req.SetPathValue("hash", "hash")
+				req.SetPathValue("texture_type", "skin")
+				return req
+			},
+			call: h.UpdateTexture,
+		},
+		{
+			name:       "update visibility requires visibility",
+			permission: "texture.update_visibility.owned",
+			makeRequest: func() *http.Request {
+				req := httptest.NewRequest(http.MethodPatch, "/v1/users/me/textures/hash/skin", strings.NewReader(`{"is_public":true}`))
+				req.SetPathValue("hash", "hash")
+				req.SetPathValue("texture_type", "skin")
+				return req
+			},
+			call: h.UpdateTexture,
+		},
+		{
+			name:       "delete requires delete",
+			permission: "texture.delete.owned",
+			makeRequest: func() *http.Request {
+				req := httptest.NewRequest(http.MethodDelete, "/v1/users/me/textures/hash/skin", nil)
+				req.SetPathValue("hash", "hash")
+				req.SetPathValue("texture_type", "skin")
+				return req
+			},
+			call: h.DeleteTexture,
+		},
+		{
+			name:       "wardrobe add requires wardrobe entry add",
+			permission: "wardrobe_entry.add.owned",
+			makeRequest: func() *http.Request {
+				req := httptest.NewRequest(http.MethodPost, "/v1/users/me/textures/hash/wardrobe?texture_type=skin", nil)
+				req.SetPathValue("hash", "hash")
+				return req
+			},
+			call: h.AddTexture,
+		},
+		{
+			name:       "apply requires apply",
+			permission: "texture.apply.owned",
+			makeRequest: func() *http.Request {
+				req := httptest.NewRequest(http.MethodPost, "/v1/users/me/textures/hash/apply", strings.NewReader(`{"profile_id":"profile","texture_type":"skin"}`))
+				req.SetPathValue("hash", "hash")
+				return req
+			},
+			call: h.ApplyTexture,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withUserActorWithoutPermission(tc.makeRequest(), user.ID, tc.permission)
+			rec := httptest.NewRecorder()
+			tc.call(rec, req)
+			if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("permission denial mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestTextureRoutesRejectMalformedUploadsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()

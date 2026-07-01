@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	permissiondb "element-skin/backend/internal/database/permission"
@@ -16,6 +17,7 @@ func TestClientLifecyclePreservesExactFieldsAndPermissions(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 	user := testutil.CreateUser(t, db, "oauth-client@test.com", "pw", "OAuthClient", false)
+	other := testutil.CreateUser(t, db, "oauth-client-other@test.com", "pw", "OAuthClientOther", false)
 	initialPermissions := permissionIDs("profile.read.owned", "texture.read.owned")
 	updatedPermissions := permissionIDs("profile.read.owned", "notice.read.owned")
 
@@ -67,6 +69,62 @@ func TestClientLifecyclePreservesExactFieldsAndPermissions(t *testing.T) {
 	if !reflect.DeepEqual(list, []model.OAuthClient{client}) {
 		t.Fatalf("list clients mismatch:\n got=%#v\nwant=%#v", list, []model.OAuthClient{client})
 	}
+	otherClient := model.OAuthClient{
+		ID:          "client-2",
+		OwnerUserID: other.ID,
+		Name:        "Second client",
+		RedirectURI: "https://second.example/callback",
+		ClientType:  "public",
+		Status:      "pending",
+		CreatedAt:   1500,
+		UpdatedAt:   1500,
+	}
+	if err := db.OAuth.CreateClient(ctx, otherClient, []int64{}); err != nil {
+		t.Fatal(err)
+	}
+	allClients, err := db.OAuth.ListClients(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(allClients, []model.OAuthClient{otherClient, client}) {
+		t.Fatalf("all client order mismatch:\n got=%#v\nwant=%#v", allClients, []model.OAuthClient{otherClient, client})
+	}
+	limitedClients, err := db.OAuth.ListClients(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(limitedClients, []model.OAuthClient{otherClient}) {
+		t.Fatalf("limited client order mismatch:\n got=%#v\nwant=%#v", limitedClients, []model.OAuthClient{otherClient})
+	}
+	pendingClients, err := db.OAuth.ListClientsByStatus(ctx, "pending", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(pendingClients, []model.OAuthClient{otherClient}) {
+		t.Fatalf("pending client list mismatch:\n got=%#v\nwant=%#v", pendingClients, []model.OAuthClient{otherClient})
+	}
+	allByStatus, err := db.OAuth.ListClientsByStatus(ctx, "all", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(allByStatus, allClients) {
+		t.Fatalf("status=all client list mismatch:\n got=%#v\nwant=%#v", allByStatus, allClients)
+	}
+	if updated, err := db.OAuth.UpdateClientStatus(ctx, otherClient.ID, "disabled", 1600); err != nil || !updated {
+		t.Fatalf("UpdateClientStatus should update pending client: updated=%v err=%v", updated, err)
+	}
+	otherClient.Status = "disabled"
+	otherClient.UpdatedAt = 1600
+	gotOther, err := db.OAuth.GetClient(ctx, otherClient.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotOther, &otherClient) {
+		t.Fatalf("updated status client mismatch:\n got=%#v\nwant=%#v", gotOther, &otherClient)
+	}
+	if updated, err := db.OAuth.UpdateClientStatus(ctx, "missing-client", "active", 1700); err != nil || updated {
+		t.Fatalf("UpdateClientStatus should miss unknown client: updated=%v err=%v", updated, err)
+	}
 
 	client.Name = "Updated client"
 	client.Description = "Updated description"
@@ -96,6 +154,27 @@ func TestClientLifecyclePreservesExactFieldsAndPermissions(t *testing.T) {
 	if !reflect.DeepEqual(gotPermissions, updatedPermissions) {
 		t.Fatalf("updated permissions=%v want=%v", gotPermissions, updatedPermissions)
 	}
+	missingPermissions, err := db.OAuth.ClientPermissionIDs(ctx, "missing-client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missingPermissions) != 0 {
+		t.Fatalf("missing client permissions should be empty: %v", missingPermissions)
+	}
+	emptyOwnerList, err := db.OAuth.ListClientsByOwner(ctx, "missing-owner", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(emptyOwnerList) != 0 {
+		t.Fatalf("missing owner client list should be empty: %#v", emptyOwnerList)
+	}
+	emptyStatusList, err := db.OAuth.ListClientsByStatus(ctx, "active", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(emptyStatusList) != 0 {
+		t.Fatalf("zero-limit active client list should be empty: %#v", emptyStatusList)
+	}
 
 	rotated, err := db.OAuth.RotateClientSecret(ctx, client.ID, "secret-hash-2", 3000)
 	if err != nil {
@@ -111,6 +190,14 @@ func TestClientLifecyclePreservesExactFieldsAndPermissions(t *testing.T) {
 	if got.SecretHash != "secret-hash-2" || got.UpdatedAt != 3000 {
 		t.Fatalf("rotated secret fields mismatch: secret=%q updated_at=%d", got.SecretHash, got.UpdatedAt)
 	}
+	if rotated, err := db.OAuth.RotateClientSecret(ctx, "missing-client", "secret-hash-3", 3100); err != nil || rotated {
+		t.Fatalf("RotateClientSecret should miss unknown client: rotated=%v err=%v", rotated, err)
+	}
+	missingUpdate := client
+	missingUpdate.ID = "missing-client"
+	if updated, err := db.OAuth.UpdateClient(ctx, missingUpdate, updatedPermissions); err != nil || updated {
+		t.Fatalf("UpdateClient should miss unknown client: updated=%v err=%v", updated, err)
+	}
 	if deleted, err := db.OAuth.DeleteClient(ctx, client.ID, "other-user"); err != nil || deleted {
 		t.Fatalf("DeleteClient with owner mismatch should be false: deleted=%v err=%v", deleted, err)
 	}
@@ -119,6 +206,170 @@ func TestClientLifecyclePreservesExactFieldsAndPermissions(t *testing.T) {
 	}
 	if got, err = db.OAuth.GetClient(ctx, client.ID); err != nil || got != nil {
 		t.Fatalf("deleted client should be nil: client=%#v err=%v", got, err)
+	}
+	if deleted, err := db.OAuth.DeleteClient(ctx, otherClient.ID, ""); err != nil || !deleted {
+		t.Fatalf("admin DeleteClient should delete by empty owner: deleted=%v err=%v", deleted, err)
+	}
+}
+
+func TestStoreClosedPoolReturnsExactDependencyErrorsForEveryOAuthTable(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	client := model.OAuthClient{
+		ID:          "closed-client",
+		OwnerUserID: "closed-owner",
+		Name:        "Closed client",
+		RedirectURI: "https://closed.example/callback",
+		ClientType:  "confidential",
+		SecretHash:  "secret",
+		Status:      "active",
+		CreatedAt:   1000,
+		UpdatedAt:   1000,
+	}
+	refresh := model.OAuthToken{
+		TokenHash: "closed-refresh-new",
+		ClientID:  client.ID,
+		UserID:    "closed-user",
+		GrantID:   "closed-grant",
+		ExpiresAt: 2000,
+		CreatedAt: 1000,
+	}
+	device := model.OAuthDeviceCode{
+		DeviceCodeHash: "closed-device",
+		UserCodeHash:   "closed-user-code",
+		ClientID:       client.ID,
+		Status:         "pending",
+		ExpiresAt:      2000,
+		CreatedAt:      1000,
+	}
+	code := model.OAuthAuthorizationCode{
+		CodeHash:            "closed-code",
+		ClientID:            client.ID,
+		UserID:              "closed-user",
+		GrantID:             "closed-grant",
+		RedirectURI:         client.RedirectURI,
+		CodeChallenge:       "challenge",
+		CodeChallengeMethod: "S256",
+		ExpiresAt:           2000,
+		CreatedAt:           1000,
+	}
+	grant := model.OAuthGrant{
+		ID:        "closed-grant",
+		UserID:    "closed-user",
+		SubjectID: "user:closed-user",
+		ClientID:  client.ID,
+		Status:    "active",
+		CreatedAt: 1000,
+	}
+	db.Close()
+
+	checks := []struct {
+		name string
+		call func() error
+	}{
+		{name: "create client", call: func() error { return db.OAuth.CreateClient(ctx, client, permissionIDs("account.read.self")) }},
+		{name: "update client", call: func() error {
+			_, err := db.OAuth.UpdateClient(ctx, client, permissionIDs("account.read.self"))
+			return err
+		}},
+		{name: "rotate client secret", call: func() error {
+			_, err := db.OAuth.RotateClientSecret(ctx, client.ID, "new-secret", 2000)
+			return err
+		}},
+		{name: "delete client", call: func() error {
+			_, err := db.OAuth.DeleteClient(ctx, client.ID, "")
+			return err
+		}},
+		{name: "get client", call: func() error {
+			_, err := db.OAuth.GetClient(ctx, client.ID)
+			return err
+		}},
+		{name: "list owner clients", call: func() error {
+			_, err := db.OAuth.ListClientsByOwner(ctx, client.OwnerUserID, 10)
+			return err
+		}},
+		{name: "list clients", call: func() error {
+			_, err := db.OAuth.ListClients(ctx, 10)
+			return err
+		}},
+		{name: "list clients by status", call: func() error {
+			_, err := db.OAuth.ListClientsByStatus(ctx, "active", 10)
+			return err
+		}},
+		{name: "update client status", call: func() error {
+			_, err := db.OAuth.UpdateClientStatus(ctx, client.ID, "disabled", 2000)
+			return err
+		}},
+		{name: "client permission ids", call: func() error {
+			_, err := db.OAuth.ClientPermissionIDs(ctx, client.ID)
+			return err
+		}},
+		{name: "create grant", call: func() error { return db.OAuth.CreateGrant(ctx, grant, permissionIDs("account.read.self")) }},
+		{name: "revoke grant", call: func() error {
+			_, err := db.OAuth.RevokeGrant(ctx, grant.ID, grant.UserID, 2000)
+			return err
+		}},
+		{name: "list grants", call: func() error {
+			_, err := db.OAuth.ListGrantsByUser(ctx, grant.UserID, 10)
+			return err
+		}},
+		{name: "grant permission ids", call: func() error {
+			_, err := db.OAuth.GrantPermissionIDs(ctx, grant.ID)
+			return err
+		}},
+		{name: "create authorization code", call: func() error {
+			return db.OAuth.CreateAuthorizationCode(ctx, code, permissionIDs("account.read.self"))
+		}},
+		{name: "consume authorization code", call: func() error {
+			_, _, err := db.OAuth.ConsumeAuthorizationCode(ctx, code.CodeHash, 1500)
+			return err
+		}},
+		{name: "create refresh token", call: func() error { return db.OAuth.CreateRefreshToken(ctx, refresh) }},
+		{name: "get refresh token", call: func() error {
+			_, err := db.OAuth.GetRefreshToken(ctx, refresh.TokenHash)
+			return err
+		}},
+		{name: "revoke refresh token", call: func() error {
+			_, err := db.OAuth.RevokeRefreshToken(ctx, refresh.TokenHash, 1500)
+			return err
+		}},
+		{name: "rotate refresh token", call: func() error {
+			_, err := db.OAuth.RotateRefreshToken(ctx, refresh.TokenHash, refresh, 1500)
+			return err
+		}},
+		{name: "create device code", call: func() error {
+			return db.OAuth.CreateDeviceCode(ctx, device, permissionIDs("account.read.self"))
+		}},
+		{name: "get device by user code", call: func() error {
+			_, _, err := db.OAuth.GetDeviceCodeByUserCodeHash(ctx, device.UserCodeHash)
+			return err
+		}},
+		{name: "get device by device code", call: func() error {
+			_, _, err := db.OAuth.GetDeviceCodeByDeviceCodeHash(ctx, device.DeviceCodeHash)
+			return err
+		}},
+		{name: "approve device code", call: func() error {
+			_, err := db.OAuth.ApproveDeviceCode(ctx, device.UserCodeHash, "closed-user", "user:closed-user", 1500)
+			return err
+		}},
+		{name: "deny device code", call: func() error {
+			_, err := db.OAuth.DenyDeviceCode(ctx, device.UserCodeHash, 1500)
+			return err
+		}},
+		{name: "mark device polled", call: func() error {
+			return db.OAuth.MarkDeviceCodePolled(ctx, device.DeviceCodeHash, 1500)
+		}},
+		{name: "consume approved device code", call: func() error {
+			_, _, err := db.OAuth.ConsumeApprovedDeviceCode(ctx, device.DeviceCodeHash, 1500)
+			return err
+		}},
+	}
+	for _, tc := range checks {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); err == nil || !strings.Contains(err.Error(), "closed pool") {
+				t.Fatalf("%s error mismatch: %v", tc.name, err)
+			}
+		})
 	}
 }
 
@@ -165,6 +416,9 @@ func TestDeviceCodeLifecyclePreservesExactFieldsPermissionsAndStates(t *testing.
 	if ok, err := db.OAuth.ApproveDeviceCode(ctx, code.UserCodeHash, user.ID, subjectID, 1200); err != nil || !ok {
 		t.Fatalf("ApproveDeviceCode should approve pending code: ok=%v err=%v", ok, err)
 	}
+	if ok, err := db.OAuth.ApproveDeviceCode(ctx, code.UserCodeHash, user.ID, subjectID, 1250); err != nil || ok {
+		t.Fatalf("ApproveDeviceCode should reject non-pending code: ok=%v err=%v", ok, err)
+	}
 	got, _, err = db.OAuth.GetDeviceCodeByDeviceCodeHash(ctx, code.DeviceCodeHash)
 	if err != nil {
 		t.Fatal(err)
@@ -177,6 +431,18 @@ func TestDeviceCodeLifecyclePreservesExactFieldsPermissionsAndStates(t *testing.
 	wantApproved.ApprovedAt = &approvedAt
 	if !reflect.DeepEqual(got, &wantApproved) {
 		t.Fatalf("approved device code mismatch:\n got=%#v\nwant=%#v", got, &wantApproved)
+	}
+	if err := db.OAuth.MarkDeviceCodePolled(ctx, code.DeviceCodeHash, 1260); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err = db.OAuth.GetDeviceCodeByDeviceCodeHash(ctx, code.DeviceCodeHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastPolledAt := int64(1260)
+	wantApproved.LastPolledAt = &lastPolledAt
+	if !reflect.DeepEqual(got, &wantApproved) {
+		t.Fatalf("polled device code mismatch:\n got=%#v\nwant=%#v", got, &wantApproved)
 	}
 	consumed, consumedPermissions, err := db.OAuth.ConsumeApprovedDeviceCode(ctx, code.DeviceCodeHash, 1300)
 	if err != nil {
@@ -209,6 +475,9 @@ func TestDeviceCodeLifecyclePreservesExactFieldsPermissionsAndStates(t *testing.
 	if ok, err := db.OAuth.DenyDeviceCode(ctx, denied.UserCodeHash, 1500); err != nil || !ok {
 		t.Fatalf("DenyDeviceCode should deny pending code: ok=%v err=%v", ok, err)
 	}
+	if ok, err := db.OAuth.DenyDeviceCode(ctx, denied.UserCodeHash, 1510); err != nil || ok {
+		t.Fatalf("DenyDeviceCode should reject non-pending code: ok=%v err=%v", ok, err)
+	}
 	got, gotPermissions, err = db.OAuth.GetDeviceCodeByUserCodeHash(ctx, denied.UserCodeHash)
 	if err != nil {
 		t.Fatal(err)
@@ -222,6 +491,43 @@ func TestDeviceCodeLifecyclePreservesExactFieldsPermissionsAndStates(t *testing.
 	}
 	if !reflect.DeepEqual(gotPermissions, permissions[:1]) {
 		t.Fatalf("denied permissions=%v want=%v", gotPermissions, permissions[:1])
+	}
+	missingCode, missingPermissions, err := db.OAuth.GetDeviceCodeByUserCodeHash(ctx, "missing-user-code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missingCode != nil || missingPermissions != nil {
+		t.Fatalf("missing device code should return nils: code=%#v permissions=%v", missingCode, missingPermissions)
+	}
+	missingCode, missingPermissions, err = db.OAuth.GetDeviceCodeByDeviceCodeHash(ctx, "missing-device-code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missingCode != nil || missingPermissions != nil {
+		t.Fatalf("missing device hash should return nils: code=%#v permissions=%v", missingCode, missingPermissions)
+	}
+	if err := db.OAuth.MarkDeviceCodePolled(ctx, "missing-device-code", 1600); err != nil {
+		t.Fatal(err)
+	}
+	expired := code
+	expired.DeviceCodeHash = "device-hash-expired"
+	expired.UserCodeHash = "user-hash-expired"
+	expired.ExpiresAt = 1000
+	if err := db.OAuth.CreateDeviceCode(ctx, expired, permissions[:1]); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := db.OAuth.ApproveDeviceCode(ctx, expired.UserCodeHash, user.ID, subjectID, 1200); err != nil || ok {
+		t.Fatalf("ApproveDeviceCode should reject expired pending code: ok=%v err=%v", ok, err)
+	}
+	if ok, err := db.OAuth.DenyDeviceCode(ctx, expired.UserCodeHash, 1200); err != nil || ok {
+		t.Fatalf("DenyDeviceCode should reject expired pending code: ok=%v err=%v", ok, err)
+	}
+	got, gotPermissions, err = db.OAuth.GetDeviceCodeByDeviceCodeHash(ctx, expired.DeviceCodeHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, &expired) || !reflect.DeepEqual(gotPermissions, permissions[:1]) {
+		t.Fatalf("expired device code should remain pending: got=%#v perms=%v", got, gotPermissions)
 	}
 }
 
@@ -272,6 +578,20 @@ func TestGrantAuthorizationCodeAndTokenLifecycle(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotGrantPermissions, grantPermissions) {
 		t.Fatalf("grant permissions=%v want=%v", gotGrantPermissions, grantPermissions)
+	}
+	missingGrantPermissions, err := db.OAuth.GrantPermissionIDs(ctx, "missing-grant")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missingGrantPermissions) != 0 {
+		t.Fatalf("missing grant permissions should be empty: %v", missingGrantPermissions)
+	}
+	emptyGrantList, err := db.OAuth.ListGrantsByUser(ctx, "missing-user", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(emptyGrantList) != 0 {
+		t.Fatalf("missing user grant list should be empty: %#v", emptyGrantList)
 	}
 
 	code := model.OAuthAuthorizationCode{
@@ -363,10 +683,47 @@ func TestGrantAuthorizationCodeAndTokenLifecycle(t *testing.T) {
 	if rotated {
 		t.Fatal("RotateRefreshToken should reject reused refresh token")
 	}
+	revoked, err := db.OAuth.RevokeRefreshToken(ctx, newRefresh.TokenHash, 3300)
+	if err != nil || !revoked {
+		t.Fatalf("RevokeRefreshToken should revoke active token: revoked=%v err=%v", revoked, err)
+	}
+	gotRefresh, err = db.OAuth.GetRefreshToken(ctx, newRefresh.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRefresh.RevokedAt == nil || *gotRefresh.RevokedAt != 3300 {
+		t.Fatalf("revoked refresh timestamp mismatch: %#v", gotRefresh)
+	}
+	revoked, err = db.OAuth.RevokeRefreshToken(ctx, newRefresh.TokenHash, 3400)
+	if err != nil || revoked {
+		t.Fatalf("RevokeRefreshToken should reject already revoked token: revoked=%v err=%v", revoked, err)
+	}
+	missingRefresh, err := db.OAuth.GetRefreshToken(ctx, "missing-refresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missingRefresh != nil {
+		t.Fatalf("missing refresh token should be nil: %#v", missingRefresh)
+	}
 	if revoked, err := db.OAuth.RevokeGrant(ctx, grant.ID, user.ID, 5000); err != nil || !revoked {
 		t.Fatalf("RevokeGrant should revoke active grant: revoked=%v err=%v", revoked, err)
 	} else if revoked, err = db.OAuth.RevokeGrant(ctx, grant.ID, user.ID, 5100); err != nil || revoked {
 		t.Fatalf("RevokeGrant should reject already revoked grant: revoked=%v err=%v", revoked, err)
+	}
+	otherGrant := grant
+	otherGrant.ID = "grant-owner-mismatch"
+	if err := db.OAuth.CreateGrant(ctx, otherGrant, grantPermissions[:1]); err != nil {
+		t.Fatal(err)
+	}
+	if revoked, err := db.OAuth.RevokeGrant(ctx, otherGrant.ID, "other-user", 5200); err != nil || revoked {
+		t.Fatalf("RevokeGrant should reject owner mismatch: revoked=%v err=%v", revoked, err)
+	}
+	storedGrantPermissions, err := db.OAuth.GrantPermissionIDs(ctx, otherGrant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(storedGrantPermissions, grantPermissions[:1]) {
+		t.Fatalf("owner mismatch revoke should preserve grant permissions: %v", storedGrantPermissions)
 	}
 }
 

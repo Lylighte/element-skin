@@ -182,6 +182,54 @@ func TestSettingsRoutesRejectInvalidGroupAndBadJSONExactly(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"invalid profile_uuid_mode"`) {
 		t.Fatalf("invalid profile uuid mode mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/settings/security", strings.NewReader(`{`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("group", "security")
+	rec = httptest.NewRecorder()
+	h.SaveSettingsGroup(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
+		t.Fatalf("bad named settings json mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/settings/nope", strings.NewReader(`{"x":1}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("group", "nope")
+	rec = httptest.NewRecorder()
+	h.SaveSettingsGroup(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"invalid settings group"`) {
+		t.Fatalf("invalid group save mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/admin/settings/site", nil)
+	rec = httptest.NewRecorder()
+	h.GetSiteSettings(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("get site settings permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/settings/site", strings.NewReader(`{"site_name":"Denied"}`))
+	rec = httptest.NewRecorder()
+	h.SaveSiteSettings(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("save site settings permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/admin/settings/security", nil)
+	req.SetPathValue("group", "security")
+	rec = httptest.NewRecorder()
+	h.GetSettingsGroup(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("get named settings permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/settings/security", strings.NewReader(`{"rate_limit_auth_attempts":4}`))
+	req.SetPathValue("group", "security")
+	rec = httptest.NewRecorder()
+	h.SaveSettingsGroup(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("save named settings permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
 
 func TestSettingsRoutesReturnErrorWhenCacheInvalidationFailsAfterPersist(t *testing.T) {
