@@ -15,7 +15,12 @@
             :default-openeds="defaultOpeneds"
           >
             <template v-for="(item, index) in navLinks" :key="item.path || item.index">
-              <el-sub-menu v-if="item.type === 'group'" :index="item.index" :trigger="item.trigger">
+              <el-sub-menu
+                v-if="item.type === 'group'"
+                :index="item.index"
+                :trigger="item.trigger"
+                :class="['nav-menu-entry', 'nav-priority-' + (index + 1)]"
+              >
                 <template #title>
                   <span>{{ item.title }}</span>
                 </template>
@@ -25,7 +30,11 @@
                   <span v-if="shouldShowNotificationBadge(child)" class="notification-nav-dot" />
                 </el-menu-item>
               </el-sub-menu>
-              <el-menu-item v-else :index="item.path" :class="'nav-priority-' + (index + 1)">
+              <el-menu-item
+                v-else
+                :index="item.path"
+                :class="['nav-menu-entry', 'nav-priority-' + (index + 1)]"
+              >
                 <el-icon v-if="item.icon"><component :is="item.icon" /></el-icon>
                 <span>{{ item.title }}</span>
                 <span v-if="shouldShowNotificationBadge(item)" class="notification-nav-dot" />
@@ -557,6 +566,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   height: 100%;
+  gap: 12px;
 }
 .logo {
   font-weight: 700;
@@ -566,6 +576,7 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 4px 8px;
   transition: background-color 0.2s;
+  flex-shrink: 0;
 }
 .logo:hover {
   color: var(--el-color-primary);
@@ -573,6 +584,7 @@ onUnmounted(() => {
 
 .desktop-nav {
   flex-grow: 1;
+  min-width: 0;
   display: flex;
   justify-content: center;
   height: 100%;
@@ -581,6 +593,12 @@ onUnmounted(() => {
   border-bottom: none;
   height: 100%;
   background: transparent;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.desktop-nav :deep(.nav-menu-entry) {
+  flex-shrink: 0;
 }
 
 .desktop-nav :deep(.el-sub-menu__title) {
@@ -609,6 +627,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 .theme-toggle {
   font-size: 20px;
@@ -710,11 +729,52 @@ onUnmounted(() => {
   width: 13px;
 }
 
-@media (max-width: 1200px) {
-  .mobile-nav {
-    display: block;
+@media (max-width: 1440px) {
+  .desktop-nav :deep(.nav-priority-8) {
+    display: none;
   }
 }
+
+@media (max-width: 1360px) {
+  .desktop-nav :deep(.nav-priority-7) {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .desktop-nav :deep(.nav-priority-6) {
+    display: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .desktop-nav :deep(.nav-priority-5) {
+    display: none;
+  }
+}
+
+@media (max-width: 1060px) {
+  .desktop-nav :deep(.nav-priority-4) {
+    display: none;
+  }
+}
+
+@media (max-width: 940px) {
+  .desktop-nav :deep(.nav-priority-3) {
+    display: none;
+  }
+}
+
+@media (max-width: 840px) {
+  .desktop-nav :deep(.nav-priority-2) {
+    display: none;
+  }
+
+  .account-name {
+    display: none;
+  }
+}
+
 @media (max-width: 768px) {
   .desktop-nav {
     display: none;
