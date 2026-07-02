@@ -263,20 +263,6 @@ func (s Site) DeleteProfileByID(ctx context.Context, actor permission.Actor, pro
 	return s.deleteProfile(ctx, profileID)
 }
 
-func (s Site) DeleteUser(ctx context.Context, actor permission.Actor, userID string) (bool, error) {
-	required := serviceAccountDeleteAnyPermission
-	if userID == actor.UserID {
-		required = serviceAccountDeleteSelfPermission
-	}
-	if err := requireActorPermission(actor, required); err != nil {
-		return false, err
-	}
-	if err := s.Redis.DeleteYggTokensByUser(ctx, userID); err != nil {
-		return false, err
-	}
-	return s.DB.Users.Delete(ctx, userID)
-}
-
 func (s Site) deleteProfile(ctx context.Context, profileID string) error {
 	p, err := s.DB.Profiles.GetByID(ctx, profileID)
 	if err != nil {

@@ -8,10 +8,6 @@ import (
 )
 
 var (
-	serviceAccountUpdateSelfPermission  = permission.MustDefinitionByCode("account.update.self")
-	serviceAccountDeleteSelfPermission  = permission.MustDefinitionByCode("account.delete.self")
-	serviceAccountDeleteAnyPermission   = permission.MustDefinitionByCode("account.delete.any")
-	servicePasswordUpdateSelfPermission = permission.MustDefinitionByCode("account_password.update.self")
 	serviceProfileReadOwnedPermission   = permission.MustDefinitionByCode("profile.read.owned")
 	serviceProfileCreateOwnedPermission = permission.MustDefinitionByCode("profile.create.owned")
 	serviceProfileUpdateOwnedPermission = permission.MustDefinitionByCode("profile.update.owned")

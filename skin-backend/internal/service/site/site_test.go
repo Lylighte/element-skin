@@ -10,7 +10,7 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
+func TestSiteAuthAndSessionExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
@@ -67,34 +67,6 @@ func TestSiteAuthAccountAndSessionExactState(t *testing.T) {
 		t.Fatal("revoked refresh token should not rotate")
 	}
 
-	actor := testActor(t, db, userID)
-	if err := site.UpdateMe(ctx, actor, map[string]any{"email": "updated-site@test.com", "display_name": "UpdatedSite", "preferred_language": "en_US", "avatar_hash": "avatar1"}); err != nil {
-		t.Fatal(err)
-	}
-	me, err := site.Me(ctx, testActor(t, db, userID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if me["email"] != "updated-site@test.com" || me["display_name"] != "UpdatedSite" || me["lang"] != "en_US" ||
-		me["avatar_hash"].(*string) == nil || *me["avatar_hash"].(*string) != "avatar1" || me["profile_count"] != 1 || me["texture_count"] != 0 {
-		t.Fatalf("Me response mismatch after update: %#v", me)
-	}
-	if err := db.Tokens.AddRefresh(ctx, "change_password_refresh", userID, database.NowMS()+60_000, database.NowMS()); err != nil {
-		t.Fatal(err)
-	}
-	if err := site.ChangePassword(ctx, actor, "Password123", "NewPassword123"); err != nil {
-		t.Fatal(err)
-	}
-	changed, err := db.Users.GetByID(ctx, userID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !util.VerifyPassword("NewPassword123", changed.Password) {
-		t.Fatal("ChangePassword should persist new password hash")
-	}
-	if refresh, err := db.Tokens.GetRefresh(ctx, "change_password_refresh"); err != nil || refresh != nil {
-		t.Fatalf("ChangePassword should revoke refresh tokens: refresh=%#v err=%v", refresh, err)
-	}
 }
 
 func TestSiteProfilesTexturesAndLibraryExactState(t *testing.T) {

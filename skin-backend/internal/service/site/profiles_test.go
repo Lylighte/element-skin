@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"element-skin/backend/internal/redisstore"
+	accountsvc "element-skin/backend/internal/service/account"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 
@@ -482,9 +484,9 @@ func TestDeleteUserRecountsSharedLibraryButDeletesUploadedTextures(t *testing.T)
 		t.Fatal(err)
 	}
 
-	ok, err := svc.DeleteUser(ctx, testActorWithCodes("admin-delete-user", "account.delete.any"), target.ID)
-	if err != nil || !ok {
-		t.Fatalf("DeleteUser returned ok=%v err=%v", ok, err)
+	accountSvc := accountsvc.AccountService{DB: db, Redis: redisstore.NewMemoryStore()}
+	if err := accountSvc.DeleteUser(ctx, testActorWithCodes("admin-delete-user", "account.delete.any"), target.ID); err != nil {
+		t.Fatalf("DeleteUser returned err=%v", err)
 	}
 	assertServicePublicUsage(t, svc, "delete_user_shared_skin", int64(2))
 	if exists, err := db.Textures.Exists(ctx, "delete_user_uploaded_skin", "skin"); err != nil || exists {
@@ -651,7 +653,7 @@ func TestProfileServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) 
 	ctx := context.Background()
 	svc := newSiteService(db, testutil.TestConfig())
 	actor := testUserActor("closed-profile-user")
-	adminActor := testActorWithCodes("closed-profile-admin", "profile.update.any", "profile.delete.any", "account.delete.any")
+	adminActor := testActorWithCodes("closed-profile-admin", "profile.update.any", "profile.delete.any")
 	db.Close()
 
 	checks := []struct {
@@ -704,13 +706,6 @@ func TestProfileServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) 
 		}},
 		{name: "delete profile by id", call: func() error {
 			return svc.DeleteProfileByID(ctx, adminActor, "closed-profile")
-		}},
-		{name: "delete user", call: func() error {
-			ok, err := svc.DeleteUser(ctx, adminActor, "closed-profile-user")
-			if ok {
-				t.Fatal("DeleteUser closed database returned ok=true")
-			}
-			return err
 		}},
 	}
 	for _, tc := range checks {
