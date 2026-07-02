@@ -24,7 +24,7 @@ func (h Handler) ListMyTextures(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	limit := util.ClampLimit(req.URL.Query().Get("limit"))
-	res, err := h.site.ListMyTextures(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("cursor"), limit, req.URL.Query().Get("texture_type"))
+	res, err := h.textures.ListMyTextures(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("cursor"), limit, req.URL.Query().Get("texture_type"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -86,7 +86,7 @@ func (h Handler) TextureDetail(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	res, err := h.site.TextureDetail(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), req.PathValue("texture_type"))
+	res, err := h.textures.TextureDetail(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), req.PathValue("texture_type"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -118,7 +118,7 @@ func (h Handler) UpdateTexture(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-	res, err := h.site.UpdateTexture(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), req.PathValue("texture_type"), body)
+	res, err := h.textures.UpdateTexture(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), req.PathValue("texture_type"), body)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -131,7 +131,7 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	if err := h.site.DeleteTexture(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), req.PathValue("texture_type")); err != nil {
+	if err := h.textures.DeleteTexture(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), req.PathValue("texture_type")); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -143,7 +143,7 @@ func (h Handler) AddTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	if err := h.site.AddTextureToWardrobe(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), req.URL.Query().Get("texture_type")); err != nil {
+	if err := h.textures.AddTextureToWardrobe(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), req.URL.Query().Get("texture_type")); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -160,7 +160,7 @@ func (h Handler) ApplyTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	if err := h.site.ApplyTextureToProfile(req.Context(), shared.CurrentActor(req), body["profile_id"], req.PathValue("hash"), body["texture_type"]); err != nil {
+	if err := h.textures.ApplyTextureToProfile(req.Context(), shared.CurrentActor(req), body["profile_id"], req.PathValue("hash"), body["texture_type"]); err != nil {
 		util.Error(w, err)
 		return
 	}

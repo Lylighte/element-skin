@@ -1,4 +1,4 @@
-package site
+package auth
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type pendingSession struct {
 	createdAt   int64
 }
 
-func (s Site) prepareSession(ctx context.Context, userID string, extra map[string]any) (pendingSession, error) {
+func (s Service) prepareSession(ctx context.Context, userID string, extra map[string]any) (pendingSession, error) {
 	expireDays, err := s.settings().Int(ctx, "jwt_expire_days", s.Cfg.JWTExpireDays)
 	if err != nil {
 		return pendingSession{}, err
@@ -55,7 +55,7 @@ func (s Site) prepareSession(ctx context.Context, userID string, extra map[strin
 	}, nil
 }
 
-func (s Site) issueSession(ctx context.Context, userID string, extra map[string]any) (map[string]any, error) {
+func (s Service) issueSession(ctx context.Context, userID string, extra map[string]any) (map[string]any, error) {
 	pending, err := s.prepareSession(ctx, userID, extra)
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func (s Site) issueSession(ctx context.Context, userID string, extra map[string]
 	return pending.response, nil
 }
 
-func (s Site) RotateRefresh(ctx context.Context, raw string) (map[string]any, error) {
+func (s Service) RotateRefresh(ctx context.Context, raw string) (map[string]any, error) {
 	oldHash := util.HashRefreshToken(raw)
 	row, err := s.DB.Tokens.GetRefresh(ctx, oldHash)
 	if err != nil {
@@ -102,6 +102,6 @@ func (s Site) RotateRefresh(ctx context.Context, raw string) (map[string]any, er
 	return pending.response, nil
 }
 
-func (s Site) RevokeRefresh(ctx context.Context, raw string) error {
+func (s Service) RevokeRefresh(ctx context.Context, raw string) error {
 	return s.DB.Tokens.DeleteRefresh(ctx, util.HashRefreshToken(raw))
 }

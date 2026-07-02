@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	permissiondb "element-skin/backend/internal/database/permission"
-	profilestore "element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
@@ -29,15 +28,6 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 401, Detail: "Invalid token"})
 		return
 	}
-	selectedProfile, err := h.db.Profiles.GetByID(req.Context(), *tok.ProfileID)
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	if selectedProfile == nil || selectedProfile.UserID != tok.UserID {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "Profile not yours"})
-		return
-	}
 	actor, err := h.yggTextureActor(req.Context(), tok)
 	if err != nil {
 		util.Error(w, err)
@@ -57,32 +47,15 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	storage, err := texturesvc.NewTextureStorage(h.cfg.TexturesDir)
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	hash, created, err := storage.ProcessAndSaveTracked(data, textureType)
-	if err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: err.Error()})
-		return
-	}
-	if err := h.db.Textures.AddToLibrary(req.Context(), tok.UserID, hash, textureType, "", false, profilestore.NormalizeModel(req.FormValue("model"))); err != nil {
-		if created {
-			if inUse, checkErr := h.db.Textures.ExistsHash(req.Context(), hash); checkErr == nil && !inUse {
-				_ = storage.DeleteFile(hash)
-			}
-		}
-		util.Error(w, err)
-		return
-	}
-	if err := h.site.ApplyTextureToProfileWithModel(
+	if _, err := h.uploads.UploadAndApplyBoundProfile(
 		req.Context(),
-		actor,
-		selectedProfile.ID,
-		hash,
-		textureType,
-		profilestore.NormalizeModel(req.FormValue("model")),
+		texturesvc.UploadInput{
+			Actor:       actor,
+			Data:        data,
+			TextureType: textureType,
+			Model:       req.FormValue("model"),
+		},
+		*tok.ProfileID,
 	); err != nil {
 		util.Error(w, err)
 		return
@@ -112,9 +85,9 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 	}
 	switch strings.ToLower(req.PathValue("texture_type")) {
 	case "skin":
-		err = h.site.ClearProfileTexture(req.Context(), actor, *tok.ProfileID, "skin")
+		err = h.profiles.ClearProfileTexture(req.Context(), actor, *tok.ProfileID, "skin")
 	case "cape":
-		err = h.site.ClearProfileTexture(req.Context(), actor, *tok.ProfileID, "cape")
+		err = h.profiles.ClearProfileTexture(req.Context(), actor, *tok.ProfileID, "cape")
 	default:
 		err = util.HTTPError{Status: 400, Detail: "Invalid texture_type"}
 	}

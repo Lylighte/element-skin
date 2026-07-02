@@ -13,7 +13,7 @@ import (
 )
 
 func (r *Router) routes() {
-	siteRoutes := site.NewWithRedis(r.cfg, r.db, r.redis, r.site, r.auth)
+	siteRoutes := site.NewWithRedis(r.cfg, r.db, r.redis, r.auth)
 	yggRoutes := yggdrasil.New(r.cfg, r.db, r.redis, r.settings, r.ygg)
 	microsoftRoutes := microsoft.New(r.cfg, r.db, r.settings, r.auth, r.redis)
 	noticeRoutes := notice.New(r.db, r.auth)

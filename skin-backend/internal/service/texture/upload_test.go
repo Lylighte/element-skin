@@ -132,6 +132,37 @@ func TestUploadServiceUploadAndApplyUpdatesProfileExactly(t *testing.T) {
 	}
 }
 
+func TestUploadServiceBoundProfileUploadDoesNotRequireCreatePermission(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "texture-upload-bound@test.com", "Password123", "TextureUploadBound", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "texture_upload_bound", "TextureUploadBound")
+	svc := texturesvc.UploadService{DB: db, TexturesDir: t.TempDir()}
+	actor := textureActor(user.ID, "texture.apply.bound_profile")
+	actor.BoundProfileID = profile.ID
+
+	res, err := svc.UploadAndApplyBoundProfile(ctx, texturesvc.UploadInput{
+		Actor:       actor,
+		Data:        pngBytes(t, 64, 64, testColor()),
+		TextureType: "skin",
+		Model:       "slim",
+	}, profile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, _ := res["hash"].(string)
+	updated, err := db.Profiles.GetByID(ctx, profile.ID)
+	if hash == "" || res["ok"] != true || res["type"] != "skin" ||
+		err != nil || updated == nil || updated.SkinHash == nil ||
+		*updated.SkinHash != hash || updated.TextureModel != "slim" {
+		t.Fatalf("bound upload apply mismatch: res=%#v profile=%#v err=%v", res, updated, err)
+	}
+	if info, err := db.Textures.GetInfo(ctx, user.ID, hash, "skin"); err != nil ||
+		info == nil || info["is_public"] != 0 || info["model"] != "slim" {
+		t.Fatalf("bound upload should persist private library row: info=%#v err=%v", info, err)
+	}
+}
+
 func textureActor(userID string, codes ...string) permission.Actor {
 	bits := permission.NewBitSet(len(permission.Definitions))
 	for _, code := range codes {

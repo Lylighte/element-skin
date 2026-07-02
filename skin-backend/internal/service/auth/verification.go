@@ -1,4 +1,4 @@
-package site
+package auth
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-func (s Site) SendVerificationCode(ctx context.Context, email, typ string) (map[string]any, error) {
+func (s Service) SendVerificationCode(ctx context.Context, email, typ string) (map[string]any, error) {
 	email = strings.TrimSpace(email)
 	if typ == "" {
 		typ = "register"
@@ -60,7 +60,7 @@ func (s Site) SendVerificationCode(ctx context.Context, email, typ string) (map[
 	return map[string]any{"ok": true, "ttl": ttl}, nil
 }
 
-func (s Site) VerifyCode(ctx context.Context, email, code, typ string) (bool, error) {
+func (s Service) VerifyCode(ctx context.Context, email, code, typ string) (bool, error) {
 	stored, err := s.Redis.GetVerificationCode(ctx, email, typ)
 	if errors.Is(err, redisstore.ErrCacheMiss) {
 		return false, nil
@@ -71,7 +71,7 @@ func (s Site) VerifyCode(ctx context.Context, email, code, typ string) (bool, er
 	return strings.EqualFold(stored, code), nil
 }
 
-func (s Site) ResetPassword(ctx context.Context, email, newPassword, code string) error {
+func (s Service) ResetPassword(ctx context.Context, email, newPassword, code string) error {
 	settings := s.settings()
 	strong, err := settings.Get(ctx, "enable_strong_password_check", "false")
 	if err != nil {

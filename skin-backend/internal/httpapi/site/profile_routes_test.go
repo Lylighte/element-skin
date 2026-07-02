@@ -3,7 +3,6 @@ package site_test
 import (
 	"context"
 	"element-skin/backend/internal/httpapi/site"
-	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +13,7 @@ import (
 func TestProfileRoutesCreateAndListExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-profile@test.com", "Password123", "SiteProfile", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/users/me/profiles", strings.NewReader(`{"name":"RouteRole","model":"slim"}`))
@@ -37,7 +36,7 @@ func TestProfileRoutesCreateAndListExactResponses(t *testing.T) {
 func TestProfileRoutesUpdateClearAndDeleteExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-profile-edit@test.com", "Password123", "SiteProfileEdit", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_profile_edit", "OldRouteRole")
 	skin := "route_skin_hash"
@@ -105,7 +104,7 @@ func TestProfileRoutesUpdateClearAndDeleteExactState(t *testing.T) {
 func TestProfileRoutesUseProfileIDPathValueAndRejectMissingPermissionsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-profile-perms@test.com", "Password123", "SiteProfilePerms", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_profile_perms", "ProfilePerms")
 
@@ -170,7 +169,7 @@ func TestProfileRoutesUseProfileIDPathValueAndRejectMissingPermissionsExactly(t 
 func TestProfileRoutesRejectForeignProfileExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	owner := testutil.CreateUser(t, db, "site-profile-owner@test.com", "Password123", "SiteProfileOwner", false)
 	other := testutil.CreateUser(t, db, "site-profile-foreign@test.com", "Password123", "SiteProfileForeign", false)
 	profile := testutil.CreateProfile(t, db, owner.ID, "site_profile_foreign", "ForeignRouteRole")
@@ -192,7 +191,7 @@ func TestProfileRoutesRejectForeignProfileExactly(t *testing.T) {
 func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-profile-errors@test.com", "Password123", "SiteProfileErrors", false)
 	existing := testutil.CreateProfile(t, db, user.ID, "site_profile_existing", "ExistingRole")
 	target := testutil.CreateProfile(t, db, user.ID, "site_profile_target", "TargetRole")
@@ -261,7 +260,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 func TestProfileRoutesRejectForeignTextureClearsWithoutMutation(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	owner := testutil.CreateUser(t, db, "site-profile-clear-owner@test.com", "Password123", "SiteProfileClearOwner", false)
 	other := testutil.CreateUser(t, db, "site-profile-clear-other@test.com", "Password123", "SiteProfileClearOther", false)
 	profile := testutil.CreateProfile(t, db, owner.ID, "site_profile_foreign_clear", "ForeignClearRole")

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"element-skin/backend/internal/httpapi"
-	sitesvc "element-skin/backend/internal/service/site"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -23,7 +22,7 @@ func TestRemoteYggRoutesValidateAndReturnExactBodies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	rec := authedJSON(t, router, token, "/v1/imports/remote-ygg/profiles/preview", map[string]any{"profiles": []any{map[string]any{"id": "p1", "name": "One"}}})
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"profiles\":[{\"id\":\"p1\",\"name\":\"One\"}]}\n" {

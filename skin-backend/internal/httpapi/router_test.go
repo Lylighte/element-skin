@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"element-skin/backend/internal/httpapi"
-	sitesvc "element-skin/backend/internal/service/site"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -21,7 +20,7 @@ func TestRouterServeHTTPAddsAuthlibHeaderAndAuthRoutes(t *testing.T) {
 	cfg.APIURL = "https://api.example/root"
 	user := testutil.CreateUser(t, db, "auth-user@test.com", "Password123", "AuthUser", false)
 	admin := testutil.CreateUser(t, db, "auth-admin@test.com", "Password123", "AuthAdmin", true)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -82,7 +81,7 @@ func TestRouterRegistersRepresentativeRouteGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	cases := []struct {
 		name       string

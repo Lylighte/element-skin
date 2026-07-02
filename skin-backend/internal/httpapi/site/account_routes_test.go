@@ -5,7 +5,6 @@ import (
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/redisstore"
-	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 	"errors"
@@ -19,7 +18,7 @@ import (
 func TestAccountRoutesMeAndAdminSelfDeleteExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-account@test.com", "Password123", "SiteAccount", false)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/me", nil)
@@ -47,7 +46,7 @@ func TestAccountRoutesUpdateMeAndChangePasswordExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil)
 	user := testutil.CreateUser(t, db, "site-account-update@test.com", "Password123", "SiteAccountUpdate", false)
 	if err := redis.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID}, time.Minute); err != nil {
 		t.Fatal(err)
@@ -103,7 +102,7 @@ func TestAccountRoutesDeleteMeRemovesUserAndInvalidatesCacheExactly(t *testing.T
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil)
 	user := testutil.CreateUser(t, db, "site-delete-me@test.com", "Password123", "SiteDeleteMe", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_delete_me_profile", "SiteDeleteMeProfile")
 	if err := redis.SetAuthUser(context.Background(), redisstore.AuthUser{ID: user.ID}, time.Minute); err != nil {
@@ -137,7 +136,7 @@ func TestAccountRoutesDeleteMeRemovesUserAndInvalidatesCacheExactly(t *testing.T
 func TestAccountRoutesRejectConflictsAndWrongOldPasswordExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-account-conflict@test.com", "Password123", "SiteAccountConflict", false)
 	other := testutil.CreateUser(t, db, "site-account-other@test.com", "Password123", "SiteAccountOther", false)
 
@@ -169,7 +168,7 @@ func TestAccountRoutesRejectConflictsAndWrongOldPasswordExactly(t *testing.T) {
 func TestAccountRoutesRejectMissingPrincipalAndMalformedPayloadsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/me", nil)
 	rec := httptest.NewRecorder()
@@ -211,7 +210,7 @@ func TestAccountRoutesRejectMissingPrincipalAndMalformedPayloadsExactly(t *testi
 func TestAccountRoutesRejectMissingPermissionsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-account-perms@test.com", "Password123", "SiteAccountPerms", false)
 
 	cases := []struct {
@@ -263,7 +262,7 @@ func TestAccountRoutesReturnExactErrorWhenAuthCacheInvalidationFails(t *testing.
 	cfg := testutil.TestConfig()
 	baseRedis := testutil.NewMemoryRedis()
 	redis := invalidateAuthUserFailStore{Store: baseRedis}
-	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil)
 	user := testutil.CreateUser(t, db, "site-account-invalidate@test.com", "Password123", "SiteAccountInvalidate", false)
 
 	req := httptest.NewRequest(http.MethodPatch, "/v1/users/me", strings.NewReader(`{"display_name":"InvalidateChanged"}`))
@@ -307,7 +306,7 @@ func TestDeleteMeErrorPaths(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil)
 	user := testutil.CreateUser(t, db, "site-delete-me-err@test.com", "Password123", "SiteDeleteMeErr", false)
 
 	// DB error on UserHasProtectedRole: cancelled context causes query failure

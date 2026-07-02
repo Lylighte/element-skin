@@ -12,7 +12,6 @@ import (
 	"element-skin/backend/internal/redisstore"
 	probesvc "element-skin/backend/internal/service/probe"
 	settingssvc "element-skin/backend/internal/service/settings"
-	sitepkg "element-skin/backend/internal/service/site"
 	yggpkg "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/util"
 )
@@ -57,7 +56,6 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		db.Permissions.Cache = &permissiondb.RedisPermCache{Store: redis}
 	}
 	settings := settingssvc.Settings{DB: db, Redis: redis}
-	site := sitepkg.Site{DB: db, Cfg: cfg, Redis: redis, Settings: settings}
 	ygg, err := yggpkg.New(db, cfg, redis, settings)
 	if err != nil {
 		_ = redis.Close()
@@ -71,7 +69,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	return &App{
 		db:       db,
 		redis:    redis,
-		handler:  httpapi.NewRouterWithRedis(cfg, db, redis, site, ygg),
+		handler:  httpapi.NewRouterWithRedis(cfg, db, redis, ygg),
 		cancelFn: cancel,
 	}, nil
 }
@@ -89,13 +87,12 @@ func NewWithDBAndRedis(cfg config.Config, db *database.DB, redis redisstore.Stor
 		db.Permissions.Cache = &permissiondb.RedisPermCache{Store: redis}
 	}
 	settings := settingssvc.Settings{DB: db, Redis: redis}
-	site := sitepkg.Site{DB: db, Cfg: cfg, Redis: redis, Settings: settings}
 	ygg, err := yggpkg.New(db, cfg, redis, settings)
 	if err != nil {
 		_ = redis.Close()
 		return nil, err
 	}
-	return &App{db: db, redis: redis, handler: httpapi.NewRouterWithRedis(cfg, db, redis, site, ygg)}, nil
+	return &App{db: db, redis: redis, handler: httpapi.NewRouterWithRedis(cfg, db, redis, ygg)}, nil
 }
 
 func (a *App) Handler() http.Handler {

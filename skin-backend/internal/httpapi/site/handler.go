@@ -9,9 +9,10 @@ import (
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/redisstore"
 	accountsvc "element-skin/backend/internal/service/account"
+	authsvc "element-skin/backend/internal/service/auth"
+	profilesvc "element-skin/backend/internal/service/profile"
 	publicsitesvc "element-skin/backend/internal/service/publicsite"
 	settingssvc "element-skin/backend/internal/service/settings"
-	sitepkg "element-skin/backend/internal/service/site"
 	texturesvc "element-skin/backend/internal/service/texture"
 )
 
@@ -19,24 +20,27 @@ type Handler struct {
 	cfg      config.Config
 	db       *database.DB
 	redis    redisstore.Store
-	site     sitepkg.Site
+	authSvc  authsvc.Service
 	accounts accountsvc.AccountService
+	profiles profilesvc.Service
+	textures texturesvc.LibraryService
 	public   publicsitesvc.Service
 	uploads  texturesvc.UploadService
 	settings settingssvc.Settings
 	auth     shared.AuthFunc
 }
 
-func New(cfg config.Config, db *database.DB, svc sitepkg.Site, auth shared.AuthFunc) Handler {
+func New(cfg config.Config, db *database.DB, auth shared.AuthFunc) Handler {
 	redis := redisstore.Store(redisstore.NewMemoryStore())
-	return NewWithRedis(cfg, db, redis, svc, auth)
+	return NewWithRedis(cfg, db, redis, auth)
 }
 
-func NewWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, svc sitepkg.Site, auth shared.AuthFunc) Handler {
+func NewWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, auth shared.AuthFunc) Handler {
 	settings := settingssvc.Settings{DB: db, Redis: redis}
-	svc.Redis = redis
-	svc.Settings = settings
+	authService := authsvc.Service{DB: db, Cfg: cfg, Redis: redis, Settings: settings}
 	accounts := accountsvc.AccountService{DB: db, Redis: redis}
+	profiles := profilesvc.Service{DB: db, Settings: settings}
+	textures := texturesvc.LibraryService{DB: db, Settings: settings}
 	public := publicsitesvc.Service{
 		DB:       db,
 		Redis:    redis,
@@ -46,7 +50,7 @@ func NewWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, sv
 		CacheTTL: time.Duration(cfg.PublicCacheTTL) * time.Second,
 	}
 	uploads := texturesvc.UploadService{DB: db, TexturesDir: cfg.TexturesDir}
-	return Handler{cfg: cfg, db: db, redis: redis, site: svc, accounts: accounts, public: public, uploads: uploads, settings: settings, auth: auth}
+	return Handler{cfg: cfg, db: db, redis: redis, authSvc: authService, accounts: accounts, profiles: profiles, textures: textures, public: public, uploads: uploads, settings: settings, auth: auth}
 }
 
 func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {

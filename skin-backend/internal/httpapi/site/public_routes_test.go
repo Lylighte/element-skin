@@ -15,14 +15,13 @@ import (
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
-	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestPublicRoutesHomepageMediaListsEnabledItemsFromDBExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	now := database.NowMS()
 	if err := db.HomepageMedia.Create(context.Background(), model.HomepageMedia{
 		ID: "disabled", Type: "image", Title: "Disabled", StoragePath: "disabled.webp", OverlayOpacityLight: 0.45, OverlayOpacityDark: 0.45, YawSpeedDPS: 4, SortOrder: 0, Enabled: false, DurationMS: 6000, CreatedAt: now, UpdatedAt: now,
@@ -47,7 +46,7 @@ func TestPublicRoutesRedisErrorDoesNotFallback(t *testing.T) {
 	cfg := testutil.TestConfig()
 	cache := redisstore.NewMemoryStore()
 	cache.Err = errors.New("redis down")
-	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, nil)
+	h := site.NewWithRedis(cfg, db, cache, nil)
 
 	rec := httptest.NewRecorder()
 	h.PublicSettings(rec, httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil))
@@ -65,7 +64,7 @@ func TestPublicRoutesRedisErrorDoesNotFallback(t *testing.T) {
 func TestPublicRoutesSettingsAndLibraryExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "public-routes@test.com", "Password123", "PublicRoutes", false)
 	if err := db.Textures.AddToLibrary(t.Context(), user.ID, "public_route_hash", "skin", "Public Route Texture", true, "default"); err != nil {
 		t.Fatal(err)
@@ -101,7 +100,7 @@ func TestPublicRoutesUseRedisCachedSettingsAndHomepageMediaExactly(t *testing.T)
 	if err := cache.SetPublicHomepageMedia(context.Background(), []model.HomepageMedia{{ID: "cached", Type: "image", StoragePath: "cached.webp", Enabled: true}}, time.Duration(cfg.PublicCacheTTL)*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, nil)
+	h := site.NewWithRedis(cfg, db, cache, nil)
 
 	rec := httptest.NewRecorder()
 	h.PublicSettings(rec, httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil))
@@ -121,7 +120,7 @@ func TestPublicRoutesHomepageMediaEmptyDBCachesEmptyList(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cache := redisstore.NewMemoryStore()
-	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, nil)
+	h := site.NewWithRedis(cfg, db, cache, nil)
 
 	rec := httptest.NewRecorder()
 	h.PublicHomepageMedia(rec, httptest.NewRequest(http.MethodGet, "/v1/public/homepage-media", nil))
@@ -138,7 +137,7 @@ func TestPublicRoutesFailWhenRedisCannotStorePublicCaches(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	settingsCache := redisstore.NewMemoryStore()
-	h := site.NewWithRedis(cfg, db, &writeFailRedis{Store: settingsCache}, sitesvc.Site{DB: db, Cfg: cfg, Redis: settingsCache}, nil)
+	h := site.NewWithRedis(cfg, db, &writeFailRedis{Store: settingsCache}, nil)
 
 	rec := httptest.NewRecorder()
 	h.PublicSettings(rec, httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil))
@@ -147,7 +146,7 @@ func TestPublicRoutesFailWhenRedisCannotStorePublicCaches(t *testing.T) {
 	}
 
 	homepageCache := redisstore.NewMemoryStore()
-	h = site.NewWithRedis(cfg, db, &writeFailRedis{Store: homepageCache}, sitesvc.Site{DB: db, Cfg: cfg, Redis: homepageCache}, nil)
+	h = site.NewWithRedis(cfg, db, &writeFailRedis{Store: homepageCache}, nil)
 	rec = httptest.NewRecorder()
 	h.PublicHomepageMedia(rec, httptest.NewRequest(http.MethodGet, "/v1/public/homepage-media", nil))
 	if rec.Code != http.StatusInternalServerError {
@@ -200,7 +199,7 @@ func TestPublicFallbackStatusReturnsEndpointHistoryAndCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, nil)
+	h := site.NewWithRedis(cfg, db, cache, nil)
 	rec := httptest.NewRecorder()
 	h.PublicFallbackStatus(rec, httptest.NewRequest(http.MethodGet, "/v1/public/fallback-status", nil))
 	if rec.Code != http.StatusOK {
@@ -251,7 +250,7 @@ func TestPublicFallbackStatusReturnsEmptyWhenNoConfig(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cache := redisstore.NewMemoryStore()
-	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, nil)
+	h := site.NewWithRedis(cfg, db, cache, nil)
 	rec := httptest.NewRecorder()
 	h.PublicFallbackStatus(rec, httptest.NewRequest(http.MethodGet, "/v1/public/fallback-status", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"endpoints":[]`) {
@@ -264,7 +263,7 @@ func TestPublicFallbackStatusFailsWhenRedisErrors(t *testing.T) {
 	cfg := testutil.TestConfig()
 	cache := redisstore.NewMemoryStore()
 	cache.Err = errors.New("redis down")
-	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, nil)
+	h := site.NewWithRedis(cfg, db, cache, nil)
 	rec := httptest.NewRecorder()
 	h.PublicFallbackStatus(rec, httptest.NewRequest(http.MethodGet, "/v1/public/fallback-status", nil))
 	if rec.Code != http.StatusInternalServerError {

@@ -13,10 +13,10 @@ import (
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/httpapi/yggdrasil"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
-	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/testutil"
 )
 

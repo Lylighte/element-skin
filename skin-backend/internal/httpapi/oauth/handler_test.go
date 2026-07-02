@@ -19,7 +19,6 @@ import (
 	oauthapi "element-skin/backend/internal/httpapi/oauth"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
-	sitesvc "element-skin/backend/internal/service/site"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -30,7 +29,7 @@ func TestOAuthAuthorizationCodeFlowIssuesDelegatedBearerForV1API(t *testing.T) {
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "oauth-flow@test.com", "Password123", "OAuthFlow", false)
 	admin := testutil.CreateUser(t, db, "oauth-flow-admin@test.com", "Password123", "OAuthFlowAdmin", true, true)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	session := webCookie(t, cfg.JWTSecret, user.ID)
 	adminSession := webCookie(t, cfg.JWTSecret, admin.ID)
 
@@ -198,7 +197,7 @@ func TestOAuthAppManagementRoutesCoverReviewSecretListsAndDelete(t *testing.T) {
 	cfg := testutil.TestConfig()
 	owner := testutil.CreateUser(t, db, "oauth-app-owner@test.com", "Password123", "OAuthAppOwner", false)
 	admin := testutil.CreateUser(t, db, "oauth-app-admin@test.com", "Password123", "OAuthAppAdmin", true, true)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	ownerSession := webCookie(t, cfg.JWTSecret, owner.ID)
 	adminSession := webCookie(t, cfg.JWTSecret, admin.ID)
 
@@ -316,7 +315,7 @@ func TestOAuthCreateAppRejectsScopeMissingFromActor(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "oauth-scope-deny@test.com", "Password123", "OAuthScopeDeny", false)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	res := doJSON(t, router, http.MethodPost, "/v1/oauth/apps", map[string]any{
 		"name":         "Denied app",
 		"redirect_uri": "https://client.example/callback",
@@ -332,7 +331,7 @@ func TestOAuthClientCredentialsTokenWorksForMinecraftOnly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "oauth-client-route@test.com", "Password123", "OAuthClientRoute", false)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	session := webCookie(t, cfg.JWTSecret, user.ID)
 
 	metadataRes := doJSON(t, router, http.MethodGet, "/.well-known/oauth-authorization-server", nil, nil, "")
@@ -423,7 +422,7 @@ func TestOAuthDeviceCodeFlowRoutesIssueDelegatedBearer(t *testing.T) {
 	cfg := testutil.TestConfig()
 	cfg.SiteURL = "https://skin.example"
 	user := testutil.CreateUser(t, db, "oauth-device-route@test.com", "Password123", "OAuthDeviceRoute", false)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	session := webCookie(t, cfg.JWTSecret, user.ID)
 
 	createRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps", map[string]any{
@@ -500,7 +499,7 @@ func TestOAuthClientPermissionRoutesManageClientSubjectExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	cfg := testutil.TestConfig()
 	admin := testutil.CreateUser(t, db, "oauth-client-permission@test.com", "Password123", "OAuthClientPermission", true, true)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	session := webCookie(t, cfg.JWTSecret, admin.ID)
 	createRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps", map[string]any{
 		"name":         "Permission route app",
@@ -546,7 +545,7 @@ func TestOAuthRoutesRejectMalformedInputsExactly(t *testing.T) {
 	cfg := testutil.TestConfig()
 	adminUser := testutil.CreateUser(t, db, "oauth-route-errors-admin@test.com", "Password123", "OAuthRouteErrorsAdmin", true, true)
 	user := testutil.CreateUser(t, db, "oauth-route-errors-user@test.com", "Password123", "OAuthRouteErrorsUser", false)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	adminSession := webCookie(t, cfg.JWTSecret, adminUser.ID)
 	userSession := webCookie(t, cfg.JWTSecret, user.ID)
 
