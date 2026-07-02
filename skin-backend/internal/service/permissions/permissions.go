@@ -1,4 +1,4 @@
-package admin
+package permissions
 
 import (
 	"context"

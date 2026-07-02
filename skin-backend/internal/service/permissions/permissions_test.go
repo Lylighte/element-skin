@@ -1,4 +1,4 @@
-package admin_test
+package permissions_test
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
-	adminsvc "element-skin/backend/internal/service/admin"
+	permissionssvc "element-skin/backend/internal/service/permissions"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
@@ -21,7 +21,7 @@ func TestPermissionServiceUserPermissionsReturnsExactCatalogRolesAndOverrides(t 
 	adminUser := testutil.CreateUser(t, db, "admin-perms-read@test.com", "Password123", "AdminPermsRead", true)
 	target := testutil.CreateUser(t, db, "target-perms-read@test.com", "Password123", "TargetPermsRead", false)
 	actor := actorWithPermissions(adminUser.ID, "permission.read.any")
-	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	svc := permissionssvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
 
 	if err := db.Permissions.GrantRole(ctx, target.ID, permission.RoleModerator, actor.SubjectID); err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestPermissionServiceUserPermissionsReturnsExactCatalogRolesAndOverrides(t 
 	if containsExact(got.EffectivePermissions, "texture.delete.owned") {
 		t.Fatalf("effective permissions should exclude override deny: %v", got.EffectivePermissions)
 	}
-	wantOverrides := []adminsvc.PermissionOverrideResponse{
+	wantOverrides := []permissionssvc.PermissionOverrideResponse{
 		{PermissionCode: "texture.delete.owned", Effect: "deny"},
 		{PermissionCode: "notice.create.any", Effect: "allow"},
 	}
@@ -76,7 +76,7 @@ func TestPermissionServiceSetAndClearOverrideInvalidatesAuthCacheExactly(t *test
 	adminUser := testutil.CreateUser(t, db, "admin-perms-write@test.com", "Password123", "AdminPermsWrite", true)
 	target := testutil.CreateUser(t, db, "target-perms-write@test.com", "Password123", "TargetPermsWrite", false)
 	cache := redisstore.NewMemoryStore()
-	svc := adminsvc.PermissionService{DB: db, Redis: cache}
+	svc := permissionssvc.PermissionService{DB: db, Redis: cache}
 	actor := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any")
 	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, 0); err != nil {
 		t.Fatal(err)
@@ -120,7 +120,7 @@ func TestPermissionServiceRejectsUnauthorizedAndInvalidOverridePathsExactly(t *t
 	ctx := context.Background()
 	adminUser := testutil.CreateUser(t, db, "admin-perms-errors@test.com", "Password123", "AdminPermsErrors", true)
 	target := testutil.CreateUser(t, db, "target-perms-errors@test.com", "Password123", "TargetPermsErrors", false)
-	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	svc := permissionssvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
 	reader := actorWithPermissions(adminUser.ID, "permission.read.any")
 
 	if _, err := svc.UserPermissions(ctx, permission.Actor{}, target.ID); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
@@ -159,7 +159,7 @@ func TestPermissionServiceProtectsProtectedPermissionsExactly(t *testing.T) {
 	ctx := context.Background()
 	adminUser := testutil.CreateUser(t, db, "admin-protected@test.com", "Password123", "AdminProtected", true)
 	target := testutil.CreateUser(t, db, "target-protected@test.com", "Password123", "TargetProtected", false)
-	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	svc := permissionssvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
 	grantOnly := actorWithPermissions(adminUser.ID, "permission.grant.any")
 
 	err := svc.SetUserPermissionOverride(ctx, grantOnly, target.ID, "permission_protected.manage.any", "allow")
@@ -185,7 +185,7 @@ func TestPermissionServiceClearRequiresOppositePermissionForDenyOverrides(t *tes
 	ctx := context.Background()
 	adminUser := testutil.CreateUser(t, db, "admin-clear-deny@test.com", "Password123", "AdminClearDeny", true)
 	target := testutil.CreateUser(t, db, "target-clear-deny@test.com", "Password123", "TargetClearDeny", false)
-	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	svc := permissionssvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
 	revoker := actorWithPermissions(adminUser.ID, "permission.revoke.any")
 	granter := actorWithPermissions(adminUser.ID, "permission.grant.any")
 
@@ -205,7 +205,7 @@ func TestPermissionServiceClearRequiresRevokePermissionForAllowOverrides(t *test
 	ctx := context.Background()
 	adminUser := testutil.CreateUser(t, db, "admin-clear-allow@test.com", "Password123", "AdminClearAllow", true)
 	target := testutil.CreateUser(t, db, "target-clear-allow@test.com", "Password123", "TargetClearAllow", false)
-	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	svc := permissionssvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
 	granter := actorWithPermissions(adminUser.ID, "permission.grant.any")
 	revoker := actorWithPermissions(adminUser.ID, "permission.revoke.any")
 
@@ -232,7 +232,7 @@ func TestPermissionServiceClosedDatabasePropagatesExactDependencyErrors(t *testi
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 	adminUser := testutil.CreateUser(t, db, "admin-perms-closed@test.com", "Password123", "AdminPermsClosed", true)
-	svc := adminsvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	svc := permissionssvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
 	actor := actorWithPermissions(adminUser.ID, "permission.read.any", "permission.grant.any", "permission.revoke.any")
 	db.Close()
 
@@ -287,7 +287,7 @@ func stringSliceEqual(got, want []string) bool {
 	return true
 }
 
-func hasOverride(overrides []adminsvc.PermissionOverrideResponse, code, effect string) bool {
+func hasOverride(overrides []permissionssvc.PermissionOverrideResponse, code, effect string) bool {
 	for _, override := range overrides {
 		if override.PermissionCode == code && override.Effect == effect && override.CreatedAt > 0 {
 			return true

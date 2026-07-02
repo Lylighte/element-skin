@@ -7,20 +7,13 @@ import (
 	userstore "element-skin/backend/internal/database/user"
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/permission"
-	adminsvc "element-skin/backend/internal/service/admin"
+	accountsvc "element-skin/backend/internal/service/account"
 	"element-skin/backend/internal/util"
 )
 
-var manageProtectedPermission = permission.MustDefinitionByCode("permission_protected.manage.any")
-
 var (
-	userReadAnyPermission      = permission.MustDefinitionByCode("user.read.any")
-	userUpdateAnyPermission    = permission.MustDefinitionByCode("user.update.any")
-	accountReadAnyPermission   = permission.MustDefinitionByCode("account.read.any")
-	accountUpdateAnyPermission = permission.MustDefinitionByCode("account.update.any")
-	accountDeleteAnyPermission = permission.MustDefinitionByCode("account.delete.any")
-	permissionGrantAny         = permission.MustDefinitionByCode("permission.grant.any")
-	permissionRevokeAny        = permission.MustDefinitionByCode("permission.revoke.any")
+	userReadAnyPermission    = permission.MustDefinitionByCode("user.read.any")
+	accountReadAnyPermission = permission.MustDefinitionByCode("account.read.any")
 )
 
 func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
@@ -81,36 +74,9 @@ func (h Handler) User(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) GrantUserRole(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, permissionGrantAny); err != nil {
-		util.Error(w, err)
-		return
-	}
 	targetID := req.PathValue("user_id")
 	roleID := req.PathValue("role_id")
-	if roleID == "" {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "role_id required"})
-		return
-	}
-	if roleID == permission.RoleSuperAdmin && targetID == shared.CurrentUserID(req) {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot grant protected role to yourself"})
-		return
-	}
-	if err := h.ensureRoleGrantAllowed(req, roleID); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if ok, err := h.userExists(req, targetID); err != nil {
-		util.Error(w, err)
-		return
-	} else if !ok {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-		return
-	}
-	if err := h.db.Permissions.GrantRole(req.Context(), targetID, roleID, shared.CurrentActor(req).SubjectID); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if err := h.redis.InvalidateAuthUser(req.Context(), targetID); err != nil {
+	if err := h.accounts.GrantUserRole(req.Context(), shared.CurrentActor(req), targetID, roleID); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -118,41 +84,9 @@ func (h Handler) GrantUserRole(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) RevokeUserRole(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, permissionRevokeAny); err != nil {
-		util.Error(w, err)
-		return
-	}
 	targetID := req.PathValue("user_id")
 	roleID := req.PathValue("role_id")
-	if roleID == "" {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "role_id required"})
-		return
-	}
-	if roleID == permission.RoleSuperAdmin && targetID == shared.CurrentUserID(req) {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot revoke protected role from yourself"})
-		return
-	}
-	if err := h.ensureRoleGrantAllowed(req, roleID); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if ok, err := h.userExists(req, targetID); err != nil {
-		util.Error(w, err)
-		return
-	} else if !ok {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-		return
-	}
-	ok, err := h.db.Permissions.RevokeRole(req.Context(), targetID, roleID)
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	if !ok {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "role assignment not found"})
-		return
-	}
-	if err := h.redis.InvalidateAuthUser(req.Context(), targetID); err != nil {
+	if err := h.accounts.RevokeUserRole(req.Context(), shared.CurrentActor(req), targetID, roleID); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -194,29 +128,8 @@ func (h Handler) ClearUserPermissionOverride(w http.ResponseWriter, req *http.Re
 }
 
 func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, accountDeleteAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	targetID := req.PathValue("user_id")
-	if targetID == shared.CurrentUserID(req) {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot delete yourself"})
-		return
-	}
-	if err := h.ensureTargetNotSuperAdmin(req, targetID); err != nil {
-		util.Error(w, err)
-		return
-	}
-	ok, err := h.site.DeleteUser(req.Context(), shared.CurrentActor(req), targetID)
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	if !ok {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-		return
-	}
-	if err := h.redis.InvalidateAuthUser(req.Context(), targetID); err != nil {
+	if err := h.accounts.DeleteUser(req.Context(), shared.CurrentActor(req), targetID); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -261,7 +174,7 @@ func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	until, err := h.accounts.BanUser(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"), adminsvc.BanUserInput{
+	until, err := h.accounts.BanUser(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"), accountsvc.BanUserInput{
 		BannedUntil: body.BannedUntil,
 		Reason:      body.Reason,
 	})
@@ -281,83 +194,19 @@ func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ResetUserPassword(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, accountUpdateAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	userID := body["user_id"]
-	newPassword := body["new_password"]
-	if userID == "" || newPassword == "" {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "user_id and new_password required"})
-		return
-	}
-	if err := h.ensureTargetNotSuperAdmin(req, userID); err != nil {
-		util.Error(w, err)
-		return
-	}
-	hash, err := util.HashPassword(newPassword)
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	if err := h.redis.DeleteYggTokensByUser(req.Context(), userID); err != nil {
-		util.Error(w, err)
-		return
-	}
-	ok, err := h.db.Users.UpdatePasswordAndRevokeRefresh(req.Context(), userID, hash)
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	if !ok {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-		return
-	}
-	if err := h.redis.InvalidateAuthUser(req.Context(), userID); err != nil {
+	if err := h.accounts.ResetPassword(req.Context(), shared.CurrentActor(req), accountsvc.ResetPasswordInput{
+		UserID:      body["user_id"],
+		NewPassword: body["new_password"],
+	}); err != nil {
 		util.Error(w, err)
 		return
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
-}
-
-func (h Handler) ensureTargetNotSuperAdmin(req *http.Request, targetID string) error {
-	target, err := h.db.Users.GetByID(req.Context(), targetID)
-	if err != nil {
-		return err
-	}
-	if target == nil {
-		return util.HTTPError{Status: 404, Detail: "user not found"}
-	}
-	hasProtectedRole, err := h.db.Permissions.UserHasProtectedRole(req.Context(), targetID)
-	if err != nil {
-		return err
-	}
-	if hasProtectedRole && !shared.CurrentActor(req).Has(manageProtectedPermission) {
-		return util.HTTPError{Status: 403, Detail: "cannot modify super admin"}
-	}
-	return nil
-}
-
-func (h Handler) ensureRoleGrantAllowed(req *http.Request, roleID string) error {
-	if roleID == permission.RoleSuperAdmin || roleID == permission.RoleSystemMaintenance {
-		if !shared.CurrentActor(req).Has(manageProtectedPermission) {
-			return util.HTTPError{Status: 403, Detail: "protected role management required"}
-		}
-	}
-	return nil
-}
-
-func (h Handler) userExists(req *http.Request, userID string) (bool, error) {
-	user, err := h.db.Users.GetByID(req.Context(), userID)
-	if err != nil {
-		return false, err
-	}
-	return user != nil, nil
 }
 
 func (h Handler) attachRolesToUserItems(req *http.Request, rawItems any) error {
