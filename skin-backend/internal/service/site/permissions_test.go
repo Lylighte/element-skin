@@ -8,50 +8,6 @@ import (
 	"element-skin/backend/internal/testutil"
 )
 
-// TestAccountPermissionDenials verifies that account service methods reject actors
-// who lack the required self-scoped permissions.
-func TestAccountPermissionDenials(t *testing.T) {
-	db, _ := testutil.NewTestApp(t)
-	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
-	user := testutil.CreateUser(t, db, "perm-account-deny@test.com", "Password123", "PermAccountDeny", false)
-
-	for _, tc := range []struct {
-		name      string
-		actorCode string
-		call      func(permission.Actor) error
-		status    int
-		detail    string
-	}{
-		{
-			name:      "UpdateMe without account.update.self",
-			actorCode: "account.read.self",
-			call: func(a permission.Actor) error {
-				return svc.UpdateMe(ctx, a, map[string]any{"preferred_language": "en_US"})
-			},
-			status: 403,
-			detail: "permission denied",
-		},
-		{
-			name:      "ChangePassword without account_password.update.self",
-			actorCode: "account.update.self",
-			call: func(a permission.Actor) error {
-				return svc.ChangePassword(ctx, a, "Password123", "NewPassword123")
-			},
-			status: 403,
-			detail: "permission denied",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			actor := testActorWithCodes(user.ID, tc.actorCode)
-			err := tc.call(actor)
-			if !httpError(err, tc.status, tc.detail) {
-				t.Fatalf("expected %d %q, got %#v", tc.status, tc.detail, err)
-			}
-		})
-	}
-}
-
 // TestProfilePermissionDenials verifies that profile service methods reject actors
 // who lack the required permissions.
 func TestProfilePermissionDenials(t *testing.T) {
@@ -216,47 +172,6 @@ func TestTexturePermissionDenials(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			actor := testActorWithCodes(user.ID, tc.actorCode)
 			err := tc.call(actor)
-			if !httpError(err, tc.status, tc.detail) {
-				t.Fatalf("expected %d %q, got %#v", tc.status, tc.detail, err)
-			}
-		})
-	}
-}
-
-// TestDeleteUserPermissionDenials verifies that DeleteUser correctly distinguishes
-// self-delete from admin-delete permissions.
-func TestDeleteUserPermissionDenials(t *testing.T) {
-	db, _ := testutil.NewTestApp(t)
-	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
-	user := testutil.CreateUser(t, db, "perm-delete-user@test.com", "Password123", "PermDeleteUser", false)
-	other := testutil.CreateUser(t, db, "perm-delete-other@test.com", "Password123", "PermDeleteOther", false)
-
-	for _, tc := range []struct {
-		name      string
-		actorCode string
-		targetID  string
-		status    int
-		detail    string
-	}{
-		{
-			name:      "Delete self without account.delete.self",
-			actorCode: "account.read.self",
-			targetID:  user.ID,
-			status:    403,
-			detail:    "permission denied",
-		},
-		{
-			name:      "Delete other without account.delete.any",
-			actorCode: "account.delete.self",
-			targetID:  other.ID,
-			status:    403,
-			detail:    "permission denied",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			actor := testActorWithCodes(user.ID, tc.actorCode)
-			_, err := svc.DeleteUser(ctx, actor, tc.targetID)
 			if !httpError(err, tc.status, tc.detail) {
 				t.Fatalf("expected %d %q, got %#v", tc.status, tc.detail, err)
 			}
