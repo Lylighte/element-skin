@@ -12,6 +12,7 @@ import (
 	publicsitesvc "element-skin/backend/internal/service/publicsite"
 	settingssvc "element-skin/backend/internal/service/settings"
 	sitepkg "element-skin/backend/internal/service/site"
+	texturesvc "element-skin/backend/internal/service/texture"
 )
 
 type Handler struct {
@@ -21,6 +22,7 @@ type Handler struct {
 	site     sitepkg.Site
 	accounts accountsvc.AccountService
 	public   publicsitesvc.Service
+	uploads  texturesvc.UploadService
 	settings settingssvc.Settings
 	auth     shared.AuthFunc
 }
@@ -43,7 +45,8 @@ func NewWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, sv
 		APIURL:   cfg.APIURL,
 		CacheTTL: time.Duration(cfg.PublicCacheTTL) * time.Second,
 	}
-	return Handler{cfg: cfg, db: db, redis: redis, site: svc, accounts: accounts, public: public, settings: settings, auth: auth}
+	uploads := texturesvc.UploadService{DB: db, TexturesDir: cfg.TexturesDir}
+	return Handler{cfg: cfg, db: db, redis: redis, site: svc, accounts: accounts, public: public, uploads: uploads, settings: settings, auth: auth}
 }
 
 func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {
