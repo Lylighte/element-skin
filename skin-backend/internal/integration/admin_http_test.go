@@ -217,7 +217,7 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 	}
 
 	bannedUntil := time.Now().Add(time.Hour).UnixMilli()
-	ban := doJSON(t, h, "POST", "/v1/admin/users/"+user.ID+"/ban", map[string]any{"banned_until": bannedUntil}, adminCookie)
+	ban := doJSON(t, h, "POST", "/v1/admin/users/"+user.ID+"/ban", map[string]any{"banned_until": bannedUntil, "reason": "integration ban"}, adminCookie)
 	if ban.Code != 200 {
 		t.Fatalf("ban status=%d body=%s", ban.Code, ban.Body.String())
 	}

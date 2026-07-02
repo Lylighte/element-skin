@@ -59,7 +59,7 @@ export function deleteUser(userId: string): Promise<{ data: { ok: boolean } }> {
 
 export function banUser(
   userId: string,
-  data: { banned_until: number },
+  data: { banned_until: number; reason: string },
 ): Promise<{ data: { ok: boolean; banned_until: number } }> {
   return client.post(`/v1/admin/users/${userId}/ban`, data)
 }

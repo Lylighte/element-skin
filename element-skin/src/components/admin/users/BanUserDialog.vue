@@ -27,6 +27,18 @@
       >
         解封时间：<span class="font-bold text-[var(--el-color-primary)]">{{ untilLabel }}</span>
       </div>
+
+      <div class="mt-4">
+        <div class="mb-2 text-sm font-medium text-[var(--color-text)]">封禁原因</div>
+        <el-input
+          v-model="reason"
+          type="textarea"
+          :rows="4"
+          maxlength="500"
+          show-word-limit
+          placeholder="原因会作为站内通知发送给用户"
+        />
+      </div>
     </div>
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
@@ -43,6 +55,7 @@ const visible = defineModel<boolean>('visible', { required: true })
 const durationType = defineModel<string>('durationType', { required: true })
 const presetDuration = defineModel<number>('presetDuration', { required: true })
 const customHours = defineModel<number>('customHours', { required: true })
+const reason = defineModel<string>('reason', { required: true })
 
 defineProps<{
   presets: Array<{ label: string; value: number }>
