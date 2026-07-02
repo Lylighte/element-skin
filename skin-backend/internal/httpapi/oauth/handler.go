@@ -30,43 +30,34 @@ func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {
 
 func (h Handler) AuthorizationServerMetadata(w http.ResponseWriter, req *http.Request) {
 	base := h.baseURL()
-	util.JSON(w, http.StatusOK, map[string]any{
-		"issuer":                                         base,
-		"authorization_endpoint":                         base + "/oauth/authorize",
-		"device_authorization_endpoint":                  base + "/oauth/device/code",
-		"token_endpoint":                                 base + "/oauth/token",
-		"revocation_endpoint":                            base + "/oauth/revoke",
-		"introspection_endpoint":                         base + "/oauth/introspect",
-		"response_types_supported":                       []string{"code"},
-		"grant_types_supported":                          []string{"authorization_code", "refresh_token", "client_credentials", "urn:ietf:params:oauth:grant-type:device_code"},
-		"code_challenge_methods_supported":               []string{"S256"},
-		"token_endpoint_auth_methods_supported":          []string{"client_secret_basic", "client_secret_post", "none"},
-		"revocation_endpoint_auth_methods_supported":     []string{"client_secret_basic", "client_secret_post", "none"},
-		"introspection_endpoint_auth_methods_supported":  []string{"bearer"},
-		"scopes_supported":                               h.scopeCodes(),
-		"authorization_response_iss_parameter_supported": false,
-		"request_parameter_supported":                    false,
-		"request_uri_parameter_supported":                false,
-		"require_request_uri_registration":               false,
-		"pushed_authorization_request_endpoint":          nil,
-		"require_pushed_authorization_requests":          false,
-		"tls_client_certificate_bound_access_tokens":     false,
-		"dpop_signing_alg_values_supported":              []string{},
-		"backchannel_authentication_endpoint":            nil,
-		"authorization_details_types_supported":          []string{},
-		"protected_resources":                            []string{base + "/v1"},
-		"service_documentation":                          strings.TrimRight(h.cfg.SiteURL, "/"),
-	})
+	metadata := map[string]any{
+		"issuer":                                     base,
+		"authorization_endpoint":                     base + "/oauth/authorize",
+		"device_authorization_endpoint":              base + "/oauth/device/code",
+		"token_endpoint":                             base + "/oauth/token",
+		"revocation_endpoint":                        base + "/oauth/revoke",
+		"introspection_endpoint":                     base + "/oauth/introspect",
+		"response_types_supported":                   []string{"code"},
+		"grant_types_supported":                      []string{"authorization_code", "refresh_token", "client_credentials", "urn:ietf:params:oauth:grant-type:device_code"},
+		"code_challenge_methods_supported":           []string{"S256"},
+		"token_endpoint_auth_methods_supported":      []string{"client_secret_basic", "client_secret_post", "none"},
+		"revocation_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none"},
+		"scopes_supported":                           h.scopeCodes(),
+		"protected_resources":                        []string{base + "/v1"},
+	}
+	if docs := strings.TrimRight(h.cfg.SiteURL, "/"); docs != "" {
+		metadata["service_documentation"] = docs
+	}
+	util.JSON(w, http.StatusOK, metadata)
 }
 
 func (h Handler) ProtectedResourceMetadata(w http.ResponseWriter, req *http.Request) {
 	base := h.baseURL()
 	util.JSON(w, http.StatusOK, map[string]any{
-		"resource":                              base + "/v1",
-		"authorization_servers":                 []string{base},
-		"bearer_methods_supported":              []string{"header"},
-		"resource_signing_alg_values_supported": []string{},
-		"scopes_supported":                      h.scopeCodes(),
+		"resource":                 base + "/v1",
+		"authorization_servers":    []string{base},
+		"bearer_methods_supported": []string{"header"},
+		"scopes_supported":         h.scopeCodes(),
 	})
 }
 
@@ -237,7 +228,7 @@ func (h Handler) ApproveAuthorization(w http.ResponseWriter, req *http.Request) 
 
 func (h Handler) DeviceCode(w http.ResponseWriter, req *http.Request) {
 	if err := req.ParseForm(); err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid form"})
+		writeProtocolError(w, util.HTTPError{Status: 400, Detail: "invalid form"})
 		return
 	}
 	clientID, clientSecret := clientCredentials(req)
@@ -247,7 +238,7 @@ func (h Handler) DeviceCode(w http.ResponseWriter, req *http.Request) {
 		Scope:        req.Form.Get("scope"),
 	})
 	if err != nil {
-		util.Error(w, err)
+		writeProtocolError(w, err)
 		return
 	}
 	base := strings.TrimRight(h.cfg.SiteURL, "/")
@@ -294,7 +285,7 @@ func (h Handler) DeviceDecision(w http.ResponseWriter, req *http.Request) {
 
 func (h Handler) Token(w http.ResponseWriter, req *http.Request) {
 	if err := req.ParseForm(); err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid form"})
+		writeProtocolError(w, util.HTTPError{Status: 400, Detail: "invalid form"})
 		return
 	}
 	clientID, clientSecret := clientCredentials(req)
@@ -310,7 +301,7 @@ func (h Handler) Token(w http.ResponseWriter, req *http.Request) {
 		DeviceCode:   req.Form.Get("device_code"),
 	})
 	if err != nil {
-		util.Error(w, err)
+		writeProtocolError(w, err)
 		return
 	}
 	util.JSON(w, http.StatusOK, res)
@@ -318,12 +309,12 @@ func (h Handler) Token(w http.ResponseWriter, req *http.Request) {
 
 func (h Handler) Revoke(w http.ResponseWriter, req *http.Request) {
 	if err := req.ParseForm(); err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid form"})
+		writeProtocolError(w, util.HTTPError{Status: 400, Detail: "invalid form"})
 		return
 	}
 	clientID, clientSecret := clientCredentials(req)
 	if err := h.oauth.RevokeToken(req.Context(), clientID, clientSecret, req.Form.Get("token")); err != nil {
-		util.Error(w, err)
+		writeProtocolError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -331,12 +322,12 @@ func (h Handler) Revoke(w http.ResponseWriter, req *http.Request) {
 
 func (h Handler) Introspect(w http.ResponseWriter, req *http.Request) {
 	if err := req.ParseForm(); err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid form"})
+		writeProtocolError(w, util.HTTPError{Status: 400, Detail: "invalid form"})
 		return
 	}
 	res, err := h.oauth.Introspect(req.Context(), shared.CurrentActor(req), req.Form.Get("token"))
 	if err != nil {
-		util.Error(w, err)
+		writeProtocolError(w, err)
 		return
 	}
 	util.JSON(w, http.StatusOK, res)
