@@ -11,6 +11,7 @@ import (
 
 	"element-skin/backend/internal/database"
 	permissiondb "element-skin/backend/internal/database/permission"
+	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
@@ -357,6 +358,50 @@ func TestAccountServiceResetPasswordRevokesTokensAndInvalidatesExactly(t *testin
 	}
 	if err := svc.ResetPassword(ctx, actor, accountsvc.ResetPasswordInput{UserID: "missing-account-reset", NewPassword: "NextPassword123"}); !httpErrorIs(err, http.StatusNotFound, "user not found") {
 		t.Fatalf("reset missing user mismatch: %#v", err)
+	}
+}
+
+func TestAccountServiceDeleteUserRecountsSharedTexturesAndDeletesUploadedTextures(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-account-delete-texture@test.com", "Password123", "AdminDeleteTexture", true)
+	owner := testutil.CreateUser(t, db, "owner-account-delete-texture@test.com", "Password123", "OwnerDeleteTexture", false)
+	target := testutil.CreateUser(t, db, "target-account-delete-texture@test.com", "Password123", "TargetDeleteTexture", false)
+	other := testutil.CreateUser(t, db, "other-account-delete-texture@test.com", "Password123", "OtherDeleteTexture", false)
+	svc := accountsvc.AccountService{DB: db, Redis: redisstore.NewMemoryStore()}
+
+	if err := db.Textures.AddToLibrary(ctx, owner.ID, "delete_user_shared_skin", "skin", "Delete User Shared", true, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Textures.AddToLibrary(ctx, target.ID, "delete_user_uploaded_skin", "skin", "Delete User Uploaded", true, "slim"); err != nil {
+		t.Fatal(err)
+	}
+	if added, err := db.Textures.AddToWardrobe(ctx, target.ID, "delete_user_shared_skin", "skin"); err != nil || !added {
+		t.Fatalf("seed target shared texture: added=%v err=%v", added, err)
+	}
+	if added, err := db.Textures.AddToWardrobe(ctx, other.ID, "delete_user_shared_skin", "skin"); err != nil || !added {
+		t.Fatalf("seed other shared texture: added=%v err=%v", added, err)
+	}
+	if added, err := db.Textures.AddToWardrobe(ctx, other.ID, "delete_user_uploaded_skin", "skin"); err != nil || !added {
+		t.Fatalf("seed other uploaded texture: added=%v err=%v", added, err)
+	}
+
+	if err := svc.DeleteUser(ctx, actorWithPermissions(adminUser.ID, "account.delete.any"), target.ID); err != nil {
+		t.Fatal(err)
+	}
+	public, err := db.Textures.ListPublic(ctx, texture.PublicListOptions{Limit: 10, TextureType: "skin", Query: "delete_user_shared_skin", Sort: texture.PublicLibrarySortMostUsed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := public["items"].([]map[string]any)
+	if len(items) != 1 || items[0]["hash"] != "delete_user_shared_skin" || items[0]["usage_count"] != int64(2) {
+		t.Fatalf("shared texture usage after delete = %#v; want one row with usage_count=2", public)
+	}
+	if exists, err := db.Textures.Exists(ctx, "delete_user_uploaded_skin", "skin"); err != nil || exists {
+		t.Fatalf("deleting uploader should remove uploaded public texture: exists=%v err=%v", exists, err)
+	}
+	if info, err := db.Textures.GetInfo(ctx, other.ID, "delete_user_uploaded_skin", "skin"); err != nil || info != nil {
+		t.Fatalf("deleting uploader should remove other users' wardrobe copies: info=%#v err=%v", info, err)
 	}
 }
 
