@@ -92,7 +92,7 @@ func (h Handler) DeleteProfile(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	err := h.site.DeleteProfileByID(req.Context(), shared.CurrentActor(req), req.PathValue("profile_id"))
+	err := h.profiles.DeleteProfileByID(req.Context(), shared.CurrentActor(req), req.PathValue("profile_id"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -126,7 +126,7 @@ func (h Handler) setProfileTexture(w http.ResponseWriter, req *http.Request, typ
 		util.Error(w, util.HTTPError{Status: 404, Detail: "profile not found"})
 		return
 	}
-	if err := h.site.SetProfileTexture(req.Context(), shared.CurrentActor(req), profileID, typ, body["hash"]); err != nil {
+	if err := h.profiles.SetProfileTexture(req.Context(), shared.CurrentActor(req), profileID, typ, body["hash"]); err != nil {
 		util.Error(w, err)
 		return
 	}

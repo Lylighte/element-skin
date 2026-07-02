@@ -1,4 +1,4 @@
-package site_test
+package auth_test
 
 import (
 	"context"
@@ -8,15 +8,15 @@ import (
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/redisstore"
+	authsvc "element-skin/backend/internal/service/auth"
 	settingssvc "element-skin/backend/internal/service/settings"
-	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
 
-func newSiteService(db *database.DB, cfg config.Config) site.Site {
+func newAuthService(db *database.DB, cfg config.Config) authsvc.Service {
 	redis := testutil.NewMemoryRedis()
-	return site.Site{DB: db, Cfg: cfg, Redis: redis, Settings: settingssvc.Settings{DB: db, Redis: redis}}
+	return authsvc.Service{DB: db, Cfg: cfg, Redis: redis, Settings: settingssvc.Settings{DB: db, Redis: redis}}
 }
 
 func httpError(err error, status int, detail string) bool {

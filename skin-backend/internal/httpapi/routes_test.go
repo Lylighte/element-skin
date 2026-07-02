@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"element-skin/backend/internal/httpapi"
-	sitesvc "element-skin/backend/internal/service/site"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 )
@@ -15,7 +14,7 @@ import (
 func TestRoutesRegistersPublicAndYggdrasilEntrypointsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	cases := []struct {
 		method string

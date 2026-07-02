@@ -12,9 +12,7 @@ import (
 )
 
 var (
-	textureCreateOwnedPermission           = permission.MustDefinitionByCode("texture.create.owned")
-	textureApplyOwnedPermission            = permission.MustDefinitionByCode("texture.apply.owned")
-	textureUpdateVisibilityOwnedPermission = permission.MustDefinitionByCode("texture.update_visibility.owned")
+	textureCreateOwnedPermission = permission.MustDefinitionByCode("texture.create.owned")
 )
 
 type UploadService struct {
@@ -55,9 +53,6 @@ func (s UploadService) UploadAndApply(ctx context.Context, input UploadInput, pr
 	if err := input.Actor.Require(textureCreateOwnedPermission); err != nil {
 		return nil, permissionDenied()
 	}
-	if err := input.Actor.Require(textureApplyOwnedPermission); err != nil {
-		return nil, permissionDenied()
-	}
 	profileID = strings.TrimSpace(profileID)
 	textureType, err := normalizedUploadTextureType(input.TextureType, false)
 	if err != nil {
@@ -66,6 +61,9 @@ func (s UploadService) UploadAndApply(ctx context.Context, input UploadInput, pr
 	if profileID == "" {
 		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "uuid and texture_type are required"}
 	}
+	if err := requireOwnedOrBoundProfilePermission(input.Actor, profileID, textureApplyOwnedPermission, textureApplyBoundPermission); err != nil {
+		return nil, err
+	}
 	if input.IsPublic {
 		if err := input.Actor.Require(textureUpdateVisibilityOwnedPermission); err != nil {
 			return nil, permissionDenied()
@@ -73,6 +71,29 @@ func (s UploadService) UploadAndApply(ctx context.Context, input UploadInput, pr
 	}
 	model := profile.NormalizeModel(input.Model)
 	hash, err := s.saveLibraryTexture(ctx, input.Actor.UserID, input.Data, textureType, "", input.IsPublic, model)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.applyUploadedTexture(ctx, input.Actor.UserID, profileID, hash, textureType, model); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "hash": hash, "type": textureType}, nil
+}
+
+func (s UploadService) UploadAndApplyBoundProfile(ctx context.Context, input UploadInput, profileID string) (map[string]any, error) {
+	profileID = strings.TrimSpace(profileID)
+	textureType, err := normalizedUploadTextureType(input.TextureType, false)
+	if err != nil {
+		return nil, err
+	}
+	if profileID == "" {
+		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "uuid and texture_type are required"}
+	}
+	if err := requireBoundProfilePermission(input.Actor, profileID, textureApplyBoundPermission); err != nil {
+		return nil, err
+	}
+	model := profile.NormalizeModel(input.Model)
+	hash, err := s.saveLibraryTexture(ctx, input.Actor.UserID, input.Data, textureType, "", false, model)
 	if err != nil {
 		return nil, err
 	}

@@ -8,7 +8,6 @@ import (
 
 	"element-skin/backend/internal/httpapi"
 	"element-skin/backend/internal/permission"
-	sitesvc "element-skin/backend/internal/service/site"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 )
@@ -18,7 +17,7 @@ func TestDiscoveryCapabilitiesAndPermissionCatalogExactPayloads(t *testing.T) {
 	cfg := testutil.TestConfig()
 	cfg.SiteURL = "https://skin.example/root/"
 	cfg.APIURL = ""
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/capabilities", nil))

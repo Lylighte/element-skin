@@ -1,4 +1,4 @@
-package site
+package auth
 
 import (
 	"context"
@@ -17,19 +17,18 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-// Site contains user-facing account, profile, and texture operations.
-type Site struct {
+type Service struct {
 	DB       *database.DB
 	Cfg      config.Config
 	Redis    redisstore.Store
 	Settings settingssvc.Settings
 }
 
-func (s Site) settings() settingssvc.Settings {
+func (s Service) settings() settingssvc.Settings {
 	return s.Settings
 }
 
-func (s Site) Login(ctx context.Context, email, password string) (map[string]any, error) {
+func (s Service) Login(ctx context.Context, email, password string) (map[string]any, error) {
 	user, err := s.DB.Users.GetByEmail(ctx, email)
 	if err != nil {
 		return nil, err
@@ -40,7 +39,7 @@ func (s Site) Login(ctx context.Context, email, password string) (map[string]any
 	return s.issueSession(ctx, user.ID, map[string]any{"user_id": user.ID})
 }
 
-func (s Site) Register(ctx context.Context, email, password, username, invite, code string) (string, error) {
+func (s Service) Register(ctx context.Context, email, password, username, invite, code string) (string, error) {
 	email = strings.TrimSpace(email)
 	username = strings.TrimSpace(username)
 	if username == "" {

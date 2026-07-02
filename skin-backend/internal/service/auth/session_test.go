@@ -1,4 +1,4 @@
-package site_test
+package auth_test
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/redisstore"
+	authsvc "element-skin/backend/internal/service/auth"
 	settingssvc "element-skin/backend/internal/service/settings"
-	"element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
@@ -18,7 +18,7 @@ func TestSessionRotateRefreshIsSingleUse(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	svc := newSiteService(db, cfg)
+	svc := newAuthService(db, cfg)
 	testutil.CreateUser(t, db, "site-session-service@test.com", "Password123", "SiteSessionService", false)
 	login, err := svc.Login(ctx, "site-session-service@test.com", "Password123")
 	if err != nil {
@@ -40,7 +40,7 @@ func TestSessionRotateRefreshRejectsExpiredTokenAndConsumesIt(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	svc := newSiteService(db, cfg)
+	svc := newAuthService(db, cfg)
 	user := testutil.CreateUser(t, db, "site-session-expired@test.com", "Password123", "SiteSessionExpired", false)
 	raw, hash, err := util.GenerateRefreshToken()
 	if err != nil {
@@ -63,7 +63,7 @@ func TestSessionRotateRefreshRejectsTokenAfterUserDeletion(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	svc := newSiteService(db, cfg)
+	svc := newAuthService(db, cfg)
 	user := testutil.CreateUser(t, db, "site-session-deleted-user@test.com", "Password123", "SiteSessionDeletedUser", false)
 	raw, hash, err := util.GenerateRefreshToken()
 	if err != nil {
@@ -89,7 +89,7 @@ func TestSessionIssueAndRotateUseConfiguredRefreshLifetime(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	svc := newSiteService(db, cfg)
+	svc := newAuthService(db, cfg)
 	testutil.CreateUser(t, db, "site-session-lifetime@test.com", "Password123", "SiteSessionLifetime", true)
 	if err := db.Settings.Set(ctx, "jwt_expire_days", "3"); err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestSessionRotatePreservesOldTokenWhenPreparingNewSessionFails(t *testing.T
 		t.Fatal(err)
 	}
 	cache := &getSettingFailStore{Store: testutil.NewMemoryRedis()}
-	svc := site.Site{
+	svc := authsvc.Service{
 		DB:       db,
 		Cfg:      testutil.TestConfig(),
 		Redis:    cache,
@@ -151,7 +151,7 @@ func TestSessionConcurrentRotationAllowsExactlyOneSuccess(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	cfg := testutil.TestConfig()
-	svc := newSiteService(db, cfg)
+	svc := newAuthService(db, cfg)
 	user := testutil.CreateUser(t, db, "site-session-concurrent@test.com", "Password123", "SiteSessionConcurrent", false)
 	raw, hash, err := util.GenerateRefreshToken()
 	if err != nil {

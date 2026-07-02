@@ -23,7 +23,7 @@ func (h Handler) Login(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	res, err := h.site.Login(req.Context(), body["email"], body["password"])
+	res, err := h.authSvc.Login(req.Context(), body["email"], body["password"])
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -34,7 +34,7 @@ func (h Handler) Login(w http.ResponseWriter, req *http.Request) {
 
 func (h Handler) Logout(w http.ResponseWriter, req *http.Request) {
 	if c, err := req.Cookie("refresh_token"); err == nil {
-		if err := h.site.RevokeRefresh(req.Context(), c.Value); err != nil {
+		if err := h.authSvc.RevokeRefresh(req.Context(), c.Value); err != nil {
 			util.Error(w, err)
 			return
 		}
@@ -53,7 +53,7 @@ func (h Handler) Register(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	id, err := h.site.Register(req.Context(), body["email"], body["password"], body["username"], body["invite"], body["code"])
+	id, err := h.authSvc.Register(req.Context(), body["email"], body["password"], body["username"], body["invite"], body["code"])
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -75,7 +75,7 @@ func (h Handler) SendVerificationCode(w http.ResponseWriter, req *http.Request) 
 		util.Error(w, util.HTTPError{Status: 400, Detail: "email required"})
 		return
 	}
-	res, err := h.site.SendVerificationCode(req.Context(), email, body["type"])
+	res, err := h.authSvc.SendVerificationCode(req.Context(), email, body["type"])
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -96,7 +96,7 @@ func (h Handler) ResetPassword(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "email, password and code required"})
 		return
 	}
-	if err := h.site.ResetPassword(req.Context(), body["email"], body["password"], body["code"]); err != nil {
+	if err := h.authSvc.ResetPassword(req.Context(), body["email"], body["password"], body["code"]); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -109,7 +109,7 @@ func (h Handler) RefreshToken(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 401, Detail: "not authenticated"})
 		return
 	}
-	res, err := h.site.RotateRefresh(req.Context(), c.Value)
+	res, err := h.authSvc.RotateRefresh(req.Context(), c.Value)
 	if err != nil {
 		util.Error(w, err)
 		return

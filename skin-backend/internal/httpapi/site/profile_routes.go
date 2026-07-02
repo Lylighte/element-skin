@@ -26,7 +26,7 @@ func (h Handler) CreateProfile(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	res, err := h.site.CreateProfile(req.Context(), shared.CurrentActor(req), body["name"], body["model"])
+	res, err := h.profiles.CreateProfile(req.Context(), shared.CurrentActor(req), body["name"], body["model"])
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -44,7 +44,7 @@ func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	if err := h.site.UpdateProfile(req.Context(), shared.CurrentActor(req), profilePathID(req), body["name"]); err != nil {
+	if err := h.profiles.UpdateProfile(req.Context(), shared.CurrentActor(req), profilePathID(req), body["name"]); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -56,7 +56,7 @@ func (h Handler) DeleteProfile(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	if err := h.site.DeleteProfile(req.Context(), shared.CurrentActor(req), profilePathID(req)); err != nil {
+	if err := h.profiles.DeleteProfile(req.Context(), shared.CurrentActor(req), profilePathID(req)); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -68,7 +68,7 @@ func (h Handler) ClearProfileSkin(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	if err := h.site.ClearProfileTexture(req.Context(), shared.CurrentActor(req), profilePathID(req), "skin"); err != nil {
+	if err := h.profiles.ClearProfileTexture(req.Context(), shared.CurrentActor(req), profilePathID(req), "skin"); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -80,7 +80,7 @@ func (h Handler) ClearProfileCape(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	if err := h.site.ClearProfileTexture(req.Context(), shared.CurrentActor(req), profilePathID(req), "cape"); err != nil {
+	if err := h.profiles.ClearProfileTexture(req.Context(), shared.CurrentActor(req), profilePathID(req), "cape"); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -100,7 +100,7 @@ func (h Handler) ListMyProfiles(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	limit := util.ClampLimit(req.URL.Query().Get("limit"))
-	res, err := h.site.ListMyProfiles(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("cursor"), limit)
+	res, err := h.profiles.ListMyProfiles(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("cursor"), limit)
 	if err != nil {
 		util.Error(w, err)
 		return

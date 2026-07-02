@@ -12,7 +12,6 @@ import (
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/redisstore"
-	sitesvc "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
@@ -20,7 +19,7 @@ import (
 func TestSessionRoutesLoginSetsExactCookies(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-login@test.com", "Password123", "SiteLogin", false)
 	if err := db.Settings.Set(t.Context(), "jwt_expire_days", 2); err != nil {
 		t.Fatal(err)
@@ -43,7 +42,7 @@ func TestSessionRoutesAuthRateLimitIsScopedByForwardedClientIP(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil)
 	testutil.CreateUser(t, db, "site-rate-limit@test.com", "Password123", "SiteRateLimit", false)
 	if err := db.Settings.Set(t.Context(), "rate_limit_auth_attempts", "1"); err != nil {
 		t.Fatal(err)
@@ -81,7 +80,7 @@ func TestSessionRoutesAuthRateLimitIsScopedByForwardedClientIP(t *testing.T) {
 func TestSessionRoutesRefreshRotatesAndLogoutRevokesExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	testutil.CreateUser(t, db, "site-refresh@test.com", "Password123", "SiteRefresh", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"site-refresh@test.com","password":"Password123"}`))
@@ -144,7 +143,7 @@ func TestSessionRoutesRefreshRotatesAndLogoutRevokesExactly(t *testing.T) {
 func TestSessionRoutesLogoutReportsRevokeFailureWithoutClearingCookies(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "logout-failure@test.com", "Password123", "LogoutFailure", false)
 
 	const rawRefresh = "logout-failure-refresh"
@@ -185,7 +184,7 @@ func TestSessionRoutesRegisterCreatesFirstAdminAndProfileExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil)
 	if err := db.Settings.Set(t.Context(), "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +213,7 @@ func TestSessionRoutesVerificationAndResetPasswordExactFlow(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil)
 	user := testutil.CreateUser(t, db, "reset-flow@test.com", "Password123", "ResetFlow", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/verification-code", strings.NewReader(`{"email":"reset-flow@test.com","type":"reset"}`))
@@ -275,7 +274,7 @@ func TestSessionRoutesVerificationAndResetPasswordExactFlow(t *testing.T) {
 func TestSessionRoutesRejectMalformedAndIncompletePayloadsWithoutMutation(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 
 	tests := []struct {
 		name   string
@@ -316,7 +315,7 @@ func TestSessionRoutesFailClosedOnRateLimitConfigurationAndStoreErrors(t *testin
 		t.Fatal(err)
 	}
 	cache := redisstore.NewMemoryStore()
-	h := site.NewWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.NewWithRedis(cfg, db, cache, nil)
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"rate-limit-failure@test.com","password":"Password123"}`))
 	rec := httptest.NewRecorder()
 	h.Login(rec, req)
@@ -332,7 +331,7 @@ func TestSessionRoutesFailClosedOnRateLimitConfigurationAndStoreErrors(t *testin
 	}
 	failedUser := testutil.CreateUser(t, db, "rate-limit-store-failure@test.com", "Password123", "RateLimitStoreFailure", false)
 	failingCache := &rateLimitFailRedis{Store: cache}
-	h = site.NewWithRedis(cfg, db, failingCache, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h = site.NewWithRedis(cfg, db, failingCache, nil)
 	req = httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"rate-limit-store-failure@test.com","password":"Password123"}`))
 	rec = httptest.NewRecorder()
 	h.Login(rec, req)

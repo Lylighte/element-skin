@@ -8,12 +8,11 @@ import (
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/permission"
-	sitepkg "element-skin/backend/internal/service/site"
 	"element-skin/backend/internal/testutil"
 )
 
 func TestHandlerAuthRequestsUserAccess(t *testing.T) {
-	h := site.New(testutil.TestConfig(), nil, sitepkg.Site{}, func(next http.HandlerFunc, definitions ...permission.Definition) http.HandlerFunc {
+	h := site.New(testutil.TestConfig(), nil, func(next http.HandlerFunc, definitions ...permission.Definition) http.HandlerFunc {
 		return func(w http.ResponseWriter, req *http.Request) {
 			actor := shared.CurrentActor(req)
 			if actor.UserID == "" {

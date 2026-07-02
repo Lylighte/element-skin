@@ -1,9 +1,7 @@
-package site
+package auth
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"math/big"
 
@@ -12,24 +10,6 @@ import (
 
 func validEmail(s string) bool {
 	return util.ValidEmail(s)
-}
-
-func TextureHashBytes(b []byte) string {
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
-}
-
-func strconvI(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	digits := "0123456789"
-	var out []byte
-	for i > 0 {
-		out = append([]byte{digits[i%10]}, out...)
-		i /= 10
-	}
-	return string(out)
 }
 
 func randomVerificationCode(length int) (string, error) {
@@ -47,11 +27,3 @@ func randomVerificationCode(length int) (string, error) {
 }
 
 var ErrUnauthorized = errors.New("unauthorized")
-
-func asCursorMap(v any) map[string]any {
-	if v == nil {
-		return nil
-	}
-	m, _ := v.(map[string]any)
-	return m
-}

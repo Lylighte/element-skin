@@ -6,7 +6,6 @@ import (
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/permission"
-	sitesvc "element-skin/backend/internal/service/site"
 	texturesvc "element-skin/backend/internal/service/texture"
 	"element-skin/backend/internal/testutil"
 	"image"
@@ -24,7 +23,7 @@ import (
 func TestTextureRoutesListAndDetailExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture@test.com", "Password123", "SiteTexture", false)
 
 	if err := db.Textures.AddToLibrary(context.Background(), user.ID, "site_route_hash", "skin", "Site Route Texture", true, "default"); err != nil {
@@ -53,7 +52,7 @@ func TestTextureRoutesUploadAndUploadApplyExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture-upload@test.com", "Password123", "SiteTextureUpload", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_texture_upload_apply", "SiteTextureUploadApply")
 
@@ -182,7 +181,7 @@ func jsonStringField(t *testing.T, body, field string) string {
 func TestTextureRoutesAddUpdateDeleteAndApplyExactResponses(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	owner := testutil.CreateUser(t, db, "site-texture-owner@test.com", "Password123", "SiteTextureOwner", false)
 	other := testutil.CreateUser(t, db, "site-texture-other@test.com", "Password123", "SiteTextureOther", false)
 	profile := testutil.CreateProfile(t, db, other.ID, "site_texture_apply", "SiteTextureApply")
@@ -245,7 +244,7 @@ func TestTextureRoutesRejectInvalidInputsWithExactErrors(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture-errors@test.com", "Password123", "SiteTextureErrors", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_texture_errors_profile", "SiteTextureErrorsProfile")
 
@@ -319,7 +318,7 @@ func TestTextureRoutesRejectMissingFineGrainedPermissionsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture-permissions@test.com", "Password123", "SiteTexturePermissions", false)
 
 	cases := []struct {
@@ -452,7 +451,7 @@ func TestTextureRoutesRejectMalformedUploadsExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture-upload-errors@test.com", "Password123", "SiteTextureUploadErrors", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/users/me/textures", strings.NewReader("not multipart"))
@@ -523,7 +522,7 @@ func TestTextureRoutesUploadApplyFailureKeepsUploadedLibraryRow(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture-apply-owner@test.com", "Password123", "SiteTextureApplyOwner", false)
 	other := testutil.CreateUser(t, db, "site-texture-apply-foreign@test.com", "Password123", "SiteTextureApplyForeign", false)
 	foreignProfile := testutil.CreateProfile(t, db, other.ID, "site_texture_foreign_apply", "SiteTextureForeignApply")
@@ -558,7 +557,7 @@ func TestTextureUploadRemovesNewFileWhenDatabaseInsertFails(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture-db-fail@test.com", "Password123", "SiteTextureDBFail", false)
 	if _, err := db.Pool.Exec(t.Context(), `ALTER TABLE user_textures ADD CONSTRAINT reject_test_upload CHECK (FALSE)`); err != nil {
 		t.Fatal(err)
@@ -586,7 +585,7 @@ func TestTextureUploadKeepsNewFileWhenAnotherTextureTypeReferencesHash(t *testin
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	owner := testutil.CreateUser(t, db, "site-texture-existing-owner@test.com", "Password123", "SiteTextureExistingOwner", false)
 	uploader := testutil.CreateUser(t, db, "site-texture-existing-uploader@test.com", "Password123", "SiteTextureExistingUploader", false)
 	data := routePNG(t, 64, 64)
@@ -625,7 +624,7 @@ func TestTextureUploadKeepsNewFileWhenAnotherTextureTypeReferencesHash(t *testin
 func TestTextureRoutesDeleteMissingWardrobeRowDoesNotClearAppliedProfile(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	owner := testutil.CreateUser(t, db, "site-texture-delete-owner@test.com", "Password123", "SiteTextureDeleteOwner", false)
 	other := testutil.CreateUser(t, db, "site-texture-delete-other@test.com", "Password123", "SiteTextureDeleteOther", false)
 	profile := testutil.CreateProfile(t, db, other.ID, "site_texture_delete_keeps_profile", "SiteTextureDeleteKeepsProfile")
@@ -659,7 +658,7 @@ func TestTextureRoutesIsPublicWithoutPermissionReturns403(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture-no-vis@test.com", "Password123", "SiteTextureNoVis", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "site_texture_no_vis", "SiteTextureNoVis")
 
@@ -697,7 +696,7 @@ func TestTextureRoutesInvalidImageReturns400(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.TexturesDir = t.TempDir()
-	h := site.New(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, nil)
+	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-texture-invalid-img@test.com", "Password123", "SiteTextureInvalidImg", false)
 
 	req := textureMultipartRequest(t, "/v1/users/me/textures", map[string]string{

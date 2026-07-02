@@ -1,4 +1,4 @@
-package site_test
+package auth_test
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 func TestAuthRegisterCreatesFirstAdminAndOfflineProfileExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	if err := db.Settings.Set(ctx, "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestAuthRegisterCreatesFirstAdminAndOfflineProfileExactly(t *testing.T) {
 func TestAuthRegisterRejectsPolicyFailuresWithoutCreatingUser(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 
 	if err := db.Settings.Set(ctx, "allow_register", "false"); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestAuthRegisterRejectsPolicyFailuresWithoutCreatingUser(t *testing.T) {
 func TestAuthRegisterConsumesVerificationAndInviteExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestAuthRegisterConsumesVerificationAndInviteExactly(t *testing.T) {
 func TestAuthRegisterRejectsMissingVerificationAndInviteInputsWithoutSideEffects(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestAuthRegisterRejectsMissingVerificationAndInviteInputsWithoutSideEffects
 func TestConcurrentRegistrationsConsumeSingleUseInviteExactlyOnce(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	testutil.CreateUser(t, db, "invite-race-seed@test.com", "Password123", "InviteRaceSeed", false)
 	if err := db.Settings.Set(ctx, "require_invite", "true"); err != nil {
 		t.Fatal(err)
@@ -309,7 +309,7 @@ func TestConcurrentRegistrationsConsumeSingleUseInviteExactlyOnce(t *testing.T) 
 func TestAuthRejectsInvalidCredentialsAndRegistrationIdentityConflicts(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	existing := testutil.CreateUser(t, db, "auth-existing@test.com", "Password123", "AuthExisting", false)
 
 	for _, tc := range []struct {
@@ -355,7 +355,7 @@ func TestAuthRejectsInvalidCredentialsAndRegistrationIdentityConflicts(t *testin
 func TestAuthServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	db.Close()
 
 	if result, err := svc.Login(ctx, "closed-auth@test.com", "Password123"); result != nil || !closedPoolError(err) {
@@ -369,7 +369,7 @@ func TestAuthServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) {
 func TestConcurrentRegistrationsKeepDisplayNameUnique(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	testutil.CreateUser(t, db, "registration-name-seed@test.com", "Password123", "RegistrationSeed", false)
 	if _, err := db.Pool.Exec(ctx, `
 		CREATE FUNCTION delay_user_registration_write() RETURNS trigger AS $$
@@ -440,7 +440,7 @@ func TestConcurrentRegistrationsKeepDisplayNameUnique(t *testing.T) {
 func TestConcurrentRegistrationsReturnExactEmailConflict(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	testutil.CreateUser(t, db, "registration-email-seed@test.com", "Password123", "RegistrationEmailSeed", false)
 	if _, err := db.Pool.Exec(ctx, `
 		CREATE FUNCTION delay_registration_email_write() RETURNS trigger AS $$
@@ -511,7 +511,7 @@ func TestConcurrentRegistrationsReturnExactEmailConflict(t *testing.T) {
 func TestConcurrentRegistrationsRetryConflictingGeneratedProfileName(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	if err := db.Settings.Set(ctx, "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +612,7 @@ func TestConcurrentRegistrationsRetryConflictingGeneratedProfileName(t *testing.
 func TestRegisterStopsAfterGeneratedProfileNameCandidatesAreExhausted(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
-	svc := newSiteService(db, testutil.TestConfig())
+	svc := newAuthService(db, testutil.TestConfig())
 	owner := testutil.CreateUser(t, db, "profile-name-exhaust-owner@test.com", "Password123", "ProfileNameExhaustOwner", false)
 	for attempt := 0; attempt < 100; attempt++ {
 		testutil.CreateProfile(

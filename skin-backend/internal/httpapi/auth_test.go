@@ -16,7 +16,6 @@ import (
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
-	sitesvc "element-skin/backend/internal/service/site"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -26,7 +25,7 @@ func TestAuthRejectsMissingInvalidAndNonAdminExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "auth-direct-user@test.com", "Password123", "AuthDirectUser", false)
-	router := httpapi.NewRouter(cfg, db, sitesvc.Site{DB: db, Cfg: cfg}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/users/me", nil))
@@ -61,7 +60,7 @@ func TestAuthRedisErrorDoesNotFallBackToDatabase(t *testing.T) {
 	user := testutil.CreateUser(t, db, "auth-redis-error@test.com", "Password123", "AuthRedisError", true)
 	cache := redisstore.NewMemoryStore()
 	cache.Err = errors.New("redis down")
-	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +82,7 @@ func TestAuthUsesRedisCachedSubjectIDButRecomputesPermissions(t *testing.T) {
 	if err := cache.SetAuthUser(t.Context(), redisstore.AuthUser{ID: user.ID}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +102,7 @@ func TestAuthFailsClosedWhenColdCacheCannotBePopulated(t *testing.T) {
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "auth-cache-write@test.com", "Password123", "AuthCacheWrite", false)
 	cache := &authCacheWriteFailStore{Store: redisstore.NewMemoryStore()}
-	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +132,7 @@ func TestAuthCachesBanStateWithoutBlockingWebDashboard(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache := redisstore.NewMemoryStore()
-	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +156,7 @@ func TestAuthAcceptsDelegatedBearerAndNarrowsPermissionsExactly(t *testing.T) {
 	cfg := testutil.TestConfig()
 	user := testutil.CreateUser(t, db, "auth-bearer-user@test.com", "Password123", "AuthBearerUser", false)
 	cache := redisstore.NewMemoryStore()
-	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	clientID := createActiveOAuthClientForAuthTest(t, db, user.ID, "auth-bearer-client", []int64{
 		int64(permission.MustDefinitionByCode("account.read.self").ID),
 	})
@@ -223,7 +222,7 @@ func TestAuthAcceptsClientBearerAndRejectsInactiveOrMissingBearerExactly(t *test
 	profileUser := testutil.CreateUser(t, db, "auth-client-profile@test.com", "Password123", "AuthClientProfile", false)
 	profile := testutil.CreateProfile(t, db, profileUser.ID, "AuthBearerProfile", "default")
 	cache := redisstore.NewMemoryStore()
-	router := httpapi.NewRouterWithRedis(cfg, db, cache, sitesvc.Site{DB: db, Cfg: cfg, Redis: cache}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 	clientID := createActiveOAuthClientForAuthTest(t, db, owner.ID, "auth-client-bearer", nil)
 	def := permission.MustDefinitionByCode("minecraft_session.hasjoined.server")
 	if err := db.Permissions.SetPermissionOverrideForSubject(t.Context(), permissiondb.SubjectIDForClient(clientID), def, "allow", ""); err != nil {
