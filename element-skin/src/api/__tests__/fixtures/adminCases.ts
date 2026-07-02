@@ -349,10 +349,10 @@ function adminUserCases(): ApiCase[] {
       args: ['/v1/admin/users/user-1'],
     },
     {
-      name: 'banUser posts ban timestamp',
+      name: 'banUser posts ban timestamp and reason',
       method: 'post',
-      call: () => banUser('user-1', { banned_until: 1_700_000_000_000 }),
-      args: ['/v1/admin/users/user-1/ban', { banned_until: 1_700_000_000_000 }],
+      call: () => banUser('user-1', { banned_until: 1_700_000_000_000, reason: 'abuse' }),
+      args: ['/v1/admin/users/user-1/ban', { banned_until: 1_700_000_000_000, reason: 'abuse' }],
     },
     {
       name: 'unbanUser posts unban endpoint',

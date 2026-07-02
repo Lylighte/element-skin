@@ -17,7 +17,7 @@ func TestAdminUserRoutesRejectExactMissingUserAndBadPayloadEdges(t *testing.T) {
 	h := admin.NewWithRedis(cfg, db, testutil.NewMemoryRedis(), nil)
 	adminUser := testutil.CreateUser(t, db, "admin-user-edge@test.com", "Password123", "AdminUserEdge", true)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/missing/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/missing/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`,"reason":"missing user edge"}`))
 	req = withAdminActor(req, adminUser.ID)
 	req.SetPathValue("user_id", "missing-user")
 	rec := httptest.NewRecorder()

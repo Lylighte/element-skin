@@ -1805,7 +1805,8 @@ account.unban.any
 
 ```json
 {
-  "banned_until": 1793232000000
+  "banned_until": 1793232000000,
+  "reason": "Repeated malicious server join attempts"
 }
 ```
 
@@ -1813,6 +1814,10 @@ account.unban.any
 
 - 当前账号封禁语义是禁止加入 Minecraft 服务器。
 - 它不是禁止网页登录。
+- `reason` 必填，最大 500 个 Unicode 字符。
+- 封禁成功后，系统创建 `type = system`、`audience = targeted` 的定向通知投递给被封禁用户。
+- 封禁通知正文包含封禁截止时间与封禁原因，`ends_at` 固定为发布后 30 天。
+- 解封只清除封禁状态，不自动删除已投递的封禁通知。
 
 响应：
 

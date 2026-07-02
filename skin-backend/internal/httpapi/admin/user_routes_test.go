@@ -100,7 +100,7 @@ func TestAdminUserRoutesRejectMissingFineGrainedPermissionsExactly(t *testing.T)
 			return req
 		}, h.UserProfiles},
 		{"ban requires account ban", "account.ban.any", func() *http.Request {
-			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`,"reason":"permission check"}`))
 			req.SetPathValue("user_id", target.ID)
 			return req
 		}, h.BanUser},
@@ -507,7 +507,7 @@ func TestUserRoutesDetailProfilesBanUnbanAndResetPassword(t *testing.T) {
 	}
 
 	banUntil := time.Now().Add(time.Hour).UnixMilli()
-	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(banUntil)+`}`))
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(banUntil)+`,"reason":"route test ban"}`))
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
@@ -647,7 +647,7 @@ func TestUserRoutesMutationsInvalidateAuthCacheExactly(t *testing.T) {
 
 	cacheTarget(t)
 	banUntil := time.Now().Add(time.Hour).UnixMilli()
-	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(banUntil)+`}`))
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(banUntil)+`,"reason":"mutation route ban"}`))
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
 	req = withAdminActor(req, adminUser.ID)
@@ -716,6 +716,19 @@ func TestUserRoutesRejectInvalidBanUnbanAndResetPayloadsExactly(t *testing.T) {
 	}
 	if banned, err := db.Users.IsBanned(req.Context(), target.ID); err != nil || banned {
 		t.Fatalf("invalid ban should not change user state: banned=%v err=%v", banned, err)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("user_id", target.ID)
+	req = withAdminActor(req, adminUser.ID)
+	rec = httptest.NewRecorder()
+	h.BanUser(rec, req)
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"reason is required\"}\n" {
+		t.Fatalf("ban missing reason mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if banned, err := db.Users.IsBanned(req.Context(), target.ID); err != nil || banned {
+		t.Fatalf("missing reason ban should not change user state: banned=%v err=%v", banned, err)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/missing-user/unban", nil)
@@ -933,7 +946,7 @@ func TestUserMutationRoutesPersistChangesBeforeAuthInvalidationFailureExactly(t 
 		target := testutil.CreateUser(t, db, "target-ban-invalidate@test.com", "Password123", "TargetBanInvalidate", false)
 		bannedUntil := time.Now().Add(2 * time.Hour).UnixMilli()
 
-		req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(bannedUntil)+`}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(bannedUntil)+`,"reason":"cache failure ban"}`))
 		req = withAdminActor(req, adminUser.ID)
 		req.SetPathValue("user_id", target.ID)
 		rec := httptest.NewRecorder()
@@ -1074,7 +1087,7 @@ func TestUserRoutesReturnInternalServerErrorWhenDatabaseIsClosedExactly(t *testi
 			return req
 		}(), "admin-closed-db"), h.UserProfiles},
 		{"ban user", withProtectedActor(func() *http.Request {
-			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/user-closed-db/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/user-closed-db/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`,"reason":"closed database"}`))
 			req.SetPathValue("user_id", "user-closed-db")
 			return req
 		}(), "admin-closed-db"), h.BanUser},
@@ -1131,7 +1144,7 @@ func TestUserRoutesProtectSuperAdminFromPlainAdminExactly(t *testing.T) {
 		t.Fatalf("plain admin deleting super admin mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+superAdmin.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`}`))
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+superAdmin.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`,"reason":"protected target"}`))
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", superAdmin.ID)
 	req = withAdminActor(req, plainAdmin.ID)

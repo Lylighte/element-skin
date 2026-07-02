@@ -128,6 +128,7 @@
       v-model:duration-type="banDurationType"
       v-model:preset-duration="banPresetDuration"
       v-model:custom-hours="banCustomHours"
+      v-model:reason="banReason"
       :presets="presetDurations"
       :until-label="formatBanUntilTime()"
       :banning="banning"
@@ -188,6 +189,7 @@ const banDialogVisible = ref(false)
 const banDurationType = ref('preset')
 const banPresetDuration = ref(24)
 const banCustomHours = ref(24)
+const banReason = ref('')
 const banning = ref(false)
 
 const presetDurations = [
@@ -410,19 +412,23 @@ async function confirmResetPassword() {
 }
 
 function showBanDialog() {
+  banReason.value = ''
   banDialogVisible.value = true
 }
 
 async function confirmBanUser() {
   if (!currentUser.value) return
+  const reason = banReason.value.trim()
+  if (!reason) return ElMessage.error('请填写封禁原因')
   const hours = banDurationType.value === 'preset' ? banPresetDuration.value : banCustomHours.value
   const bannedUntil = Date.now() + hours * 60 * 60 * 1000
 
   banning.value = true
   try {
-    await apiBanUser(currentUser.value.id, { banned_until: bannedUntil })
+    await apiBanUser(currentUser.value.id, { banned_until: bannedUntil, reason })
     ElMessage.success('封禁已执行')
     banDialogVisible.value = false
+    banReason.value = ''
     await refreshUsers()
     if (currentUser.value) currentUser.value.banned_until = bannedUntil
   } catch {

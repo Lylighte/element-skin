@@ -3,12 +3,11 @@ package admin
 import (
 	"net/http"
 	"strings"
-	"time"
 
-	"element-skin/backend/internal/database"
 	userstore "element-skin/backend/internal/database/user"
 	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/permission"
+	adminsvc "element-skin/backend/internal/service/admin"
 	"element-skin/backend/internal/util"
 )
 
@@ -20,8 +19,6 @@ var (
 	accountReadAnyPermission   = permission.MustDefinitionByCode("account.read.any")
 	accountUpdateAnyPermission = permission.MustDefinitionByCode("account.update.any")
 	accountDeleteAnyPermission = permission.MustDefinitionByCode("account.delete.any")
-	accountBanAnyPermission    = permission.MustDefinitionByCode("account.ban.any")
-	accountUnbanAnyPermission  = permission.MustDefinitionByCode("account.unban.any")
 	permissionGrantAny         = permission.MustDefinitionByCode("permission.grant.any")
 	permissionRevokeAny        = permission.MustDefinitionByCode("permission.revoke.any")
 )
@@ -256,34 +253,19 @@ func (h Handler) UserProfiles(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, accountBanAnyPermission); err != nil {
-		util.Error(w, err)
-		return
+	var body struct {
+		BannedUntil int64  `json:"banned_until"`
+		Reason      string `json:"reason"`
 	}
-	var body map[string]int64
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	until, ok := body["banned_until"]
-	if !ok || until < time.Now().Add(-24*time.Hour).UnixMilli() {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "banned_until is required"})
-		return
-	}
-	userID := req.PathValue("user_id")
-	if err := h.ensureTargetNotSuperAdmin(req, userID); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if err := h.db.Users.Ban(req.Context(), userID, until); err != nil {
-		if database.IsNoRows(err) {
-			util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-			return
-		}
-		util.Error(w, err)
-		return
-	}
-	if err := h.redis.InvalidateAuthUser(req.Context(), userID); err != nil {
+	until, err := h.accounts.BanUser(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"), adminsvc.BanUserInput{
+		BannedUntil: body.BannedUntil,
+		Reason:      body.Reason,
+	})
+	if err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -291,37 +273,7 @@ func (h Handler) BanUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UnbanUser(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, accountUnbanAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	user, err := h.db.Users.GetByID(req.Context(), req.PathValue("user_id"))
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	if user == nil {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-		return
-	}
-	hasProtectedRole, err := h.db.Permissions.UserHasProtectedRole(req.Context(), user.ID)
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	if hasProtectedRole && !shared.CurrentActor(req).Has(manageProtectedPermission) {
-		util.Error(w, util.HTTPError{Status: 403, Detail: "cannot modify super admin"})
-		return
-	}
-	if err := h.db.Users.Unban(req.Context(), user.ID); err != nil {
-		if database.IsNoRows(err) {
-			util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-			return
-		}
-		util.Error(w, err)
-		return
-	}
-	if err := h.redis.InvalidateAuthUser(req.Context(), user.ID); err != nil {
+	if err := h.accounts.UnbanUser(req.Context(), shared.CurrentActor(req), req.PathValue("user_id")); err != nil {
 		util.Error(w, err)
 		return
 	}
