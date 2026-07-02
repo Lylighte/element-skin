@@ -350,7 +350,7 @@ POST /oauth/par
 | --- | --- | --- |
 | `authorization_code` | 必须 | 必须配合 PKCE |
 | `refresh_token` | 必须 | 必须轮换 |
-| `client_credentials` | 暂缓 | 管理员审核后的应用主体能力；首个目标场景是 `/v1/minecraft/session/has-joined` |
+| `client_credentials` | 已落地 | 管理员审核后的应用主体能力；首个目标场景是 `/v1/minecraft/session/has-joined` |
 | `urn:ietf:params:oauth:grant-type:device_code` | 建议 | 启动器、CLI、插件体验好 |
 | `password` | 禁止 | OAuth 2.1 不保留 |
 | `implicit` | 禁止 | OAuth 2.1 不保留 |
@@ -434,10 +434,10 @@ permission_subjects.kind = client
 Client Credentials token 必须单独存储：
 
 ```text
-oauth_client_access_tokens
+Redis oauth:access:{token_hash}
 ```
 
-该表不得混入用户 OAuth access token。Client Credentials token 不包含 `user_id`、不包含 `grant_id`，只能恢复：
+Client Credentials access token 使用 Redis 短期存储，不写入 PostgreSQL。该 token 不包含 `user_id`、不包含 `grant_id`，只能恢复：
 
 ```text
 subject_id = client:{client_id}

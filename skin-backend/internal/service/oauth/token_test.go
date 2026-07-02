@@ -267,18 +267,16 @@ func TestServiceTokenErrorBranchesAndBearerInvalidationExactly(t *testing.T) {
 	assertHTTPError(t, err, 400, "unsupported grant_type")
 	_, err = svc.IssueToken(ctx, oauth.TokenRequest{GrantType: "client_credentials", ClientID: clientID, ClientSecret: "wrong"})
 	assertHTTPError(t, err, 400, "invalid client_secret")
-	_, err = svc.IssueToken(ctx, oauth.TokenRequest{GrantType: "authorization_code", ClientID: clientID, ClientSecret: clientSecret, Code: "missing-code", RedirectURI: "https://token-errors.example/callback", CodeVerifier: "valid-verifier-abcdefghijklmnopqrstuvwxyz"})
+	_, err = svc.IssueToken(ctx, oauth.TokenRequest{GrantType: "authorization_code", ClientID: clientID, ClientSecret: clientSecret, Code: "missing-code", CodeVerifier: "valid-verifier-abcdefghijklmnopqrstuvwxyz"})
 	assertHTTPError(t, err, 400, "invalid authorization code")
 	_, err = svc.IssueToken(ctx, oauth.TokenRequest{GrantType: "refresh_token", ClientID: clientID, ClientSecret: clientSecret, RefreshToken: "missing-refresh"})
 	assertHTTPError(t, err, 400, "invalid refresh_token")
 	for _, tc := range []struct {
-		name        string
-		redirectURI string
-		verifier    string
-		detail      string
+		name     string
+		verifier string
+		detail   string
 	}{
-		{name: "wrong redirect", redirectURI: "https://token-errors.example/wrong", verifier: "token-verifier-abcdefghijklmnopqrstuvwxyz", detail: "invalid authorization code"},
-		{name: "wrong verifier", redirectURI: "https://token-errors.example/callback", verifier: "wrong-verifier-abcdefghijklmnopqrstuvwxyz", detail: "invalid code_verifier"},
+		{name: "wrong verifier", verifier: "wrong-verifier-abcdefghijklmnopqrstuvwxyz", detail: "invalid code_verifier"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			verifier := "token-verifier-abcdefghijklmnopqrstuvwxyz"
@@ -298,7 +296,6 @@ func TestServiceTokenErrorBranchesAndBearerInvalidationExactly(t *testing.T) {
 				ClientID:     clientID,
 				ClientSecret: clientSecret,
 				Code:         approved["code"].(string),
-				RedirectURI:  tc.redirectURI,
 				CodeVerifier: tc.verifier,
 			})
 			assertHTTPError(t, err, 400, tc.detail)
@@ -307,7 +304,6 @@ func TestServiceTokenErrorBranchesAndBearerInvalidationExactly(t *testing.T) {
 				ClientID:     clientID,
 				ClientSecret: clientSecret,
 				Code:         approved["code"].(string),
-				RedirectURI:  "https://token-errors.example/callback",
 				CodeVerifier: verifier,
 			})
 			assertHTTPError(t, err, 400, "invalid authorization code")
@@ -330,7 +326,6 @@ func TestServiceTokenErrorBranchesAndBearerInvalidationExactly(t *testing.T) {
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Code:         approved["code"].(string),
-		RedirectURI:  "https://token-errors.example/callback",
 		CodeVerifier: refreshVerifier,
 	})
 	if err != nil {

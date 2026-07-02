@@ -2879,6 +2879,12 @@ implicit
 
 DPoP、PAR、JAR、RAR 等扩展见 `doc/OAuth2.1标准与扩展参考.md`。Device Authorization Grant 与 Client Credentials Grant 已作为站点开放能力的一部分落地。
 
+Metadata 约束：
+
+- `/.well-known/oauth-authorization-server` 只声明当前实际支持的 endpoint、grant type、response type、PKCE method 和 client auth method。
+- 未实现的扩展，例如 PAR、JAR、JARM、DPoP、mTLS、CIBA、RAR，不在 metadata 中用 `null` 或空数组声明。
+- `/.well-known/oauth-protected-resource` 声明 `/v1` 作为受保护资源，并公开对应 authorization server。
+
 ## 27. OAuth 应用与授权管理 API
 
 OAuth 应用和授权管理是站点业务能力，因此放入 `/v1`。
@@ -3015,9 +3021,13 @@ grant_type=authorization_code
 client_id=app_id
 client_secret=client_secret
 code=one_time_authorization_code
-redirect_uri=https://app.example/callback
 code_verifier=plain_pkce_verifier
 ```
+
+说明：
+
+- 授权请求阶段已经校验并绑定 `redirect_uri`。
+- token 请求阶段不再接收或校验 `redirect_uri`，以贴合 OAuth 2.1 当前草案。
 
 refresh token 轮换：
 
@@ -3041,7 +3051,7 @@ scope=minecraft_session.hasjoined.server
 
 - 仅 confidential client 可使用。
 - token 权限来自 `client:{client_id}` 权限主体。
-- token 写入 `oauth_client_access_tokens`，不写入用户 OAuth access token 表。
+- access token 写入 Redis，使用短 TTL；不写入 PostgreSQL。
 - 不签发 refresh token。
 
 Device Code 轮询换 token：
@@ -3052,12 +3062,21 @@ client_id=app_id
 device_code=opaque_device_code
 ```
 
-轮询错误使用站点统一错误结构，`detail` 为 OAuth 设备流错误码：
+OAuth 协议端点错误使用标准 OAuth 错误结构：
 
 ```json
-{"detail":"authorization_pending"}
-{"detail":"access_denied"}
-{"detail":"expired_token"}
+{
+  "error": "invalid_grant",
+  "error_description": "invalid refresh_token"
+}
+```
+
+Device Code 轮询错误同样使用 `error` 字段表达 OAuth 设备流错误码：
+
+```json
+{"error":"authorization_pending","error_description":"authorization_pending"}
+{"error":"access_denied","error_description":"access_denied"}
+{"error":"expired_token","error_description":"expired_token"}
 ```
 
 响应：

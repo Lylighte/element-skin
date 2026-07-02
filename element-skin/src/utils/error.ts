@@ -3,6 +3,7 @@ interface ApiErrorLike {
     status?: unknown
     data?: {
       detail?: unknown
+      error_description?: unknown
     }
   }
   message?: unknown
@@ -17,6 +18,9 @@ export function getErrorMessage(error: unknown, fallback = '操作失败') {
 
   const detail = error.response?.data?.detail
   if (typeof detail === 'string' && detail.trim()) return detail
+
+  const oauthDescription = error.response?.data?.error_description
+  if (typeof oauthDescription === 'string' && oauthDescription.trim()) return oauthDescription
 
   const message = error.message
   if (typeof message === 'string' && message.trim()) return message

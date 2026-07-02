@@ -88,7 +88,6 @@ func TestServiceAuthorizationCodeFlowNarrowsActorExactly(t *testing.T) {
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Code:         code,
-		RedirectURI:  "https://client.example/callback",
 		CodeVerifier: verifier,
 	})
 	if err != nil {

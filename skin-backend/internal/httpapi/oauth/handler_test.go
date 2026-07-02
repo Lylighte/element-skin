@@ -97,7 +97,6 @@ func TestOAuthAuthorizationCodeFlowIssuesDelegatedBearerForV1API(t *testing.T) {
 	form.Set("client_id", clientID)
 	form.Set("client_secret", clientSecret)
 	form.Set("code", code)
-	form.Set("redirect_uri", "https://client.example/callback")
 	form.Set("code_verifier", verifier)
 	tokenRes := doForm(t, router, "/oauth/token", form, "", "")
 	if tokenRes.Code != http.StatusOK {
@@ -165,7 +164,7 @@ func TestOAuthAuthorizationCodeFlowIssuesDelegatedBearerForV1API(t *testing.T) {
 		t.Fatalf("inactive introspection mismatch: status=%d body=%s", introspectRes.Code, introspectRes.Body.String())
 	}
 	reuseRes := doForm(t, router, "/oauth/token", refreshForm, "", "")
-	if reuseRes.Code != http.StatusBadRequest || !strings.Contains(reuseRes.Body.String(), "invalid refresh_token") {
+	if reuseRes.Code != http.StatusBadRequest || reuseRes.Body.String() != "{\"error\":\"invalid_grant\",\"error_description\":\"invalid refresh_token\"}\n" {
 		t.Fatalf("refresh reuse mismatch: status=%d body=%s", reuseRes.Code, reuseRes.Body.String())
 	}
 	grantsRes := doJSON(t, router, http.MethodGet, "/v1/oauth/grants?limit=10", nil, session, "")
@@ -343,6 +342,20 @@ func TestOAuthClientCredentialsTokenWorksForMinecraftOnly(t *testing.T) {
 	if !grants["authorization_code"] || !grants["refresh_token"] || !grants["client_credentials"] {
 		t.Fatalf("metadata grant types mismatch: %#v", grants)
 	}
+	authMethods := stringSet(metadata["token_endpoint_auth_methods_supported"].([]any))
+	if !authMethods["client_secret_basic"] || !authMethods["client_secret_post"] || !authMethods["none"] {
+		t.Fatalf("metadata token auth methods mismatch: %#v", authMethods)
+	}
+	for _, key := range []string{
+		"pushed_authorization_request_endpoint",
+		"backchannel_authentication_endpoint",
+		"dpop_signing_alg_values_supported",
+		"introspection_endpoint_auth_methods_supported",
+	} {
+		if _, exists := metadata[key]; exists {
+			t.Fatalf("metadata should omit unsupported field %q: %#v", key, metadata)
+		}
+	}
 	protectedRes := doJSON(t, router, http.MethodGet, "/.well-known/oauth-protected-resource", nil, nil, "")
 	if protectedRes.Code != http.StatusOK {
 		t.Fatalf("protected resource metadata status=%d body=%s", protectedRes.Code, protectedRes.Body.String())
@@ -352,6 +365,9 @@ func TestOAuthClientCredentialsTokenWorksForMinecraftOnly(t *testing.T) {
 		len(protected["authorization_servers"].([]any)) != 1 ||
 		protected["authorization_servers"].([]any)[0] != "http://localhost:8000" {
 		t.Fatalf("protected resource metadata mismatch: %#v", protected)
+	}
+	if _, exists := protected["resource_signing_alg_values_supported"]; exists {
+		t.Fatalf("protected resource metadata should omit unsupported signing algorithms: %#v", protected)
 	}
 
 	createRes := doJSON(t, router, http.MethodPost, "/v1/oauth/apps", map[string]any{
@@ -463,6 +479,16 @@ func TestOAuthDeviceCodeFlowRoutesIssueDelegatedBearer(t *testing.T) {
 	info := decodeMap(t, infoRec.Body.Bytes())
 	if info["status"] != "pending" || len(info["scopes"].([]any)) != 1 {
 		t.Fatalf("device info mismatch: %#v", info)
+	}
+
+	pendingForm := url.Values{}
+	pendingForm.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
+	pendingForm.Set("client_id", clientID)
+	pendingForm.Set("device_code", deviceCode)
+	pendingRes := doForm(t, router, "/oauth/token", pendingForm, "", "")
+	if pendingRes.Code != http.StatusBadRequest ||
+		pendingRes.Body.String() != "{\"error\":\"authorization_pending\",\"error_description\":\"authorization_pending\"}\n" {
+		t.Fatalf("pending device token error mismatch: status=%d body=%s", pendingRes.Code, pendingRes.Body.String())
 	}
 
 	decisionRes := doJSON(t, router, http.MethodPost, "/oauth/device", map[string]any{
@@ -609,10 +635,28 @@ func TestOAuthRoutesRejectMalformedInputsExactly(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res := doRaw(t, router, http.MethodPost, tc.path, "%zz", "application/x-www-form-urlencoded", adminSession, "")
-			if res.Code != http.StatusBadRequest || res.Body.String() != "{\"detail\":\"invalid form\"}\n" {
+			if res.Code != http.StatusBadRequest || res.Body.String() != "{\"error\":\"invalid_request\",\"error_description\":\"invalid form\"}\n" {
 				t.Fatalf("%s invalid form mismatch: status=%d body=%s", tc.name, res.Code, res.Body.String())
 			}
 		})
+	}
+
+	unsupportedGrant := url.Values{}
+	unsupportedGrant.Set("grant_type", "password")
+	unsupportedGrantRes := doForm(t, router, "/oauth/token", unsupportedGrant, "", "")
+	if unsupportedGrantRes.Code != http.StatusBadRequest ||
+		unsupportedGrantRes.Body.String() != "{\"error\":\"unsupported_grant_type\",\"error_description\":\"unsupported grant_type\"}\n" {
+		t.Fatalf("unsupported grant error mismatch: status=%d body=%s", unsupportedGrantRes.Code, unsupportedGrantRes.Body.String())
+	}
+
+	invalidClient := url.Values{}
+	invalidClient.Set("grant_type", "client_credentials")
+	invalidClient.Set("client_id", "missing-client")
+	invalidClientRes := doForm(t, router, "/oauth/token", invalidClient, "", "")
+	if invalidClientRes.Code != http.StatusUnauthorized ||
+		invalidClientRes.Header().Get("WWW-Authenticate") != `Basic realm="oauth"` ||
+		invalidClientRes.Body.String() != "{\"error\":\"invalid_client\",\"error_description\":\"invalid client_id\"}\n" {
+		t.Fatalf("invalid client error mismatch: status=%d header=%q body=%s", invalidClientRes.Code, invalidClientRes.Header().Get("WWW-Authenticate"), invalidClientRes.Body.String())
 	}
 }
 

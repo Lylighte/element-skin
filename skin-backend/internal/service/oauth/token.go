@@ -150,7 +150,7 @@ func (s Service) exchangeAuthorizationCode(ctx context.Context, req TokenRequest
 	if err != nil {
 		return TokenResponse{}, err
 	}
-	if code == nil || code.ClientID != client.ID || code.RedirectURI != req.RedirectURI {
+	if code == nil || code.ClientID != client.ID {
 		return TokenResponse{}, badRequest("invalid authorization code")
 	}
 	if !validPKCE(req.CodeVerifier, code.CodeChallenge) {
