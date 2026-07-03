@@ -1,10 +1,12 @@
 import {
+  approveOAuthAuthorization,
   clearOAuthClientPermission,
   createOAuthApp,
   decideDeviceAuthorization,
   deleteOAuthApp,
   getAdminOAuthApp,
   getDeviceAuthorization,
+  getOAuthAuthorizationDetails,
   getOAuthClientPermissions,
   getPermissionCatalog,
   listAdminOAuthApps,
@@ -23,6 +25,16 @@ const oauthPayload = {
   website_url: 'https://app.example',
   client_type: 'confidential' as const,
   permissions: ['account.read.self'],
+}
+
+const authorizationRequest = {
+  response_type: 'code',
+  client_id: 'client-1',
+  redirect_uri: 'https://app.example/callback',
+  scope: 'account.read.self profile.read.owned',
+  state: 'opaque-state',
+  code_challenge: 'challenge',
+  code_challenge_method: 'S256',
 }
 
 export function oauthApiCases(): ApiCase[] {
@@ -105,6 +117,18 @@ export function oauthApiCases(): ApiCase[] {
         '/v1/admin/oauth/apps/client-1/review',
         { status: 'rejected', reason: 'Missing support contact' },
       ],
+    },
+    {
+      name: 'getOAuthAuthorizationDetails gets authorization request details',
+      method: 'get',
+      call: () => getOAuthAuthorizationDetails(authorizationRequest),
+      args: ['/oauth/authorize', { params: authorizationRequest }],
+    },
+    {
+      name: 'approveOAuthAuthorization posts authorization approval',
+      method: 'post',
+      call: () => approveOAuthAuthorization(authorizationRequest),
+      args: ['/oauth/authorize', authorizationRequest],
     },
     {
       name: 'getDeviceAuthorization gets user code details',

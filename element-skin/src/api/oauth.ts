@@ -56,9 +56,43 @@ export interface OAuthClientPermissions {
   session_allowed_scopes: string[]
 }
 
+export interface OAuthPermissionScope {
+  code: string
+  description: string
+  resource: string
+  resource_description: string
+  action: string
+  action_description: string
+  scope: string
+  scope_description: string
+}
+
+export interface OAuthAuthorizationRequest {
+  response_type: string
+  client_id: string
+  redirect_uri: string
+  scope: string
+  state?: string
+  code_challenge: string
+  code_challenge_method: string
+}
+
+export interface OAuthAuthorizationDetails {
+  client: OAuthClient
+  scopes: OAuthPermissionScope[]
+  redirect_uri: string
+  state?: string
+}
+
+export interface OAuthAuthorizationApproval {
+  code: string
+  redirect_url: string
+  state?: string
+}
+
 export interface DeviceAuthorizationDetails {
   client: OAuthClient
-  scopes: PermissionDefinition[]
+  scopes: OAuthPermissionScope[]
   expires_at: number
   status: string
 }
@@ -140,6 +174,14 @@ export function reviewAdminOAuthApp(
     status,
     reason,
   })
+}
+
+export function getOAuthAuthorizationDetails(params: OAuthAuthorizationRequest) {
+  return apiClient.get<OAuthAuthorizationDetails>('/oauth/authorize', { params })
+}
+
+export function approveOAuthAuthorization(payload: OAuthAuthorizationRequest) {
+  return apiClient.post<OAuthAuthorizationApproval>('/oauth/authorize', payload)
 }
 
 export function getDeviceAuthorization(userCode: string) {

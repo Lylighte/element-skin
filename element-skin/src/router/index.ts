@@ -7,6 +7,7 @@ import ResetPassword from '../views/ResetPassword.vue'
 import UserDashboard from '../views/UserDashboard.vue'
 import SkinLibraryView from '../views/SkinLibraryView.vue'
 import NotificationsView from '../views/NotificationsView.vue'
+import OAuthAuthorizeView from '../views/OAuthAuthorizeView.vue'
 import OAuthDeviceView from '../views/OAuthDeviceView.vue'
 
 // Dashboard Components
@@ -31,7 +32,11 @@ import AdminOAuthApps from '@/components/admin/AdminOAuthApps.vue'
 import { getMe } from '@/api/me'
 import { installEasterEggRouterHooks } from '@/easter-eggs'
 import { canAccessAdminPath, firstAccessibleAdminPath } from '@/permissions/adminPages'
-import { canAccessSitePath, firstAccessibleSitePath, isProtectedSitePath } from '@/permissions/sitePages'
+import {
+  canAccessSitePath,
+  firstAccessibleSitePath,
+  isProtectedSitePath,
+} from '@/permissions/sitePages'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -163,6 +168,11 @@ const router = createRouter({
       path: '/notifications/:id',
       name: 'notification-detail',
       component: NotificationsView,
+    },
+    {
+      path: '/oauth/authorize',
+      name: 'oauth-authorize',
+      component: OAuthAuthorizeView,
     },
     {
       path: '/oauth/device',

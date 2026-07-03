@@ -73,12 +73,16 @@ export const sitePageAccess: SitePageAccess[] = [
     ],
   },
   {
+    path: '/oauth/authorize',
+    permissions: ['account.read.self'],
+  },
+  {
     path: '/oauth/device',
     permissions: ['oauth_grant.read.owned', 'account.read.self'],
   },
 ]
 
-export const protectedSitePrefixes = ['/dashboard', '/skin-library', '/notifications', '/oauth/device']
+export const protectedSitePrefixes = ['/dashboard', '/skin-library', '/notifications', '/oauth']
 
 export function isProtectedSitePath(path: string) {
   return protectedSitePrefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
