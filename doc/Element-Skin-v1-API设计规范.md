@@ -2968,14 +2968,25 @@ GET /oauth/authorize
       "code": "account.read.self",
       "description": "读取自己的账号资料",
       "resource": "account",
+      "resource_description": "账号",
       "action": "read",
-      "scope": "self"
+      "action_description": "读取",
+      "scope": "self",
+      "scope_description": "自身账号资源"
     }
   ],
   "redirect_uri": "https://app.example/callback",
   "state": "opaque_state"
 }
 ```
+
+授权确认页：
+
+- 站点前端必须提供 `/oauth/authorize` 页面承载 Authorization Code 确认流程。
+- 页面从 URL query 读取上述授权请求参数，调用 `GET /oauth/authorize` 获取应用信息和权限列表。
+- 如果接口返回 `403 permission denied`，页面必须提示“你无权授权此应用”，不得继续展示允许按钮。
+- 用户点击允许后，页面调用 `POST /oauth/authorize`，并跳转响应中的 `redirect_url`。
+- 用户点击拒绝时，只能在 `GET /oauth/authorize` 已成功校验并返回 `redirect_uri` 后，跳转到该回调地址并携带 `error=access_denied`；前端不得直接信任原始 query 中的 `redirect_uri`。
 
 ```http
 POST /oauth/authorize
@@ -3141,8 +3152,11 @@ GET /oauth/device?user_code=ABCD-1234
       "code": "account.read.self",
       "description": "读取自己的账号资料",
       "resource": "account",
+      "resource_description": "账号",
       "action": "read",
-      "scope": "self"
+      "action_description": "读取",
+      "scope": "self",
+      "scope_description": "自身账号资源"
     }
   ],
   "expires_at": 1710000000000,
