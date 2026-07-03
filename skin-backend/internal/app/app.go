@@ -74,10 +74,13 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 	cleanupCtx, cancel := context.WithCancel(context.Background())
-	go RunRefreshCleanupLoop(cleanupCtx, db.Tokens, time.Hour)
-	go RunNoticeCleanupLoop(cleanupCtx, db.Notices, time.Hour)
-	go RunOAuthGrantCleanupLoop(cleanupCtx, oauthCleaner, time.Hour)
-	go probesvc.RunLoop(cleanupCtx, db, redis, settings)
+	probeService := probesvc.New(db, redis)
+	StartScheduler(cleanupCtx,
+		refreshCleanupTask(db.Tokens, time.Hour),
+		noticeCleanupTask(db.Notices, time.Hour),
+		oauthGrantCleanupTask(oauthCleaner, time.Hour),
+		probeStatusTask(probeService, settings),
+	)
 	return &App{
 		db:       db,
 		redis:    redis,
@@ -123,41 +126,49 @@ func (a *App) Close() {
 	}
 }
 
-func RunRefreshCleanupLoop(ctx context.Context, cleaner refreshTokenCleaner, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			_ = cleaner.DeleteExpiredRefresh(ctx, database.NowMS())
-		}
+func refreshCleanupTask(cleaner refreshTokenCleaner, interval time.Duration) ScheduledTask {
+	return ScheduledTask{
+		Name:     "refresh_token_cleanup",
+		Interval: fixedInterval(interval),
+		Run: func(ctx context.Context) error {
+			return cleaner.DeleteExpiredRefresh(ctx, database.NowMS())
+		},
 	}
 }
 
-func RunNoticeCleanupLoop(ctx context.Context, cleaner noticeCleaner, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			_ = cleaner.DeleteExpired(ctx, database.NowMS())
-		}
+func noticeCleanupTask(cleaner noticeCleaner, interval time.Duration) ScheduledTask {
+	return ScheduledTask{
+		Name:     "notice_cleanup",
+		Interval: fixedInterval(interval),
+		Run: func(ctx context.Context) error {
+			return cleaner.DeleteExpired(ctx, database.NowMS())
+		},
 	}
 }
 
-func RunOAuthGrantCleanupLoop(ctx context.Context, cleaner oauthGrantCleaner, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			_, _ = cleaner.DeleteExpiredRevokedGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
-		}
+func oauthGrantCleanupTask(cleaner oauthGrantCleaner, interval time.Duration) ScheduledTask {
+	return ScheduledTask{
+		Name:     "oauth_grant_cleanup",
+		Interval: fixedInterval(interval),
+		Run: func(ctx context.Context) error {
+			_, err := cleaner.DeleteExpiredRevokedGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
+			return err
+		},
+	}
+}
+
+func probeStatusTask(service *probesvc.Service, reader probesvc.IntervalReader) ScheduledTask {
+	return ScheduledTask{
+		Name:           "probe_status",
+		RunImmediately: true,
+		Interval: func(ctx context.Context) time.Duration {
+			return probesvc.ReadInterval(ctx, reader)
+		},
+		Run: func(ctx context.Context) error {
+			if service == nil {
+				return nil
+			}
+			return service.Run(ctx)
+		},
 	}
 }

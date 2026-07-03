@@ -165,22 +165,6 @@ func TestProbeReadIntervalRespectsBoundsAndDefault(t *testing.T) {
 	}
 }
 
-func TestProbeRunLoopRunsOnceAndStopsOnCanceledContext(t *testing.T) {
-	db, _, redis := testutil.NewTestAppWithRedisTB(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	probe.RunLoop(ctx, db, redis, fakeIntervalReader{value: "600"})
-
-	samples, err := redis.GetProbeHistory(context.Background(), time.Time{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(samples) != 0 {
-		t.Fatalf("canceled probe loop should not append history: %#v", samples)
-	}
-}
-
 func TestProbeRunWithNoEndpointsLeavesHistoryEmpty(t *testing.T) {
 	db, _, redis := testutil.NewTestAppWithRedisTB(t)
 	ctx := context.Background()

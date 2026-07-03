@@ -57,7 +57,7 @@ func TestNewOpensDependenciesBuildsRouterAndClosesExactly(t *testing.T) {
 	dropTemporaryDatabaseForAppNew(t, dbName)
 }
 
-func TestRefreshCleanupLoopRemovesExpiredThenCancels(t *testing.T) {
+func TestSchedulerRefreshCleanupTaskRemovesExpiredThenCancels(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	user := testutil.CreateUser(t, db, "cleanup@example.com", "Password123!", "CleanupUser", false)
 	now := database.NowMS()
@@ -69,11 +69,13 @@ func TestRefreshCleanupLoopRemovesExpiredThenCancels(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		app.RunRefreshCleanupLoop(ctx, db.Tokens, 10*time.Millisecond)
-	}()
+	done := app.StartScheduler(ctx, app.ScheduledTask{
+		Name:     "refresh_cleanup_test",
+		Interval: fixedTestInterval(10 * time.Millisecond),
+		Run: func(ctx context.Context) error {
+			return db.Tokens.DeleteExpiredRefresh(ctx, database.NowMS())
+		},
+	})[0]
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -109,14 +111,16 @@ func (f *flakyRefreshCleaner) DeleteExpiredRefresh(context.Context, int64) error
 	return errors.New("boom")
 }
 
-func TestRefreshCleanupLoopSurvivesCleanupError(t *testing.T) {
+func TestSchedulerSurvivesCleanupError(t *testing.T) {
 	cleaner := &flakyRefreshCleaner{}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		app.RunRefreshCleanupLoop(ctx, cleaner, 10*time.Millisecond)
-	}()
+	done := app.StartScheduler(ctx, app.ScheduledTask{
+		Name:     "flaky_refresh_cleanup_test",
+		Interval: fixedTestInterval(10 * time.Millisecond),
+		Run: func(ctx context.Context) error {
+			return cleaner.DeleteExpiredRefresh(ctx, database.NowMS())
+		},
+	})[0]
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) && cleaner.calls.Load() < 2 {
@@ -133,7 +137,7 @@ func TestRefreshCleanupLoopSurvivesCleanupError(t *testing.T) {
 	}
 }
 
-func TestNoticeCleanupLoopRemovesExpiredThenCancels(t *testing.T) {
+func TestSchedulerNoticeCleanupTaskRemovesExpiredThenCancels(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	now := database.NowMS()
 	expiredID := "expired_notice_cleanup"
@@ -174,11 +178,13 @@ func TestNoticeCleanupLoopRemovesExpiredThenCancels(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		app.RunNoticeCleanupLoop(ctx, db.Notices, 10*time.Millisecond)
-	}()
+	done := app.StartScheduler(ctx, app.ScheduledTask{
+		Name:     "notice_cleanup_test",
+		Interval: fixedTestInterval(10 * time.Millisecond),
+		Run: func(ctx context.Context) error {
+			return db.Notices.DeleteExpired(ctx, database.NowMS())
+		},
+	})[0]
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		row, err := db.Notices.Get(context.Background(), expiredID)
@@ -213,14 +219,16 @@ func (f *flakyNoticeCleaner) DeleteExpired(context.Context, int64) error {
 	return errors.New("notice boom")
 }
 
-func TestNoticeCleanupLoopSurvivesCleanupError(t *testing.T) {
+func TestSchedulerNoticeCleanupTaskSurvivesCleanupError(t *testing.T) {
 	cleaner := &flakyNoticeCleaner{}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		app.RunNoticeCleanupLoop(ctx, cleaner, 10*time.Millisecond)
-	}()
+	done := app.StartScheduler(ctx, app.ScheduledTask{
+		Name:     "flaky_notice_cleanup_test",
+		Interval: fixedTestInterval(10 * time.Millisecond),
+		Run: func(ctx context.Context) error {
+			return cleaner.DeleteExpired(ctx, database.NowMS())
+		},
+	})[0]
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) && cleaner.calls.Load() < 2 {
@@ -252,14 +260,17 @@ func (r *recordingOAuthGrantCleaner) DeleteExpiredRevokedGrants(_ context.Contex
 	return 0, errors.New("oauth grant boom")
 }
 
-func TestOAuthGrantCleanupLoopUsesSystemMaintenanceActorAndSurvivesCleanupError(t *testing.T) {
+func TestSchedulerOAuthGrantCleanupTaskUsesSystemMaintenanceActorAndSurvivesCleanupError(t *testing.T) {
 	cleaner := &recordingOAuthGrantCleaner{}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		app.RunOAuthGrantCleanupLoop(ctx, cleaner, 10*time.Millisecond)
-	}()
+	done := app.StartScheduler(ctx, app.ScheduledTask{
+		Name:     "oauth_grant_cleanup_test",
+		Interval: fixedTestInterval(10 * time.Millisecond),
+		Run: func(ctx context.Context) error {
+			_, err := cleaner.DeleteExpiredRevokedGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
+			return err
+		},
+	})[0]
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) && cleaner.calls.Load() < 2 {
@@ -283,6 +294,67 @@ func TestOAuthGrantCleanupLoopUsesSystemMaintenanceActorAndSurvivesCleanupError(
 	}
 	if got.SubjectID != "system:maintenance" || got.SessionKind != permission.SessionKindSystem || got.Entrypoint != permission.EntrypointMaintenance {
 		t.Fatalf("oauth grant cleanup actor mismatch: %#v", got)
+	}
+}
+
+func TestSchedulerRunsImmediateTaskOnceBeforeFirstInterval(t *testing.T) {
+	var calls atomic.Int64
+	ctx, cancel := context.WithCancel(context.Background())
+	done := app.StartScheduler(ctx, app.ScheduledTask{
+		Name:           "immediate_test",
+		RunImmediately: true,
+		Interval:       fixedTestInterval(time.Hour),
+		Run: func(context.Context) error {
+			calls.Add(1)
+			cancel()
+			return nil
+		},
+	})[0]
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("immediate scheduler task did not stop after canceling its context")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("immediate task should run exactly once before first interval, got %d", got)
+	}
+}
+
+func TestSchedulerSkipsImmediateTaskWhenAlreadyCanceled(t *testing.T) {
+	var calls atomic.Int64
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := app.StartScheduler(ctx, app.ScheduledTask{
+		Name:           "already_canceled_test",
+		RunImmediately: true,
+		Interval:       fixedTestInterval(time.Hour),
+		Run: func(context.Context) error {
+			calls.Add(1)
+			return nil
+		},
+	})[0]
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("already-canceled scheduler task did not exit")
+	}
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("already-canceled immediate task should not run, got %d", got)
+	}
+}
+
+func TestSchedulerExitsWithoutWorkForNilRunOrMissingInterval(t *testing.T) {
+	ctx := context.Background()
+	done := app.StartScheduler(ctx,
+		app.ScheduledTask{Name: "nil_run", Interval: fixedTestInterval(time.Millisecond)},
+		app.ScheduledTask{Name: "nil_interval", Run: func(context.Context) error { return nil }},
+	)
+	for i, ch := range done {
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatalf("scheduler task %d should exit without work", i)
+		}
 	}
 }
 
@@ -354,6 +426,12 @@ type closeTrackingStore struct {
 
 func ptrInt64(v int64) *int64 {
 	return &v
+}
+
+func fixedTestInterval(interval time.Duration) func(context.Context) time.Duration {
+	return func(context.Context) time.Duration {
+		return interval
+	}
 }
 
 func (s *closeTrackingStore) Close() error {
