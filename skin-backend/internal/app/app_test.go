@@ -15,6 +15,7 @@ import (
 	"element-skin/backend/internal/app"
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/testutil"
 
@@ -233,6 +234,55 @@ func TestNoticeCleanupLoopSurvivesCleanupError(t *testing.T) {
 	}
 	if cleaner.calls.Load() < 2 {
 		t.Fatalf("notice cleanup loop should continue after errors, calls=%d", cleaner.calls.Load())
+	}
+}
+
+type recordingOAuthGrantCleaner struct {
+	calls       atomic.Int64
+	actor       atomic.Value
+	invalidCall atomic.Bool
+}
+
+func (r *recordingOAuthGrantCleaner) DeleteExpiredRevokedGrants(_ context.Context, actor permission.Actor, now int64) (int64, error) {
+	r.calls.Add(1)
+	r.actor.Store(actor)
+	if now <= 0 || !actor.Has(permission.MustDefinitionByCode("oauth_grant.delete.system")) {
+		r.invalidCall.Store(true)
+	}
+	return 0, errors.New("oauth grant boom")
+}
+
+func TestOAuthGrantCleanupLoopUsesSystemMaintenanceActorAndSurvivesCleanupError(t *testing.T) {
+	cleaner := &recordingOAuthGrantCleaner{}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		app.RunOAuthGrantCleanupLoop(ctx, cleaner, 10*time.Millisecond)
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && cleaner.calls.Load() < 2 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("oauth grant cleanup loop did not stop after cancellation")
+	}
+	if cleaner.calls.Load() < 2 {
+		t.Fatalf("oauth grant cleanup loop should continue after errors, calls=%d", cleaner.calls.Load())
+	}
+	if cleaner.invalidCall.Load() {
+		t.Fatal("oauth grant cleanup loop should pass system maintenance actor and positive timestamp")
+	}
+	got, ok := cleaner.actor.Load().(permission.Actor)
+	if !ok {
+		t.Fatal("oauth grant cleanup loop did not pass an actor")
+	}
+	if got.SubjectID != "system:maintenance" || got.SessionKind != permission.SessionKindSystem || got.Entrypoint != permission.EntrypointMaintenance {
+		t.Fatalf("oauth grant cleanup actor mismatch: %#v", got)
 	}
 }
 

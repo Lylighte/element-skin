@@ -84,6 +84,7 @@ func TestSystemMaintenanceActorExactly(t *testing.T) {
 		"yggdrasil_session.delete.system",
 		"audit.archive.system",
 		"cache.invalidate.system",
+		"oauth_grant.delete.system",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("system maintenance permissions=%#v; want %#v", got, want)

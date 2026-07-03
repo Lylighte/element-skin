@@ -260,6 +260,7 @@ Public client 不应持久依赖 client secret。
 - 所有关联 refresh token 失效。
 - 所有关联 access token 失效或在极短时间内自然过期。
 - 对应权限缓存失效。
+- grant 记录保留 30 天用于用户可见历史和排错审计；30 天后由系统维护任务删除 grant 及其授权码、refresh token、权限关联记录。
 
 ## 9. Token 模型
 

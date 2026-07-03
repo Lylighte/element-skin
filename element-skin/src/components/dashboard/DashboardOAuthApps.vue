@@ -144,6 +144,12 @@
                   tone="sky"
                 />
               </div>
+              <p
+                v-if="grant.status === 'revoked'"
+                class="mt-3 mb-0 text-xs text-[var(--color-text-light)]"
+              >
+                {{ revokedGrantCleanupText(grant) }}
+              </p>
               <div class="mt-3 flex justify-end">
                 <el-button
                   v-if="grant.status === 'active'"
@@ -301,6 +307,8 @@ const form = reactive({
   permissions: [] as string[],
 })
 
+const revokedGrantRetentionMs = 30 * 24 * 60 * 60 * 1000
+
 const selectedApp = computed(() => apps.value.find((app) => app.client_id === selectedClientId.value) ?? null)
 const userPermissionSet = computed(() => new Set(user.value?.permissions ?? []))
 const delegablePermissions = computed(() =>
@@ -447,6 +455,15 @@ function clientName(clientId: string) {
 
 function permissionLabel(code: string) {
   return permissionByCode.value.get(code)?.description || code
+}
+
+function revokedGrantCleanupText(grant: OAuthGrant) {
+  if (!grant.revoked_at) return '已撤销的授权将在 30 天后自动清除'
+  const cleanupAt = grant.revoked_at + revokedGrantRetentionMs
+  const remaining = cleanupAt - Date.now()
+  if (remaining <= 0) return '已撤销的授权即将自动清除'
+  const days = Math.ceil(remaining / (24 * 60 * 60 * 1000))
+  return `已撤销的授权将在 ${days} 天后自动清除`
 }
 
 function statusLabel(status: OAuthClientStatus) {

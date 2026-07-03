@@ -278,6 +278,7 @@ var Definitions = definitions(
 	def(ResourceOAuthGrant, ActionRevoke, ScopeOwned, "撤销授予自己的 OAuth 授权"),
 	def(ResourceOAuthGrant, ActionRead, ScopeAny, "管理后台读取 OAuth 授权"),
 	def(ResourceOAuthGrant, ActionRevoke, ScopeAny, "管理后台撤销 OAuth 授权"),
+	def(ResourceOAuthGrant, ActionDelete, ScopeSystem, "系统删除已撤销 OAuth 授权"),
 	def(ResourceOAuthToken, ActionRevoke, ScopeOwned, "撤销自己的 OAuth 令牌"),
 	def(ResourceOAuthToken, ActionIntrospect, ScopeAny, "检查 OAuth 令牌"),
 	def(ResourceMinecraftProfile, ActionRead, ScopePublic, "读取公开 Minecraft 角色资料"),

@@ -13,6 +13,10 @@ import (
 	"element-skin/backend/internal/util"
 )
 
+const RevokedGrantRetention = 30 * 24 * time.Hour
+
+var oauthGrantDeleteSystemPermission = permission.MustDefinitionByCode("oauth_grant.delete.system")
+
 func (s Service) ListGrants(ctx context.Context, actor permission.Actor, limit int) ([]map[string]any, error) {
 	if err := actor.Require(permission.MustDefinitionByCode("oauth_grant.read.owned")); err != nil {
 		return nil, forbidden()
@@ -44,6 +48,14 @@ func (s Service) RevokeGrant(ctx context.Context, actor permission.Actor, grantI
 		return notFound("oauth grant not found")
 	}
 	return nil
+}
+
+func (s Service) DeleteExpiredRevokedGrants(ctx context.Context, actor permission.Actor, now int64) (int64, error) {
+	if err := actor.Require(oauthGrantDeleteSystemPermission); err != nil {
+		return 0, forbidden()
+	}
+	cutoff := now - int64(RevokedGrantRetention/time.Millisecond)
+	return s.DB.OAuth.DeleteRevokedGrants(ctx, cutoff)
 }
 
 func (s Service) AuthorizationDetails(ctx context.Context, actor permission.Actor, req AuthorizationRequest) (AuthorizationDetails, error) {
@@ -150,6 +162,14 @@ func (s Service) validAuthorizationRequest(ctx context.Context, actor permission
 
 func (s Service) grantPermissionCodes(ctx context.Context, grantID string) ([]string, error) {
 	ids, err := s.DB.OAuth.GrantPermissionIDs(ctx, grantID)
+	if err != nil {
+		return nil, err
+	}
+	return permissionCodesFromIDs(ids), nil
+}
+
+func (s Service) activeGrantPermissionCodes(ctx context.Context, grantID, userID, clientID string) ([]string, error) {
+	ids, err := s.DB.OAuth.ActiveGrantPermissionIDs(ctx, grantID, userID, clientID)
 	if err != nil {
 		return nil, err
 	}
