@@ -32,6 +32,22 @@ def test_permission_catalog_rejects_unknown_scope_with_exact_list() -> None:
     assert str(exc.value) == "unknown permission scope: unknown.scope.self"
 
 
+def test_permission_catalog_rejects_missing_permissions_list() -> None:
+    with pytest.raises(InvalidScope) as exc:
+        PermissionCatalog.from_api_payload({"items": []})
+
+    assert exc.value.invalid_scopes == []
+    assert str(exc.value) == "permission metadata must contain a permissions list"
+
+
+def test_permission_catalog_accepts_all_known_scopes_in_original_order() -> None:
+    catalog = PermissionCatalog.from_api_payload(PERMISSION_CATALOG_RESPONSE)
+
+    assert catalog.require_known(
+        ["minecraft_session.hasjoined.server", "account.read.self"]
+    ) == ("minecraft_session.hasjoined.server", "account.read.self")
+
+
 def test_validator_accepts_delegated_user_scope_and_rejects_server_scope() -> None:
     validator = PermissionValidator()
 
@@ -52,3 +68,15 @@ def test_validator_accepts_client_credentials_server_scope_and_rejects_self_scop
         validator.validate_client_credentials([AccountScopes.READ_SELF])
 
     assert exc.value.invalid_scopes == ["account.read.self"]
+
+
+def test_validator_normalize_handles_none_blank_values_and_catalog() -> None:
+    catalog = PermissionCatalog.from_api_payload(PERMISSION_CATALOG_RESPONSE)
+    validator = PermissionValidator(catalog)
+
+    assert validator.normalize(None) == ()
+    assert validator.normalize([" account.read.self ", "", "  "]) == ("account.read.self",)
+    with pytest.raises(InvalidScope) as exc:
+        validator.normalize(["missing.scope.self"])
+
+    assert exc.value.invalid_scopes == ["missing.scope.self"]

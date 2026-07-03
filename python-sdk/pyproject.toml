@@ -23,3 +23,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["element_skin_sdk"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true

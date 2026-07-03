@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from element_skin_sdk import MemoryTokenStore, OAuthClient
+from element_skin_sdk.http import HTTPClient
 from element_skin_sdk.exceptions import InvalidScope, OAuthError
 from element_skin_sdk.permissions import AccountScopes, MinecraftScopes, ProfileScopes
 
@@ -54,6 +55,72 @@ def test_authorization_url_rejects_server_scope_for_delegated_flow() -> None:
     assert str(exc.value) == "authorization code and device flows cannot request server or system scopes"
 
 
+def test_authorization_url_requires_redirect_uri() -> None:
+    oauth = OAuthClient("https://skin.example.test", "client-1")
+
+    with pytest.raises(ValueError) as exc:
+        oauth.authorization_url([AccountScopes.READ_SELF], state="state-1")
+
+    assert str(exc.value) == "redirect_uri is required for authorization code flow"
+
+
+def test_authorization_info_and_approval_use_exact_authenticated_routes(response_json) -> None:
+    responses = [
+        {"client": {"client_id": "client-1"}, "permissions": ["account.read.self"]},
+        {"redirect_uri": "https://app.example.test/callback?code=code-1&state=state-1"},
+    ]
+
+    def handler(request):
+        return response_json(responses.pop(0))
+
+    recorder = RequestRecorder(handler)
+    oauth = OAuthClient(
+        "https://skin.example.test",
+        "client-1",
+        access_token="user-access-token",
+        transport=recorder.transport(),
+    )
+
+    info = oauth.authorization_info(
+        {
+            "client_id": "client-1",
+            "redirect_uri": "https://app.example.test/callback",
+            "scope": AccountScopes.READ_SELF,
+            "state": "state-1",
+        }
+    )
+    approval = oauth.approve_authorization(
+        {
+            "client_id": "client-1",
+            "redirect_uri": "https://app.example.test/callback",
+            "scope": AccountScopes.READ_SELF,
+            "state": "state-1",
+            "approve": True,
+        }
+    )
+
+    assert info == {"client": {"client_id": "client-1"}, "permissions": ["account.read.self"]}
+    assert approval == {"redirect_uri": "https://app.example.test/callback?code=code-1&state=state-1"}
+    assert [(request.method, request.path) for request in recorder.requests] == [
+        ("GET", "/oauth/authorize"),
+        ("POST", "/oauth/authorize"),
+    ]
+    assert recorder.requests[0].headers["authorization"] == "Bearer user-access-token"
+    assert recorder.requests[0].query == {
+        "client_id": ["client-1"],
+        "redirect_uri": ["https://app.example.test/callback"],
+        "scope": ["account.read.self"],
+        "state": ["state-1"],
+    }
+    assert recorder.requests[1].json_body == {
+        "client_id": "client-1",
+        "redirect_uri": "https://app.example.test/callback",
+        "scope": "account.read.self",
+        "state": "state-1",
+        "approve": True,
+    }
+
+
 def test_exchange_code_posts_exact_form_and_saves_tokens(response_json) -> None:
     recorder = RequestRecorder(lambda request: response_json(TOKEN_RESPONSE))
     store = MemoryTokenStore()
@@ -98,6 +165,27 @@ def test_refresh_posts_exact_form_without_scope_when_not_requested(response_json
     }
 
 
+def test_refresh_with_scope_saves_tokens_and_posts_exact_scope(response_json) -> None:
+    recorder = RequestRecorder(lambda request: response_json(TOKEN_RESPONSE))
+    store = MemoryTokenStore()
+    oauth = OAuthClient(
+        "https://skin.example.test",
+        "client-1",
+        token_store=store,
+        transport=recorder.transport(),
+    )
+
+    tokens = oauth.refresh("refresh-token-1", scopes=[AccountScopes.READ_SELF])
+
+    assert store.load() == tokens
+    assert recorder.requests[0].form == {
+        "grant_type": ["refresh_token"],
+        "client_id": ["client-1"],
+        "refresh_token": ["refresh-token-1"],
+        "scope": ["account.read.self"],
+    }
+
+
 def test_start_device_flow_posts_exact_form(response_json) -> None:
     recorder = RequestRecorder(lambda request: response_json(DEVICE_CODE_RESPONSE))
     oauth = OAuthClient("https://skin.example.test", "client-1", transport=recorder.transport())
@@ -136,6 +224,26 @@ def test_exchange_device_code_maps_oauth_error_exactly(response_json) -> None:
     }
 
 
+def test_exchange_device_code_saves_tokens(response_json) -> None:
+    recorder = RequestRecorder(lambda request: response_json(TOKEN_RESPONSE))
+    store = MemoryTokenStore()
+    oauth = OAuthClient(
+        "https://skin.example.test",
+        "client-1",
+        token_store=store,
+        transport=recorder.transport(),
+    )
+
+    tokens = oauth.exchange_device_code("device-code-1")
+
+    assert store.load() == tokens
+    assert recorder.requests[0].form == {
+        "grant_type": ["urn:ietf:params:oauth:grant-type:device_code"],
+        "client_id": ["client-1"],
+        "device_code": ["device-code-1"],
+    }
+
+
 def test_client_credentials_accepts_server_scope_and_posts_exact_form(response_json) -> None:
     recorder = RequestRecorder(lambda request: response_json(CLIENT_CREDENTIALS_TOKEN_RESPONSE))
     oauth = OAuthClient(
@@ -155,6 +263,23 @@ def test_client_credentials_accepts_server_scope_and_posts_exact_form(response_j
         "scope": ["minecraft_session.hasjoined.server"],
         "client_secret": ["server-secret"],
     }
+
+
+def test_client_credentials_store_false_does_not_save_tokens(response_json) -> None:
+    recorder = RequestRecorder(lambda request: response_json(CLIENT_CREDENTIALS_TOKEN_RESPONSE))
+    store = MemoryTokenStore()
+    oauth = OAuthClient(
+        "https://skin.example.test",
+        "server-client",
+        client_secret="server-secret",
+        token_store=store,
+        transport=recorder.transport(),
+    )
+
+    tokens = oauth.client_credentials([MinecraftScopes.SESSION_HASJOINED_SERVER], store=False)
+
+    assert tokens.access_token == "server-token-1"
+    assert store.load() is None
 
 
 def test_client_credentials_rejects_user_delegated_scope() -> None:
@@ -184,3 +309,115 @@ def test_revoke_posts_exact_form_and_ignores_empty_body() -> None:
         "client_id": ["client-1"],
         "client_secret": ["secret-1"],
     }
+
+
+def test_introspect_posts_exact_form(response_json) -> None:
+    recorder = RequestRecorder(lambda request: response_json({"active": True, "client_id": "client-1"}))
+    oauth = OAuthClient(
+        "https://skin.example.test",
+        "client-1",
+        client_secret="secret-1",
+        transport=recorder.transport(),
+    )
+
+    body = oauth.introspect("access-token-1")
+
+    assert body == {"active": True, "client_id": "client-1"}
+    assert recorder.requests[0].path == "/oauth/introspect"
+    assert recorder.requests[0].form == {
+        "token": ["access-token-1"],
+        "client_id": ["client-1"],
+        "client_secret": ["secret-1"],
+    }
+
+
+def test_oauth_context_manager_closes_wrapped_http_client(response_json) -> None:
+    recorder = RequestRecorder(lambda request: response_json(TOKEN_RESPONSE))
+
+    with OAuthClient(
+        "https://skin.example.test",
+        "client-1",
+        transport=recorder.transport(),
+    ) as oauth:
+        assert oauth.exchange_code(
+            code="auth-code-1",
+            code_verifier="verifier-1",
+            store=False,
+        ).access_token == "access-token-1"
+
+    assert len(recorder.requests) == 1
+
+
+def test_oauth_close_delegates_to_supplied_http_client() -> None:
+    class CloseTrackingHTTPClient:
+        def __init__(self):
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    http_client = CloseTrackingHTTPClient()
+    oauth = OAuthClient(
+        "https://skin.example.test",
+        "client-1",
+        http_client=http_client,  # type: ignore[arg-type]
+    )
+
+    oauth.close()
+
+    assert http_client.closed is True
+
+
+def test_poll_device_token_returns_after_pending_response(monkeypatch, response_json) -> None:
+    responses = [
+        response_json(
+            {"error": "authorization_pending", "error_description": "authorization pending"},
+            400,
+        ),
+        response_json(TOKEN_RESPONSE),
+    ]
+    recorder = RequestRecorder(lambda request: responses.pop(0))
+    sleeps: list[int] = []
+    monkeypatch.setattr("element_skin_sdk.oauth.client.time.sleep", sleeps.append)
+    oauth = OAuthClient("https://skin.example.test", "client-1", transport=recorder.transport())
+
+    tokens = oauth.poll_device_token("device-code-1", interval=2, timeout=30, store=False)
+
+    assert tokens.access_token == "access-token-1"
+    assert sleeps == [2]
+    assert [request.form["device_code"] for request in recorder.requests] == [
+        ["device-code-1"],
+        ["device-code-1"],
+    ]
+
+
+def test_poll_device_token_slow_down_times_out_without_sleep(response_json) -> None:
+    recorder = RequestRecorder(
+        lambda request: response_json(
+            {"error": "slow_down", "error_description": "slow down"},
+            400,
+        )
+    )
+    oauth = OAuthClient("https://skin.example.test", "client-1", transport=recorder.transport())
+
+    with pytest.raises(TimeoutError) as exc:
+        oauth.poll_device_token("device-code-1", interval=1, timeout=0, store=False)
+
+    assert str(exc.value) == "device authorization timed out"
+    assert len(recorder.requests) == 1
+
+
+def test_poll_device_token_reraises_unexpected_oauth_error(response_json) -> None:
+    recorder = RequestRecorder(
+        lambda request: response_json(
+            {"error": "invalid_grant", "error_description": "device code expired"},
+            400,
+        )
+    )
+    oauth = OAuthClient("https://skin.example.test", "client-1", transport=recorder.transport())
+
+    with pytest.raises(OAuthError) as exc:
+        oauth.poll_device_token("device-code-1", interval=1, timeout=30, store=False)
+
+    assert exc.value.error == "invalid_grant"
+    assert exc.value.detail == "device code expired"
