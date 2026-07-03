@@ -289,13 +289,13 @@ func TestActorForClientUsesClientSubjectAndAPISessionPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	serverDef := core.MustDefinitionByCode("minecraft_session.hasjoined.server")
-	webOnlyDef := core.MustDefinitionByCode("account.read.any")
+	userContextDef := core.MustDefinitionByCode("account.read.self")
 	if _, err := db.Pool.Exec(ctx, `
 		INSERT INTO subject_permission_overrides (subject_id, permission_id, effect, created_at)
 		VALUES
 			($1,$2,'allow',$4),
 			($1,$3,'allow',$4)
-	`, permissiondb.SubjectIDForClient(clientID), int64(serverDef.ID), int64(webOnlyDef.ID), time.Now().UnixMilli()); err != nil {
+	`, permissiondb.SubjectIDForClient(clientID), int64(serverDef.ID), int64(userContextDef.ID), time.Now().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -318,8 +318,8 @@ func TestActorForClientUsesClientSubjectAndAPISessionPolicy(t *testing.T) {
 	if !actor.Permissions.Has(serverDef.BitIndex) {
 		t.Fatal("client actor should include granted minecraft_session.hasjoined.server")
 	}
-	if actor.Permissions.Has(webOnlyDef.BitIndex) {
-		t.Fatal("client credentials API policy should remove account.read.any")
+	if actor.Permissions.Has(userContextDef.BitIndex) {
+		t.Fatal("client credentials API policy should remove account.read.self")
 	}
 }
 

@@ -3587,6 +3587,8 @@ minecraft_session.hasjoined.server
 
 这些权限名应进入权限模型文档，并通过 catalog 测试固定。
 
+Client Credentials access token 使用应用自身权限主体 `client:{client_id}`。应用审核通过后，管理员可逐项授予 app-only 权限。`client_credentials / api` 会话策略允许 `public`、`server` 和经审核明确授予的 `any` scope，禁止 `self`、`owned`、`bound_profile`、`assigned` 和 `system` scope。请求的 `scope` 必须是应用主体有效权限的子集。
+
 ## 32. OAuth 资源权限
 
 OAuth 应用和授权是站点能力资源。v1 实现 OAuth 时必须新增以下资源：

@@ -199,11 +199,7 @@ var SessionPolicies = []SessionPolicy{
 	{
 		SessionKind: SessionKindClient,
 		Entrypoint:  EntrypointAPI,
-		Permissions: definitionsByCodes(
-			"minecraft_profile.read.public",
-			"minecraft_texture_property.read.public",
-			"minecraft_session.hasjoined.server",
-		),
+		Permissions: appOnlyDefinitions(),
 	},
 }
 
@@ -246,6 +242,16 @@ func systemDefinitions() []Definition {
 	out := make([]Definition, 0, len(Definitions))
 	for _, def := range Definitions {
 		if def.Scope.ID == ScopeSystem {
+			out = append(out, def)
+		}
+	}
+	return out
+}
+
+func appOnlyDefinitions() []Definition {
+	out := make([]Definition, 0, len(Definitions))
+	for _, def := range Definitions {
+		if def.Scope.ID == ScopePublic || def.Scope.ID == ScopeServer || def.Scope.ID == ScopeAny {
 			out = append(out, def)
 		}
 	}

@@ -169,6 +169,15 @@ func (s Service) ReviewClient(ctx context.Context, actor permission.Actor, clien
 	if client == nil {
 		return nil, notFound("oauth client not found")
 	}
+	codes, err := s.clientPermissionCodes(ctx, client.ID)
+	if err != nil {
+		return nil, err
+	}
+	if status == StatusActive {
+		if err := s.grantReviewedClientPermissions(ctx, actor, client.ID, codes); err != nil {
+			return nil, err
+		}
+	}
 	client.Status = status
 	client.UpdatedAt = database.NowMS()
 	ok, err := s.DB.OAuth.UpdateClientStatus(ctx, client.ID, status, client.UpdatedAt)
@@ -179,10 +188,6 @@ func (s Service) ReviewClient(ctx context.Context, actor permission.Actor, clien
 		return nil, notFound("oauth client not found")
 	}
 	if err := s.notifyOwnerReviewResult(ctx, *client, status, reason); err != nil {
-		return nil, err
-	}
-	codes, err := s.clientPermissionCodes(ctx, client.ID)
-	if err != nil {
 		return nil, err
 	}
 	return clientResponse(*client, codes, ""), nil
@@ -390,4 +395,25 @@ func (s Service) clientPermissionCodes(ctx context.Context, clientID string) ([]
 		return nil, err
 	}
 	return permissionCodesFromIDs(ids), nil
+}
+
+func (s Service) grantReviewedClientPermissions(ctx context.Context, actor permission.Actor, clientID string, codes []string) error {
+	subjectID := permissiondb.SubjectIDForClient(clientID)
+	for _, code := range codes {
+		def, ok := permission.DefinitionByCode(code)
+		if !ok || def.Scope.ID == permission.ScopeSystem {
+			return badRequest("invalid permission")
+		}
+		if !isAppOnlyPermission(def) {
+			continue
+		}
+		if err := s.DB.Permissions.SetPermissionOverrideForSubject(ctx, subjectID, def, "allow", actor.SubjectID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isAppOnlyPermission(def permission.Definition) bool {
+	return def.Scope.ID == permission.ScopeAny || def.Scope.ID == permission.ScopePublic || def.Scope.ID == permission.ScopeServer
 }

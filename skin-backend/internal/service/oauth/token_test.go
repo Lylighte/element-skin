@@ -124,6 +124,106 @@ func TestServiceClientCredentialsIssueAppOnlyActorExactly(t *testing.T) {
 	}
 }
 
+func TestServiceClientCredentialsReviewApprovalGrantsRequestedClientScopesExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	owner := testutil.CreateUser(t, db, "oauth-client-credentials-invite@test.com", "Password123", "OAuthInviteClient", true, true)
+	admin := testutil.CreateUser(t, db, "oauth-client-credentials-invite-admin@test.com", "Password123", "OAuthInviteAdmin", true, true)
+	ownerActor, err := db.Permissions.ActorForUser(ctx, owner.ID, permissiondb.EffectiveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminActor, err := db.Permissions.ActorForUser(ctx, admin.ID, permissiondb.EffectiveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := newOAuthService(db)
+	created, err := svc.CreateClient(ctx, ownerActor, oauth.ClientInput{
+		Name:        "Invite manager",
+		RedirectURI: "https://invite-manager.example/callback",
+		ClientType:  oauth.ClientTypeConfidential,
+		PermissionCodes: []string{
+			"account.read.self",
+			"invite.read.any",
+			"invite.create.any",
+			"invite.delete.any",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientID := created["client_id"].(string)
+	clientSecret := created["client_secret"].(string)
+
+	reviewed, err := svc.ReviewClient(ctx, adminActor, clientID, oauth.StatusActive, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reviewed["status"] != oauth.StatusActive {
+		t.Fatalf("reviewed client status mismatch: %#v", reviewed)
+	}
+	var selfOverrideCount int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM subject_permission_overrides
+		WHERE subject_id=$1 AND permission_id=$2
+	`, permissiondb.SubjectIDForClient(clientID), int64(permission.MustDefinitionByCode("account.read.self").ID)).Scan(&selfOverrideCount); err != nil {
+		t.Fatal(err)
+	}
+	if selfOverrideCount != 0 {
+		t.Fatalf("review should not grant user-context permission to client subject: count=%d", selfOverrideCount)
+	}
+
+	token, err := svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Scope:        "invite.read.any invite.create.any invite.delete.any",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token.AccessToken == "" ||
+		token.RefreshToken != "" ||
+		token.TokenType != "Bearer" ||
+		token.ExpiresIn != 3600 ||
+		token.Scope != "invite.create.any invite.delete.any invite.read.any" ||
+		len(token.Permissions) != 3 ||
+		token.Permissions[0] != "invite.create.any" ||
+		token.Permissions[1] != "invite.delete.any" ||
+		token.Permissions[2] != "invite.read.any" {
+		t.Fatalf("review-approved invite client token mismatch: %#v", token)
+	}
+	appActor, ok, err := svc.ActorForBearer(ctx, token.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok ||
+		appActor.UserID != "" ||
+		appActor.SubjectID != permissiondb.SubjectIDForClient(clientID) ||
+		appActor.SessionKind != permission.SessionKindClient ||
+		appActor.Entrypoint != permission.EntrypointAPI ||
+		!appActor.Has(permission.MustDefinitionByCode("invite.read.any")) ||
+		!appActor.Has(permission.MustDefinitionByCode("invite.create.any")) ||
+		!appActor.Has(permission.MustDefinitionByCode("invite.delete.any")) {
+		t.Fatalf("review-approved invite app actor mismatch: ok=%v actor=%#v", ok, appActor)
+	}
+	_, err = svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Scope:        "account.delete.any",
+	})
+	assertHTTPError(t, err, 403, "permission denied")
+	_, err = svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Scope:        "account.read.self",
+	})
+	assertHTTPError(t, err, 403, "permission denied")
+}
+
 func TestServiceClientCredentialsRejectsPublicClientAndExcessScopeExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
