@@ -2,74 +2,27 @@ package admin
 
 import (
 	"net/http"
-	"strings"
 
-	userstore "element-skin/backend/internal/database/user"
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/permission"
 	accountsvc "element-skin/backend/internal/service/account"
 	"element-skin/backend/internal/util"
 )
 
-var (
-	userReadAnyPermission    = permission.MustDefinitionByCode("user.read.any")
-	accountReadAnyPermission = permission.MustDefinitionByCode("account.read.any")
-)
-
 func (h Handler) Users(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, userReadAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	rawCursor := req.URL.Query().Get("cursor")
-	cursor, err := util.DecodeCursor(rawCursor)
-	if err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
-		return
-	}
-	last := ""
-	if cursor != nil {
-		last, _ = cursor["last_id"].(string)
-	}
-	if rawCursor != "" && last == "" {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
-		return
-	}
-	res, err := h.db.Users.List(req.Context(), util.ClampLimit(req.URL.Query().Get("limit"), 15), last, strings.TrimSpace(req.URL.Query().Get("q")))
+	res, err := h.accounts.ListUsers(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("cursor"), util.ClampLimit(req.URL.Query().Get("limit"), 15), req.URL.Query().Get("q"))
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	if err := h.attachRolesToUserItems(req, res["items"]); err != nil {
-		util.Error(w, err)
-		return
-	}
-	res["next_cursor"] = util.EncodeCursor(shared.AsMap(res["next_key"]))
-	delete(res, "next_key")
 	util.JSON(w, 200, res)
 }
 
 func (h Handler) User(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, accountReadAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	user, err := h.db.Users.GetByID(req.Context(), req.PathValue("user_id"))
+	out, err := h.accounts.UserDetail(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"))
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	if user == nil {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "user not found"})
-		return
-	}
-	out := userstore.PublicUser(*user)
-	roles, err := h.db.Permissions.RoleIDsForUser(req.Context(), user.ID)
-	if err != nil {
-		util.Error(w, err)
-		return
-	}
-	out["roles"] = roles
 	util.JSON(w, 200, out)
 }
 
@@ -137,31 +90,11 @@ func (h Handler) DeleteUser(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UserProfiles(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, profileReadAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	rawCursor := req.URL.Query().Get("cursor")
-	cursor, err := util.DecodeCursor(rawCursor)
-	if err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
-		return
-	}
-	lastID := ""
-	if cursor != nil {
-		lastID, _ = cursor["last_id"].(string)
-	}
-	if rawCursor != "" && lastID == "" {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
-		return
-	}
-	res, err := h.db.Profiles.ListByUser(req.Context(), req.PathValue("user_id"), util.ClampLimit(req.URL.Query().Get("limit")), lastID)
+	res, err := h.profiles.ListProfilesByUser(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"), req.URL.Query().Get("cursor"), util.ClampLimit(req.URL.Query().Get("limit")))
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	res["next_cursor"] = util.EncodeCursor(shared.AsMap(res["next_key"]))
-	delete(res, "next_key")
 	util.JSON(w, 200, res)
 }
 
@@ -207,20 +140,4 @@ func (h Handler) ResetUserPassword(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
-}
-
-func (h Handler) attachRolesToUserItems(req *http.Request, rawItems any) error {
-	items, _ := rawItems.([]map[string]any)
-	for _, item := range items {
-		userID, _ := item["id"].(string)
-		if userID == "" {
-			continue
-		}
-		roles, err := h.db.Permissions.RoleIDsForUser(req.Context(), userID)
-		if err != nil {
-			return err
-		}
-		item["roles"] = roles
-	}
-	return nil
 }

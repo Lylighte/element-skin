@@ -6,24 +6,12 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/permission"
 	noticesvc "element-skin/backend/internal/service/notice"
 	"element-skin/backend/internal/util"
 )
 
-var (
-	noticeReadAdminPermission   = permission.MustDefinitionByCode("notice.read.any")
-	noticeCreateAdminPermission = permission.MustDefinitionByCode("notice.create.any")
-	noticeUpdateAdminPermission = permission.MustDefinitionByCode("notice.update.any")
-	noticeDeleteAdminPermission = permission.MustDefinitionByCode("notice.delete.any")
-)
-
 func (h Handler) Notices(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, noticeReadAdminPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	res, err := h.notices.ListForAdmin(req.Context(), noticesvc.ListParams{
+	res, err := h.notices.ListForManagement(req.Context(), shared.CurrentActor(req), noticesvc.ListParams{
 		Type:   req.URL.Query().Get("type"),
 		Status: req.URL.Query().Get("status"),
 		Limit:  util.ClampLimit(req.URL.Query().Get("limit")),
@@ -37,16 +25,12 @@ func (h Handler) Notices(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) CreateNotice(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, noticeCreateAdminPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var body noticesvc.CreateInput
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid json"})
 		return
 	}
-	res, err := h.notices.Create(req.Context(), body, shared.CurrentUserID(req))
+	res, err := h.notices.Create(req.Context(), shared.CurrentActor(req), body)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -55,10 +39,6 @@ func (h Handler) CreateNotice(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) PatchNotice(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, noticeUpdateAdminPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var raw map[string]json.RawMessage
 	if err := shared.DecodeJSON(req, &raw); err != nil {
 		util.Error(w, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid json"})
@@ -69,7 +49,7 @@ func (h Handler) PatchNotice(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	res, err := h.notices.Patch(req.Context(), req.PathValue("id"), body, shared.CurrentUserID(req))
+	res, err := h.notices.Patch(req.Context(), shared.CurrentActor(req), req.PathValue("id"), body)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -78,11 +58,7 @@ func (h Handler) PatchNotice(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) DeleteNotice(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, noticeDeleteAdminPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if err := h.notices.Delete(req.Context(), req.PathValue("id")); err != nil {
+	if err := h.notices.Delete(req.Context(), shared.CurrentActor(req), req.PathValue("id")); err != nil {
 		util.Error(w, err)
 		return
 	}

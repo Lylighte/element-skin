@@ -229,6 +229,7 @@ var Definitions = definitions(
 	def(ResourceNotice, ActionCreate, ScopeAny, "发布通知"),
 	def(ResourceNotice, ActionUpdate, ScopeAny, "替换通知"),
 	def(ResourceNotice, ActionDelete, ScopeAny, "删除通知"),
+	def(ResourceNotice, ActionCreate, ScopeSystem, "系统投递通知"),
 	def(ResourceNotice, ActionDelete, ScopeSystem, "系统删除过期通知"),
 	def(ResourceSiteSettings, ActionRead, ScopeAny, "读取站点设置"),
 	def(ResourceSiteSettings, ActionUpdate, ScopeAny, "修改站点设置"),

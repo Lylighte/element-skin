@@ -291,6 +291,7 @@ func TestAdminRoleDoesNotIncludeSuperAdminOrSystemPermissions(t *testing.T) {
 		"permission_role.delete.any":      true,
 	}
 	systemCodes := map[string]bool{
+		"notice.create.system":            true,
 		"notice.delete.system":            true,
 		"yggdrasil_session.delete.system": true,
 		"audit.archive.system":            true,

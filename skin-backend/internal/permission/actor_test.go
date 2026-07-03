@@ -68,3 +68,32 @@ func TestActorPermissionCodesEmpty(t *testing.T) {
 		t.Fatalf("empty actor should return empty codes: %#v", got)
 	}
 }
+
+func TestSystemMaintenanceActorExactly(t *testing.T) {
+	actor := permission.SystemMaintenanceActor()
+	if actor.SubjectID != "system:maintenance" ||
+		actor.UserID != "" ||
+		actor.SessionKind != permission.SessionKindSystem ||
+		actor.Entrypoint != permission.EntrypointMaintenance {
+		t.Fatalf("system maintenance actor identity mismatch: %#v", actor)
+	}
+	got := actor.PermissionCodes()
+	want := []string{
+		"notice.create.system",
+		"notice.delete.system",
+		"yggdrasil_session.delete.system",
+		"audit.archive.system",
+		"cache.invalidate.system",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("system maintenance permissions=%#v; want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("system maintenance permission[%d]=%q; want %q in %#v", i, got[i], want[i], got)
+		}
+	}
+	if actor.Has(permission.MustDefinitionByCode("notice.create.any")) {
+		t.Fatal("system maintenance actor must not include non-system notice create permission")
+	}
+}

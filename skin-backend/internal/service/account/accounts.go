@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/database"
+	userstore "element-skin/backend/internal/database/user"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
@@ -28,6 +29,8 @@ var (
 	accountUnbanPermission    = permission.MustDefinitionByCode("account.unban.any")
 	accountDeletePermission   = permission.MustDefinitionByCode("account.delete.any")
 	accountUpdatePermission   = permission.MustDefinitionByCode("account.update.any")
+	userReadAnyPermission     = permission.MustDefinitionByCode("user.read.any")
+	accountReadAnyPermission  = permission.MustDefinitionByCode("account.read.any")
 )
 
 type AccountService struct {
@@ -43,6 +46,53 @@ type BanUserInput struct {
 type ResetPasswordInput struct {
 	UserID      string
 	NewPassword string
+}
+
+func (s AccountService) ListUsers(ctx context.Context, actor permission.Actor, cursor string, limit int, query string) (map[string]any, error) {
+	if err := actor.Require(userReadAnyPermission); err != nil {
+		return nil, permissionDenied()
+	}
+	m, err := util.DecodeCursor(cursor)
+	if err != nil {
+		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid cursor"}
+	}
+	last := ""
+	if m != nil {
+		last, _ = m["last_id"].(string)
+	}
+	if cursor != "" && last == "" {
+		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid cursor"}
+	}
+	res, err := s.DB.Users.List(ctx, limit, last, strings.TrimSpace(query))
+	if err != nil {
+		return nil, err
+	}
+	if err := s.attachRoles(ctx, res["items"]); err != nil {
+		return nil, err
+	}
+	res["next_cursor"] = util.EncodeCursor(asMap(res["next_key"]))
+	delete(res, "next_key")
+	return res, nil
+}
+
+func (s AccountService) UserDetail(ctx context.Context, actor permission.Actor, userID string) (map[string]any, error) {
+	if err := actor.Require(accountReadAnyPermission); err != nil {
+		return nil, permissionDenied()
+	}
+	user, err := s.DB.Users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
+	}
+	out := userstore.PublicUser(*user)
+	roles, err := s.DB.Permissions.RoleIDsForUser(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	out["roles"] = roles
+	return out, nil
 }
 
 func (s AccountService) GrantUserRole(ctx context.Context, actor permission.Actor, targetID, roleID string) error {
@@ -175,7 +225,7 @@ func (s AccountService) BanUser(ctx context.Context, actor permission.Actor, tar
 	if err := s.Redis.InvalidateAuthUser(ctx, target.ID); err != nil {
 		return 0, err
 	}
-	if err := s.createBanNotice(ctx, actor.UserID, target.ID, input.BannedUntil, reason); err != nil {
+	if err := s.createBanNotice(ctx, target.ID, input.BannedUntil, reason); err != nil {
 		return 0, err
 	}
 	return input.BannedUntil, nil
@@ -233,10 +283,10 @@ func ensureRoleMutationAllowed(actor permission.Actor, roleID string) error {
 	return nil
 }
 
-func (s AccountService) createBanNotice(ctx context.Context, actorID, targetID string, bannedUntil int64, reason string) error {
+func (s AccountService) createBanNotice(ctx context.Context, targetID string, bannedUntil int64, reason string) error {
 	endsAt := database.NowMS() + accountBanNoticeTTL.Milliseconds()
 	content := fmt.Sprintf("你的账号已被管理员封禁。\n\n封禁截止时间：%d\n\n原因：\n\n%s", bannedUntil, reason)
-	_, err := noticesvc.Service{DB: s.DB}.Create(ctx, noticesvc.CreateInput{
+	_, err := noticesvc.Service{DB: s.DB}.Create(ctx, permission.SystemMaintenanceActor(), noticesvc.CreateInput{
 		Type:            noticesvc.TypeSystem,
 		Title:           "账号已被封禁",
 		Summary:         "你的账号已被管理员封禁，详情请查看通知。",
@@ -246,7 +296,7 @@ func (s AccountService) createBanNotice(ctx context.Context, actorID, targetID s
 		Audience:        noticesvc.AudienceTargeted,
 		EndsAt:          &endsAt,
 		TargetUserIDs:   []string{targetID},
-	}, actorID)
+	})
 	return err
 }
 
@@ -263,4 +313,25 @@ func normalizedBanReason(raw string) (string, error) {
 
 func permissionDenied() error {
 	return util.HTTPError{Status: http.StatusForbidden, Detail: "permission denied"}
+}
+
+func (s AccountService) attachRoles(ctx context.Context, rawItems any) error {
+	items, _ := rawItems.([]map[string]any)
+	for _, item := range items {
+		userID, _ := item["id"].(string)
+		if userID == "" {
+			continue
+		}
+		roles, err := s.DB.Permissions.RoleIDsForUser(ctx, userID)
+		if err != nil {
+			return err
+		}
+		item["roles"] = roles
+	}
+	return nil
+}
+
+func asMap(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
 }

@@ -37,7 +37,7 @@ func (s Service) CreateClient(ctx context.Context, actor permission.Actor, input
 	if err := s.DB.OAuth.CreateClient(ctx, client, permissionIDs); err != nil {
 		return nil, err
 	}
-	if err := s.notifyAdminsClientSubmitted(ctx, actor.UserID, client); err != nil {
+	if err := s.notifyAdminsClientSubmitted(ctx, client); err != nil {
 		return nil, err
 	}
 	return clientResponse(client, permissionCodes, secret), nil
@@ -141,7 +141,7 @@ func (s Service) SubmitClientForReview(ctx context.Context, actor permission.Act
 	if !ok {
 		return nil, notFound("oauth client not found")
 	}
-	if err := s.notifyAdminsClientSubmitted(ctx, actor.UserID, *client); err != nil {
+	if err := s.notifyAdminsClientSubmitted(ctx, *client); err != nil {
 		return nil, err
 	}
 	codes, err := s.clientPermissionCodes(ctx, client.ID)
@@ -178,7 +178,7 @@ func (s Service) ReviewClient(ctx context.Context, actor permission.Actor, clien
 	if !ok {
 		return nil, notFound("oauth client not found")
 	}
-	if err := s.notifyOwnerReviewResult(ctx, actor.UserID, *client, status, reason); err != nil {
+	if err := s.notifyOwnerReviewResult(ctx, *client, status, reason); err != nil {
 		return nil, err
 	}
 	codes, err := s.clientPermissionCodes(ctx, client.ID)

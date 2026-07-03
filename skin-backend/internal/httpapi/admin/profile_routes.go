@@ -2,96 +2,34 @@ package admin
 
 import (
 	"net/http"
-	"strings"
 
-	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
-var (
-	profileReadAnyPermission   = permission.MustDefinitionByCode("profile.read.any")
-	profileUpdateAnyPermission = permission.MustDefinitionByCode("profile.update.any")
-	profileDeleteAnyPermission = permission.MustDefinitionByCode("profile.delete.any")
-)
-
 func (h Handler) Profiles(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, profileReadAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	rawCursor := req.URL.Query().Get("cursor")
-	cursor, err := util.DecodeCursor(rawCursor)
-	if err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
-		return
-	}
-	last := ""
-	if cursor != nil {
-		last, _ = cursor["last_id"].(string)
-	}
-	if rawCursor != "" && last == "" {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
-		return
-	}
-	res, err := h.db.Profiles.ListAll(req.Context(), util.ClampLimit(req.URL.Query().Get("limit")), last, strings.TrimSpace(req.URL.Query().Get("q")))
+	res, err := h.profiles.ListAllProfiles(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("cursor"), util.ClampLimit(req.URL.Query().Get("limit")), req.URL.Query().Get("q"))
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	res["next_cursor"] = util.EncodeCursor(shared.AsMap(res["next_key"]))
-	delete(res, "next_key")
 	util.JSON(w, 200, res)
 }
 
 func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, profileUpdateAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	profileID := req.PathValue("profile_id")
-	p, err := h.db.Profiles.GetByID(req.Context(), profileID)
-	if err != nil {
+	if err := h.profiles.UpdateAnyProfile(req.Context(), shared.CurrentActor(req), req.PathValue("profile_id"), body["name"]); err != nil {
 		util.Error(w, err)
 		return
-	}
-	if p == nil {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "profile not found"})
-		return
-	}
-	if body["name"] != "" {
-		if !util.ValidProfileName(body["name"]) {
-			util.Error(w, util.HTTPError{Status: 400, Detail: "invalid profile name"})
-			return
-		}
-		ok, err := h.db.Profiles.UpdateName(req.Context(), profileID, body["name"])
-		if err != nil {
-			if profile.IsNameConflict(err) {
-				util.Error(w, util.HTTPError{Status: 409, Detail: "profile name already exists"})
-				return
-			}
-			util.Error(w, err)
-			return
-		}
-		if !ok {
-			util.Error(w, util.HTTPError{Status: 404, Detail: "profile not found"})
-			return
-		}
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
 }
 
 func (h Handler) DeleteProfile(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, profileDeleteAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	err := h.profiles.DeleteProfileByID(req.Context(), shared.CurrentActor(req), req.PathValue("profile_id"))
 	if err != nil {
 		util.Error(w, err)
@@ -109,23 +47,12 @@ func (h Handler) UpdateProfileCape(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) setProfileTexture(w http.ResponseWriter, req *http.Request, typ string) {
-	if err := shared.RequirePermission(req, profileUpdateAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var body map[string]*string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
 	profileID := req.PathValue("profile_id")
-	if p, err := h.db.Profiles.GetByID(req.Context(), profileID); err != nil {
-		util.Error(w, err)
-		return
-	} else if p == nil {
-		util.Error(w, util.HTTPError{Status: 404, Detail: "profile not found"})
-		return
-	}
 	if err := h.profiles.SetProfileTexture(req.Context(), shared.CurrentActor(req), profileID, typ, body["hash"]); err != nil {
 		util.Error(w, err)
 		return

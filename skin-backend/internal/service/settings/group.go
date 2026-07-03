@@ -8,8 +8,28 @@ import (
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/database/fallback"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
+
+var (
+	siteSettingsReadPermission   = permission.MustDefinitionByCode("site_settings.read.any")
+	siteSettingsUpdatePermission = permission.MustDefinitionByCode("site_settings.update.any")
+)
+
+func (s Settings) ReadGroup(ctx context.Context, actor permission.Actor, group string) (map[string]any, error) {
+	if err := requirePermission(actor, siteSettingsReadPermission); err != nil {
+		return nil, err
+	}
+	return s.GetGroup(ctx, group)
+}
+
+func (s Settings) UpdateGroup(ctx context.Context, actor permission.Actor, group string, body map[string]any) error {
+	if err := requirePermission(actor, siteSettingsUpdatePermission); err != nil {
+		return err
+	}
+	return s.SaveGroupAndInvalidate(ctx, group, body)
+}
 
 func (s Settings) GetGroup(ctx context.Context, group string) (map[string]any, error) {
 	keys, ok := settingsGroups[group]
@@ -109,4 +129,27 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 		updates = append(updates, database.SettingUpdate{Key: key, Value: value})
 	}
 	return s.DB.SaveSettingsGroup(ctx, updates, pendingFallbacks, saveFallbacks)
+}
+
+func (s Settings) SaveGroupAndInvalidate(ctx context.Context, group string, body map[string]any) error {
+	if err := s.SaveGroup(ctx, group, body); err != nil {
+		return err
+	}
+	if err := s.InvalidateCache(ctx); err != nil {
+		return err
+	}
+	switch group {
+	case "site", "fallback", "email", "easter_eggs":
+		if err := s.Redis.InvalidatePublicSettings(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requirePermission(actor permission.Actor, def permission.Definition) error {
+	if actor.Has(def) {
+		return nil
+	}
+	return util.HTTPError{Status: 403, Detail: "permission denied"}
 }
