@@ -1,18 +1,34 @@
 # Element Skin Python SDK
 
-`element-skin-sdk` provides Python helpers for Element Skin OAuth 2.1 flows and `/v1` API access.
+`element-skin-sdk` 是 Element Skin 的 Python SDK，用于接入 OAuth 2.1 流程和
+`/v1` 站点能力 API。
 
-## Install for local development
+SDK 主要解决三件事：
+
+- 封装 Authorization Code + PKCE、Device Code Flow、Client Credentials、刷新、
+  撤销和 introspection 等 OAuth 流程。
+- 提供权限常量和本地权限校验，避免第三方应用到处手写权限字符串。
+- 提供常用 `/v1` API 的同步 Python 调用入口。
+
+## 安装
+
+本地开发：
 
 ```bash
 pip install -e .[test]
 ```
 
-## Authorization Code with PKCE
+运行时依赖：
+
+```bash
+pip install httpx
+```
+
+## 最小示例
 
 ```python
-from element_skin_sdk import OAuthClient
-from element_skin_sdk.permissions import ProfileScopes, TextureScopes
+from element_skin_sdk import ElementSkinAPI, OAuthClient
+from element_skin_sdk.permissions import ProfileScopes
 
 oauth = OAuthClient(
     base_url="https://skin.example.com",
@@ -20,46 +36,33 @@ oauth = OAuthClient(
     redirect_uri="https://app.example.com/callback",
 )
 
-session = oauth.authorization_url([
-    ProfileScopes.READ_OWNED,
-    TextureScopes.READ_OWNED,
-])
-
+session = oauth.authorization_url([ProfileScopes.READ_OWNED])
 print(session.authorization_url)
 
-# After the browser redirects back:
-tokens = oauth.exchange_code(code="returned-code", code_verifier=session.code_verifier)
-```
-
-## Device Code Flow
-
-```python
-device = oauth.start_device_flow([ProfileScopes.READ_OWNED])
-print(device.verification_uri_complete)
-tokens = oauth.poll_device_token(device.device_code)
-```
-
-## Client Credentials
-
-Client credentials are for app-only capabilities approved by administrators.
-
-```python
-from element_skin_sdk.permissions import MinecraftScopes
-
-oauth = OAuthClient(
-    base_url="https://skin.example.com",
-    client_id="server_app",
-    client_secret="secret",
+tokens = oauth.exchange_code(
+    code="code-from-callback",
+    code_verifier=session.code_verifier,
 )
 
-tokens = oauth.client_credentials([MinecraftScopes.SESSION_HASJOINED_SERVER])
+api = ElementSkinAPI("https://skin.example.com", token=tokens)
+profiles = api.list_profiles()
 ```
 
-## API Access
+## 文档
 
-```python
-from element_skin_sdk import ElementSkinAPI
+- [SDK 文档入口](doc/README.md)
+- [快速开始](doc/快速开始.md)
+- [OAuth 流程](doc/OAuth流程.md)
+- [权限模型](doc/权限模型.md)
+- [API 客户端](doc/API客户端.md)
+- [错误与Token](doc/错误与Token.md)
+- [测试规范](doc/测试规范.md)
 
-api = ElementSkinAPI("https://skin.example.com", access_token=tokens.access_token)
-me = api.me()
+## 验证
+
+SDK 要求 100% 行覆盖率和 100% 分支覆盖率：
+
+```bash
+python -m coverage run -m pytest
+python -m coverage report -m
 ```
