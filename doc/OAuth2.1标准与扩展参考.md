@@ -459,19 +459,25 @@ client subject effective permissions
 
 管理员审核通过后，直接给 `client:{client_id}` 逐项授予 permission。Client Credentials 场景不使用用户授权页，不使用 `delegated_permission_grants`，也不使用 `delegated_client_permissions` 作为申请上限。
 
-首批 Client Credentials 业务目标：
+Client Credentials 首批站点能力包括 Minecraft 服务端查询和经管理员审核下放的站点管理能力：
 
 ```http
 POST /v1/minecraft/session/has-joined
+GET  /v1/admin/invites
+POST /v1/admin/invites
+DELETE /v1/admin/invites/{id}
 ```
 
-对应权限：
+对应权限示例：
 
 ```text
 minecraft_session.hasjoined.server
+invite.read.any
+invite.create.any
+invite.delete.any
 ```
 
-`server` scope 表示受审核服务端或外置插件客户端能力，不等于 `any`，也不等于 Yggdrasil `bound_profile`。
+`server` scope 表示受审核服务端或外置插件客户端能力，不等于 `any`，也不等于 Yggdrasil `bound_profile`。`any` scope 只表示资源范围是全站资源；是否可由 Client Credentials 使用，仍取决于管理员是否已将该 permission 授予 `client:{client_id}`。
 
 ## 14. 与管理员能力下放的关系
 

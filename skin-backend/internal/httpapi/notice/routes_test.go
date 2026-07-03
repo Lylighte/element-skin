@@ -24,13 +24,14 @@ func TestNoticeRoutesListDetailReadDismissExactFlow(t *testing.T) {
 	svc := noticesvc.Service{DB: db}
 	h := notice.New(db, passAuth)
 
-	first, err := svc.Create(t.Context(), noticesvc.CreateInput{
+	adminActor := actorWithPermissions(admin.ID, permission.MustDefinitionByCode("notice.create.any"))
+	first, err := svc.Create(t.Context(), adminActor, noticesvc.CreateInput{
 		Title:           "Route notice",
 		Summary:         "Route summary",
 		ContentMarkdown: "Route **body**",
 		DisplayMode:     noticesvc.DisplayDetail,
 		Level:           noticesvc.LevelWarning,
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func TestNoticeRoutesListDetailReadDismissExactFlow(t *testing.T) {
 		t.Fatalf("detail body mismatch: %#v", detail)
 	}
 
-	second, err := svc.Create(t.Context(), noticesvc.CreateInput{Title: "Read me", Summary: "Read summary"}, admin.ID)
+	second, err := svc.Create(t.Context(), adminActor, noticesvc.CreateInput{Title: "Read me", Summary: "Read summary"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestNoticeRoutesListDetailReadDismissExactFlow(t *testing.T) {
 		t.Fatalf("mark read should create exactly one read receipt")
 	}
 
-	third, err := svc.Create(t.Context(), noticesvc.CreateInput{Title: "Dismiss me", Summary: "Dismiss summary"}, admin.ID)
+	third, err := svc.Create(t.Context(), adminActor, noticesvc.CreateInput{Title: "Dismiss me", Summary: "Dismiss summary"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +178,20 @@ func userRequest(method, target, userID string, isAdmin bool) *http.Request {
 		return req.WithContext(shared.WithActorPermissions(req.Context(), userID, permission.MustDefinitionByCode("notice.read.owned"), permission.MustDefinitionByCode("notice.dismiss.owned"), permission.MustDefinitionByCode("notice.read.any")))
 	}
 	return req.WithContext(shared.WithActorPermissions(req.Context(), userID, permission.MustDefinitionByCode("notice.read.owned"), permission.MustDefinitionByCode("notice.dismiss.owned")))
+}
+
+func actorWithPermissions(userID string, definitions ...permission.Definition) permission.Actor {
+	bits := permission.NewBitSet(len(permission.Definitions))
+	for _, def := range definitions {
+		bits.Set(def.BitIndex)
+	}
+	return permission.Actor{
+		SubjectID:   "user:" + userID,
+		UserID:      userID,
+		SessionKind: permission.SessionKindWeb,
+		Entrypoint:  permission.EntrypointDashboard,
+		Permissions: bits,
+	}
 }
 
 func passAuth(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {

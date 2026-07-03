@@ -189,31 +189,45 @@ func TestUserRoleDoesNotIncludeAdminScopedPermissions(t *testing.T) {
 	}
 }
 
-func TestClientCredentialsAPISessionPolicyOnlyIncludesAppOnlyMinecraftPermissions(t *testing.T) {
+func TestClientCredentialsAPISessionPolicyOnlyIncludesAppOnlyPermissions(t *testing.T) {
 	for _, policy := range permission.SessionPolicies {
 		if policy.SessionKind != permission.SessionKindClient || policy.Entrypoint != permission.EntrypointAPI {
 			continue
 		}
-		if len(policy.Permissions) != 3 {
-			t.Fatalf("client credentials API policy has %d permissions, want 3", len(policy.Permissions))
-		}
-		expectedCodes := []string{
-			"minecraft_profile.read.public",
-			"minecraft_texture_property.read.public",
-			"minecraft_session.hasjoined.server",
+		expectedCodes := make(map[string]bool, len(permission.Definitions))
+		for _, def := range permission.Definitions {
+			if def.Scope.ID == permission.ScopeAny ||
+				def.Scope.ID == permission.ScopePublic ||
+				def.Scope.ID == permission.ScopeServer {
+				expectedCodes[def.Code] = true
+			}
 		}
 		policyCodes := make(map[string]bool, len(policy.Permissions))
 		for _, def := range policy.Permissions {
+			if def.Scope.ID != permission.ScopeAny &&
+				def.Scope.ID != permission.ScopePublic &&
+				def.Scope.ID != permission.ScopeServer {
+				t.Fatalf("client credentials API policy should not include %s", def.Code)
+			}
 			policyCodes[def.Code] = true
 		}
-		for _, code := range expectedCodes {
+		if len(policyCodes) != len(expectedCodes) {
+			t.Fatalf("client credentials API policy has %d permissions, want %d", len(policyCodes), len(expectedCodes))
+		}
+		for code := range expectedCodes {
 			if !policyCodes[code] {
 				t.Fatalf("client credentials API policy must include %s", code)
 			}
 		}
-		for _, def := range policy.Permissions {
-			if def.Scope.ID != permission.ScopePublic && def.Scope.ID != permission.ScopeServer {
-				t.Fatalf("client credentials API policy should not include %s", def.Code)
+		for _, code := range []string{
+			"account.read.self",
+			"profile.read.owned",
+			"profile.read.bound_profile",
+			"texture.read.assigned",
+			"notice.create.system",
+		} {
+			if policyCodes[code] {
+				t.Fatalf("client credentials API policy must exclude %s", code)
 			}
 		}
 		return

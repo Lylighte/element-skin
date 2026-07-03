@@ -379,16 +379,21 @@ func TestServiceOAuthPermissionCodeDependencyErrorsExactly(t *testing.T) {
 	}
 
 	checks := []struct {
-		name string
-		call func() error
+		name      string
+		call      func() error
+		assertErr func(*testing.T, error)
 	}{
 		{name: "get client", call: func() error {
 			_, err := svc.GetClient(ctx, ownerActor, clientID)
 			return err
+		}, assertErr: func(t *testing.T, err error) {
+			assertPgCode(t, err, "42P01")
 		}},
 		{name: "list owned clients", call: func() error {
 			_, err := svc.ListClients(ctx, ownerActor, 10)
 			return err
+		}, assertErr: func(t *testing.T, err error) {
+			assertPgCode(t, err, "42P01")
 		}},
 		{name: "update client", call: func() error {
 			_, err := svc.UpdateClient(ctx, ownerActor, clientID, oauth.ClientInput{
@@ -398,22 +403,32 @@ func TestServiceOAuthPermissionCodeDependencyErrorsExactly(t *testing.T) {
 				PermissionCodes: []string{"account.read.self"},
 			}, oauth.StatusActive)
 			return err
+		}, assertErr: func(t *testing.T, err error) {
+			assertPgCode(t, err, "42P01")
 		}},
 		{name: "submit client", call: func() error {
 			_, err := svc.SubmitClientForReview(ctx, ownerActor, clientID)
 			return err
+		}, assertErr: func(t *testing.T, err error) {
+			assertPgCode(t, err, "42P01")
 		}},
 		{name: "review client", call: func() error {
 			_, err := svc.ReviewClient(ctx, adminActor, clientID, oauth.StatusActive, "")
 			return err
+		}, assertErr: func(t *testing.T, err error) {
+			assertPgCode(t, err, "42P01")
 		}},
 		{name: "rotate secret", call: func() error {
 			_, err := svc.RotateClientSecret(ctx, ownerActor, clientID)
 			return err
+		}, assertErr: func(t *testing.T, err error) {
+			assertPgCode(t, err, "42P01")
 		}},
 		{name: "client permissions", call: func() error {
 			_, err := svc.ClientPermissions(ctx, adminActor, clientID)
 			return err
+		}, assertErr: func(t *testing.T, err error) {
+			assertPgCode(t, err, "42P01")
 		}},
 		{name: "authorization details", call: func() error {
 			_, err := svc.AuthorizationDetails(ctx, ownerActor, oauth.AuthorizationRequest{
@@ -425,11 +440,13 @@ func TestServiceOAuthPermissionCodeDependencyErrorsExactly(t *testing.T) {
 				CodeChallengeMethod: "S256",
 			})
 			return err
+		}, assertErr: func(t *testing.T, err error) {
+			assertHTTPError(t, err, 400, "invalid client_id")
 		}},
 	}
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
-			assertPgCode(t, tc.call(), "42P01")
+			tc.assertErr(t, tc.call())
 		})
 	}
 }
