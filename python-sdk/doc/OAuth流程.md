@@ -1,0 +1,155 @@
+# OAuth 流程
+
+Element Skin 使用 OAuth 2.1 风格的授权流程。SDK 明确区分“用户委托流程”和
+“应用自身流程”，因为两者允许请求的权限范围不同。
+
+## Authorization Code + PKCE
+
+当用户可以通过浏览器授权，且应用可以接收重定向回调时，使用该流程。
+
+```python
+from element_skin_sdk import OAuthClient
+from element_skin_sdk.permissions import AccountScopes, ProfileScopes
+
+oauth = OAuthClient(
+    base_url="https://skin.example.com",
+    client_id="client-id",
+    redirect_uri="https://app.example.com/callback",
+)
+
+session = oauth.authorization_url(
+    [AccountScopes.READ_SELF, ProfileScopes.READ_OWNED],
+    state="csrf-state",
+)
+```
+
+生成的授权地址包含：
+
+- `response_type=code`
+- `client_id`
+- `redirect_uri`
+- `scope`
+- `state`
+- `code_challenge`
+- `code_challenge_method=S256`
+
+回调后交换 token：
+
+```python
+tokens = oauth.exchange_code(
+    code="returned-code",
+    code_verifier=session.code_verifier,
+)
+```
+
+机密客户端可以在构造函数或单次请求中传入 `client_secret`：
+
+```python
+tokens = oauth.exchange_code(
+    code="returned-code",
+    code_verifier=session.code_verifier,
+    client_secret="client-secret",
+)
+```
+
+## 授权确认辅助方法
+
+自定义授权确认页面或编写集成测试时，可以调用：
+
+```python
+info = oauth.authorization_info(
+    {
+        "client_id": "client-id",
+        "redirect_uri": "https://app.example.com/callback",
+        "scope": "account.read.self",
+        "state": "csrf-state",
+    }
+)
+
+decision = oauth.approve_authorization(
+    {
+        "client_id": "client-id",
+        "redirect_uri": "https://app.example.com/callback",
+        "scope": "account.read.self",
+        "state": "csrf-state",
+        "approve": True,
+    }
+)
+```
+
+这两个接口需要 SDK 持有已登录用户的 access token。
+
+## Device Code Flow
+
+CLI、启动器或不方便接收回调的设备可以使用 Device Code Flow。
+
+```python
+from element_skin_sdk.permissions import ProfileScopes
+
+device = oauth.start_device_flow([ProfileScopes.READ_OWNED])
+
+print(device.user_code)
+print(device.verification_uri_complete)
+
+tokens = oauth.poll_device_token(device.device_code)
+```
+
+`poll_device_token` 会处理 OAuth 的 `authorization_pending` 和 `slow_down`
+响应。超过超时时间后会抛出 `TimeoutError`。
+
+如果只需要轮询一次：
+
+```python
+tokens = oauth.exchange_device_code(device.device_code)
+```
+
+## Client Credentials
+
+Client Credentials 用于应用自身访问，经管理员审核后获得应用主体权限。典型场景是
+服务端 Minecraft session 检查。
+
+```python
+from element_skin_sdk.permissions import MinecraftScopes
+
+oauth = OAuthClient(
+    base_url="https://skin.example.com",
+    client_id="server-client",
+    client_secret="client-secret",
+)
+
+tokens = oauth.client_credentials(
+    [MinecraftScopes.SESSION_HASJOINED_SERVER]
+)
+```
+
+SDK 只允许 Client Credentials 请求 `public` 和 `server` 范围权限。类似
+`account.read.self` 的用户委托权限会被拒绝。
+
+## Refresh Token
+
+```python
+tokens = oauth.refresh("refresh-token")
+```
+
+请求更窄的用户委托范围：
+
+```python
+tokens = oauth.refresh(
+    "refresh-token",
+    scopes=["account.read.self"],
+)
+```
+
+## Revoke
+
+```python
+oauth.revoke("access-or-refresh-token")
+```
+
+## Introspection
+
+```python
+result = oauth.introspect("access-token")
+```
+
+`introspect` 直接返回服务端响应字典。
