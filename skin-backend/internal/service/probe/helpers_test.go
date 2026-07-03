@@ -80,28 +80,8 @@ func TestReadIntervalUsesDefaultWhenReaderFailsExactly(t *testing.T) {
 	}
 }
 
-func TestRunLoopReturnsImmediatelyWithoutDependencies(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	start := time.Now()
-	RunLoop(ctx, nil, redisstore.NewMemoryStore(), fakeLoopReader{})
-	if elapsed := time.Since(start); elapsed >= 100*time.Millisecond {
-		t.Fatalf("RunLoop with nil db should return immediately, elapsed=%s", elapsed)
-	}
-	RunLoop(ctx, nil, nil, fakeLoopReader{})
-	if elapsed := time.Since(start); elapsed >= 100*time.Millisecond {
-		t.Fatalf("RunLoop with nil db and redis should return immediately, elapsed=%s", elapsed)
-	}
-}
-
 type errorIntervalReader struct{}
 
 func (errorIntervalReader) Get(context.Context, string, string) (string, error) {
 	return "", errors.New("settings unavailable")
-}
-
-type fakeLoopReader struct{}
-
-func (fakeLoopReader) Get(context.Context, string, string) (string, error) {
-	return "60", nil
 }

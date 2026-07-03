@@ -2,12 +2,8 @@ package probe
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"time"
-
-	"element-skin/backend/internal/database"
-	"element-skin/backend/internal/redisstore"
 )
 
 const (
@@ -37,26 +33,4 @@ func ReadInterval(ctx context.Context, reader IntervalReader) time.Duration {
 		return minInterval
 	}
 	return d
-}
-
-func RunLoop(ctx context.Context, db *database.DB, redis redisstore.Store, reader IntervalReader) {
-	if db == nil || redis == nil {
-		return
-	}
-	svc := New(db, redis)
-	loopOnce := func() {
-		if err := svc.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			// best-effort; failure to probe should not crash the loop
-		}
-	}
-	loopOnce()
-	for {
-		interval := ReadInterval(ctx, reader)
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(interval):
-			loopOnce()
-		}
-	}
 }
