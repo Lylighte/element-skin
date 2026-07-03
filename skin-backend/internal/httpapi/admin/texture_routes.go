@@ -1,40 +1,19 @@
 package admin
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
-	"element-skin/backend/internal/database/texture"
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
-var (
-	textureReadAnyPermission             = permission.MustDefinitionByCode("texture.read.any")
-	textureUpdateMetadataAnyPermission   = permission.MustDefinitionByCode("texture.update_metadata.any")
-	textureUpdateVisibilityAnyPermission = permission.MustDefinitionByCode("texture.update_visibility.any")
-	textureDeleteAnyPermission           = permission.MustDefinitionByCode("texture.delete.any")
-)
-
 func (h Handler) Textures(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, textureReadAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	lastCreated, lastHash, err := shared.CursorCreatedHash(req.URL.Query().Get("cursor"), "last_skin_hash")
-	if err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid cursor"})
-		return
-	}
-	res, err := h.db.Textures.ListAll(req.Context(), util.ClampLimit(req.URL.Query().Get("limit")), lastCreated, lastHash, strings.TrimSpace(req.URL.Query().Get("q")), req.URL.Query().Get("type"))
+	res, err := h.textures.ListAllTextures(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("cursor"), util.ClampLimit(req.URL.Query().Get("limit")), req.URL.Query().Get("q"), req.URL.Query().Get("type"))
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	res["next_cursor"] = util.EncodeCursor(shared.AsMap(res["next_key"]))
-	delete(res, "next_key")
 	util.JSON(w, 200, res)
 }
 
@@ -44,58 +23,9 @@ func (h Handler) UpdateTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	if _, ok := body["note"]; ok {
-		if err := shared.RequirePermission(req, textureUpdateMetadataAnyPermission); err != nil {
-			util.Error(w, err)
-			return
-		}
-	}
-	if _, ok := body["model"]; ok {
-		if err := shared.RequirePermission(req, textureUpdateMetadataAnyPermission); err != nil {
-			util.Error(w, err)
-			return
-		}
-	}
-	if _, ok := body["is_public"]; ok {
-		if err := shared.RequirePermission(req, textureUpdateVisibilityAnyPermission); err != nil {
-			util.Error(w, err)
-			return
-		}
-	}
 	hash := req.PathValue("hash")
 	textureType := textureTypeFromRequest(req, body)
-	if textureType != "skin" && textureType != "cape" {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid texture_type"})
-		return
-	}
-	if v, ok := body["model"].(string); ok && v != "default" && v != "slim" {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid model"})
-		return
-	}
-	if v, ok := body["is_public"]; ok && !shared.ValidPublicValue(v) {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid is_public"})
-		return
-	}
-	var patch texture.Patch
-	if v, ok := body["note"].(string); ok {
-		patch.Note = &v
-	}
-	if v, ok := body["model"].(string); ok {
-		patch.Model = &v
-	}
-	if v, ok := body["is_public"]; ok {
-		pub := shared.PublicBool(v)
-		patch.IsPublic = &pub
-	}
-	if patch.Note == nil && patch.Model == nil && patch.IsPublic == nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "至少需要一个更新字段: model, note, is_public"})
-		return
-	}
-	if err := h.db.Textures.AdminPatch(req.Context(), hash, textureType, patch); err != nil {
-		if err == texture.ErrNotFound {
-			util.Error(w, util.HTTPError{Status: 404, Detail: "Texture not found"})
-			return
-		}
+	if err := h.textures.UpdateAnyTexture(req.Context(), shared.CurrentActor(req), hash, textureType, body); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -103,24 +33,9 @@ func (h Handler) UpdateTexture(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, textureDeleteAnyPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	force := req.URL.Query().Get("force") == "true"
 	typ := req.URL.Query().Get("type")
-	if typ == "" {
-		typ = "skin"
-	}
-	if err := h.db.Textures.AdminDelete(req.Context(), req.PathValue("hash"), typ, req.URL.Query().Get("user_id"), force); err != nil {
-		if errors.Is(err, texture.ErrNotFound) {
-			util.Error(w, util.HTTPError{Status: 404, Detail: "Texture not found"})
-			return
-		}
-		if strings.Contains(err.Error(), "user_id") {
-			util.Error(w, util.HTTPError{Status: 400, Detail: err.Error()})
-			return
-		}
+	if err := h.textures.DeleteAnyTexture(req.Context(), shared.CurrentActor(req), req.PathValue("hash"), typ, req.URL.Query().Get("user_id"), force); err != nil {
 		util.Error(w, err)
 		return
 	}

@@ -2,11 +2,13 @@ package notice_test
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	noticesvc "element-skin/backend/internal/service/notice"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -16,6 +18,7 @@ func TestNoticeServiceValidatesInputsWithoutPersistingInvalidRows(t *testing.T) 
 	db, _ := testutil.NewTestApp(t)
 	svc := noticesvc.Service{DB: db}
 	admin := testutil.CreateUser(t, db, "notice-service-admin@test.com", "Password123", "NoticeServiceAdmin", true)
+	actor := noticeManagerActor(admin.ID)
 	ctx := context.Background()
 
 	cases := []struct {
@@ -51,7 +54,7 @@ func TestNoticeServiceValidatesInputsWithoutPersistingInvalidRows(t *testing.T) 
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			created, err := svc.Create(ctx, tc.input, admin.ID)
+			created, err := svc.Create(ctx, actor, tc.input)
 			if created != nil || !httpError(err, 400, tc.want) {
 				t.Fatalf("Create()=%#v err=%#v; want nil and %q", created, err, tc.want)
 			}
@@ -65,7 +68,7 @@ func TestNoticeServiceValidatesInputsWithoutPersistingInvalidRows(t *testing.T) 
 		t.Fatalf("invalid notice creates persisted %d rows; want 0", count)
 	}
 
-	inline, err := svc.Create(ctx, noticesvc.CreateInput{Title: "Inline", Summary: "Short text", DisplayMode: noticesvc.DisplayInline}, admin.ID)
+	inline, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "Inline", Summary: "Short text", DisplayMode: noticesvc.DisplayInline})
 	if err != nil {
 		t.Fatalf("inline notice without content should be valid: %v", err)
 	}
@@ -73,7 +76,7 @@ func TestNoticeServiceValidatesInputsWithoutPersistingInvalidRows(t *testing.T) 
 		t.Fatalf("inline notice without content mismatch: %#v", inline)
 	}
 
-	system, err := svc.Create(ctx, noticesvc.CreateInput{Type: noticesvc.TypeSystem, Title: "System", Summary: "System text", DisplayMode: noticesvc.DisplayInline}, admin.ID)
+	system, err := svc.Create(ctx, actor, noticesvc.CreateInput{Type: noticesvc.TypeSystem, Title: "System", Summary: "System text", DisplayMode: noticesvc.DisplayInline})
 	if err != nil {
 		t.Fatalf("system notice should be valid: %v", err)
 	}
@@ -87,28 +90,29 @@ func TestNoticeServiceTargetedAudienceOnlyVisibleToTargets(t *testing.T) {
 	svc := noticesvc.Service{DB: db}
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "notice-target-admin@test.com", "Password123", "NoticeTargetAdmin", true)
+	actor := noticeManagerActor(admin.ID)
 	target := testutil.CreateUser(t, db, "notice-target-user@test.com", "Password123", "NoticeTargetUser", false)
 	other := testutil.CreateUser(t, db, "notice-target-other@test.com", "Password123", "NoticeTargetOther", false)
 
-	if created, err := svc.Create(ctx, noticesvc.CreateInput{
+	if created, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Title:           "Invalid targeted",
 		Summary:         "Missing targets",
 		ContentMarkdown: "Body",
 		DisplayMode:     noticesvc.DisplayDetail,
 		Audience:        noticesvc.AudienceTargeted,
-	}, admin.ID); created != nil || !httpError(err, 400, "target_user_ids are required for targeted notices") {
+	}); created != nil || !httpError(err, 400, "target_user_ids are required for targeted notices") {
 		t.Fatalf("targeted without targets mismatch: created=%#v err=%#v", created, err)
 	}
-	if created, err := svc.Create(ctx, noticesvc.CreateInput{
+	if created, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Title:         "Invalid audience targets",
 		Summary:       "Wrong audience",
 		Audience:      noticesvc.AudienceUsers,
 		TargetUserIDs: []string{target.ID},
-	}, admin.ID); created != nil || !httpError(err, 400, "target_user_ids require targeted audience") {
+	}); created != nil || !httpError(err, 400, "target_user_ids require targeted audience") {
 		t.Fatalf("non-targeted with targets mismatch: created=%#v err=%#v", created, err)
 	}
 
-	created, err := svc.Create(ctx, noticesvc.CreateInput{
+	created, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Type:            noticesvc.TypeSystem,
 		Title:           "Targeted notice",
 		Summary:         "Only one user should see this",
@@ -117,7 +121,7 @@ func TestNoticeServiceTargetedAudienceOnlyVisibleToTargets(t *testing.T) {
 		Level:           noticesvc.LevelSuccess,
 		Audience:        noticesvc.AudienceTargeted,
 		TargetUserIDs:   []string{target.ID, target.ID, " "},
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,11 +162,11 @@ func TestNoticeServiceTargetedAudienceOnlyVisibleToTargets(t *testing.T) {
 		t.Fatalf("targeted detail mismatch: %#v", got)
 	}
 
-	replaced, err := svc.Patch(ctx, created.ID, noticesvc.PatchInput{
+	replaced, err := svc.Patch(ctx, actor, created.ID, noticesvc.PatchInput{
 		Title:           ptrString("Targeted notice replaced"),
 		Summary:         ptrString("Replacement summary"),
 		ContentMarkdown: ptrString("Replacement body"),
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,15 +202,50 @@ func TestNoticeServiceTargetedAudienceOnlyVisibleToTargets(t *testing.T) {
 	}
 }
 
+func TestNoticeServiceSystemMaintenanceActorCanOnlyCreateSystemNotices(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	svc := noticesvc.Service{DB: db}
+	ctx := context.Background()
+	actor := permission.SystemMaintenanceActor()
+
+	created, err := svc.Create(ctx, actor, noticesvc.CreateInput{
+		Type:            noticesvc.TypeSystem,
+		Title:           "System update",
+		Summary:         "System task delivered this notice",
+		ContentMarkdown: "Maintenance detail",
+		DisplayMode:     noticesvc.DisplayDetail,
+		Audience:        noticesvc.AudienceAdmins,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Type != noticesvc.TypeSystem ||
+		created.Title != "System update" ||
+		created.CreatedBy != nil {
+		t.Fatalf("system-created notice mismatch: %#v", created)
+	}
+
+	denied, err := svc.Create(ctx, actor, noticesvc.CreateInput{
+		Type:        noticesvc.TypeAnnouncement,
+		Title:       "Announcement",
+		Summary:     "Not allowed",
+		DisplayMode: noticesvc.DisplayInline,
+	})
+	if denied != nil || !httpError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("system actor announcement create=%#v err=%#v; want forbidden", denied, err)
+	}
+}
+
 func TestNoticeServiceUserVisibilityReadDismissAndPatchExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	svc := noticesvc.Service{DB: db}
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "notice-service-root@test.com", "Password123", "NoticeServiceRoot", true)
+	actor := noticeManagerActor(admin.ID)
 	user := testutil.CreateUser(t, db, "notice-service-user@test.com", "Password123", "NoticeServiceUser", false)
 	now := database.NowMS()
 
-	detail, err := svc.Create(ctx, noticesvc.CreateInput{
+	detail, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Title:           "Developer Notice",
 		Summary:         "OAuth applications are coming",
 		ContentMarkdown: "Full **markdown** body",
@@ -217,7 +256,7 @@ func TestNoticeServiceUserVisibilityReadDismissAndPatchExactState(t *testing.T) 
 		StartsAt:        ptrInt64(now - 1000),
 		EndsAt:          ptrInt64(now + 1000),
 		Dismissible:     ptrBool(false),
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,14 +283,14 @@ func TestNoticeServiceUserVisibilityReadDismissAndPatchExactState(t *testing.T) 
 		t.Fatalf("non-dismissible notice should reject exactly, got %#v", err)
 	}
 
-	updated, err := svc.Patch(ctx, detail.ID, noticesvc.PatchInput{
+	updated, err := svc.Patch(ctx, actor, detail.ID, noticesvc.PatchInput{
 		Summary:         ptrString("Updated summary"),
 		EndsAt:          nil,
 		ClearEndsAt:     true,
 		Dismissible:     ptrBool(true),
 		DisplayMode:     ptrString(noticesvc.DisplayDetail),
 		ContentMarkdown: ptrString("Updated body"),
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,10 +330,11 @@ func TestNoticeServiceAudienceAndLifecycleVisibilityExactly(t *testing.T) {
 	svc := noticesvc.Service{DB: db}
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "notice-service-admin-only@test.com", "Password123", "NoticeServiceAdminOnly", true)
+	actor := noticeManagerActor(admin.ID)
 	user := testutil.CreateUser(t, db, "notice-service-hidden-user@test.com", "Password123", "NoticeServiceHiddenUser", false)
 	now := database.NowMS()
 
-	adminOnly, err := svc.Create(ctx, noticesvc.CreateInput{Title: "Admin Only", ContentMarkdown: "Body", Audience: noticesvc.AudienceAdmins}, admin.ID)
+	adminOnly, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "Admin Only", ContentMarkdown: "Body", Audience: noticesvc.AudienceAdmins})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,18 +345,18 @@ func TestNoticeServiceAudienceAndLifecycleVisibilityExactly(t *testing.T) {
 		t.Fatalf("admin should see admin notice: got=%#v err=%v", got, err)
 	}
 
-	scheduled, err := svc.Create(ctx, noticesvc.CreateInput{Title: "Scheduled", ContentMarkdown: "Body", StartsAt: ptrInt64(now + 3_600_000)}, admin.ID)
+	scheduled, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "Scheduled", ContentMarkdown: "Body", StartsAt: ptrInt64(now + 3_600_000)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.GetForUser(ctx, scheduled.ID, noticesvc.CurrentUser{ID: admin.ID, CanReadAdminAudience: true}); !httpError(err, 404, "notice not found") {
 		t.Fatalf("scheduled notice should be hidden, got %#v", err)
 	}
-	expired, err := svc.Create(ctx, noticesvc.CreateInput{Title: "Expired Soon", ContentMarkdown: "Body", EndsAt: ptrInt64(now + 1)}, admin.ID)
+	expired, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "Expired Soon", ContentMarkdown: "Body", EndsAt: ptrInt64(now + 1)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.DeleteExpired(ctx, now+2); err != nil {
+	if err := svc.DeleteExpired(ctx, permission.SystemMaintenanceActor(), now+2); err != nil {
 		t.Fatal(err)
 	}
 	if row, err := db.Notices.Get(ctx, expired.ID); err != nil || row != nil {
@@ -329,47 +369,48 @@ func TestNoticeServiceAdminListMarkReadDeleteAndCursorErrorsExactly(t *testing.T
 	svc := noticesvc.Service{DB: db}
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "notice-service-admin-list@test.com", "Password123", "NoticeServiceAdminList", true)
+	actor := noticeManagerActor(admin.ID)
 	user := testutil.CreateUser(t, db, "notice-service-user-list@test.com", "Password123", "NoticeServiceUserList", false)
 	now := database.NowMS()
 
-	enabled, err := svc.Create(ctx, noticesvc.CreateInput{
+	enabled, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Title:           "Enabled Notice",
 		Summary:         "Enabled summary",
 		ContentMarkdown: "Enabled body",
 		DisplayMode:     noticesvc.DisplayDetail,
 		Level:           noticesvc.LevelSuccess,
 		Pinned:          ptrBool(true),
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	disabledFlag := false
-	disabled, err := svc.Create(ctx, noticesvc.CreateInput{
+	disabled, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Title:           "Disabled Notice",
 		ContentMarkdown: "Disabled body",
 		Enabled:         &disabledFlag,
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	expired, err := svc.Create(ctx, noticesvc.CreateInput{
+	expired, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Title:           "Expired Notice",
 		ContentMarkdown: "Expired body",
 		EndsAt:          ptrInt64(now - 1000),
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	scheduled, err := svc.Create(ctx, noticesvc.CreateInput{
+	scheduled, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Title:           "Scheduled Notice",
 		ContentMarkdown: "Scheduled body",
 		StartsAt:        ptrInt64(now + 3_600_000),
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	adminAll, err := svc.ListForAdmin(ctx, noticesvc.ListParams{Status: noticesvc.StatusAll, Limit: 10})
+	adminAll, err := svc.ListForManagement(ctx, actor, noticesvc.ListParams{Status: noticesvc.StatusAll, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +428,7 @@ func TestNoticeServiceAdminListMarkReadDeleteAndCursorErrorsExactly(t *testing.T
 		{noticesvc.StatusScheduled, []string{scheduled.ID}},
 	}
 	for _, tc := range statusCases {
-		got, err := svc.ListForAdmin(ctx, noticesvc.ListParams{Status: tc.status, Limit: 10})
+		got, err := svc.ListForManagement(ctx, actor, noticesvc.ListParams{Status: tc.status, Limit: 10})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -400,13 +441,13 @@ func TestNoticeServiceAdminListMarkReadDeleteAndCursorErrorsExactly(t *testing.T
 			t.Fatalf("admin status %s mismatch: got=%v want=%v", tc.status, gotIDs, tc.wantIDs)
 		}
 	}
-	if _, err := svc.ListForAdmin(ctx, noticesvc.ListParams{Status: "archived"}); !httpError(err, 400, "invalid status") {
+	if _, err := svc.ListForManagement(ctx, actor, noticesvc.ListParams{Status: "archived"}); !httpError(err, 400, "invalid status") {
 		t.Fatalf("invalid admin status error mismatch: %#v", err)
 	}
-	if _, err := svc.ListForAdmin(ctx, noticesvc.ListParams{Type: "other"}); !httpError(err, 400, "invalid type") {
+	if _, err := svc.ListForManagement(ctx, actor, noticesvc.ListParams{Type: "other"}); !httpError(err, 400, "invalid type") {
 		t.Fatalf("invalid admin type error mismatch: %#v", err)
 	}
-	if _, err := svc.ListForAdmin(ctx, noticesvc.ListParams{Cursor: "not-a-cursor"}); !httpError(err, 400, "Invalid cursor") {
+	if _, err := svc.ListForManagement(ctx, actor, noticesvc.ListParams{Cursor: "not-a-cursor"}); !httpError(err, 400, "Invalid cursor") {
 		t.Fatalf("invalid admin cursor error mismatch: %#v", err)
 	}
 	if _, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: user.ID}, noticesvc.ListParams{Type: "other"}); !httpError(err, 400, "invalid type") {
@@ -429,10 +470,10 @@ func TestNoticeServiceAdminListMarkReadDeleteAndCursorErrorsExactly(t *testing.T
 	if err := svc.MarkRead(ctx, scheduled.ID, noticesvc.CurrentUser{ID: user.ID}); !httpError(err, 404, "notice not found") {
 		t.Fatalf("MarkRead hidden notice error mismatch: %#v", err)
 	}
-	if err := svc.Delete(ctx, "missing-notice"); !httpError(err, 404, "notice not found") {
+	if err := svc.Delete(ctx, actor, "missing-notice"); !httpError(err, 404, "notice not found") {
 		t.Fatalf("delete missing error mismatch: %#v", err)
 	}
-	if err := svc.Delete(ctx, enabled.ID); err != nil {
+	if err := svc.Delete(ctx, actor, enabled.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := db.Notices.Get(ctx, enabled.ID); err != nil || got != nil {
@@ -445,6 +486,7 @@ func TestNoticeServiceValidationCoversLengthsLevelsAudienceLinksAndPatchClearsEx
 	svc := noticesvc.Service{DB: db}
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "notice-service-validation2@test.com", "Password123", "NoticeServiceValidation2", true)
+	actor := noticeManagerActor(admin.ID)
 	base := noticesvc.CreateInput{Title: "Valid", ContentMarkdown: "Body"}
 	cases := []struct {
 		name   string
@@ -466,7 +508,7 @@ func TestNoticeServiceValidationCoversLengthsLevelsAudienceLinksAndPatchClearsEx
 		t.Run(tc.name, func(t *testing.T) {
 			input := base
 			tc.mutate(&input)
-			got, err := svc.Create(ctx, input, admin.ID)
+			got, err := svc.Create(ctx, actor, input)
 			if got != nil || !httpError(err, 400, tc.detail) {
 				t.Fatalf("Create invalid case got=%#v err=%#v want %q", got, err, tc.detail)
 			}
@@ -474,23 +516,23 @@ func TestNoticeServiceValidationCoversLengthsLevelsAudienceLinksAndPatchClearsEx
 	}
 	start := database.NowMS() - 1000
 	end := database.NowMS() + 1000
-	notice, err := svc.Create(ctx, noticesvc.CreateInput{
+	notice, err := svc.Create(ctx, actor, noticesvc.CreateInput{
 		Title:           "Patch clear",
 		Summary:         "Patch summary",
 		ContentMarkdown: "Patch body",
 		DisplayMode:     noticesvc.DisplayDetail,
 		StartsAt:        &start,
 		EndsAt:          &end,
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := svc.Patch(ctx, notice.ID, noticesvc.PatchInput{
+	updated, err := svc.Patch(ctx, actor, notice.ID, noticesvc.PatchInput{
 		DisplayMode:     ptrString(noticesvc.DisplayInline),
 		ContentMarkdown: ptrString(""),
 		ClearStartsAt:   true,
 		ClearEndsAt:     true,
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,17 +546,18 @@ func TestNoticeServiceCursorPaginationUsesExactOrderAndDashboardDefaults(t *test
 	svc := noticesvc.Service{DB: db}
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "notice-service-cursor-admin@test.com", "Password123", "NoticeCursorAdmin", true)
+	actor := noticeManagerActor(admin.ID)
 	user := testutil.CreateUser(t, db, "notice-service-cursor-user@test.com", "Password123", "NoticeCursorUser", false)
 
-	first, err := svc.Create(ctx, noticesvc.CreateInput{Title: "First", Summary: "First summary", DisplayMode: noticesvc.DisplayInline, Pinned: ptrBool(true)}, admin.ID)
+	first, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "First", Summary: "First summary", DisplayMode: noticesvc.DisplayInline, Pinned: ptrBool(true)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := svc.Create(ctx, noticesvc.CreateInput{Title: "Second", Summary: "Second summary", DisplayMode: noticesvc.DisplayInline}, admin.ID)
+	second, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "Second", Summary: "Second summary", DisplayMode: noticesvc.DisplayInline})
 	if err != nil {
 		t.Fatal(err)
 	}
-	third, err := svc.Create(ctx, noticesvc.CreateInput{Type: noticesvc.TypeSystem, Title: "System", Summary: "System summary", DisplayMode: noticesvc.DisplayInline}, admin.ID)
+	third, err := svc.Create(ctx, actor, noticesvc.CreateInput{Type: noticesvc.TypeSystem, Title: "System", Summary: "System summary", DisplayMode: noticesvc.DisplayInline})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,8 +615,9 @@ func TestNoticeServicePatchReplacesAllEditableFieldsExactly(t *testing.T) {
 	svc := noticesvc.Service{DB: db}
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "notice-service-patch-all@test.com", "Password123", "NoticePatchAll", true)
+	actor := noticeManagerActor(admin.ID)
 
-	notice, err := svc.Create(ctx, noticesvc.CreateInput{Title: "Old", Summary: "Old summary", DisplayMode: noticesvc.DisplayInline}, admin.ID)
+	notice, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "Old", Summary: "Old summary", DisplayMode: noticesvc.DisplayInline})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +626,7 @@ func TestNoticeServicePatchReplacesAllEditableFieldsExactly(t *testing.T) {
 	enabled := false
 	pinned := true
 	dismissible := false
-	updated, err := svc.Patch(ctx, notice.ID, noticesvc.PatchInput{
+	updated, err := svc.Patch(ctx, actor, notice.ID, noticesvc.PatchInput{
 		Type:            ptrString(noticesvc.TypeSystem),
 		Title:           ptrString("New title"),
 		Summary:         ptrString("New summary"),
@@ -597,7 +641,7 @@ func TestNoticeServicePatchReplacesAllEditableFieldsExactly(t *testing.T) {
 		Dismissible:     &dismissible,
 		StartsAt:        &startsAt,
 		EndsAt:          &endsAt,
-	}, admin.ID)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,6 +671,7 @@ func TestNoticeServicePropagatesDatabaseErrorsExactly(t *testing.T) {
 	ctx := context.Background()
 	db.Close()
 	user := noticesvc.CurrentUser{ID: "notice-db-error-user"}
+	actor := noticeManagerActor("admin-id")
 
 	if _, err := svc.GetForUser(ctx, "notice-id", user); err == nil || err.Error() != "closed pool" {
 		t.Fatalf("GetForUser database error=%v; want closed pool", err)
@@ -637,16 +682,16 @@ func TestNoticeServicePropagatesDatabaseErrorsExactly(t *testing.T) {
 	if err := svc.Dismiss(ctx, "notice-id", user); err == nil || err.Error() != "closed pool" {
 		t.Fatalf("Dismiss database error=%v; want closed pool", err)
 	}
-	if _, err := svc.Create(ctx, noticesvc.CreateInput{Title: "DB Error", Summary: "summary"}, "admin-id"); err == nil || err.Error() != "closed pool" {
+	if _, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "DB Error", Summary: "summary"}); err == nil || err.Error() != "closed pool" {
 		t.Fatalf("Create database error=%v; want closed pool", err)
 	}
-	if _, err := svc.Patch(ctx, "notice-id", noticesvc.PatchInput{Title: ptrString("DB Error")}, "admin-id"); err == nil || err.Error() != "closed pool" {
+	if _, err := svc.Patch(ctx, actor, "notice-id", noticesvc.PatchInput{Title: ptrString("DB Error")}); err == nil || err.Error() != "closed pool" {
 		t.Fatalf("Patch database error=%v; want closed pool", err)
 	}
-	if err := svc.Delete(ctx, "notice-id"); err == nil || err.Error() != "closed pool" {
+	if err := svc.Delete(ctx, actor, "notice-id"); err == nil || err.Error() != "closed pool" {
 		t.Fatalf("Delete database error=%v; want closed pool", err)
 	}
-	if err := svc.DeleteExpired(ctx, database.NowMS()); err == nil || err.Error() != "closed pool" {
+	if err := svc.DeleteExpired(ctx, permission.SystemMaintenanceActor(), database.NowMS()); err == nil || err.Error() != "closed pool" {
 		t.Fatalf("DeleteExpired database error=%v; want closed pool", err)
 	}
 }
@@ -661,6 +706,30 @@ func ptrInt64(v int64) *int64 { return &v }
 func ptrBool(v bool) *bool { return &v }
 
 func ptrString(v string) *string { return &v }
+
+func noticeActor(userID string, codes ...string) permission.Actor {
+	bits := permission.NewBitSet(len(permission.Definitions))
+	for _, code := range codes {
+		bits.Set(permission.MustDefinitionByCode(code).BitIndex)
+	}
+	return permission.Actor{
+		SubjectID:   "user:" + userID,
+		UserID:      userID,
+		SessionKind: permission.SessionKindWeb,
+		Entrypoint:  permission.EntrypointAdmin,
+		Permissions: bits,
+	}
+}
+
+func noticeManagerActor(userID string) permission.Actor {
+	return noticeActor(
+		userID,
+		"notice.read.any",
+		"notice.create.any",
+		"notice.update.any",
+		"notice.delete.any",
+	)
+}
 
 func sameStringSet(got, want []string) bool {
 	if len(got) != len(want) {

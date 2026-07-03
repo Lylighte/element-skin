@@ -7,16 +7,14 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
+	homepagesvc "element-skin/backend/internal/service/homepage"
 	"element-skin/backend/internal/util"
 )
 
 func TestHomepageMediaFormHelpersParseDefaultsAndExactErrors(t *testing.T) {
-	req := httptest.NewRequest("POST", "/upload", strings.NewReader(""))
-	values, err := homepageMediaValuesFromForm(req, "image")
+	values, err := homepagesvc.ParseMediaValues(map[string]string{}, "image")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,39 +22,21 @@ func TestHomepageMediaFormHelpersParseDefaultsAndExactErrors(t *testing.T) {
 		values.StartYaw != 0 || values.StartPitch != 0 || values.YawSpeedDPS != 4 || values.PitchSpeedDPS != 0 {
 		t.Fatalf("default image values mismatch: %#v", values)
 	}
-	if got := intForm(req, "duration_ms", 6000); got != 6000 {
-		t.Fatalf("default intForm=%d, want 6000", got)
-	}
-
-	body := strings.NewReader("overlay_opacity_light=bad")
-	req = httptest.NewRequest("POST", "/upload", body)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	_, err = homepageMediaValuesFromForm(req, "image")
+	_, err = homepagesvc.ParseMediaValues(map[string]string{"overlay_opacity_light": "bad"}, "image")
 	assertHTTPError(t, err, 400, "overlay_opacity_light must be a number")
 
-	body = strings.NewReader("overlay_opacity_light=0.91")
-	req = httptest.NewRequest("POST", "/upload", body)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	_, err = homepageMediaValuesFromForm(req, "image")
+	_, err = homepagesvc.ParseMediaValues(map[string]string{"overlay_opacity_light": "0.91"}, "image")
 	assertHTTPError(t, err, 400, "overlay_opacity_light out of range")
 
-	body = strings.NewReader("start_yaw=abc")
-	req = httptest.NewRequest("POST", "/upload", body)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	_, err = homepageMediaValuesFromForm(req, "panorama")
+	_, err = homepagesvc.ParseMediaValues(map[string]string{"start_yaw": "abc"}, "panorama")
 	assertHTTPError(t, err, 400, "start_yaw must be a number")
 
-	body = strings.NewReader("start_yaw=361")
-	req = httptest.NewRequest("POST", "/upload", body)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	_, err = homepageMediaValuesFromForm(req, "panorama")
+	_, err = homepagesvc.ParseMediaValues(map[string]string{"start_yaw": "361"}, "panorama")
 	assertHTTPError(t, err, 400, "start_yaw out of range")
 
-	body = strings.NewReader("duration_ms=not-number")
-	req = httptest.NewRequest("POST", "/upload", body)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if got := intForm(req, "duration_ms", 6000); got != 6000 {
-		t.Fatalf("invalid intForm=%d, want fallback 6000", got)
+	values, err = homepagesvc.ParseMediaValues(map[string]string{"duration_ms": "not-number"}, "image")
+	if err != nil || values.DurationMS != 0 {
+		t.Fatalf("invalid duration should fall back to service default marker: values=%#v err=%v", values, err)
 	}
 }
 
@@ -73,7 +53,7 @@ func TestReadPanoramaZipRejectsExactInvalidShapes(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			faces, err := readPanoramaZip(tc.data)
+			faces, err := homepagesvc.ReadPanoramaZip(tc.data)
 			if faces != nil {
 				t.Fatalf("invalid panorama should not return faces: %#v", faces)
 			}
@@ -81,7 +61,7 @@ func TestReadPanoramaZipRejectsExactInvalidShapes(t *testing.T) {
 		})
 	}
 
-	faces, err := readPanoramaZip(panoramaZipWithFiles(t, panoramaFaces(t, nil)))
+	faces, err := homepagesvc.ReadPanoramaZip(panoramaZipWithFiles(t, panoramaFaces(t, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,21 +72,21 @@ func TestReadPanoramaZipRejectsExactInvalidShapes(t *testing.T) {
 
 func TestValidateHomepageMediaValuesExactBoundaries(t *testing.T) {
 	zero := 0.0
-	if err := validateOpacity("overlay_opacity_light", nil); err != nil {
+	if err := homepagesvc.ValidateOpacity("overlay_opacity_light", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateOpacity("overlay_opacity_light", &zero); err != nil {
+	if err := homepagesvc.ValidateOpacity("overlay_opacity_light", &zero); err != nil {
 		t.Fatal(err)
 	}
 	negative := -0.01
-	assertHTTPError(t, validateOpacity("overlay_opacity_light", &negative), 400, "overlay_opacity_light out of range")
+	assertHTTPError(t, homepagesvc.ValidateOpacity("overlay_opacity_light", &negative), 400, "overlay_opacity_light out of range")
 
 	startPitch := -90.0
-	assertHTTPError(t, validatePanoramaValues(nil, &startPitch, nil, nil), 400, "start_pitch out of range")
+	assertHTTPError(t, homepagesvc.ValidatePanoramaValues(nil, &startPitch, nil, nil), 400, "start_pitch out of range")
 	yawSpeed := -91.0
-	assertHTTPError(t, validatePanoramaValues(nil, nil, &yawSpeed, nil), 400, "yaw_speed_dps out of range")
+	assertHTTPError(t, homepagesvc.ValidatePanoramaValues(nil, nil, &yawSpeed, nil), 400, "yaw_speed_dps out of range")
 	pitchSpeed := 91.0
-	assertHTTPError(t, validatePanoramaValues(nil, nil, nil, &pitchSpeed), 400, "pitch_speed_dps out of range")
+	assertHTTPError(t, homepagesvc.ValidatePanoramaValues(nil, nil, nil, &pitchSpeed), 400, "pitch_speed_dps out of range")
 }
 
 func panoramaFaces(t *testing.T, overrides map[string][]byte) map[string][]byte {

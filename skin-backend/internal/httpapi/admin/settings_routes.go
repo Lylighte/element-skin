@@ -4,21 +4,11 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
-var (
-	siteSettingsReadPermission   = permission.MustDefinitionByCode("site_settings.read.any")
-	siteSettingsUpdatePermission = permission.MustDefinitionByCode("site_settings.update.any")
-)
-
 func (h Handler) GetSiteSettings(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, siteSettingsReadPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	res, err := h.settings.GetGroup(req.Context(), "site")
+	res, err := h.settings.ReadGroup(req.Context(), shared.CurrentActor(req), "site")
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -27,24 +17,12 @@ func (h Handler) GetSiteSettings(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) SaveSiteSettings(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, siteSettingsUpdatePermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var body map[string]any
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	if err := h.settings.SaveGroup(req.Context(), "site", body); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if err := h.settings.InvalidateCache(req.Context()); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if err := h.redis.InvalidatePublicSettings(req.Context()); err != nil {
+	if err := h.settings.UpdateGroup(req.Context(), shared.CurrentActor(req), "site", body); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -52,11 +30,7 @@ func (h Handler) SaveSiteSettings(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) GetSettingsGroup(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, siteSettingsReadPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	res, err := h.settings.GetGroup(req.Context(), req.PathValue("group"))
+	res, err := h.settings.ReadGroup(req.Context(), shared.CurrentActor(req), req.PathValue("group"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -65,29 +39,14 @@ func (h Handler) GetSettingsGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) SaveSettingsGroup(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, siteSettingsUpdatePermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var body map[string]any
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	if err := h.settings.SaveGroup(req.Context(), req.PathValue("group"), body); err != nil {
+	if err := h.settings.UpdateGroup(req.Context(), shared.CurrentActor(req), req.PathValue("group"), body); err != nil {
 		util.Error(w, err)
 		return
-	}
-	if err := h.settings.InvalidateCache(req.Context()); err != nil {
-		util.Error(w, err)
-		return
-	}
-	switch req.PathValue("group") {
-	case "site", "fallback", "email", "easter_eggs":
-		if err := h.redis.InvalidatePublicSettings(req.Context()); err != nil {
-			util.Error(w, err)
-			return
-		}
 	}
 	util.JSON(w, 200, map[string]any{"ok": true})
 }

@@ -67,7 +67,7 @@ func TestAccountServiceBanUserPersistsInvalidatesCacheAndSendsExactNotice(t *tes
 		notice.ContentMarkdown != wantContent ||
 		notice.DisplayMode != noticesvc.DisplayDetail || notice.Level != noticesvc.LevelDanger ||
 		notice.Audience != noticesvc.AudienceTargeted || !notice.Enabled || notice.Pinned ||
-		!notice.Dismissible || notice.Read || notice.CreatedBy == nil || *notice.CreatedBy != adminUser.ID {
+		!notice.Dismissible || notice.Read || notice.CreatedBy != nil {
 		t.Fatalf("ban notice content mismatch: %#v", notice)
 	}
 	if notice.EndsAt == nil || *notice.EndsAt < before+int64(30*24*time.Hour/time.Millisecond) ||
@@ -109,7 +109,7 @@ func TestAccountServiceBanUserRejectsInvalidInputsWithoutMutation(t *testing.T) 
 	if banned, err := db.Users.IsBanned(ctx, target.ID); err != nil || banned {
 		t.Fatalf("invalid ban inputs must not change target state: banned=%v err=%v", banned, err)
 	}
-	page, err := noticesvc.Service{DB: db}.ListForAdmin(ctx, noticesvc.ListParams{Type: noticesvc.TypeSystem, Status: noticesvc.StatusAll, Limit: 10})
+	page, err := noticesvc.Service{DB: db}.ListForManagement(ctx, actorWithPermissions(adminUser.ID, "notice.read.any"), noticesvc.ListParams{Type: noticesvc.TypeSystem, Status: noticesvc.StatusAll, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

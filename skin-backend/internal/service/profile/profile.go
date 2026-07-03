@@ -16,6 +16,7 @@ import (
 
 var (
 	profileReadOwnedPermission   = permission.MustDefinitionByCode("profile.read.owned")
+	profileReadAnyPermission     = permission.MustDefinitionByCode("profile.read.any")
 	profileCreateOwnedPermission = permission.MustDefinitionByCode("profile.create.owned")
 	profileUpdateOwnedPermission = permission.MustDefinitionByCode("profile.update.owned")
 	profileUpdateAnyPermission   = permission.MustDefinitionByCode("profile.update.any")
@@ -99,6 +100,54 @@ func (s Service) ListMyProfiles(ctx context.Context, actor permission.Actor, cur
 	return res, nil
 }
 
+func (s Service) ListAllProfiles(ctx context.Context, actor permission.Actor, cursor string, limit int, query string) (map[string]any, error) {
+	if err := requireActorPermission(actor, profileReadAnyPermission); err != nil {
+		return nil, err
+	}
+	m, err := util.DecodeCursor(cursor)
+	if err != nil {
+		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid cursor"}
+	}
+	last := ""
+	if m != nil {
+		last, _ = m["last_id"].(string)
+	}
+	if cursor != "" && last == "" {
+		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid cursor"}
+	}
+	res, err := s.DB.Profiles.ListAll(ctx, limit, last, strings.TrimSpace(query))
+	if err != nil {
+		return nil, err
+	}
+	res["next_cursor"] = util.EncodeCursor(asCursorMap(res["next_key"]))
+	delete(res, "next_key")
+	return res, nil
+}
+
+func (s Service) ListProfilesByUser(ctx context.Context, actor permission.Actor, userID, cursor string, limit int) (map[string]any, error) {
+	if err := requireActorPermission(actor, profileReadAnyPermission); err != nil {
+		return nil, err
+	}
+	m, err := util.DecodeCursor(cursor)
+	if err != nil {
+		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid cursor"}
+	}
+	lastID := ""
+	if m != nil {
+		lastID, _ = m["last_id"].(string)
+	}
+	if cursor != "" && lastID == "" {
+		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid cursor"}
+	}
+	res, err := s.DB.Profiles.ListByUser(ctx, userID, limit, lastID)
+	if err != nil {
+		return nil, err
+	}
+	res["next_cursor"] = util.EncodeCursor(asCursorMap(res["next_key"]))
+	delete(res, "next_key")
+	return res, nil
+}
+
 func (s Service) UpdateProfile(ctx context.Context, actor permission.Actor, profileID, name string) error {
 	if err := requireActorPermission(actor, profileUpdateOwnedPermission); err != nil {
 		return err
@@ -136,6 +185,36 @@ func (s Service) UpdateProfile(ctx context.Context, actor permission.Actor, prof
 		return err
 	}
 	if !updated {
+		return util.HTTPError{Status: http.StatusNotFound, Detail: "profile not found"}
+	}
+	return nil
+}
+
+func (s Service) UpdateAnyProfile(ctx context.Context, actor permission.Actor, profileID, name string) error {
+	if err := requireActorPermission(actor, profileUpdateAnyPermission); err != nil {
+		return err
+	}
+	p, err := s.DB.Profiles.GetByID(ctx, profileID)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return util.HTTPError{Status: http.StatusNotFound, Detail: "profile not found"}
+	}
+	if name == "" {
+		return nil
+	}
+	if !util.ValidProfileName(name) {
+		return util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid profile name"}
+	}
+	ok, err := s.DB.Profiles.UpdateName(ctx, profileID, name)
+	if profilestore.IsNameConflict(err) {
+		return util.HTTPError{Status: http.StatusConflict, Detail: "profile name already exists"}
+	}
+	if err != nil {
+		return err
+	}
+	if !ok {
 		return util.HTTPError{Status: http.StatusNotFound, Detail: "profile not found"}
 	}
 	return nil

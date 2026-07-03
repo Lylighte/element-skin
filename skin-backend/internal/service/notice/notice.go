@@ -10,6 +10,7 @@ import (
 	"element-skin/backend/internal/database"
 	noticedb "element-skin/backend/internal/database/notice"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
@@ -38,6 +39,15 @@ const (
 	MaxTitleLen   = 80
 	MaxSummaryLen = 160
 	MaxContentLen = 20 * 1024
+)
+
+var (
+	noticeReadPermission         = permission.MustDefinitionByCode("notice.read.any")
+	noticeCreatePermission       = permission.MustDefinitionByCode("notice.create.any")
+	noticeUpdatePermission       = permission.MustDefinitionByCode("notice.update.any")
+	noticeDeletePermission       = permission.MustDefinitionByCode("notice.delete.any")
+	noticeCreateSystemPermission = permission.MustDefinitionByCode("notice.create.system")
+	noticeDeleteSystemPermission = permission.MustDefinitionByCode("notice.delete.system")
 )
 
 type Service struct {
@@ -170,7 +180,10 @@ func (s Service) Dismiss(ctx context.Context, id string, user CurrentUser) error
 	return s.DB.Notices.Dismiss(ctx, id, user.ID, database.NowMS())
 }
 
-func (s Service) ListForAdmin(ctx context.Context, params ListParams) (map[string]any, error) {
+func (s Service) ListForManagement(ctx context.Context, actor permission.Actor, params ListParams) (map[string]any, error) {
+	if err := requirePermission(actor, noticeReadPermission); err != nil {
+		return nil, err
+	}
 	cur, err := parseCursor(params.Cursor)
 	if err != nil {
 		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid cursor"}
@@ -197,8 +210,11 @@ func (s Service) ListForAdmin(ctx context.Context, params ListParams) (map[strin
 	})
 }
 
-func (s Service) Create(ctx context.Context, input CreateInput, createdBy string) (*model.Notice, error) {
-	notice, err := noticeFromCreate(input, createdBy)
+func (s Service) Create(ctx context.Context, actor permission.Actor, input CreateInput) (*model.Notice, error) {
+	if err := requireCreatePermission(actor, input); err != nil {
+		return nil, err
+	}
+	notice, err := noticeFromCreate(input, actorCreatedBy(actor))
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +233,10 @@ func (s Service) Create(ctx context.Context, input CreateInput, createdBy string
 	return &notice, nil
 }
 
-func (s Service) Patch(ctx context.Context, id string, input PatchInput, createdBy string) (*model.Notice, error) {
+func (s Service) Patch(ctx context.Context, actor permission.Actor, id string, input PatchInput) (*model.Notice, error) {
+	if err := requirePermission(actor, noticeUpdatePermission); err != nil {
+		return nil, err
+	}
 	existing, err := s.DB.Notices.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -235,7 +254,7 @@ func (s Service) Patch(ctx context.Context, id string, input PatchInput, created
 	updated.ID = newID
 	updated.CreatedAt = now
 	updated.UpdatedAt = now
-	updated.CreatedBy = &createdBy
+	updated.CreatedBy = actorCreatedBy(actor)
 	if err := validateNotice(updated); err != nil {
 		return nil, err
 	}
@@ -252,7 +271,10 @@ func (s Service) Patch(ctx context.Context, id string, input PatchInput, created
 	return &updated, nil
 }
 
-func (s Service) Delete(ctx context.Context, id string) error {
+func (s Service) Delete(ctx context.Context, actor permission.Actor, id string) error {
+	if err := requirePermission(actor, noticeDeletePermission); err != nil {
+		return err
+	}
 	ok, err := s.DB.Notices.Delete(ctx, id)
 	if err != nil {
 		return err
@@ -263,11 +285,42 @@ func (s Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s Service) DeleteExpired(ctx context.Context, cutoff int64) error {
+func (s Service) DeleteExpired(ctx context.Context, actor permission.Actor, cutoff int64) error {
+	if err := requirePermission(actor, noticeDeleteSystemPermission); err != nil {
+		return err
+	}
 	return s.DB.Notices.DeleteExpired(ctx, cutoff)
 }
 
-func noticeFromCreate(input CreateInput, createdBy string) (model.Notice, error) {
+func actorCreatedBy(actor permission.Actor) *string {
+	if actor.UserID != "" {
+		return &actor.UserID
+	}
+	return nil
+}
+
+func requirePermission(actor permission.Actor, def permission.Definition) error {
+	if actor.Has(def) {
+		return nil
+	}
+	return util.HTTPError{Status: http.StatusForbidden, Detail: "permission denied"}
+}
+
+func requireCreatePermission(actor permission.Actor, input CreateInput) error {
+	if actor.Has(noticeCreatePermission) {
+		return nil
+	}
+	typ := strings.TrimSpace(input.Type)
+	if typ == "" {
+		typ = TypeAnnouncement
+	}
+	if typ == TypeSystem && actor.Has(noticeCreateSystemPermission) {
+		return nil
+	}
+	return util.HTTPError{Status: http.StatusForbidden, Detail: "permission denied"}
+}
+
+func noticeFromCreate(input CreateInput, createdBy *string) (model.Notice, error) {
 	id, err := util.GenerateUUIDNoDash()
 	if err != nil {
 		return model.Notice{}, err
@@ -317,7 +370,7 @@ func noticeFromCreate(input CreateInput, createdBy string) (model.Notice, error)
 		Dismissible:     dismissible,
 		StartsAt:        input.StartsAt,
 		EndsAt:          input.EndsAt,
-		CreatedBy:       &createdBy,
+		CreatedBy:       createdBy,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}

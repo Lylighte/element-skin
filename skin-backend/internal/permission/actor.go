@@ -36,3 +36,16 @@ func (a Actor) PermissionCodes() []string {
 	}
 	return out
 }
+
+func SystemMaintenanceActor() Actor {
+	bits := NewBitSet(len(Definitions))
+	for _, def := range systemDefinitions() {
+		bits.Set(def.BitIndex)
+	}
+	return Actor{
+		SubjectID:   "system:maintenance",
+		SessionKind: SessionKindSystem,
+		Entrypoint:  EntrypointMaintenance,
+		Permissions: bits,
+	}
+}
