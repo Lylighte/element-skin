@@ -85,6 +85,43 @@ func TestSessionRotateRefreshRejectsTokenAfterUserDeletion(t *testing.T) {
 	}
 }
 
+func TestSessionRevokeRefreshDeletesExactTokenOnly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newAuthService(db, testutil.TestConfig())
+	userA := testutil.CreateUser(t, db, "site-session-revoke-a@test.com", "Password123", "SiteSessionRevokeA", false)
+	userB := testutil.CreateUser(t, db, "site-session-revoke-b@test.com", "Password123", "SiteSessionRevokeB", false)
+	rawA, hashA, err := util.GenerateRefreshToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, hashB, err := util.GenerateRefreshToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := database.NowMS()
+	if err := db.Tokens.AddRefresh(ctx, hashA, userA.ID, now+60_000, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Tokens.AddRefresh(ctx, hashB, userB.ID, now+120_000, now+1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.RevokeRefresh(ctx, rawA); err != nil {
+		t.Fatal(err)
+	}
+	if revoked, err := db.Tokens.GetRefresh(ctx, hashA); err != nil || revoked != nil {
+		t.Fatalf("revoked token should be absent: token=%#v err=%v", revoked, err)
+	}
+	remaining, err := db.Tokens.GetRefresh(ctx, hashB)
+	if err != nil || remaining == nil ||
+		remaining["user_id"] != userB.ID ||
+		remaining["expires_at"] != now+120_000 ||
+		remaining["created_at"] != now+1 {
+		t.Fatalf("other refresh token should remain exact: token=%#v err=%v", remaining, err)
+	}
+}
+
 func TestSessionIssueAndRotateUseConfiguredRefreshLifetime(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()

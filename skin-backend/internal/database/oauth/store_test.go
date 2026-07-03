@@ -879,6 +879,59 @@ func TestGrantAuthorizationCodeAndTokenLifecycle(t *testing.T) {
 	}
 }
 
+func TestActiveGrantPermissionIDsIntersectsActiveClientPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "oauth-active-grant@test.com", "pw", "OAuthActiveGrant", false)
+	clientPermissions := permissionIDs("profile.read.owned", "texture.read.owned")
+	grantPermissions := permissionIDs("profile.read.owned", "texture.read.owned", "notice.read.owned")
+	client := model.OAuthClient{
+		ID:          "client-active-grant",
+		OwnerUserID: user.ID,
+		Name:        "Active grant client",
+		RedirectURI: "https://active.example/callback",
+		WebsiteURL:  "https://active.example",
+		ClientType:  "public",
+		Status:      "active",
+		CreatedAt:   1000,
+		UpdatedAt:   1000,
+	}
+	if err := db.OAuth.CreateClient(ctx, client, clientPermissions); err != nil {
+		t.Fatal(err)
+	}
+	grant := model.OAuthGrant{
+		ID:        "grant-active-permissions",
+		UserID:    user.ID,
+		SubjectID: permissiondb.SubjectIDForUser(user.ID),
+		ClientID:  client.ID,
+		Status:    "active",
+		CreatedAt: 1100,
+	}
+	if err := db.OAuth.CreateGrant(ctx, grant, grantPermissions); err != nil {
+		t.Fatal(err)
+	}
+
+	activePermissions, err := db.OAuth.ActiveGrantPermissionIDs(ctx, grant.ID, user.ID, client.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(activePermissions, clientPermissions) {
+		t.Fatalf("active grant permissions=%v want client-approved intersection %v", activePermissions, clientPermissions)
+	}
+	if activePermissions, err = db.OAuth.ActiveGrantPermissionIDs(ctx, grant.ID, "other-user", client.ID); err != nil || len(activePermissions) != 0 {
+		t.Fatalf("active grant with wrong user should return empty: permissions=%v err=%v", activePermissions, err)
+	}
+	if activePermissions, err = db.OAuth.ActiveGrantPermissionIDs(ctx, grant.ID, user.ID, "other-client"); err != nil || len(activePermissions) != 0 {
+		t.Fatalf("active grant with wrong client should return empty: permissions=%v err=%v", activePermissions, err)
+	}
+	if revoked, err := db.OAuth.RevokeGrant(ctx, grant.ID, user.ID, 1200); err != nil || !revoked {
+		t.Fatalf("RevokeGrant before active permission check mismatch: revoked=%v err=%v", revoked, err)
+	}
+	if activePermissions, err = db.OAuth.ActiveGrantPermissionIDs(ctx, grant.ID, user.ID, client.ID); err != nil || len(activePermissions) != 0 {
+		t.Fatalf("revoked grant should return empty active permissions: permissions=%v err=%v", activePermissions, err)
+	}
+}
+
 func TestDeleteRevokedGrantsDeletesOnlyExpiredRevokedRowsAndDependenciesExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()

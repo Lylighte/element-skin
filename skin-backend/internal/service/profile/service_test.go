@@ -54,6 +54,14 @@ func TestProfilesCreateListAndClearTextureExactState(t *testing.T) {
 	if err != nil || cleared == nil || cleared.SkinHash != nil || cleared.CapeHash == nil || *cleared.CapeHash != cape {
 		t.Fatalf("ClearProfileTexture should clear only skin: profile=%#v err=%v", cleared, err)
 	}
+
+	deletable := testutil.CreateProfile(t, db, user.ID, "site_profile_owned_delete", "OwnedDelete")
+	if err := svc.DeleteProfile(ctx, testUserActor(user.ID), deletable.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := db.Profiles.GetByID(ctx, deletable.ID); err != nil || got != nil {
+		t.Fatalf("DeleteProfile should remove owned profile exactly: profile=%#v err=%v", got, err)
+	}
 }
 
 func TestProfilesRejectInvalidProfileInputsExactly(t *testing.T) {
@@ -235,6 +243,37 @@ func TestCreateProfileMapsDatabaseIDConflictExactly(t *testing.T) {
 	}
 }
 
+func TestCreateProfileOfflineModeUsesDeterministicIDAndRejectsIDConflict(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newProfileService(db)
+	user := testutil.CreateUser(t, db, "profile-offline-mode@test.com", "Password123", "ProfileOfflineMode", false)
+	other := testutil.CreateUser(t, db, "profile-offline-conflict@test.com", "Password123", "ProfileOfflineConflict", false)
+	if err := db.Settings.Set(ctx, "profile_uuid_mode", "offline"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Settings.InvalidateCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := svc.CreateProfile(ctx, testUserActor(user.ID), "OfflineProfile", "wide")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created["id"] != util.OfflineUUIDNoDash("OfflineProfile") || created["model"] != "default" {
+		t.Fatalf("offline profile creation mismatch: %#v", created)
+	}
+	conflictingID := util.OfflineUUIDNoDash("OfflineClash")
+	testutil.CreateProfile(t, db, other.ID, conflictingID, "DifferentName")
+	result, err := svc.CreateProfile(ctx, testUserActor(user.ID), "OfflineClash", "slim")
+	if result != nil || !httpError(err, 400, "角色 UUID 冲突，无法新建角色") {
+		t.Fatalf("offline profile ID conflict result=%#v err=%#v", result, err)
+	}
+	if stored, err := db.Profiles.GetByName(ctx, "OfflineClash"); err != nil || stored != nil {
+		t.Fatalf("offline ID conflict must not create requested name: profile=%#v err=%v", stored, err)
+	}
+}
+
 func TestUpdateProfileReturnsNotFoundWhenProfileIsDeletedAfterRead(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
@@ -328,6 +367,21 @@ func TestProfilesCursorsAndAdminDeleteByID(t *testing.T) {
 	}
 }
 
+func TestProfileServiceAdminListsRejectIncompleteCursorsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newProfileService(db)
+	actor := testActorWithCodes("admin-profile-incomplete-cursor", "profile.read.any")
+	cursor := util.EncodeCursor(map[string]any{"unexpected": "value"})
+
+	if result, err := svc.ListAllProfiles(ctx, actor, cursor, 10, ""); result != nil || !httpError(err, 400, "Invalid cursor") {
+		t.Fatalf("ListAllProfiles incomplete cursor result=%#v err=%#v", result, err)
+	}
+	if result, err := svc.ListProfilesByUser(ctx, actor, "any-user", cursor, 10); result != nil || !httpError(err, 400, "Invalid cursor") {
+		t.Fatalf("ListProfilesByUser incomplete cursor result=%#v err=%#v", result, err)
+	}
+}
+
 func TestPrivateProfileListRejectsIncompleteCursor(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
@@ -399,6 +453,27 @@ func TestSetProfileTextureSkipsExactNoOpWrites(t *testing.T) {
 	}
 }
 
+func TestSetProfileTextureCapeAndMissingProfileExactState(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newProfileService(db)
+	user := testutil.CreateUser(t, db, "profile-set-cape@test.com", "Password123", "ProfileSetCape", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "profile_set_cape", "ProfileSetCape")
+	actor := testActorWithCodes("profile-set-cape-admin", "profile.update.any")
+	cape := "new_cape_hash"
+
+	if err := svc.SetProfileTexture(ctx, actor, profile.ID, "cape", &cape); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := db.Profiles.GetByID(ctx, profile.ID)
+	if err != nil || updated == nil || updated.CapeHash == nil || *updated.CapeHash != cape || updated.SkinHash != nil {
+		t.Fatalf("SetProfileTexture cape mismatch: profile=%#v err=%v", updated, err)
+	}
+	if err := svc.SetProfileTexture(ctx, actor, "missing-set-cape", "skin", nil); !httpError(err, 404, "profile not found") {
+		t.Fatalf("SetProfileTexture missing profile mismatch: %#v", err)
+	}
+}
+
 func TestProfileServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
@@ -432,6 +507,51 @@ func TestProfileServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) 
 		}},
 		{name: "clear profile texture", call: func() error {
 			return svc.ClearProfileTexture(ctx, actor, "closed-profile", "skin")
+		}},
+	}
+	for _, tc := range checks {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); !closedPoolError(err) {
+				t.Fatalf("%s closed database error=%v; want closed pool", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestProfileServiceAdminClosedDatabaseReturnsExactDependencyErrors(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := newProfileService(db)
+	actor := testActorWithCodes("closed-profile-admin", "profile.read.any", "profile.update.any", "profile.delete.any")
+	db.Close()
+
+	checks := []struct {
+		name string
+		call func() error
+	}{
+		{name: "list all profiles", call: func() error {
+			result, err := svc.ListAllProfiles(ctx, actor, "", 10, "")
+			if result != nil {
+				t.Fatalf("ListAllProfiles closed database returned result=%#v", result)
+			}
+			return err
+		}},
+		{name: "list profiles by user", call: func() error {
+			result, err := svc.ListProfilesByUser(ctx, actor, "closed-profile-user", "", 10)
+			if result != nil {
+				t.Fatalf("ListProfilesByUser closed database returned result=%#v", result)
+			}
+			return err
+		}},
+		{name: "update any profile", call: func() error {
+			return svc.UpdateAnyProfile(ctx, actor, "closed-profile", "ClosedProfile")
+		}},
+		{name: "delete profile by id", call: func() error {
+			return svc.DeleteProfileByID(ctx, actor, "closed-profile")
+		}},
+		{name: "set profile texture", call: func() error {
+			hash := "closed-profile-skin"
+			return svc.SetProfileTexture(ctx, actor, "closed-profile", "skin", &hash)
 		}},
 	}
 	for _, tc := range checks {

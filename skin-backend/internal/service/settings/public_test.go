@@ -2,8 +2,10 @@ package settings_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
 )
@@ -58,4 +60,70 @@ func TestSettingsPublicPropagatesDatabaseErrors(t *testing.T) {
 	if out, err := settings.Public(context.Background(), "http://cfg-site.local/", "http://cfg-api.local/"); err == nil || out != nil {
 		t.Fatalf("closed database should fail instead of returning partial public settings: out=%#v err=%v", out, err)
 	}
+}
+
+func TestSettingsPublicPropagatesEachSettingReadErrorExactly(t *testing.T) {
+	keys := []string{
+		"site_name",
+		"allow_register",
+		"site_url",
+		"api_url",
+		"site_subtitle",
+		"enable_skin_library",
+		"email_verify_enabled",
+		"footer_text",
+		"filing_icp",
+		"filing_icp_link",
+		"filing_mps",
+		"filing_mps_link",
+		"easter_eggs_enabled",
+	}
+	for index, key := range keys {
+		t.Run(key, func(t *testing.T) {
+			db, _ := testutil.NewTestApp(t)
+			ctx := context.Background()
+			errSentinel := errors.New("public setting read failed at " + key)
+			cache := &indexedSettingFailureStore{Store: testutil.NewMemoryRedis(), failAt: index + 1, err: errSentinel}
+			svc := settings.Settings{DB: db, Redis: cache}
+
+			out, err := svc.Public(ctx, "http://cfg-site.local/", "http://cfg-api.local/")
+			if out != nil || !errors.Is(err, errSentinel) {
+				t.Fatalf("Public() at %s returned out=%#v err=%v want nil exact sentinel", key, out, errSentinel)
+			}
+			if cache.calls != index+1 || cache.keys[index] != key {
+				t.Fatalf("Public() setting access trace=%#v calls=%d want failure at %s", cache.keys, cache.calls, key)
+			}
+		})
+	}
+}
+
+func TestSettingsPublicPropagatesFallbackEndpointErrorExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
+	if _, err := db.Pool.Exec(ctx, `DROP TABLE fallback_endpoints CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := svc.Public(ctx, "http://cfg-site.local/", "http://cfg-api.local/")
+	if out != nil || err == nil {
+		t.Fatalf("Public() fallback dependency error out=%#v err=%v want nil error", out, err)
+	}
+}
+
+type indexedSettingFailureStore struct {
+	redisstore.Store
+	failAt int
+	calls  int
+	keys   []string
+	err    error
+}
+
+func (s *indexedSettingFailureStore) GetSetting(ctx context.Context, key string) (string, error) {
+	s.calls++
+	s.keys = append(s.keys, key)
+	if s.calls == s.failAt {
+		return "", s.err
+	}
+	return s.Store.GetSetting(ctx, key)
 }

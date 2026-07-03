@@ -132,6 +132,48 @@ func TestUploadServiceUploadAndApplyUpdatesProfileExactly(t *testing.T) {
 	}
 }
 
+func TestUploadServiceUploadAndApplyCapeAndForeignProfileFailureExactState(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	owner := testutil.CreateUser(t, db, "texture-upload-cape-owner@test.com", "Password123", "TextureUploadCapeOwner", false)
+	other := testutil.CreateUser(t, db, "texture-upload-cape-other@test.com", "Password123", "TextureUploadCapeOther", false)
+	ownProfile := testutil.CreateProfile(t, db, owner.ID, "texture_upload_cape_owner", "TextureUploadCapeOwner")
+	foreignProfile := testutil.CreateProfile(t, db, other.ID, "texture_upload_cape_foreign", "TextureUploadCapeForeign")
+	svc := texturesvc.UploadService{DB: db, TexturesDir: t.TempDir()}
+
+	capeResult, err := svc.UploadAndApply(ctx, texturesvc.UploadInput{
+		Actor:       textureActor(owner.ID, "texture.create.owned", "texture.apply.owned"),
+		Data:        pngBytes(t, 64, 32, color.RGBA{R: 90, G: 50, B: 180, A: 255}),
+		TextureType: "cape",
+	}, ownProfile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capeHash, _ := capeResult["hash"].(string)
+	updated, err := db.Profiles.GetByID(ctx, ownProfile.ID)
+	if capeHash == "" || capeResult["ok"] != true || capeResult["type"] != "cape" ||
+		err != nil || updated == nil || updated.CapeHash == nil || *updated.CapeHash != capeHash ||
+		updated.SkinHash != nil {
+		t.Fatalf("cape upload apply mismatch: result=%#v profile=%#v err=%v", capeResult, updated, err)
+	}
+
+	foreignResult, err := svc.UploadAndApply(ctx, texturesvc.UploadInput{
+		Actor:       textureActor(owner.ID, "texture.create.owned", "texture.apply.owned"),
+		Data:        pngBytes(t, 64, 64, color.RGBA{R: 20, G: 200, B: 120, A: 255}),
+		TextureType: "skin",
+	}, foreignProfile.ID)
+	if foreignResult != nil || !httpErrorIs(err, http.StatusForbidden, "Profile not yours") {
+		t.Fatalf("foreign profile upload apply = result=%#v err=%#v; want exact 403", foreignResult, err)
+	}
+	foreignAfter, err := db.Profiles.GetByID(ctx, foreignProfile.ID)
+	if err != nil || foreignAfter == nil || foreignAfter.SkinHash != nil || foreignAfter.CapeHash != nil {
+		t.Fatalf("foreign profile failure must not mutate profile: profile=%#v err=%v", foreignAfter, err)
+	}
+	if count, err := db.Textures.CountForUser(ctx, owner.ID); err != nil || count != 2 {
+		t.Fatalf("upload apply failure should keep uploaded library row for retry: count=%d err=%v", count, err)
+	}
+}
+
 func TestUploadServiceBoundProfileUploadDoesNotRequireCreatePermission(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
@@ -160,6 +202,56 @@ func TestUploadServiceBoundProfileUploadDoesNotRequireCreatePermission(t *testin
 	if info, err := db.Textures.GetInfo(ctx, user.ID, hash, "skin"); err != nil ||
 		info == nil || info["is_public"] != 0 || info["model"] != "slim" {
 		t.Fatalf("bound upload should persist private library row: info=%#v err=%v", info, err)
+	}
+}
+
+func TestUploadServiceRejectsPublicUploadAndBoundProfileInputsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "texture-upload-bound-invalid@test.com", "Password123", "TextureUploadBoundInvalid", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "texture_upload_bound_invalid", "TextureUploadBoundInvalid")
+	otherProfile := testutil.CreateProfile(t, db, user.ID, "texture_upload_bound_other", "TextureUploadBoundOther")
+	dir := t.TempDir()
+	svc := texturesvc.UploadService{DB: db, TexturesDir: dir}
+	data := pngBytes(t, 64, 64, testColor())
+
+	if res, err := svc.UploadToLibrary(ctx, texturesvc.UploadInput{
+		Actor:       textureActor(user.ID, "texture.create.owned"),
+		Data:        data,
+		TextureType: "skin",
+		IsPublic:    true,
+	}); res != nil || !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("public upload without visibility permission result=%#v err=%#v; want exact 403", res, err)
+	}
+	if res, err := svc.UploadAndApply(ctx, texturesvc.UploadInput{
+		Actor:       textureActor(user.ID, "texture.create.owned", "texture.apply.owned"),
+		Data:        data,
+		TextureType: "",
+	}, profile.ID); res != nil || !httpErrorIs(err, http.StatusBadRequest, "uuid and texture_type are required") {
+		t.Fatalf("upload apply missing type result=%#v err=%#v; want exact 400", res, err)
+	}
+	if res, err := svc.UploadAndApply(ctx, texturesvc.UploadInput{
+		Actor:       textureActor(user.ID, "texture.create.owned", "texture.apply.owned"),
+		Data:        data,
+		TextureType: "elytra",
+	}, profile.ID); res != nil || !httpErrorIs(err, http.StatusBadRequest, "Invalid texture_type") {
+		t.Fatalf("upload apply invalid type result=%#v err=%#v; want exact 400", res, err)
+	}
+
+	boundActor := textureActor(user.ID, "texture.apply.bound_profile")
+	boundActor.BoundProfileID = profile.ID
+	if res, err := svc.UploadAndApplyBoundProfile(ctx, texturesvc.UploadInput{
+		Actor:       boundActor,
+		Data:        data,
+		TextureType: "skin",
+	}, otherProfile.ID); res != nil || !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("bound upload wrong profile result=%#v err=%#v; want exact 403", res, err)
+	}
+	if count, err := db.Textures.CountForUser(ctx, user.ID); err != nil || count != 0 {
+		t.Fatalf("rejected upload inputs must not insert texture rows: count=%d err=%v", count, err)
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Fatalf("rejected upload inputs must not create files: entries=%#v err=%v", entries, err)
 	}
 }
 
