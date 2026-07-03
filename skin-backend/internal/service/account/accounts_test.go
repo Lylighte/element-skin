@@ -19,6 +19,8 @@ import (
 	noticesvc "element-skin/backend/internal/service/notice"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestAccountServiceBanUserPersistsInvalidatesCacheAndSendsExactNotice(t *testing.T) {
@@ -167,14 +169,125 @@ func TestAccountServicePropagatesClosedDatabaseErrors(t *testing.T) {
 	ctx := context.Background()
 	adminUser := testutil.CreateUser(t, db, "admin-account-closed@test.com", "Password123", "AdminAccountClosed", true)
 	svc := accountsvc.AccountService{DB: db, Redis: redisstore.NewMemoryStore()}
-	actor := actorWithPermissions(adminUser.ID, "account.ban.any", "account.unban.any")
+	actor := actorWithPermissions(
+		adminUser.ID,
+		"user.read.any",
+		"account.read.any",
+		"permission.grant.any",
+		"permission.revoke.any",
+		"account.delete.any",
+		"account.update.any",
+		"account.ban.any",
+		"account.unban.any",
+	)
 	db.Close()
 
+	if result, err := svc.ListUsers(ctx, actor, "", 10, ""); result != nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("ListUsers closed db = result=%#v err=%v; want nil closed pool", result, err)
+	}
+	if result, err := svc.UserDetail(ctx, actor, adminUser.ID); result != nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("UserDetail closed db = result=%#v err=%v; want nil closed pool", result, err)
+	}
+	if err := svc.GrantUserRole(ctx, actor, adminUser.ID, permission.RoleAdmin); err == nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("GrantUserRole closed db error mismatch: %#v", err)
+	}
+	if err := svc.RevokeUserRole(ctx, actor, adminUser.ID, permission.RoleAdmin); err == nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("RevokeUserRole closed db error mismatch: %#v", err)
+	}
+	if err := svc.DeleteUser(ctx, actor, "target-account-closed"); err == nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("DeleteUser closed db error mismatch: %#v", err)
+	}
+	if err := svc.ResetPassword(ctx, actor, accountsvc.ResetPasswordInput{UserID: "target-account-closed", NewPassword: "ChangedPassword123"}); err == nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("ResetPassword closed db error mismatch: %#v", err)
+	}
 	if _, err := svc.BanUser(ctx, actor, adminUser.ID, accountsvc.BanUserInput{BannedUntil: database.NowMS() + int64(time.Hour/time.Millisecond), Reason: "closed"}); err == nil || !strings.Contains(err.Error(), "closed pool") {
 		t.Fatalf("BanUser closed db error mismatch: %#v", err)
 	}
 	if err := svc.UnbanUser(ctx, actor, adminUser.ID); err == nil || !strings.Contains(err.Error(), "closed pool") {
 		t.Fatalf("UnbanUser closed db error mismatch: %#v", err)
+	}
+}
+
+func TestAccountServiceRoleMutationDependencyErrorsAndMissingUsers(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	admin := testutil.CreateUser(t, db, "admin-account-role-errors@test.com", "Password123", "AdminRoleErrors", true)
+	target := testutil.CreateUser(t, db, "target-account-role-errors@test.com", "Password123", "TargetRoleErrors", false)
+	cache := &accountFailStore{Store: redisstore.NewMemoryStore(), failInvalidate: true}
+	svc := accountsvc.AccountService{DB: db, Redis: cache}
+	actor := actorWithPermissions(admin.ID, "permission.grant.any", "permission.revoke.any")
+
+	if err := svc.GrantUserRole(ctx, actor, "missing-role-user", permission.RoleAdmin); !httpErrorIs(err, http.StatusNotFound, "user not found") {
+		t.Fatalf("grant missing user mismatch: %#v", err)
+	}
+	if err := svc.RevokeUserRole(ctx, actor, "missing-role-user", permission.RoleAdmin); !httpErrorIs(err, http.StatusNotFound, "user not found") {
+		t.Fatalf("revoke missing user mismatch: %#v", err)
+	}
+	if err := svc.RevokeUserRole(ctx, actor, target.ID, ""); !httpErrorIs(err, http.StatusBadRequest, "role_id required") {
+		t.Fatalf("revoke empty role mismatch: %#v", err)
+	}
+	if err := svc.RevokeUserRole(ctx, permission.Actor{}, target.ID, permission.RoleAdmin); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("revoke without permission mismatch: %#v", err)
+	}
+	err := svc.GrantUserRole(ctx, actor, target.ID, permission.RoleAdmin)
+	if err == nil || err.Error() != "auth cache invalidation failed" {
+		t.Fatalf("grant cache failure mismatch: %#v", err)
+	}
+	if hasRole, err := db.Permissions.UserHasRole(ctx, target.ID, permission.RoleAdmin); err != nil || !hasRole {
+		t.Fatalf("grant should persist role before cache failure is returned: has=%v err=%v", hasRole, err)
+	}
+}
+
+func TestAccountServiceDeleteResetBanUnbanDependencyFailuresKeepExactState(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	admin := testutil.CreateUser(t, db, "admin-account-dependency@test.com", "Password123", "AdminDependency", true)
+	target := testutil.CreateUser(t, db, "target-account-dependency@test.com", "Password123", "TargetDependency", false)
+	actor := actorWithPermissions(admin.ID, "account.delete.any", "account.update.any", "account.ban.any", "account.unban.any")
+
+	yggFail := &accountFailStore{Store: redisstore.NewMemoryStore(), failYggDelete: true}
+	svc := accountsvc.AccountService{DB: db, Redis: yggFail}
+	if err := svc.DeleteUser(ctx, actor, target.ID); err == nil || err.Error() != "ygg token deletion failed" {
+		t.Fatalf("delete ygg failure mismatch: %#v", err)
+	}
+	if user, err := db.Users.GetByID(ctx, target.ID); err != nil || user == nil {
+		t.Fatalf("delete ygg failure must keep target user: user=%#v err=%v", user, err)
+	}
+	if err := svc.ResetPassword(ctx, actor, accountsvc.ResetPasswordInput{UserID: target.ID, NewPassword: "ChangedPassword123"}); err == nil || err.Error() != "ygg token deletion failed" {
+		t.Fatalf("reset ygg failure mismatch: %#v", err)
+	}
+	if unchanged, err := db.Users.GetByID(ctx, target.ID); err != nil || unchanged == nil || !util.VerifyPassword("Password123", unchanged.Password) {
+		t.Fatalf("reset ygg failure must preserve password: user=%#v err=%v", unchanged, err)
+	}
+
+	cacheFail := &accountFailStore{Store: redisstore.NewMemoryStore(), failInvalidate: true}
+	svc = accountsvc.AccountService{DB: db, Redis: cacheFail}
+	bannedUntil := database.NowMS() + int64(time.Hour/time.Millisecond)
+	if _, err := svc.BanUser(ctx, actor, target.ID, accountsvc.BanUserInput{BannedUntil: bannedUntil, Reason: "cache failure"}); err == nil || err.Error() != "auth cache invalidation failed" {
+		t.Fatalf("ban cache failure mismatch: %#v", err)
+	}
+	if updated, err := db.Users.GetByID(ctx, target.ID); err != nil || updated == nil || updated.BannedUntil == nil || *updated.BannedUntil != bannedUntil {
+		t.Fatalf("ban cache failure should preserve ban timestamp: user=%#v err=%v", updated, err)
+	}
+	if err := svc.UnbanUser(ctx, actor, target.ID); err == nil || err.Error() != "auth cache invalidation failed" {
+		t.Fatalf("unban cache failure mismatch: %#v", err)
+	}
+	if updated, err := db.Users.GetByID(ctx, target.ID); err != nil || updated == nil || updated.BannedUntil != nil {
+		t.Fatalf("unban cache failure should still clear ban timestamp: user=%#v err=%v", updated, err)
+	}
+
+	noticeFail := accountsvc.AccountService{DB: db, Redis: redisstore.NewMemoryStore()}
+	if _, err := db.Pool.Exec(ctx, `DROP TABLE notices CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	nextBan := database.NowMS() + int64(2*time.Hour/time.Millisecond)
+	gotUntil, err := noticeFail.BanUser(ctx, actor, target.ID, accountsvc.BanUserInput{BannedUntil: nextBan, Reason: "notice failure"})
+	if gotUntil != 0 {
+		t.Fatalf("ban notice failure returned banned_until=%d want 0", gotUntil)
+	}
+	assertAccountPgCode(t, err, "42P01")
+	if updated, err := db.Users.GetByID(ctx, target.ID); err != nil || updated == nil || updated.BannedUntil == nil || *updated.BannedUntil != nextBan {
+		t.Fatalf("ban notice failure should preserve ban timestamp: user=%#v err=%v", updated, err)
 	}
 }
 
@@ -239,6 +352,67 @@ func TestAccountServiceGrantAndRevokeRolesExactly(t *testing.T) {
 	}
 	if err := svc.RevokeUserRole(ctx, actor, target.ID, permission.RoleAdmin); !httpErrorIs(err, http.StatusNotFound, "role assignment not found") {
 		t.Fatalf("revoke missing role mismatch: %#v", err)
+	}
+}
+
+func TestAccountServiceListUsersAndUserDetailAttachRolesExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-account-list@test.com", "Password123", "AdminAccountList", true)
+	target := testutil.CreateUser(t, db, "target-account-list@test.com", "Password123", "TargetAccountList", false)
+	other := testutil.CreateUser(t, db, "other-account-list@test.com", "Password123", "OtherAccountList", true)
+	if err := db.Permissions.GrantRole(ctx, target.ID, permission.RoleAdmin, ""); err != nil {
+		t.Fatal(err)
+	}
+	svc := accountsvc.AccountService{DB: db, Redis: redisstore.NewMemoryStore()}
+	actor := actorWithPermissions(adminUser.ID, "user.read.any", "account.read.any")
+
+	page, err := svc.ListUsers(ctx, actor, "", 10, "target-account-list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := page["items"].([]map[string]any)
+	if page["page_size"] != 1 || page["has_next"] != false || page["next_cursor"] != "" || len(items) != 1 {
+		t.Fatalf("list users page mismatch: %#v", page)
+	}
+	roles := items[0]["roles"].([]string)
+	if items[0]["id"] != target.ID || items[0]["email"] != target.Email || items[0]["display_name"] != target.DisplayName ||
+		!stringSliceSetEquals(roles, []string{permission.RoleUser, permission.RoleAdmin}) {
+		t.Fatalf("list users item mismatch: %#v", items[0])
+	}
+
+	detail, err := svc.UserDetail(ctx, actor, other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detailRoles := detail["roles"].([]string)
+	if detail["id"] != other.ID || detail["email"] != other.Email || detail["display_name"] != other.DisplayName ||
+		!stringSliceSetEquals(detailRoles, []string{permission.RoleUser, permission.RoleAdmin}) {
+		t.Fatalf("user detail mismatch: %#v", detail)
+	}
+}
+
+func TestAccountServiceListAndDetailRejectInvalidAccessExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-account-list-invalid@test.com", "Password123", "AdminAccountListInvalid", true)
+	svc := accountsvc.AccountService{DB: db, Redis: redisstore.NewMemoryStore()}
+	actor := actorWithPermissions(adminUser.ID, "user.read.any", "account.read.any")
+
+	if _, err := svc.ListUsers(ctx, permission.Actor{}, "", 10, ""); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("ListUsers without permission mismatch: %#v", err)
+	}
+	if _, err := svc.ListUsers(ctx, actor, "bad-cursor", 10, ""); !httpErrorIs(err, http.StatusBadRequest, "Invalid cursor") {
+		t.Fatalf("ListUsers bad cursor mismatch: %#v", err)
+	}
+	if _, err := svc.ListUsers(ctx, actor, util.EncodeCursor(map[string]any{"wrong": "field"}), 10, ""); !httpErrorIs(err, http.StatusBadRequest, "Invalid cursor") {
+		t.Fatalf("ListUsers cursor missing last_id mismatch: %#v", err)
+	}
+	if _, err := svc.UserDetail(ctx, permission.Actor{}, adminUser.ID); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("UserDetail without permission mismatch: %#v", err)
+	}
+	if _, err := svc.UserDetail(ctx, actor, "missing-account-detail"); !httpErrorIs(err, http.StatusNotFound, "user not found") {
+		t.Fatalf("UserDetail missing user mismatch: %#v", err)
 	}
 }
 
@@ -422,4 +596,57 @@ func actorWithPermissions(userID string, codes ...string) permission.Actor {
 func httpErrorIs(err error, status int, detail string) bool {
 	var httpErr util.HTTPError
 	return errors.As(err, &httpErr) && httpErr.Status == status && httpErr.Detail == detail
+}
+
+type accountFailStore struct {
+	redisstore.Store
+	failInvalidate bool
+	failYggDelete  bool
+}
+
+func (s *accountFailStore) InvalidateAuthUser(ctx context.Context, userID string) error {
+	if s.failInvalidate {
+		return errors.New("auth cache invalidation failed")
+	}
+	return s.Store.InvalidateAuthUser(ctx, userID)
+}
+
+func (s *accountFailStore) DeleteYggTokensByUser(ctx context.Context, userID string) error {
+	if s.failYggDelete {
+		return errors.New("ygg token deletion failed")
+	}
+	return s.Store.DeleteYggTokensByUser(ctx, userID)
+}
+
+func assertAccountPgCode(t *testing.T, err error, code string) {
+	t.Helper()
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		t.Fatalf("PostgreSQL error mismatch: got=%T %v want SQLSTATE %s", err, err, code)
+	}
+	if pgErr.Code != code {
+		t.Fatalf("PostgreSQL SQLSTATE mismatch: got=%s want=%s message=%s", pgErr.Code, code, pgErr.Message)
+	}
+}
+
+func stringSliceSetEquals(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, item := range got {
+		seen[item]++
+	}
+	for _, item := range want {
+		seen[item]--
+		if seen[item] < 0 {
+			return false
+		}
+	}
+	for _, count := range seen {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
 }

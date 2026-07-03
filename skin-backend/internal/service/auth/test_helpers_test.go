@@ -12,6 +12,8 @@ import (
 	settingssvc "element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func newAuthService(db *database.DB, cfg config.Config) authsvc.Service {
@@ -26,6 +28,22 @@ func httpError(err error, status int, detail string) bool {
 
 func closedPoolError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "closed pool")
+}
+
+func assertPgCode(t testingT, err error, code string) {
+	t.Helper()
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		t.Fatalf("PostgreSQL error mismatch: got=%T %v want SQLSTATE %s", err, err, code)
+	}
+	if pgErr.Code != code {
+		t.Fatalf("PostgreSQL SQLSTATE mismatch: got=%s want=%s message=%s", pgErr.Code, code, pgErr.Message)
+	}
+}
+
+type testingT interface {
+	Helper()
+	Fatalf(string, ...any)
 }
 
 func containsString(values []string, want string) bool {

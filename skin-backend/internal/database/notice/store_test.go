@@ -273,6 +273,68 @@ func TestNoticeStoreAdminListUpdateAndReplaceExactly(t *testing.T) {
 	}
 }
 
+func TestNoticeStoreCreateWithTargetsAndReplacePreservesTargetsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	creator := testutil.CreateUser(t, db, "notice-target-creator@test.com", "Password123", "NoticeTargetCreator", true)
+	target := testutil.CreateUser(t, db, "notice-target-user@test.com", "Password123", "NoticeTargetUser", false)
+	other := testutil.CreateUser(t, db, "notice-target-other@test.com", "Password123", "NoticeTargetOther", false)
+	now := int64(1_900_000_000_000)
+
+	oldNotice := testNotice("targeted-old", "Targeted Old", "targeted", true, false, now, nil, nil, creator.ID)
+	if err := db.Notices.CreateWithTargets(ctx, oldNotice, []string{target.ID}); err != nil {
+		t.Fatal(err)
+	}
+	targetView, err := db.Notices.GetForUser(ctx, oldNotice.ID, target.ID, false)
+	if err != nil || targetView == nil || targetView.ID != oldNotice.ID || targetView.Title != oldNotice.Title {
+		t.Fatalf("targeted notice should be visible to target: view=%#v err=%v", targetView, err)
+	}
+	otherView, err := db.Notices.GetForUser(ctx, oldNotice.ID, other.ID, false)
+	if err != nil || otherView != nil {
+		t.Fatalf("targeted notice should be hidden from other user: view=%#v err=%v", otherView, err)
+	}
+	var oldTargets int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM notice_targets WHERE notice_id=$1 AND user_id=$2`, oldNotice.ID, target.ID).Scan(&oldTargets); err != nil {
+		t.Fatal(err)
+	}
+	if oldTargets != 1 {
+		t.Fatalf("old targeted notice target count=%d, want 1", oldTargets)
+	}
+
+	newNotice := testNotice("targeted-new", "Targeted New", "targeted", true, true, now+1, nil, nil, creator.ID)
+	replaced, err := db.Notices.Replace(ctx, oldNotice.ID, newNotice)
+	if err != nil || !replaced {
+		t.Fatalf("replace targeted notice mismatch: replaced=%v err=%v", replaced, err)
+	}
+	if old, err := db.Notices.Get(ctx, oldNotice.ID); err != nil || old != nil {
+		t.Fatalf("old targeted notice should be removed: notice=%#v err=%v", old, err)
+	}
+	replacedTargetView, err := db.Notices.GetForUser(ctx, newNotice.ID, target.ID, false)
+	if err != nil || replacedTargetView == nil || replacedTargetView.ID != newNotice.ID ||
+		replacedTargetView.Title != newNotice.Title || !replacedTargetView.Pinned {
+		t.Fatalf("replacement targeted notice should preserve target visibility: view=%#v err=%v", replacedTargetView, err)
+	}
+	replacedOtherView, err := db.Notices.GetForUser(ctx, newNotice.ID, other.ID, false)
+	if err != nil || replacedOtherView != nil {
+		t.Fatalf("replacement targeted notice should remain hidden from other user: view=%#v err=%v", replacedOtherView, err)
+	}
+	var newTargets int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM notice_targets WHERE notice_id=$1 AND user_id=$2 AND created_at=$3`, newNotice.ID, target.ID, newNotice.CreatedAt).Scan(&newTargets); err != nil {
+		t.Fatal(err)
+	}
+	if newTargets != 1 {
+		t.Fatalf("replacement targeted notice target count=%d, want 1", newTargets)
+	}
+
+	badNotice := testNotice("targeted-bad", "Targeted Bad", "targeted", true, false, now+2, nil, nil, creator.ID)
+	if err := db.Notices.CreateWithTargets(ctx, badNotice, []string{"missing-user-id"}); err == nil {
+		t.Fatal("CreateWithTargets with missing user should reject")
+	}
+	if bad, err := db.Notices.Get(ctx, badNotice.ID); err != nil || bad != nil {
+		t.Fatalf("failed CreateWithTargets must roll back notice row: notice=%#v err=%v", bad, err)
+	}
+}
+
 func testNotice(id, title, audience string, enabled, pinned bool, createdAt int64, startsAt, endsAt *int64, createdBy string) model.Notice {
 	return model.Notice{
 		ID:              id,

@@ -3,8 +3,12 @@ package settings_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
+	"time"
 
+	"element-skin/backend/internal/permission"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -274,4 +278,66 @@ func TestSettingsFallbackProbeIntervalValidationAndPersistence(t *testing.T) {
 	if preserved["fallback_probe_interval"] != 1800 {
 		t.Fatalf("invalid attempts changed persisted interval: %#v", preserved["fallback_probe_interval"])
 	}
+}
+
+func TestSettingsReadUpdateGroupPermissionsAndCacheInvalidationExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	redis := testutil.NewMemoryRedis()
+	svc := settings.Settings{DB: db, Redis: redis}
+	readActor := settingsActor("site_settings.read.any")
+	updateActor := settingsActor("site_settings.update.any")
+
+	if err := redis.SetSetting(ctx, "site_name", "Cached Site", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := redis.SetPublicSettings(ctx, map[string]any{"site_name": "Cached Site"}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UpdateGroup(ctx, updateActor, "site", map[string]any{"site_name": "Updated Site", "allow_register": false}); err != nil {
+		t.Fatal(err)
+	}
+	if cached, err := redis.GetSetting(ctx, "site_name"); !errors.Is(err, redisstore.ErrCacheMiss) || cached != "" {
+		t.Fatalf("UpdateGroup should invalidate setting cache: cached=%q err=%v", cached, err)
+	}
+	if cached, err := redis.GetPublicSettings(ctx); !errors.Is(err, redisstore.ErrCacheMiss) || cached != nil {
+		t.Fatalf("UpdateGroup should invalidate public settings cache: cached=%#v err=%v", cached, err)
+	}
+
+	site, err := svc.ReadGroup(ctx, readActor, "site")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if site["site_name"] != "Updated Site" || site["allow_register"] != false {
+		t.Fatalf("ReadGroup site settings mismatch: %#v", site)
+	}
+
+	if _, err := svc.ReadGroup(ctx, permission.Actor{}, "site"); !settingsHTTPError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("ReadGroup without permission mismatch: %#v", err)
+	}
+	if err := svc.UpdateGroup(ctx, permission.Actor{}, "site", map[string]any{"site_name": "Denied"}); !settingsHTTPError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("UpdateGroup without permission mismatch: %#v", err)
+	}
+	if err := svc.UpdateGroup(ctx, updateActor, "missing", map[string]any{"site_name": "Denied"}); !settingsHTTPError(err, http.StatusBadRequest, "invalid settings group") {
+		t.Fatalf("UpdateGroup invalid group mismatch: %#v", err)
+	}
+}
+
+func settingsActor(codes ...string) permission.Actor {
+	bits := permission.NewBitSet(len(permission.Definitions))
+	for _, code := range codes {
+		bits.Set(permission.MustDefinitionByCode(code).BitIndex)
+	}
+	return permission.Actor{
+		SubjectID:   "settings-test",
+		UserID:      "settings-test-user",
+		SessionKind: permission.SessionKindWeb,
+		Entrypoint:  permission.EntrypointAdmin,
+		Permissions: bits,
+	}
+}
+
+func settingsHTTPError(err error, status int, detail string) bool {
+	httpErr, ok := err.(util.HTTPError)
+	return ok && httpErr.Status == status && httpErr.Detail == detail
 }
