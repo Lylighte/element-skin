@@ -2928,6 +2928,8 @@ oauth_grant.read.owned
 oauth_grant.revoke.owned
 ```
 
+撤销授权不会立即物理删除 grant。服务端将授权标记为 `revoked` 并写入 `revoked_at`，已签发 token 在后续校验中必须失效。已撤销授权保留 30 天，前端应向用户显示 30 天后自动清除；系统维护任务到期后删除 grant 及其授权码、refresh token、权限关联记录。
+
 ### 27.3 OAuth 协议请求
 
 ```http

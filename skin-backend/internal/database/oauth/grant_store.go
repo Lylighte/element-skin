@@ -36,6 +36,72 @@ func (s Store) RevokeGrant(ctx context.Context, grantID, userID string, revokedA
 	return tag.RowsAffected() > 0, nil
 }
 
+func (s Store) DeleteRevokedGrants(ctx context.Context, cutoff int64) (int64, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `
+		SELECT id
+		FROM delegated_permission_grants
+		WHERE status='revoked' AND revoked_at IS NOT NULL AND revoked_at <= $1
+	`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	var grantIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		grantIDs = append(grantIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+	if len(grantIDs) == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return 0, err
+		}
+		return 0, nil
+	}
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM oauth_authorization_code_permissions
+		WHERE code_hash IN (
+			SELECT code_hash FROM oauth_authorization_codes WHERE grant_id = ANY($1)
+		)
+	`, grantIDs); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM oauth_authorization_codes WHERE grant_id = ANY($1)`, grantIDs); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM oauth_refresh_tokens WHERE grant_id = ANY($1)`, grantIDs); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM delegated_grant_permissions WHERE grant_id = ANY($1)`, grantIDs); err != nil {
+		return 0, err
+	}
+	tag, err := tx.Exec(ctx, `
+		DELETE FROM delegated_permission_grants
+		WHERE id = ANY($1) AND status='revoked' AND revoked_at IS NOT NULL AND revoked_at <= $2
+	`, grantIDs, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (s Store) ListGrantsByUser(ctx context.Context, userID string, limit int) ([]model.OAuthGrant, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT id, user_id, subject_id, client_id, status, created_at, revoked_at
@@ -66,6 +132,27 @@ func (s Store) GrantPermissionIDs(ctx context.Context, grantID string) ([]int64,
 		WHERE grant_id=$1
 		ORDER BY permission_id
 	`, grantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanInt64Rows(rows)
+}
+
+func (s Store) ActiveGrantPermissionIDs(ctx context.Context, grantID, userID, clientID string) ([]int64, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT gp.permission_id
+		FROM delegated_permission_grants g
+		JOIN delegated_clients c ON c.id=g.client_id
+		JOIN delegated_grant_permissions gp ON gp.grant_id=g.id
+		JOIN delegated_client_permissions cp ON cp.client_id=g.client_id AND cp.permission_id=gp.permission_id
+		WHERE g.id=$1
+		  AND g.user_id=$2
+		  AND g.client_id=$3
+		  AND g.status='active'
+		  AND c.status='active'
+		ORDER BY gp.permission_id
+	`, grantID, userID, clientID)
 	if err != nil {
 		return nil, err
 	}

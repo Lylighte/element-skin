@@ -146,7 +146,7 @@ func (s Service) exchangeAuthorizationCode(ctx context.Context, req TokenRequest
 		return TokenResponse{}, err
 	}
 	codeHash := util.HashRefreshToken(req.Code)
-	code, permissionIDs, err := s.DB.OAuth.ConsumeAuthorizationCode(ctx, codeHash, database.NowMS())
+	code, _, err := s.DB.OAuth.ConsumeAuthorizationCode(ctx, codeHash, database.NowMS())
 	if err != nil {
 		return TokenResponse{}, err
 	}
@@ -156,7 +156,14 @@ func (s Service) exchangeAuthorizationCode(ctx context.Context, req TokenRequest
 	if !validPKCE(req.CodeVerifier, code.CodeChallenge) {
 		return TokenResponse{}, badRequest("invalid code_verifier")
 	}
-	return s.issueTokens(ctx, client.ID, code.UserID, code.GrantID, permissionCodesFromIDs(permissionIDs))
+	codes, err := s.activeGrantPermissionCodes(ctx, code.GrantID, code.UserID, client.ID)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	if len(codes) == 0 {
+		return TokenResponse{}, badRequest("invalid authorization code")
+	}
+	return s.issueTokens(ctx, client.ID, code.UserID, code.GrantID, codes)
 }
 
 func (s Service) refreshToken(ctx context.Context, req TokenRequest) (TokenResponse, error) {
@@ -172,9 +179,12 @@ func (s Service) refreshToken(ctx context.Context, req TokenRequest) (TokenRespo
 	if old == nil || old.ClientID != client.ID || old.RevokedAt != nil || old.ExpiresAt <= database.NowMS() {
 		return TokenResponse{}, badRequest("invalid refresh_token")
 	}
-	codes, err := s.grantPermissionCodes(ctx, old.GrantID)
+	codes, err := s.activeGrantPermissionCodes(ctx, old.GrantID, old.UserID, client.ID)
 	if err != nil {
 		return TokenResponse{}, err
+	}
+	if len(codes) == 0 {
+		return TokenResponse{}, badRequest("invalid refresh_token")
 	}
 	accessRaw, accessHash, refreshRaw, refreshHash, err := tokenPair()
 	if err != nil {

@@ -9,7 +9,9 @@ import (
 	"element-skin/backend/internal/database"
 	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/httpapi"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	oauthsvc "element-skin/backend/internal/service/oauth"
 	probesvc "element-skin/backend/internal/service/probe"
 	settingssvc "element-skin/backend/internal/service/settings"
 	yggpkg "element-skin/backend/internal/service/yggdrasil"
@@ -31,6 +33,10 @@ type noticeCleaner interface {
 	DeleteExpired(ctx context.Context, cutoff int64) error
 }
 
+type oauthGrantCleaner interface {
+	DeleteExpiredRevokedGrants(ctx context.Context, actor permission.Actor, now int64) (int64, error)
+}
+
 func New(ctx context.Context, cfg config.Config) (*App, error) {
 	if err := util.ValidateJWTSecret(cfg.JWTSecret); err != nil {
 		return nil, err
@@ -44,6 +50,11 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 	if err := db.Notices.DeleteExpired(ctx, database.NowMS()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	oauthCleaner := oauthsvc.Service{DB: db}
+	if _, err := oauthCleaner.DeleteExpiredRevokedGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS()); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -65,6 +76,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	cleanupCtx, cancel := context.WithCancel(context.Background())
 	go RunRefreshCleanupLoop(cleanupCtx, db.Tokens, time.Hour)
 	go RunNoticeCleanupLoop(cleanupCtx, db.Notices, time.Hour)
+	go RunOAuthGrantCleanupLoop(cleanupCtx, oauthCleaner, time.Hour)
 	go probesvc.RunLoop(cleanupCtx, db, redis, settings)
 	return &App{
 		db:       db,
@@ -133,6 +145,19 @@ func RunNoticeCleanupLoop(ctx context.Context, cleaner noticeCleaner, interval t
 			return
 		case <-ticker.C:
 			_ = cleaner.DeleteExpired(ctx, database.NowMS())
+		}
+	}
+}
+
+func RunOAuthGrantCleanupLoop(ctx context.Context, cleaner oauthGrantCleaner, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_, _ = cleaner.DeleteExpiredRevokedGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
 		}
 	}
 }
