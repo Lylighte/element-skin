@@ -101,7 +101,6 @@ services:
       - SERVER_API_URL=${SERVER_API_URL:-http://yourdomain.com/skinapi}
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-*}
       - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
-      - MOJANG_SKIN_DOMAINS=${MOJANG_SKIN_DOMAINS:-textures.minecraft.net}
     depends_on:
       db:
         condition: service_healthy
@@ -117,7 +116,7 @@ services:
 
 > 💡 **动态配置**: 后端启动时会读取 `config.yaml`，再用同名环境变量覆盖配置并写回 `config.yaml`。如果文件不存在，会按默认值和环境变量创建一份。开发环境可以继续只改 `config.yaml`，Docker 部署可以只在 `docker compose` 里写环境变量。由于需要写回文件，`config.yaml` 不能以只读方式挂载。
 >
-> 常用环境变量包括：`JWT_SECRET`、`DATABASE_DSN`、`DATABASE_MAX_CONNECTIONS`、`REDIS_ADDR`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_KEY_PREFIX`、`SERVER_SITE_URL`、`SERVER_API_URL`、`SERVER_HOST`、`SERVER_PORT`、`TEXTURES_DIRECTORY`、`CAROUSEL_DIRECTORY`、`KEYS_PRIVATE_KEY`、`KEYS_PUBLIC_KEY`、`CORS_ALLOW_ORIGINS`、`CORS_ALLOW_CREDENTIALS`、`MOJANG_SKIN_DOMAINS`。`CORS_ALLOW_ORIGINS` 和 `MOJANG_SKIN_DOMAINS` 使用英文逗号分隔多个值。
+> 常用环境变量包括：`JWT_SECRET`、`DATABASE_DSN`、`DATABASE_MAX_CONNECTIONS`、`REDIS_ADDR`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_KEY_PREFIX`、`SERVER_SITE_URL`、`SERVER_API_URL`、`SERVER_HOST`、`SERVER_PORT`、`TEXTURES_DIRECTORY`、`CAROUSEL_DIRECTORY`、`KEYS_PRIVATE_KEY`、`KEYS_PUBLIC_KEY`、`CORS_ALLOW_ORIGINS`、`CORS_ALLOW_CREDENTIALS`。`CORS_ALLOW_ORIGINS` 使用英文逗号分隔多个来源。
 
 在宿主机创建 `config.yaml` 文件。这是系统运行的核心配置。
 
@@ -163,14 +162,6 @@ server:
 cors:
   allow_origins: ["*"] # ⚠️ 生产环境请根据实际情况限制来源
   allow_credentials: true
-
-mojang:
-  session_url: "https://sessionserver.mojang.com"
-  account_url: "https://api.mojang.com"
-  services_url: "https://api.minecraftservices.com"
-  skin_domains:
-    - "textures.minecraft.net"
-  cache_ttl: 3600
 ```
 
 首次启动时如果 `/app/data/private.pem` 和 `/app/data/public.pem` 不存在，系统会自动生成并保存。请持久化 `./data` 目录，后续不要删除或替换私钥，否则已有 Yggdrasil 客户端会看到服务端签名身份变化。

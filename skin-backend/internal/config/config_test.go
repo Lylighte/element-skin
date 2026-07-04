@@ -46,10 +46,6 @@ cors:
     - "https://skin.example.com"
     - "http://localhost:5173"
   allow_credentials: false
-mojang:
-  skin_domains:
-    - "textures.minecraft.net"
-    - "cdn.example"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -86,9 +82,6 @@ mojang:
 	if !reflect.DeepEqual(cfg.CORSOrigins, []string{"https://skin.example.com", "http://localhost:5173"}) || cfg.CORSCredentials {
 		t.Fatalf("cors fields not parsed: origins=%#v credentials=%v", cfg.CORSOrigins, cfg.CORSCredentials)
 	}
-	if !reflect.DeepEqual(cfg.FallbackDomains, []string{"textures.minecraft.net", "cdn.example"}) {
-		t.Fatalf("mojang skin domains not parsed: %#v", cfg.FallbackDomains)
-	}
 }
 
 func TestLoadEnvOverridesFileAndPersistsExactYAMLValues(t *testing.T) {
@@ -122,9 +115,6 @@ cors:
   allow_origins:
     - "https://file.example"
   allow_credentials: false
-mojang:
-  skin_domains:
-    - "file.example"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +139,6 @@ mojang:
 	t.Setenv("REDIS_AUTH_CACHE_TTL_SECONDS", "25")
 	t.Setenv("CORS_ALLOW_ORIGINS", "https://env.example, http://localhost:5173")
 	t.Setenv("CORS_ALLOW_CREDENTIALS", "true")
-	t.Setenv("MOJANG_SKIN_DOMAINS", "textures.minecraft.net, cdn.example")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -179,9 +168,6 @@ mojang:
 	if !reflect.DeepEqual(cfg.CORSOrigins, []string{"https://env.example", "http://localhost:5173"}) || !cfg.CORSCredentials {
 		t.Fatalf("cors env mismatch: origins=%#v credentials=%v", cfg.CORSOrigins, cfg.CORSCredentials)
 	}
-	if !reflect.DeepEqual(cfg.FallbackDomains, []string{"textures.minecraft.net", "cdn.example"}) {
-		t.Fatalf("mojang env mismatch: %#v", cfg.FallbackDomains)
-	}
 
 	var persisted rawConfig
 	b, err := os.ReadFile(path)
@@ -200,9 +186,6 @@ mojang:
 	assertRawValue(t, persisted, "cors.allow_credentials", true)
 	if got, _ := lookup(persisted, "cors.allow_origins"); !reflect.DeepEqual(got, []any{"https://env.example", "http://localhost:5173"}) {
 		t.Fatalf("persisted cors.allow_origins=%#v", got)
-	}
-	if got, _ := lookup(persisted, "mojang.skin_domains"); !reflect.DeepEqual(got, []any{"textures.minecraft.net", "cdn.example"}) {
-		t.Fatalf("persisted mojang.skin_domains=%#v", got)
 	}
 }
 
@@ -394,7 +377,6 @@ func clearConfigEnv(t *testing.T) {
 		"REDIS_AUTH_CACHE_TTL_SECONDS",
 		"CORS_ALLOW_ORIGINS",
 		"CORS_ALLOW_CREDENTIALS",
-		"MOJANG_SKIN_DOMAINS",
 	} {
 		t.Setenv(key, "")
 	}
