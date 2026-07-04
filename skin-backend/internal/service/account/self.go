@@ -176,7 +176,24 @@ func (s AccountService) normalizedSelfUpdateFields(ctx context.Context, userID s
 		fields["preferred_language"] = v
 	}
 	if v, ok := body["avatar_hash"]; ok {
-		fields["avatar_hash"] = v
+		if v == nil {
+			fields["avatar_hash"] = nil
+		} else if hash, ok := v.(string); ok {
+			if hash == "" {
+				fields["avatar_hash"] = nil
+			} else {
+				exists, err := s.DB.Textures.VerifyOwnership(ctx, userID, hash, "skin")
+				if err != nil {
+					return nil, err
+				}
+				if !exists {
+					return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Avatar texture not found"}
+				}
+				fields["avatar_hash"] = hash
+			}
+		} else {
+			return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid avatar_hash"}
+		}
 	}
 	return fields, nil
 }

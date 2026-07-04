@@ -265,13 +265,16 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 	user := testutil.CreateUser(t, db, "siteflow@test.com", "Password123", "SiteFlow", false)
 	token, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)
 	cookie := &http.Cookie{Name: "access_token", Value: token}
+	if err := db.Textures.AddToLibrary(context.Background(), user.ID, "site_avatar_hash_123", "skin", "site avatar", false, "default"); err != nil {
+		t.Fatal(err)
+	}
 
-	updateMe := doJSON(t, h, "PATCH", "/v1/users/me", map[string]any{"display_name": "UpdatedDisplayName", "avatar_hash": "fake_avatar_hash_123"}, cookie)
+	updateMe := doJSON(t, h, "PATCH", "/v1/users/me", map[string]any{"display_name": "UpdatedDisplayName", "avatar_hash": "site_avatar_hash_123"}, cookie)
 	if updateMe.Code != 200 {
 		t.Fatalf("update me status=%d body=%s", updateMe.Code, updateMe.Body.String())
 	}
 	me := parseJSON(t, doJSON(t, h, "GET", "/v1/users/me", nil, cookie))
-	if me["display_name"] != "UpdatedDisplayName" || me["avatar_hash"] != "fake_avatar_hash_123" {
+	if me["display_name"] != "UpdatedDisplayName" || me["avatar_hash"] != "site_avatar_hash_123" {
 		t.Fatalf("update me did not persist: %#v", me)
 	}
 
@@ -352,7 +355,7 @@ func TestSiteProfileTextureHTTPFlows(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	expectedTextures := map[string]bool{"apply_hash": true}
+	expectedTextures := map[string]bool{"apply_hash": true, "site_avatar_hash_123": true}
 	for i := 0; i < 3; i++ {
 		expectedTextures["http_tex_"+strconv.Itoa(i)] = true
 	}

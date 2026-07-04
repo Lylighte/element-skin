@@ -30,6 +30,9 @@ func TestAccountServiceMeReturnsCountsAndUpdateSelfPersistsExactFields(t *testin
 	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: user.ID}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Textures.AddToLibrary(ctx, user.ID, "avatar_hash", "skin", "avatar skin", false, "default"); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := svc.UpdateSelf(ctx, actor, map[string]any{
 		"email":              "updated-account@test.com",
@@ -56,7 +59,7 @@ func TestAccountServiceMeReturnsCountsAndUpdateSelfPersistsExactFields(t *testin
 		!containsString(permissions, "account.read.self") ||
 		me["protected"] != false ||
 		me["profile_count"] != 0 ||
-		me["texture_count"] != 0 {
+		me["texture_count"] != 1 {
 		t.Fatalf("Me response mismatch: %#v", me)
 	}
 }
@@ -103,6 +106,8 @@ func TestAccountServiceRejectsInvalidSelfUpdatesAndWrongPasswordExactly(t *testi
 		{"invalid email", map[string]any{"email": "not-an-email"}, "Invalid email format"},
 		{"duplicate display name", map[string]any{"display_name": other.DisplayName}, "Username already exists"},
 		{"blank display name", map[string]any{"display_name": "   "}, "Username cannot be empty"},
+		{"missing avatar", map[string]any{"avatar_hash": "missing_avatar_hash"}, "Avatar texture not found"},
+		{"invalid avatar type", map[string]any{"avatar_hash": 123}, "Invalid avatar_hash"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := svc.UpdateSelf(ctx, actor, tc.body)
