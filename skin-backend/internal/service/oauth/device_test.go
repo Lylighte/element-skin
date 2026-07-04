@@ -125,6 +125,24 @@ func TestServiceDeviceCodeFlowRejectsDeniedAndUnauthorizedScopesExactly(t *testi
 		Scope:    "account.update.self",
 	})
 	assertHTTPError(t, err, 400, "scope exceeds client permission limit")
+	serverClient, err := svc.CreateClient(ctx, actor, oauth.ClientInput{
+		Name:            "Device server denied",
+		RedirectURI:     "https://device-server.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"minecraft_session.hasjoined.server"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverClientID := serverClient["client_id"].(string)
+	serverClientSecret := serverClient["client_secret"].(string)
+	activateOAuthClient(t, db, serverClientID)
+	_, err = svc.StartDeviceAuthorization(ctx, oauth.DeviceAuthorizationRequest{
+		ClientID:     serverClientID,
+		ClientSecret: serverClientSecret,
+		Scope:        "minecraft_session.hasjoined.server",
+	})
+	assertHTTPError(t, err, 400, "invalid scope")
 	started, err := svc.StartDeviceAuthorization(ctx, oauth.DeviceAuthorizationRequest{
 		ClientID: clientID,
 		Scope:    "account.read.self",

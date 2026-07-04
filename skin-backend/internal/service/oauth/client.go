@@ -358,7 +358,14 @@ func (s Service) clientFromInput(actor permission.Actor, input ClientInput) (mod
 	}
 	ids := permissionIDsFromCodes(codes)
 	for _, code := range codes {
-		if !actor.Has(permission.MustDefinitionByCode(code)) {
+		def := permission.MustDefinitionByCode(code)
+		if def.Scope.ID == permission.ScopeServer {
+			if clientType != ClientTypeConfidential {
+				return model.OAuthClient{}, nil, nil, badRequest("server scope requires confidential client")
+			}
+			continue
+		}
+		if !actor.Has(def) {
 			return model.OAuthClient{}, nil, nil, forbidden()
 		}
 	}

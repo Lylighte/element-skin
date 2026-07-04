@@ -261,7 +261,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, reactive, ref, type Ref } from 'vue'
+import { computed, inject, onMounted, reactive, ref, watch, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Delete, Key, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import {
@@ -312,7 +312,12 @@ const revokedGrantRetentionMs = 30 * 24 * 60 * 60 * 1000
 const selectedApp = computed(() => apps.value.find((app) => app.client_id === selectedClientId.value) ?? null)
 const userPermissionSet = computed(() => new Set(user.value?.permissions ?? []))
 const delegablePermissions = computed(() =>
-  catalog.value.filter((item) => item.scope !== 'system' && userPermissionSet.value.has(item.code)),
+  catalog.value.filter(
+    (item) =>
+      item.scope !== 'system' &&
+      ((form.client_type === 'confidential' && item.scope === 'server') ||
+        userPermissionSet.value.has(item.code)),
+  ),
 )
 const permissionByCode = computed(() => {
   const out = new Map<string, PermissionDefinition>()
@@ -323,6 +328,14 @@ const permissionByCode = computed(() => {
 onMounted(async () => {
   await Promise.all([loadCatalog(), loadApps(), loadGrants()])
 })
+
+watch(
+  () => form.client_type,
+  (clientType) => {
+    if (clientType === 'confidential') return
+    form.permissions = form.permissions.filter((code) => permissionByCode.value.get(code)?.scope !== 'server')
+  },
+)
 
 async function loadCatalog() {
   const res = await getPermissionCatalog()

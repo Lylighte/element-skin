@@ -150,6 +150,9 @@ func (s Service) validAuthorizationRequest(ctx context.Context, actor permission
 	clientAllowed := idSet(clientIDs)
 	for _, code := range codes {
 		def := permission.MustDefinitionByCode(code)
+		if def.Scope.ID == permission.ScopeServer {
+			return model.OAuthClient{}, nil, badRequest("invalid scope")
+		}
 		if !actor.Has(def) {
 			return model.OAuthClient{}, nil, forbidden()
 		}
