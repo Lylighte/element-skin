@@ -37,6 +37,15 @@ api = ElementSkinAPI(
 me = api.me()
 ```
 
+`me` 返回服务端原始 JSON。当前响应包含 `protected` 字段，表示当前用户主体是否为受保护主体：
+
+```python
+from element_skin_sdk import UserInfo
+
+info = UserInfo.from_mapping(api.me())
+print(info.protected)
+```
+
 接口：
 
 ```text

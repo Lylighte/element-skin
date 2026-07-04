@@ -30,8 +30,10 @@ DEVICE_CODE_RESPONSE = {
 
 ME_RESPONSE = {
     "id": "user-1",
-    "username": "alice",
     "email": "alice@example.test",
+    "display_name": "Alice",
+    "protected": False,
+    "permissions": ["account.read.self"],
 }
 
 PROFILE_PAGE_RESPONSE = {

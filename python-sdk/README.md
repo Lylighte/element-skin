@@ -27,7 +27,7 @@ pip install httpx
 ## 最小示例
 
 ```python
-from element_skin_sdk import ElementSkinAPI, OAuthClient
+from element_skin_sdk import ElementSkinAPI, OAuthClient, UserInfo
 from element_skin_sdk.permissions import ProfileScopes
 
 oauth = OAuthClient(
@@ -46,6 +46,8 @@ tokens = oauth.exchange_code(
 
 api = ElementSkinAPI("https://skin.example.com", token=tokens)
 profiles = api.list_profiles()
+current_user = UserInfo.from_mapping(api.me())
+print(current_user.protected)
 ```
 
 ## 文档

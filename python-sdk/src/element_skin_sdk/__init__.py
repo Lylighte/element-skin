@@ -10,6 +10,7 @@ from .exceptions import (
     PermissionDenied,
     ValidationError,
 )
+from .models import UserInfo
 from .oauth.client import OAuthClient
 from .oauth.token_store import FileTokenStore, MemoryTokenStore, TokenStore
 
@@ -25,5 +26,6 @@ __all__ = [
     "OAuthError",
     "PermissionDenied",
     "TokenStore",
+    "UserInfo",
     "ValidationError",
 ]
