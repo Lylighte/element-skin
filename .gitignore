@@ -53,6 +53,7 @@ cover*.out
 ### Certificates / keys / secrets
 *.pem
 *.key
+.env
 .env.local
 python-sdk/demo/.*.json
 python-sdk/demo/.*_authorize.out

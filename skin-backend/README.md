@@ -35,12 +35,12 @@ go vet ./...
 go build ./cmd/element-skin
 ```
 
-The backend requires Redis at runtime. Local defaults expect `127.0.0.1:6379`
-with no password. `config.Load` reads `config.yaml`, applies matching
-environment variables, and writes the merged values back to `config.yaml`; when
-the file does not exist, it creates one from defaults plus environment
-overrides. Local development can keep using `config.yaml` directly, while Docker
-deployments can set values in Compose.
+The backend requires Redis at runtime. Local development can keep using
+`config.yaml` directly. `config.Load` reads `config.yaml`, applies matching
+environment variables, derives PostgreSQL and Redis connection strings from
+structured fields, and writes the merged values back to `config.yaml`. When the
+file does not exist, all required environment variables must be present before a
+new config file is created.
 
 Unit tests use the in-memory Redis implementation. Integration tests in
 `internal/integration` use a real Redis instance (`REDIS_TEST_ADDR`, default

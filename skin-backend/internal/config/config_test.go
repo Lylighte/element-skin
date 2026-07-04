@@ -23,7 +23,12 @@ keys:
   private_key: "keys/private.pem"
   public_key: "keys/public.pem"
 database:
-  dsn: "postgresql://user:pass@localhost:5432/db?sslmode=disable"
+  host: "localhost"
+  port: "5432"
+  user: "user"
+  password: "pass"
+  name: "db"
+  sslmode: "disable"
   max_connections: 23
 server:
   site_url: "https://skin.example.com"
@@ -35,7 +40,8 @@ textures:
 carousel:
   directory: "/data/carousel"
 redis:
-  addr: "redis:6379"
+  host: "redis"
+  port: "6379"
   password: "password123"
   db: 2
   key_prefix: "custom:"
@@ -61,7 +67,9 @@ cors:
 	if cfg.JWTExpireDays != 11 || cfg.AccessMinutes != 45 {
 		t.Fatalf("JWT expiry fields not parsed: %#v", cfg)
 	}
-	if cfg.DatabaseDSN != "postgresql://user:pass@localhost:5432/db?sslmode=disable" || cfg.MaxConnections != 23 {
+	if cfg.DatabaseHost != "localhost" || cfg.DatabasePort != "5432" || cfg.DatabaseUser != "user" ||
+		cfg.DatabasePassword != "pass" || cfg.DatabaseName != "db" || cfg.DatabaseSSLMode != "disable" ||
+		cfg.DatabaseDSN != "postgresql://user:pass@localhost:5432/db?sslmode=disable" || cfg.MaxConnections != 23 {
 		t.Fatalf("database fields not parsed: %#v", cfg)
 	}
 	if cfg.SiteURL != "https://skin.example.com" || cfg.APIURL != "https://skin.example.com/api" || cfg.ServerHost != "127.0.0.1" || cfg.ServerPort != "9001" {
@@ -70,7 +78,8 @@ cors:
 	if cfg.TexturesDir != "/data/textures" || cfg.CarouselDir != "/data/carousel" {
 		t.Fatalf("storage directories not parsed: %#v", cfg)
 	}
-	if cfg.RedisAddr != "redis:6379" || cfg.RedisPassword != "password123" || cfg.RedisDB != 2 || cfg.RedisKeyPrefix != "custom:" {
+	if cfg.RedisHost != "redis" || cfg.RedisPort != "6379" || cfg.RedisAddr != "redis:6379" ||
+		cfg.RedisPassword != "password123" || cfg.RedisDB != 2 || cfg.RedisKeyPrefix != "custom:" {
 		t.Fatalf("redis fields not parsed: %#v", cfg)
 	}
 	if cfg.PublicCacheTTL != 120 || cfg.AuthCacheTTL != 15 {
@@ -97,7 +106,12 @@ keys:
   private_key: "file-private.pem"
   public_key: "file-public.pem"
 database:
-  dsn: "postgresql://file"
+  host: "file-db"
+  port: "5432"
+  user: "file-user"
+  password: "file-password"
+  name: "file-db-name"
+  sslmode: "disable"
   max_connections: 7
 server:
   site_url: "https://file.example"
@@ -109,6 +123,9 @@ textures:
 carousel:
   directory: "/file/carousel"
 redis:
+  host: "file-redis"
+  port: "6379"
+  password: "file-redis-password"
   public_cache_ttl_seconds: 12
   auth_cache_ttl_seconds: 13
 cors:
@@ -123,7 +140,12 @@ cors:
 	t.Setenv("JWT_ACCESS_EXPIRE_MINUTES", "35")
 	t.Setenv("KEYS_PRIVATE_KEY", "env-private.pem")
 	t.Setenv("KEYS_PUBLIC_KEY", "/abs/env-public.pem")
-	t.Setenv("DATABASE_DSN", "postgresql://env")
+	t.Setenv("DATABASE_HOST", "env-db")
+	t.Setenv("DATABASE_PORT", "6543")
+	t.Setenv("DATABASE_USER", "env-user")
+	t.Setenv("DATABASE_PASSWORD", "env-password")
+	t.Setenv("DATABASE_NAME", "env-db-name")
+	t.Setenv("DATABASE_SSLMODE", "require")
 	t.Setenv("DATABASE_MAX_CONNECTIONS", "31")
 	t.Setenv("SERVER_SITE_URL", "https://env.example")
 	t.Setenv("SERVER_API_URL", "https://env.example/api")
@@ -131,7 +153,8 @@ cors:
 	t.Setenv("SERVER_PORT", "8100")
 	t.Setenv("TEXTURES_DIRECTORY", "/env/textures")
 	t.Setenv("CAROUSEL_DIRECTORY", "/env/carousel")
-	t.Setenv("REDIS_ADDR", "127.0.0.1:6380")
+	t.Setenv("REDIS_HOST", "127.0.0.1")
+	t.Setenv("REDIS_PORT", "6380")
 	t.Setenv("REDIS_PASSWORD", "env-redis-password")
 	t.Setenv("REDIS_DB", "3")
 	t.Setenv("REDIS_KEY_PREFIX", "envprefix:")
@@ -154,14 +177,17 @@ cors:
 	if cfg.PrivateKeyPath != filepath.Join(dir, "env-private.pem") || cfg.PublicKeyPath != filepath.Join(dir, "abs", "env-public.pem") {
 		t.Fatalf("key path env should override and resolve exactly, got %#v", cfg)
 	}
-	if cfg.DatabaseDSN != "postgresql://env" {
-		t.Fatalf("DATABASE_DSN env should override file, got %q", cfg.DatabaseDSN)
+	if cfg.DatabaseHost != "env-db" || cfg.DatabasePort != "6543" || cfg.DatabaseUser != "env-user" ||
+		cfg.DatabasePassword != "env-password" || cfg.DatabaseName != "env-db-name" || cfg.DatabaseSSLMode != "require" ||
+		cfg.DatabaseDSN != "postgresql://env-user:env-password@env-db:6543/env-db-name?sslmode=require" {
+		t.Fatalf("database env should override file and derive DSN, got %#v", cfg)
 	}
 	if cfg.MaxConnections != 31 || cfg.SiteURL != "https://env.example" || cfg.APIURL != "https://env.example/api" ||
 		cfg.ServerHost != "0.0.0.0" || cfg.ServerPort != "8100" || cfg.TexturesDir != "/env/textures" || cfg.CarouselDir != "/env/carousel" {
 		t.Fatalf("env should override file/defaults: %#v", cfg)
 	}
-	if cfg.RedisAddr != "127.0.0.1:6380" || cfg.RedisPassword != "env-redis-password" || cfg.RedisDB != 3 || cfg.RedisKeyPrefix != "envprefix:" ||
+	if cfg.RedisHost != "127.0.0.1" || cfg.RedisPort != "6380" || cfg.RedisAddr != "127.0.0.1:6380" ||
+		cfg.RedisPassword != "env-redis-password" || cfg.RedisDB != 3 || cfg.RedisKeyPrefix != "envprefix:" ||
 		cfg.PublicCacheTTL != 220 || cfg.AuthCacheTTL != 25 {
 		t.Fatalf("redis env should override file/defaults: %#v", cfg)
 	}
@@ -180,8 +206,16 @@ cors:
 	assertRawValue(t, persisted, "jwt.secret", "env-secret-abcdefghijklmnopqrstuvwxyz")
 	assertRawValue(t, persisted, "jwt.expire_days", 8)
 	assertRawValue(t, persisted, "keys.private_key", "env-private.pem")
+	assertRawValue(t, persisted, "database.host", "env-db")
+	assertRawValue(t, persisted, "database.port", "6543")
+	assertRawValue(t, persisted, "database.user", "env-user")
+	assertRawValue(t, persisted, "database.password", "env-password")
+	assertRawValue(t, persisted, "database.name", "env-db-name")
+	assertRawValue(t, persisted, "database.sslmode", "require")
 	assertRawValue(t, persisted, "database.max_connections", 31)
 	assertRawValue(t, persisted, "server.port", 8100)
+	assertRawValue(t, persisted, "redis.host", "127.0.0.1")
+	assertRawValue(t, persisted, "redis.port", "6380")
 	assertRawValue(t, persisted, "redis.public_cache_ttl_seconds", 220)
 	assertRawValue(t, persisted, "cors.allow_credentials", true)
 	if got, _ := lookup(persisted, "cors.allow_origins"); !reflect.DeepEqual(got, []any{"https://env.example", "http://localhost:5173"}) {
@@ -215,27 +249,35 @@ func TestLoadMissingFileWithCompleteEnvironmentCreatesExactConfig(t *testing.T) 
 		t.Fatalf("complete environment should create config: %v", err)
 	}
 	want := Config{
-		DatabaseDSN:     "postgresql://env",
-		MaxConnections:  31,
-		JWTSecret:       "env-secret-abcdefghijklmnopqrstuvwxyz",
-		JWTExpireDays:   8,
-		AccessMinutes:   35,
-		SiteURL:         "https://env.example",
-		APIURL:          "https://env.example/api",
-		ServerHost:      "0.0.0.0",
-		ServerPort:      "8100",
-		TexturesDir:     "/env/textures",
-		CarouselDir:     "/env/carousel",
-		RedisAddr:       "127.0.0.1:6380",
-		RedisPassword:   "env-redis-password",
-		RedisDB:         3,
-		RedisKeyPrefix:  "envprefix:",
-		PublicCacheTTL:  220,
-		AuthCacheTTL:    25,
-		PrivateKeyPath:  filepath.Join(dir, "env-private.pem"),
-		PublicKeyPath:   filepath.Join(dir, "abs", "env-public.pem"),
-		CORSOrigins:     []string{"https://env.example", "http://localhost:5173"},
-		CORSCredentials: false,
+		DatabaseDSN:      "postgresql://env-user:env-password@env-db:6543/env-db-name?sslmode=require",
+		DatabaseHost:     "env-db",
+		DatabasePort:     "6543",
+		DatabaseUser:     "env-user",
+		DatabasePassword: "env-password",
+		DatabaseName:     "env-db-name",
+		DatabaseSSLMode:  "require",
+		MaxConnections:   31,
+		JWTSecret:        "env-secret-abcdefghijklmnopqrstuvwxyz",
+		JWTExpireDays:    8,
+		AccessMinutes:    35,
+		SiteURL:          "https://env.example",
+		APIURL:           "https://env.example/api",
+		ServerHost:       "0.0.0.0",
+		ServerPort:       "8100",
+		TexturesDir:      "/env/textures",
+		CarouselDir:      "/env/carousel",
+		RedisAddr:        "127.0.0.1:6380",
+		RedisHost:        "127.0.0.1",
+		RedisPort:        "6380",
+		RedisPassword:    "env-redis-password",
+		RedisDB:          3,
+		RedisKeyPrefix:   "envprefix:",
+		PublicCacheTTL:   220,
+		AuthCacheTTL:     25,
+		PrivateKeyPath:   filepath.Join(dir, "env-private.pem"),
+		PublicKeyPath:    filepath.Join(dir, "abs", "env-public.pem"),
+		CORSOrigins:      []string{"https://env.example", "http://localhost:5173"},
+		CORSCredentials:  false,
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("generated config mismatch:\n got: %#v\nwant: %#v", cfg, want)
@@ -251,9 +293,16 @@ func TestLoadMissingFileWithCompleteEnvironmentCreatesExactConfig(t *testing.T) 
 	assertRawValue(t, persisted, "jwt.secret", "env-secret-abcdefghijklmnopqrstuvwxyz")
 	assertRawValue(t, persisted, "jwt.expire_days", 8)
 	assertRawValue(t, persisted, "jwt.access_expire_minutes", 35)
-	assertRawValue(t, persisted, "database.dsn", "postgresql://env")
+	assertRawValue(t, persisted, "database.host", "env-db")
+	assertRawValue(t, persisted, "database.port", "6543")
+	assertRawValue(t, persisted, "database.user", "env-user")
+	assertRawValue(t, persisted, "database.password", "env-password")
+	assertRawValue(t, persisted, "database.name", "env-db-name")
+	assertRawValue(t, persisted, "database.sslmode", "require")
 	assertRawValue(t, persisted, "database.max_connections", 31)
 	assertRawValue(t, persisted, "server.port", 8100)
+	assertRawValue(t, persisted, "redis.host", "127.0.0.1")
+	assertRawValue(t, persisted, "redis.port", "6380")
 	assertRawValue(t, persisted, "redis.password", "env-redis-password")
 	assertRawValue(t, persisted, "cors.allow_credentials", false)
 	if got, _ := lookup(persisted, "cors.allow_origins"); !reflect.DeepEqual(got, []any{"https://env.example", "http://localhost:5173"}) {
@@ -290,7 +339,12 @@ keys:
   private_key: "private.pem"
   public_key: "public.pem"
 database:
-  dsn: "postgresql://file"
+  host: "localhost"
+  port: "5432"
+  user: "file-user"
+  password: "file-password"
+  name: "file-db"
+  sslmode: "disable"
   max_connections: 0
 server:
   site_url: "https://file.example"
@@ -302,7 +356,9 @@ textures:
 carousel:
   directory: "/file/carousel"
 redis:
-  addr: "redis:6379"
+  host: "redis"
+  port: "6379"
+  password: "file-redis-password"
   db: 0
   key_prefix: "file:"
   public_cache_ttl_seconds: 60
@@ -388,6 +444,14 @@ func TestConfigLookupAndIntegerCoercionExactValues(t *testing.T) {
 	}
 }
 
+func TestPostgresDSNEscapesStructuredFieldsExactly(t *testing.T) {
+	got := postgresDSN("db.internal", "5432", "skin user", "p@ss/word", "skin db", "require")
+	want := "postgresql://skin%20user:p%40ss%2Fword@db.internal:5432/skin%20db?sslmode=require"
+	if got != want {
+		t.Fatalf("postgresDSN()=%q; want %q", got, want)
+	}
+}
+
 func TestLoadWithoutEnvironmentDoesNotRewriteExistingFile(t *testing.T) {
 	clearConfigEnv(t)
 	path := filepath.Join(t.TempDir(), "config.yaml")
@@ -425,7 +489,12 @@ keys:
   private_key: "private.pem"
   public_key: "public.pem"
 database:
-  dsn: "postgresql://file"
+  host: "localhost"
+  port: "5432"
+  user: "file-user"
+  password: "file-password"
+  name: "file-db"
+  sslmode: "disable"
   max_connections: 10
 server:
   site_url: "https://file.example"
@@ -437,7 +506,9 @@ textures:
 carousel:
   directory: "/file/carousel"
 redis:
-  addr: "redis:6379"
+  host: "redis"
+  port: "6379"
+  password: "file-redis-password"
   db: 0
   key_prefix: "file:"
   public_cache_ttl_seconds: 60
@@ -456,7 +527,12 @@ func setCompleteConfigEnv(t *testing.T) {
 	t.Setenv("JWT_ACCESS_EXPIRE_MINUTES", "35")
 	t.Setenv("KEYS_PRIVATE_KEY", "env-private.pem")
 	t.Setenv("KEYS_PUBLIC_KEY", "/abs/env-public.pem")
-	t.Setenv("DATABASE_DSN", "postgresql://env")
+	t.Setenv("DATABASE_HOST", "env-db")
+	t.Setenv("DATABASE_PORT", "6543")
+	t.Setenv("DATABASE_USER", "env-user")
+	t.Setenv("DATABASE_PASSWORD", "env-password")
+	t.Setenv("DATABASE_NAME", "env-db-name")
+	t.Setenv("DATABASE_SSLMODE", "require")
 	t.Setenv("DATABASE_MAX_CONNECTIONS", "31")
 	t.Setenv("SERVER_SITE_URL", "https://env.example")
 	t.Setenv("SERVER_API_URL", "https://env.example/api")
@@ -464,7 +540,8 @@ func setCompleteConfigEnv(t *testing.T) {
 	t.Setenv("SERVER_PORT", "8100")
 	t.Setenv("TEXTURES_DIRECTORY", "/env/textures")
 	t.Setenv("CAROUSEL_DIRECTORY", "/env/carousel")
-	t.Setenv("REDIS_ADDR", "127.0.0.1:6380")
+	t.Setenv("REDIS_HOST", "127.0.0.1")
+	t.Setenv("REDIS_PORT", "6380")
 	t.Setenv("REDIS_PASSWORD", "env-redis-password")
 	t.Setenv("REDIS_DB", "3")
 	t.Setenv("REDIS_KEY_PREFIX", "envprefix:")
@@ -477,7 +554,12 @@ func setCompleteConfigEnv(t *testing.T) {
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"DATABASE_DSN",
+		"DATABASE_HOST",
+		"DATABASE_PORT",
+		"DATABASE_USER",
+		"DATABASE_PASSWORD",
+		"DATABASE_NAME",
+		"DATABASE_SSLMODE",
 		"DATABASE_MAX_CONNECTIONS",
 		"JWT_SECRET",
 		"JWT_EXPIRE_DAYS",
@@ -490,7 +572,8 @@ func clearConfigEnv(t *testing.T) {
 		"SERVER_PORT",
 		"TEXTURES_DIRECTORY",
 		"CAROUSEL_DIRECTORY",
-		"REDIS_ADDR",
+		"REDIS_HOST",
+		"REDIS_PORT",
 		"REDIS_PASSWORD",
 		"REDIS_DB",
 		"REDIS_KEY_PREFIX",

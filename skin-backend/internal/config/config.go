@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,27 +14,35 @@ import (
 )
 
 type Config struct {
-	DatabaseDSN     string
-	MaxConnections  int32
-	JWTSecret       string
-	JWTExpireDays   int
-	AccessMinutes   int
-	SiteURL         string
-	APIURL          string
-	ServerHost      string
-	ServerPort      string
-	TexturesDir     string
-	CarouselDir     string
-	RedisAddr       string
-	RedisPassword   string
-	RedisDB         int
-	RedisKeyPrefix  string
-	PublicCacheTTL  int
-	AuthCacheTTL    int
-	PrivateKeyPath  string
-	PublicKeyPath   string
-	CORSOrigins     []string
-	CORSCredentials bool
+	DatabaseDSN      string
+	DatabaseHost     string
+	DatabasePort     string
+	DatabaseUser     string
+	DatabasePassword string
+	DatabaseName     string
+	DatabaseSSLMode  string
+	MaxConnections   int32
+	JWTSecret        string
+	JWTExpireDays    int
+	AccessMinutes    int
+	SiteURL          string
+	APIURL           string
+	ServerHost       string
+	ServerPort       string
+	TexturesDir      string
+	CarouselDir      string
+	RedisAddr        string
+	RedisHost        string
+	RedisPort        string
+	RedisPassword    string
+	RedisDB          int
+	RedisKeyPrefix   string
+	PublicCacheTTL   int
+	AuthCacheTTL     int
+	PrivateKeyPath   string
+	PublicKeyPath    string
+	CORSOrigins      []string
+	CORSCredentials  bool
 }
 
 type rawConfig = map[string]any
@@ -58,6 +68,7 @@ func Load(path string) (Config, error) {
 	if envChanged {
 		writeConfig = true
 	}
+	cfg.deriveConnectionStrings()
 	if err := validateRequiredConfig(cfg, raw); err != nil {
 		return Config{}, err
 	}
@@ -71,33 +82,46 @@ func Load(path string) (Config, error) {
 }
 
 func Defaults() Config {
-	return Config{
-		DatabaseDSN:     "postgresql://elementskin:password@localhost:5432/elementskin",
-		MaxConnections:  10,
-		JWTSecret:       "dev-secret-please-change-to-a-very-long-string-in-production",
-		JWTExpireDays:   7,
-		AccessMinutes:   30,
-		SiteURL:         "http://localhost",
-		APIURL:          "",
-		ServerHost:      "0.0.0.0",
-		ServerPort:      "8000",
-		TexturesDir:     "textures",
-		CarouselDir:     "carousel",
-		RedisAddr:       "127.0.0.1:6379",
-		RedisPassword:   "",
-		RedisDB:         0,
-		RedisKeyPrefix:  "elementskin:",
-		PublicCacheTTL:  60,
-		AuthCacheTTL:    30,
-		PrivateKeyPath:  "private.pem",
-		PublicKeyPath:   "public.pem",
-		CORSOrigins:     []string{"*"},
-		CORSCredentials: true,
+	cfg := Config{
+		DatabaseHost:     "localhost",
+		DatabasePort:     "5432",
+		DatabaseUser:     "elementskin",
+		DatabasePassword: "password",
+		DatabaseName:     "elementskin",
+		DatabaseSSLMode:  "disable",
+		MaxConnections:   10,
+		JWTSecret:        "dev-secret-please-change-to-a-very-long-string-in-production",
+		JWTExpireDays:    7,
+		AccessMinutes:    30,
+		SiteURL:          "http://localhost",
+		APIURL:           "",
+		ServerHost:       "0.0.0.0",
+		ServerPort:       "8000",
+		TexturesDir:      "textures",
+		CarouselDir:      "carousel",
+		RedisHost:        "127.0.0.1",
+		RedisPort:        "6379",
+		RedisPassword:    "",
+		RedisDB:          0,
+		RedisKeyPrefix:   "elementskin:",
+		PublicCacheTTL:   60,
+		AuthCacheTTL:     30,
+		PrivateKeyPath:   "private.pem",
+		PublicKeyPath:    "public.pem",
+		CORSOrigins:      []string{"*"},
+		CORSCredentials:  true,
 	}
+	cfg.deriveConnectionStrings()
+	return cfg
 }
 
 func (c *Config) apply(raw rawConfig) {
-	c.DatabaseDSN = getString(raw, "database.dsn", c.DatabaseDSN)
+	c.DatabaseHost = getString(raw, "database.host", c.DatabaseHost)
+	c.DatabasePort = getString(raw, "database.port", c.DatabasePort)
+	c.DatabaseUser = getString(raw, "database.user", c.DatabaseUser)
+	c.DatabasePassword = getString(raw, "database.password", c.DatabasePassword)
+	c.DatabaseName = getString(raw, "database.name", c.DatabaseName)
+	c.DatabaseSSLMode = getString(raw, "database.sslmode", c.DatabaseSSLMode)
 	if n := getInt(raw, "database.max_connections", int(c.MaxConnections)); n > 0 {
 		c.MaxConnections = int32(n)
 	}
@@ -112,7 +136,8 @@ func (c *Config) apply(raw rawConfig) {
 	}
 	c.TexturesDir = getString(raw, "textures.directory", c.TexturesDir)
 	c.CarouselDir = getString(raw, "carousel.directory", c.CarouselDir)
-	c.RedisAddr = getString(raw, "redis.addr", c.RedisAddr)
+	c.RedisHost = getString(raw, "redis.host", c.RedisHost)
+	c.RedisPort = getString(raw, "redis.port", c.RedisPort)
 	c.RedisPassword = getString(raw, "redis.password", c.RedisPassword)
 	if n := getInt(raw, "redis.db", c.RedisDB); n >= 0 {
 		c.RedisDB = n
@@ -148,7 +173,16 @@ func applyEnvOverrides(cfg *Config, raw rawConfig) (bool, error) {
 		func() (bool, error) {
 			return applyStringEnv(raw, "KEYS_PUBLIC_KEY", "keys.public_key", &cfg.PublicKeyPath)
 		},
-		func() (bool, error) { return applyStringEnv(raw, "DATABASE_DSN", "database.dsn", &cfg.DatabaseDSN) },
+		func() (bool, error) { return applyStringEnv(raw, "DATABASE_HOST", "database.host", &cfg.DatabaseHost) },
+		func() (bool, error) { return applyStringEnv(raw, "DATABASE_PORT", "database.port", &cfg.DatabasePort) },
+		func() (bool, error) { return applyStringEnv(raw, "DATABASE_USER", "database.user", &cfg.DatabaseUser) },
+		func() (bool, error) {
+			return applyStringEnv(raw, "DATABASE_PASSWORD", "database.password", &cfg.DatabasePassword)
+		},
+		func() (bool, error) { return applyStringEnv(raw, "DATABASE_NAME", "database.name", &cfg.DatabaseName) },
+		func() (bool, error) {
+			return applyStringEnv(raw, "DATABASE_SSLMODE", "database.sslmode", &cfg.DatabaseSSLMode)
+		},
 		func() (bool, error) {
 			return applyInt32Env(raw, "DATABASE_MAX_CONNECTIONS", "database.max_connections", &cfg.MaxConnections, positiveInt)
 		},
@@ -162,7 +196,8 @@ func applyEnvOverrides(cfg *Config, raw rawConfig) (bool, error) {
 		func() (bool, error) {
 			return applyStringEnv(raw, "CAROUSEL_DIRECTORY", "carousel.directory", &cfg.CarouselDir)
 		},
-		func() (bool, error) { return applyStringEnv(raw, "REDIS_ADDR", "redis.addr", &cfg.RedisAddr) },
+		func() (bool, error) { return applyStringEnv(raw, "REDIS_HOST", "redis.host", &cfg.RedisHost) },
+		func() (bool, error) { return applyStringEnv(raw, "REDIS_PORT", "redis.port", &cfg.RedisPort) },
 		func() (bool, error) {
 			return applyStringEnv(raw, "REDIS_PASSWORD", "redis.password", &cfg.RedisPassword)
 		},
@@ -194,7 +229,12 @@ func applyEnvOverrides(cfg *Config, raw rawConfig) (bool, error) {
 
 func validateRequiredConfig(cfg Config, raw rawConfig) error {
 	required := []string{
-		"database.dsn",
+		"database.host",
+		"database.port",
+		"database.user",
+		"database.password",
+		"database.name",
+		"database.sslmode",
 		"database.max_connections",
 		"jwt.secret",
 		"jwt.expire_days",
@@ -205,7 +245,9 @@ func validateRequiredConfig(cfg Config, raw rawConfig) error {
 		"server.port",
 		"textures.directory",
 		"carousel.directory",
-		"redis.addr",
+		"redis.host",
+		"redis.port",
+		"redis.password",
 		"redis.db",
 		"redis.key_prefix",
 		"redis.public_cache_ttl_seconds",
@@ -228,7 +270,11 @@ func validateRequiredConfig(cfg Config, raw rawConfig) error {
 		field string
 		ok    bool
 	}{
-		{field: "database.dsn", ok: cfg.DatabaseDSN != ""},
+		{field: "database.host", ok: cfg.DatabaseHost != ""},
+		{field: "database.port", ok: atoiDefault(cfg.DatabasePort, 0) > 0},
+		{field: "database.user", ok: cfg.DatabaseUser != ""},
+		{field: "database.name", ok: cfg.DatabaseName != ""},
+		{field: "database.sslmode", ok: cfg.DatabaseSSLMode != ""},
 		{field: "database.max_connections", ok: cfg.MaxConnections > 0},
 		{field: "jwt.secret", ok: cfg.JWTSecret != ""},
 		{field: "jwt.expire_days", ok: cfg.JWTExpireDays > 0},
@@ -239,7 +285,8 @@ func validateRequiredConfig(cfg Config, raw rawConfig) error {
 		{field: "server.port", ok: atoiDefault(cfg.ServerPort, 0) > 0},
 		{field: "textures.directory", ok: cfg.TexturesDir != ""},
 		{field: "carousel.directory", ok: cfg.CarouselDir != ""},
-		{field: "redis.addr", ok: cfg.RedisAddr != ""},
+		{field: "redis.host", ok: cfg.RedisHost != ""},
+		{field: "redis.port", ok: atoiDefault(cfg.RedisPort, 0) > 0},
 		{field: "redis.db", ok: cfg.RedisDB >= 0},
 		{field: "redis.key_prefix", ok: cfg.RedisKeyPrefix != ""},
 		{field: "redis.public_cache_ttl_seconds", ok: cfg.PublicCacheTTL > 0},
@@ -253,6 +300,31 @@ func validateRequiredConfig(cfg Config, raw rawConfig) error {
 		}
 	}
 	return nil
+}
+
+func (c *Config) deriveConnectionStrings() {
+	if c.DatabaseHost != "" && c.DatabasePort != "" && c.DatabaseUser != "" && c.DatabaseName != "" && c.DatabaseSSLMode != "" {
+		c.DatabaseDSN = postgresDSN(c.DatabaseHost, c.DatabasePort, c.DatabaseUser, c.DatabasePassword, c.DatabaseName, c.DatabaseSSLMode)
+	}
+	if c.RedisHost != "" && c.RedisPort != "" {
+		c.RedisAddr = net.JoinHostPort(c.RedisHost, c.RedisPort)
+	}
+}
+
+func postgresDSN(host, port, user, password, name, sslMode string) string {
+	dsn := url.URL{
+		Scheme: "postgresql",
+		User:   url.UserPassword(user, password),
+		Host:   net.JoinHostPort(host, port),
+		Path:   name,
+	}
+	if password == "" {
+		dsn.User = url.User(user)
+	}
+	query := dsn.Query()
+	query.Set("sslmode", sslMode)
+	dsn.RawQuery = query.Encode()
+	return dsn.String()
 }
 
 func applyStringEnv(raw rawConfig, envName, dotted string, target *string) (bool, error) {
