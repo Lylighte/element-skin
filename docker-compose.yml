@@ -63,7 +63,6 @@ services:
       SERVER_API_URL: ${SERVER_API_URL:?SERVER_API_URL is required}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:?CORS_ALLOW_ORIGINS is required}
       CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:?CORS_ALLOW_CREDENTIALS is required}
-    args: []
     depends_on:
       db:
         condition: service_healthy
