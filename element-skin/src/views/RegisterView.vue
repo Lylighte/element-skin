@@ -72,10 +72,10 @@
           />
         </el-form-item>
 
-        <el-form-item label="邀请码 (若需要)" prop="invite">
+        <el-form-item v-if="requireInvite" label="邀请码" prop="invite">
           <el-input
             v-model="form.invite"
-            placeholder="如果需要邀请码，请在此输入"
+            placeholder="请输入邀请码"
             :prefix-icon="Ticket"
             @keyup.enter="register"
           />
@@ -120,6 +120,7 @@ const form = reactive({
 })
 
 const emailVerifyEnabled = ref(false)
+const requireInvite = ref(false)
 const codeLoading = ref(false)
 const countdown = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -140,6 +141,18 @@ const rules: FormRules = {
     { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' },
   ],
   code: [{ required: true, message: '请输入验证码' }],
+  invite: [
+    {
+      validator: (_rule, value, callback) => {
+        if (requireInvite.value && !String(value || '').trim()) {
+          callback(new Error('请输入邀请码'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur',
+    },
+  ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码至少需要6个字符', trigger: 'blur' },
@@ -163,6 +176,11 @@ onMounted(async () => {
   try {
     const res = await getPublicSettings()
     emailVerifyEnabled.value = res.data.email_verify_enabled ?? false
+    requireInvite.value = res.data.require_invite ?? false
+    if (!requireInvite.value) {
+      form.invite = ''
+      formRef.value?.clearValidate('invite')
+    }
   } catch (e) {
     console.error('Failed to fetch settings', e)
   }
@@ -205,13 +223,12 @@ async function register() {
     await formRef.value.validate()
     loading.value = true
 
-    // 在发送前trim邀请码
     const payload = {
       username: form.username,
       email: form.email,
       password: form.password,
-      invite: form.invite ? form.invite.trim() : '',
       code: form.code,
+      ...(requireInvite.value ? { invite: form.invite.trim() } : {}),
     }
 
     await apiRegister(payload)

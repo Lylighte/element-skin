@@ -58,6 +58,7 @@ export interface SiteSettings {
   site_url?: string
   api_url?: string
   allow_register?: boolean
+  require_invite?: boolean
   enable_skin_library?: boolean
   email_verify_enabled?: boolean
   footer_text?: string
