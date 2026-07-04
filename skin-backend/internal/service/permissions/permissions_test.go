@@ -13,6 +13,7 @@ import (
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	noticesvc "element-skin/backend/internal/service/notice"
 	permissionssvc "element-skin/backend/internal/service/permissions"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
@@ -230,6 +231,46 @@ func TestPermissionServiceSetOverrideReconcilesOAuthDependentsExactly(t *testing
 	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("auth cache should still be invalidated exactly, got %v", err)
 	}
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notices := page["items"].([]model.NoticeView)
+	if page["page_size"] != 3 || page["has_next"] != false || len(notices) != 3 {
+		t.Fatalf("permission denial notice page mismatch: page=%#v items=%#v", page, notices)
+	}
+	overrideNotice := permissionNoticeByTitle(t, notices, "权限已更新：单项权限已调整")
+	wantOverrideContent := "你的单项权限已被调整。\n\n权限：`profile.update.owned`\n\n说明：修改自己的角色\n\n结果：拒绝"
+	if overrideNotice.Summary != "你的单项权限已被管理员调整，详情请查看通知。" ||
+		overrideNotice.ContentMarkdown != wantOverrideContent ||
+		overrideNotice.Type != noticesvc.TypeSystem || overrideNotice.Audience != noticesvc.AudienceTargeted ||
+		overrideNotice.Level != noticesvc.LevelInfo || overrideNotice.CreatedBy != nil {
+		t.Fatalf("permission override notice mismatch: %#v", overrideNotice)
+	}
+	grantDependencyNotice := permissionNoticeByTitle(t, notices, "第三方应用授权已自动撤销")
+	wantGrantDependencyContent := "你的站点权限发生变化，以下第三方应用授权已自动撤销：\n\n" +
+		"- Permission reconcile client（`permission-reconcile-client`）\n\n" +
+		"这些授权包含你当前已不再拥有的权限，后续访问会失败。需要继续使用时，请在权限恢复后重新授权。"
+	if grantDependencyNotice.Summary != "你的权限发生变化，1 个第三方应用授权已自动撤销。" ||
+		grantDependencyNotice.ContentMarkdown != wantGrantDependencyContent ||
+		grantDependencyNotice.Level != noticesvc.LevelWarning ||
+		grantDependencyNotice.LinkText != "查看授权" || grantDependencyNotice.LinkURL != "/dashboard/oauth" ||
+		strings.Contains(grantDependencyNotice.ContentMarkdown, unaffectedClient.ID) ||
+		grantDependencyNotice.CreatedBy != nil {
+		t.Fatalf("oauth grant dependency notice mismatch: %#v", grantDependencyNotice)
+	}
+	clientDependencyNotice := permissionNoticeByTitle(t, notices, "第三方应用已自动停用")
+	wantClientDependencyContent := "你的站点权限发生变化，以下第三方应用已自动停用：\n\n" +
+		"- Permission reconcile client（`permission-reconcile-client`）\n\n" +
+		"这些应用申请了你当前已不再拥有的权限。请调整应用权限后重新提交审核。"
+	if clientDependencyNotice.Summary != "你的权限发生变化，1 个你创建的第三方应用已自动停用。" ||
+		clientDependencyNotice.ContentMarkdown != wantClientDependencyContent ||
+		clientDependencyNotice.Level != noticesvc.LevelWarning ||
+		clientDependencyNotice.LinkText != "查看应用" || clientDependencyNotice.LinkURL != "/dashboard/oauth" ||
+		strings.Contains(clientDependencyNotice.ContentMarkdown, unaffectedClient.ID) ||
+		clientDependencyNotice.CreatedBy != nil {
+		t.Fatalf("oauth client dependency notice mismatch: %#v", clientDependencyNotice)
+	}
 }
 
 func TestPermissionServiceRejectsUnauthorizedAndInvalidOverridePathsExactly(t *testing.T) {
@@ -442,6 +483,17 @@ func oauthGrantByID(grants []model.OAuthGrant, id string) *model.OAuthGrant {
 		}
 	}
 	return nil
+}
+
+func permissionNoticeByTitle(t testing.TB, notices []model.NoticeView, title string) model.NoticeView {
+	t.Helper()
+	for _, notice := range notices {
+		if notice.Title == title {
+			return notice
+		}
+	}
+	t.Fatalf("missing notice title %q in %#v", title, notices)
+	return model.NoticeView{}
 }
 
 func permissionTestIDs(codes ...string) []int64 {
