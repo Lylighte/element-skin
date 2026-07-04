@@ -11,15 +11,20 @@ import (
 )
 
 type Handler struct {
-	cfg      config.Config
-	db       *database.DB
-	settings settingssvc.Settings
-	auth     shared.AuthFunc
-	states   redisstore.Store
+	cfg        config.Config
+	db         *database.DB
+	settings   settingssvc.Settings
+	auth       shared.AuthFunc
+	states     redisstore.Store
+	httpClient *http.Client
 }
 
 func New(cfg config.Config, db *database.DB, settings settingssvc.Settings, auth shared.AuthFunc, states redisstore.Store) Handler {
 	return Handler{cfg: cfg, db: db, settings: settings, auth: auth, states: states}
+}
+
+func NewWithHTTPClient(cfg config.Config, db *database.DB, settings settingssvc.Settings, auth shared.AuthFunc, states redisstore.Store, client *http.Client) Handler {
+	return Handler{cfg: cfg, db: db, settings: settings, auth: auth, states: states, httpClient: client}
 }
 
 func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {

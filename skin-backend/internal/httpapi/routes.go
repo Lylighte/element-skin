@@ -19,7 +19,7 @@ func (r *Router) routes() {
 	noticeRoutes := notice.New(r.db, r.auth)
 	oauthRoutes := oauth.New(r.cfg, r.db, r.redis, r.auth)
 	minecraftRoutes := minecraft.New(r.db, r.auth, r.ygg)
-	remoteRoutes := remote.New(r.db, r.auth)
+	remoteRoutes := remote.New(r.cfg, r.db, r.auth)
 	adminRoutes := admin.NewWithRedis(r.cfg, r.db, r.redis, r.auth)
 
 	r.handle("GET /", yggRoutes.Metadata)

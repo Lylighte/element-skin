@@ -1,12 +1,18 @@
 package imports_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -129,12 +135,23 @@ func TestRemoteYggImportProfileFetchesTexturesAndPersistsExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 	user := testutil.CreateUser(t, db, "remote-ygg-import@test.com", "Password123", "RemoteYggImport", false)
-	texturePayload := remoteYggTexturesValue(t, `{"textures":{"SKIN":{"url":"https://textures.example/import-skin.png","metadata":{"model":"slim"}},"CAPE":{"url":"https://textures.example/import-cape.png"}}}`)
-	service := imports.RemoteYggService{DB: db, HTTPClient: remoteYggServiceClient(t, func(req *http.Request) *http.Response {
-		if req.Method != http.MethodGet || req.URL.String() != "https://93.184.216.34/api/sessionserver/session/minecraft/profile/0123456789abcdef0123456789abcdef" {
-			t.Fatalf("import profile request mismatch: method=%s url=%s", req.Method, req.URL.String())
+	texturesDir := t.TempDir()
+	texturePayload := remoteYggTexturesValue(t, `{"textures":{"SKIN":{"url":"https://93.184.216.34/import-skin.png","metadata":{"model":"slim"}},"CAPE":{"url":"https://93.184.216.34/import-cape.png"}}}`)
+	service := imports.RemoteYggService{DB: db, TexturesDir: texturesDir, HTTPClient: remoteYggServiceClient(t, func(req *http.Request) *http.Response {
+		switch req.URL.Path {
+		case "/api/sessionserver/session/minecraft/profile/0123456789abcdef0123456789abcdef":
+			if req.Method != http.MethodGet {
+				t.Fatalf("import profile request method=%s want GET", req.Method)
+			}
+			return remoteYggJSONResponse(200, `{"id":"0123456789abcdef0123456789abcdef","name":"RemoteImport","properties":[{"name":"textures","value":"`+texturePayload+`"}]}`)
+		case "/import-skin.png":
+			return remoteYggPNGResponse(t, 64, 64, color.RGBA{R: 30, G: 160, B: 220, A: 255})
+		case "/import-cape.png":
+			return remoteYggPNGResponse(t, 64, 32, color.RGBA{R: 220, G: 160, B: 30, A: 255})
+		default:
+			t.Fatalf("unexpected import request: method=%s url=%s", req.Method, req.URL.String())
+			return remoteYggJSONResponse(http.StatusNotFound, `{}`)
 		}
-		return remoteYggJSONResponse(200, `{"id":"0123456789abcdef0123456789abcdef","name":"RemoteImport","properties":[{"name":"textures","value":"`+texturePayload+`"}]}`)
 	})}
 
 	result, err := service.ImportProfile(ctx, remoteYggUserActor(user.ID), "https://93.184.216.34/api/", "0123456789abcdef0123456789abcdef", "RemoteImport")
@@ -142,24 +159,23 @@ func TestRemoteYggImportProfileFetchesTexturesAndPersistsExactly(t *testing.T) {
 		t.Fatalf("ImportProfile returned error: %v", err)
 	}
 	profile := result["profile"].(map[string]any)
-	wantSkinHash := util.HashRefreshToken("https://textures.example/import-skin.png:skin")
-	wantCapeHash := util.HashRefreshToken("https://textures.example/import-cape.png:cape")
 	if result["ok"] != true ||
 		profile["id"] != "0123456789abcdef0123456789abcdef" ||
 		profile["name"] != "RemoteImport" ||
 		profile["model"] != "slim" ||
 		profile["skin_hash"] == nil ||
-		*(profile["skin_hash"].(*string)) != wantSkinHash ||
-		profile["cape_hash"] == nil ||
-		*(profile["cape_hash"].(*string)) != wantCapeHash {
+		profile["cape_hash"] == nil {
 		t.Fatalf("import result mismatch: %#v", result)
 	}
 	stored, err := db.Profiles.GetByID(ctx, "0123456789abcdef0123456789abcdef")
 	if err != nil || stored == nil || stored.UserID != user.ID || stored.Name != "RemoteImport" ||
-		stored.TextureModel != "slim" || stored.SkinHash == nil || *stored.SkinHash != wantSkinHash ||
-		stored.CapeHash == nil || *stored.CapeHash != wantCapeHash {
+		stored.TextureModel != "slim" || stored.SkinHash == nil || stored.CapeHash == nil ||
+		*stored.SkinHash != *(profile["skin_hash"].(*string)) ||
+		*stored.CapeHash != *(profile["cape_hash"].(*string)) {
 		t.Fatalf("stored remote ygg profile mismatch: profile=%#v err=%v", stored, err)
 	}
+	assertRemoteYggTextureFileExists(t, texturesDir, stored.SkinHash)
+	assertRemoteYggTextureFileExists(t, texturesDir, stored.CapeHash)
 }
 
 func TestRemoteYggImportProfilesReportsPartialFailuresExactly(t *testing.T) {
@@ -167,12 +183,16 @@ func TestRemoteYggImportProfilesReportsPartialFailuresExactly(t *testing.T) {
 	ctx := context.Background()
 	user := testutil.CreateUser(t, db, "remote-ygg-batch@test.com", "Password123", "RemoteYggBatch", false)
 	requests := map[string]int{}
-	service := imports.RemoteYggService{DB: db, HTTPClient: remoteYggServiceClient(t, func(req *http.Request) *http.Response {
+	texturesDir := t.TempDir()
+	service := imports.RemoteYggService{DB: db, TexturesDir: texturesDir, HTTPClient: remoteYggServiceClient(t, func(req *http.Request) *http.Response {
+		if req.URL.Path == "/batch-skin.png" {
+			return remoteYggPNGResponse(t, 64, 64, color.RGBA{R: 90, G: 40, B: 180, A: 255})
+		}
 		id := strings.TrimPrefix(req.URL.Path, "/api/sessionserver/session/minecraft/profile/")
 		requests[id]++
 		switch id {
 		case "remote_batch_ok":
-			texturePayload := remoteYggTexturesValue(t, `{"textures":{"SKIN":{"url":"https://textures.example/batch-skin.png"}}}`)
+			texturePayload := remoteYggTexturesValue(t, `{"textures":{"SKIN":{"url":"https://93.184.216.34/batch-skin.png"}}}`)
 			return remoteYggJSONResponse(200, `{"id":"remote_batch_ok","properties":[{"name":"textures","value":"`+texturePayload+`"}]}`)
 		case "remote_batch_bad_name":
 			return remoteYggJSONResponse(200, `{"id":"remote_batch_bad_name","properties":[]}`)
@@ -213,6 +233,8 @@ func TestRemoteYggImportProfilesReportsPartialFailuresExactly(t *testing.T) {
 	}
 	if stored, err := db.Profiles.GetByID(ctx, "remote_batch_ok"); err != nil || stored == nil || stored.Name != "RemoteBatchOk" {
 		t.Fatalf("successful batch profile mismatch: profile=%#v err=%v", stored, err)
+	} else {
+		assertRemoteYggTextureFileExists(t, texturesDir, stored.SkinHash)
 	}
 	for _, id := range []string{"remote_batch_fail", "remote_batch_bad_name"} {
 		if stored, err := db.Profiles.GetByID(ctx, id); err != nil || stored != nil {
@@ -322,6 +344,36 @@ func remoteYggJSONResponse(status int, body string) *http.Response {
 		StatusCode: status,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func remoteYggPNGResponse(t *testing.T, width, height int, c color.RGBA) *http.Response {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetRGBA(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode remote ygg png: %v", err)
+	}
+	return &http.Response{
+		StatusCode:    http.StatusOK,
+		Header:        http.Header{"Content-Type": []string{"image/png"}},
+		ContentLength: int64(buf.Len()),
+		Body:          io.NopCloser(bytes.NewReader(buf.Bytes())),
+	}
+}
+
+func assertRemoteYggTextureFileExists(t *testing.T, dir string, hash *string) {
+	t.Helper()
+	if hash == nil {
+		t.Fatal("texture hash should not be nil")
+	}
+	if _, err := os.Stat(filepath.Join(dir, *hash+".png")); err != nil {
+		t.Fatalf("imported remote ygg texture file missing for hash %s: %v", *hash, err)
 	}
 }
 

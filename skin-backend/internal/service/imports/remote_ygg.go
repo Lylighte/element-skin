@@ -18,8 +18,9 @@ import (
 )
 
 type RemoteYggService struct {
-	DB         *database.DB
-	HTTPClient *http.Client
+	DB          *database.DB
+	TexturesDir string
+	HTTPClient  *http.Client
 }
 
 type RemoteYggProfile struct {
@@ -68,11 +69,11 @@ func (s RemoteYggService) ImportProfile(ctx context.Context, actor permission.Ac
 	if err != nil {
 		return nil, err
 	}
-	return (ImportService{DB: s.DB}).ImportProfile(ctx, actor, profileID, profileName, assets)
+	return (ImportService{DB: s.DB, TexturesDir: s.TexturesDir, HTTPClient: s.HTTPClient}).ImportProfile(ctx, actor, profileID, profileName, assets)
 }
 
 func (s RemoteYggService) ImportProfiles(ctx context.Context, actor permission.Actor, apiURL string, profiles []map[string]string) map[string]any {
-	importer := ImportService{DB: s.DB}
+	importer := ImportService{DB: s.DB, TexturesDir: s.TexturesDir, HTTPClient: s.HTTPClient}
 	return importer.ImportProfiles(ctx, actor, profiles, func(ctx context.Context, id string) ([]TextureAsset, error) {
 		apiURL = strings.TrimSpace(apiURL)
 		if apiURL == "" {
