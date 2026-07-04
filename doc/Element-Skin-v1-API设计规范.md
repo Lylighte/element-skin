@@ -3019,6 +3019,18 @@ oauth_grant.revoke.owned
 
 撤销授权不会立即物理删除 grant。服务端将授权标记为 `revoked` 并写入 `revoked_at`，已签发 token 在后续校验中必须失效。已撤销授权保留 30 天，前端应向用户显示 30 天后自动清除；系统维护任务到期后删除 grant 及其授权码、refresh token、权限关联记录。
 
+### 27.2.1 OAuth 授权与应用生命周期
+
+OAuth 授权和应用状态不是永久事实。以下业务事件必须触发服务端同步校正：
+
+- 用户权限覆盖项变更后，如果授权用户不再拥有某个已授权权限，服务端将对应 active grant 标记为 `revoked` 并写入 `revoked_at`。
+- 用户角色变更后，如果授权用户不再拥有某个已授权权限，服务端同样撤销对应 grant。
+- 应用创建者权限覆盖项或角色变更后，如果应用申请的非 `server` 权限不再是创建者当前有效权限的子集，服务端将该应用状态改为 `disabled`。
+- 仍然满足权限条件的 grant 和应用必须保持原状态，不得因为同一用户的其他 grant 或应用失效而被误伤。
+- 管理员删除用户或用户自助注销时，服务端必须清理该用户授予的 OAuth grant、该用户尚未消费的设备码、该用户提交的 OAuth 应用，以及这些应用对应的 `client:{client_id}` 权限主体。
+
+上述自动撤销和停用会使后续 bearer token 校验、refresh token 轮换、authorization code 交换或 Client Credentials 换 token 失败。第三方应用必须按 OAuth 错误和站点 API 错误处理重新授权、重新提交审核或提示用户联系站点管理员。
+
 ### 27.3 OAuth 协议请求
 
 ```http
@@ -3153,6 +3165,7 @@ scope=minecraft_session.hasjoined.server
 
 - 仅 confidential client 可使用。
 - token 权限来自 `client:{client_id}` 权限主体。
+- 请求 `scope` 必须是应用主体有效权限的子集，只能包含 `public`、`server` 或经审核可用于 app-only 的 `any` 权限。
 - access token 写入 Redis，使用短 TTL；不写入 PostgreSQL。
 - 不签发 refresh token。
 

@@ -36,18 +36,34 @@ class WardrobeScopes:
 
 
 class NoticeScopes:
-    READ_DELIVERED = "notice.read.delivered"
-    IGNORE_DELIVERED = "notice.ignore.delivered"
+    READ_OWNED = "notice.read.owned"
+    DISMISS_OWNED = "notice.dismiss.owned"
+    READ_ANY = "notice.read.any"
+    CREATE_ANY = "notice.create.any"
+    UPDATE_ANY = "notice.update.any"
+    DELETE_ANY = "notice.delete.any"
+
+
+class InviteScopes:
+    READ_ANY = "invite.read.any"
+    CREATE_ANY = "invite.create.any"
+    DELETE_ANY = "invite.delete.any"
 
 
 class OAuthScopes:
-    CLIENT_CREATE_SELF = "oauth_client.create.self"
-    CLIENT_READ_SELF = "oauth_client.read.self"
-    CLIENT_UPDATE_SELF = "oauth_client.update.self"
-    CLIENT_DELETE_SELF = "oauth_client.delete.self"
-    CLIENT_SUBMIT_SELF = "oauth_client.submit.self"
-    GRANT_READ_SELF = "oauth_grant.read.self"
-    GRANT_REVOKE_SELF = "oauth_grant.revoke.self"
+    APP_READ_OWNED = "oauth_app.read.owned"
+    APP_CREATE_OWNED = "oauth_app.create.owned"
+    APP_UPDATE_OWNED = "oauth_app.update.owned"
+    APP_DELETE_OWNED = "oauth_app.delete.owned"
+    APP_READ_ANY = "oauth_app.read.any"
+    APP_UPDATE_ANY = "oauth_app.update.any"
+    APP_DELETE_ANY = "oauth_app.delete.any"
+    GRANT_READ_OWNED = "oauth_grant.read.owned"
+    GRANT_REVOKE_OWNED = "oauth_grant.revoke.owned"
+    GRANT_READ_ANY = "oauth_grant.read.any"
+    GRANT_REVOKE_ANY = "oauth_grant.revoke.any"
+    TOKEN_REVOKE_OWNED = "oauth_token.revoke.owned"
+    TOKEN_INTROSPECT_ANY = "oauth_token.introspect.any"
 
 
 class MinecraftScopes:

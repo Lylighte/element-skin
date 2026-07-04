@@ -8,7 +8,7 @@ import pytest
 from element_skin_sdk import MemoryTokenStore, OAuthClient
 from element_skin_sdk.http import HTTPClient
 from element_skin_sdk.exceptions import InvalidScope, OAuthError
-from element_skin_sdk.permissions import AccountScopes, MinecraftScopes, ProfileScopes
+from element_skin_sdk.permissions import AccountScopes, InviteScopes, MinecraftScopes, ProfileScopes
 
 from .conftest import RequestRecorder
 from .fixtures import CLIENT_CREDENTIALS_TOKEN_RESPONSE, DEVICE_CODE_RESPONSE, TOKEN_RESPONSE
@@ -265,6 +265,26 @@ def test_client_credentials_accepts_server_scope_and_posts_exact_form(response_j
     }
 
 
+def test_client_credentials_accepts_any_scope_and_posts_exact_form(response_json) -> None:
+    recorder = RequestRecorder(lambda request: response_json(CLIENT_CREDENTIALS_TOKEN_RESPONSE))
+    oauth = OAuthClient(
+        "https://skin.example.test",
+        "admin-tool-client",
+        client_secret="admin-tool-secret",
+        transport=recorder.transport(),
+    )
+
+    tokens = oauth.client_credentials([InviteScopes.READ_ANY, InviteScopes.CREATE_ANY])
+
+    assert tokens.access_token == "server-token-1"
+    assert recorder.requests[0].form == {
+        "grant_type": ["client_credentials"],
+        "client_id": ["admin-tool-client"],
+        "scope": ["invite.read.any invite.create.any"],
+        "client_secret": ["admin-tool-secret"],
+    }
+
+
 def test_client_credentials_store_false_does_not_save_tokens(response_json) -> None:
     recorder = RequestRecorder(lambda request: response_json(CLIENT_CREDENTIALS_TOKEN_RESPONSE))
     store = MemoryTokenStore()
@@ -289,7 +309,7 @@ def test_client_credentials_rejects_user_delegated_scope() -> None:
         oauth.client_credentials([AccountScopes.READ_SELF])
 
     assert exc.value.invalid_scopes == ["account.read.self"]
-    assert str(exc.value) == "client credentials flow can only request public or server scopes"
+    assert str(exc.value) == "client credentials flow can only request public, server, or any scopes"
 
 
 def test_revoke_posts_exact_form_and_ignores_empty_body() -> None:
