@@ -393,27 +393,7 @@ ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash
 ALTER TABLE skin_library ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DEFAULT 0;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS tokens;
-ALTER TABLE permissions DROP COLUMN IF EXISTS bit_index;
-ALTER TABLE homepage_media DROP COLUMN IF EXISTS config;
-ALTER TABLE homepage_media ADD COLUMN IF NOT EXISTS overlay_opacity_light DOUBLE PRECISION NOT NULL DEFAULT 0.45;
-ALTER TABLE homepage_media ADD COLUMN IF NOT EXISTS overlay_opacity_dark DOUBLE PRECISION NOT NULL DEFAULT 0.45;
-ALTER TABLE homepage_media ADD COLUMN IF NOT EXISTS start_yaw DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE homepage_media ADD COLUMN IF NOT EXISTS start_pitch DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE homepage_media ADD COLUMN IF NOT EXISTS yaw_speed_dps DOUBLE PRECISION NOT NULL DEFAULT 4;
-ALTER TABLE homepage_media ADD COLUMN IF NOT EXISTS pitch_speed_dps DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0;
-ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
-ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS redirect_uri TEXT NOT NULL DEFAULT '';
-ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS website_url TEXT NOT NULL DEFAULT '';
-ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS client_type TEXT NOT NULL DEFAULT 'confidential';
-ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS secret_hash TEXT NOT NULL DEFAULT '';
-ALTER TABLE delegated_clients DROP CONSTRAINT IF EXISTS delegated_clients_status_check;
-ALTER TABLE delegated_clients ADD CONSTRAINT delegated_clients_status_check CHECK(status IN ('pending', 'active', 'rejected', 'disabled'));
-ALTER TABLE oauth_device_codes ADD COLUMN IF NOT EXISTS user_id TEXT;
-ALTER TABLE oauth_device_codes DROP CONSTRAINT IF EXISTS oauth_device_codes_user_id_fkey;
-ALTER TABLE oauth_device_codes ADD CONSTRAINT oauth_device_codes_user_id_fkey FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL;
-ALTER TABLE permission_subjects DROP CONSTRAINT IF EXISTS permission_subjects_kind_check;
-ALTER TABLE permission_subjects ADD CONSTRAINT permission_subjects_kind_check CHECK(kind IN ('user', 'client', 'system'));
 UPDATE users SET created_at = 0 WHERE created_at IS NULL;
 UPDATE skin_library sl SET usage_count = CASE sl.texture_type
     WHEN 'skin' THEN (SELECT COUNT(*) FROM user_textures ut WHERE ut.hash = sl.skin_hash AND ut.texture_type = 'skin')

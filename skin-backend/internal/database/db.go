@@ -98,9 +98,7 @@ func (db *DB) Init(ctx context.Context) error {
 		return err
 	}
 	_, err := db.Pool.Exec(ctx, `
-		DROP INDEX IF EXISTS idx_users_single_super_admin;
 		ALTER TABLE users DROP COLUMN IF EXISTS is_admin;
-		ALTER TABLE users DROP COLUMN IF EXISTS is_super_admin;
 	`)
 	return err
 }

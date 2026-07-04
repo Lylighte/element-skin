@@ -59,17 +59,16 @@ func TestInitSQLExecutesSuccessfullyAgainstRealDatabase(t *testing.T) {
 	}
 }
 
-func TestInitMigratesLegacyAdminColumnsToPermissionRolesAndDropsThem(t *testing.T) {
+func TestInitMigratesVersion241AdminColumnToPermissionRolesAndDropsIt(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	if _, err := db.Pool.Exec(ctx, `
 		TRUNCATE users CASCADE;
 		ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
-		ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN DEFAULT FALSE;
-		INSERT INTO users (id,email,password,is_admin,is_super_admin,display_name,created_at) VALUES
-			('z-user','z@test.com','pw',FALSE,FALSE,'Zed',300),
-			('a-admin','a@test.com','pw',TRUE,FALSE,'AdminA',100),
-			('b-admin','b@test.com','pw',TRUE,TRUE,'AdminB',200);
+		INSERT INTO users (id,email,password,is_admin,display_name,created_at) VALUES
+			('z-user','z@test.com','pw',FALSE,'Zed',300),
+			('a-admin','a@test.com','pw',TRUE,'AdminA',100),
+			('b-admin','b@test.com','pw',TRUE,'AdminB',200);
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -87,52 +86,7 @@ func TestInitMigratesLegacyAdminColumnsToPermissionRolesAndDropsThem(t *testing.
 		t.Fatal(err)
 	}
 	if adminCount != 2 || superCount != 1 {
-		t.Fatalf("legacy role migration counts: admin=%d super=%d; want 2 and 1", adminCount, superCount)
-	}
-	var superUserID string
-	if err := db.Pool.QueryRow(ctx, `
-		SELECT ps.user_id
-		FROM subject_roles sr
-		JOIN permission_subjects ps ON ps.id=sr.subject_id
-		WHERE sr.role_id='super_admin'
-	`).Scan(&superUserID); err != nil {
-		t.Fatal(err)
-	}
-	if superUserID != "b-admin" {
-		t.Fatalf("legacy super admin should be preserved exactly, got %q", superUserID)
-	}
-	for _, column := range []string{"is_admin", "is_super_admin"} {
-		var exists bool
-		if err := db.Pool.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1
-				FROM information_schema.columns
-				WHERE table_schema='public' AND table_name='users' AND column_name=$1
-			)
-		`, column).Scan(&exists); err != nil {
-			t.Fatal(err)
-		}
-		if exists {
-			t.Fatalf("legacy column %s should be dropped after migration", column)
-		}
-	}
-}
-
-func TestInitPromotesOldestAdminOrFirstUserWhenNoLegacySuperAdminExists(t *testing.T) {
-	db, _ := testutil.NewTestApp(t)
-	ctx := context.Background()
-	if _, err := db.Pool.Exec(ctx, `
-		TRUNCATE users CASCADE;
-		ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
-		INSERT INTO users (id,email,password,is_admin,display_name,created_at) VALUES
-			('z-user','z@test.com','pw',FALSE,'Zed',300),
-			('a-admin','a@test.com','pw',TRUE,'AdminA',100),
-			('b-admin','b@test.com','pw',TRUE,'AdminB',200);
-	`); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Init(ctx); err != nil {
-		t.Fatal(err)
+		t.Fatalf("2.4.1 role migration counts: admin=%d super=%d; want 2 and 1", adminCount, superCount)
 	}
 	var superUserID string
 	if err := db.Pool.QueryRow(ctx, `
@@ -144,21 +98,39 @@ func TestInitPromotesOldestAdminOrFirstUserWhenNoLegacySuperAdminExists(t *testi
 		t.Fatal(err)
 	}
 	if superUserID != "a-admin" {
-		t.Fatalf("oldest legacy admin should become super admin, got %q", superUserID)
+		t.Fatalf("oldest 2.4.1 admin should become super admin, got %q", superUserID)
 	}
+	var exists bool
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema='public' AND table_name='users' AND column_name='is_admin'
+		)
+	`).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Fatal("2.4.1 is_admin column should be dropped after migration")
+	}
+}
 
+func TestInitPromotesOldestUserWhenVersion241HasNoAdmin(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
 	if _, err := db.Pool.Exec(ctx, `
-		DELETE FROM subject_roles;
 		TRUNCATE users CASCADE;
-		INSERT INTO users (id,email,password,display_name,created_at) VALUES
-			('z-user','z@test.com','pw','Zed',300),
-			('a-user','a@test.com','pw','UserA',100);
+		ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+		INSERT INTO users (id,email,password,is_admin,display_name,created_at) VALUES
+			('z-user','z@test.com','pw',FALSE,'Zed',300),
+			('a-user','a@test.com','pw',FALSE,'UserA',100);
 	`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
+	var superUserID string
 	if err := db.Pool.QueryRow(ctx, `
 		SELECT ps.user_id
 		FROM subject_roles sr
@@ -168,6 +140,88 @@ func TestInitPromotesOldestAdminOrFirstUserWhenNoLegacySuperAdminExists(t *testi
 		t.Fatal(err)
 	}
 	if superUserID != "a-user" {
-		t.Fatalf("oldest user should become super admin when no admin exists, got %q", superUserID)
+		t.Fatalf("oldest 2.4.1 user should become super admin when no admin exists, got %q", superUserID)
+	}
+}
+
+func TestInitMigratesVersion241YggdrasilTablesAndSkinLibraryPrimaryKey(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `
+		CREATE TABLE tokens (
+			access_token TEXT PRIMARY KEY,
+			client_token TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			profile_id TEXT,
+			created_at BIGINT NOT NULL
+		);
+		CREATE TABLE sessions (
+			server_id TEXT PRIMARY KEY,
+			access_token TEXT NOT NULL,
+			ip TEXT,
+			created_at BIGINT NOT NULL
+		);
+		DROP INDEX IF EXISTS idx_skin_library_public_usage_created_hash;
+		ALTER TABLE skin_library DROP COLUMN usage_count;
+		ALTER TABLE skin_library DROP CONSTRAINT skin_library_pkey;
+		ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash);
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"tokens", "sessions"} {
+		var exists bool
+		if err := db.Pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.tables
+				WHERE table_schema='public' AND table_name=$1
+			)
+		`, table).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if exists {
+			t.Fatalf("2.4.1 table %s should be removed after migration", table)
+		}
+	}
+	var usageCountExists bool
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema='public' AND table_name='skin_library' AND column_name='usage_count'
+		)
+	`).Scan(&usageCountExists); err != nil {
+		t.Fatal(err)
+	}
+	if !usageCountExists {
+		t.Fatal("skin_library usage_count should be added during 2.4.1 migration")
+	}
+	rows, err := db.Pool.Query(ctx, `
+		SELECT a.attname
+		FROM pg_index i
+		JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+		WHERE i.indrelid='skin_library'::regclass AND i.indisprimary
+		ORDER BY array_position(i.indkey, a.attnum)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var columns []string
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			t.Fatal(err)
+		}
+		columns = append(columns, column)
+	}
+	if rows.Err() != nil {
+		t.Fatal(rows.Err())
+	}
+	if got := strings.Join(columns, ","); got != "skin_hash,texture_type" {
+		t.Fatalf("skin_library primary key mismatch: got %q want %q", got, "skin_hash,texture_type")
 	}
 }

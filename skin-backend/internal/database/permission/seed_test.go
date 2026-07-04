@@ -105,35 +105,6 @@ func TestSeedUserSubjectsMigratesIsAdminColumnExactly(t *testing.T) {
 	}
 }
 
-func TestSeedUserSubjectsMigratesIsSuperAdminColumnAndDedupExactly(t *testing.T) {
-	db, _ := testutil.NewTestAppTB(t)
-	ctx := context.Background()
-
-	superUser := testutil.CreateUser(t, db, "migrate-super-first@test.com", "pw", "MigrateSuperFirst", false)
-	secondSuper := testutil.CreateUser(t, db, "migrate-super-second@test.com", "pw", "MigrateSuperSecond", false)
-
-	if _, err := db.Pool.Exec(ctx, `ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN DEFAULT FALSE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Pool.Exec(ctx, `UPDATE users SET is_super_admin=TRUE WHERE id IN ($1,$2)`, superUser.ID, secondSuper.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Pool.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Permissions.SeedDefaults(ctx); err != nil {
-		t.Fatal(err)
-	}
-
-	var count int
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 1 {
-		t.Fatalf("multiple is_super_admin=TRUE should be deduped to exactly one: got=%d", count)
-	}
-}
-
 func TestSeedDefaultsFirstRegisteredUserBecomesSuperAdmin(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
