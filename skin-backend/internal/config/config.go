@@ -2,7 +2,7 @@ package config
 
 import (
 	"errors"
-	"log"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -38,23 +38,28 @@ type Config struct {
 type rawConfig = map[string]any
 
 func Load(path string) (Config, error) {
-	cfg := Defaults()
-	raw := configRaw(cfg)
+	cfg := Config{}
+	raw := rawConfig{}
 	writeConfig := false
 	if b, err := os.ReadFile(path); err == nil {
-		raw = rawConfig{}
 		if err := yaml.Unmarshal(b, &raw); err != nil {
 			return cfg, err
 		}
 		cfg.apply(raw)
 	} else if errors.Is(err, os.ErrNotExist) {
-		log.Printf("警告：配置文件 %s 未找到，使用默认配置（JWT secret 为占位值，启动将失败）", path)
 		writeConfig = true
 	} else {
 		return cfg, err
 	}
-	if applyEnvOverrides(&cfg, raw) {
+	envChanged, err := applyEnvOverrides(&cfg, raw)
+	if err != nil {
+		return Config{}, err
+	}
+	if envChanged {
 		writeConfig = true
+	}
+	if err := validateRequiredConfig(cfg, raw); err != nil {
+		return Config{}, err
 	}
 	if writeConfig {
 		if err := writeConfigFile(path, raw); err != nil {
@@ -102,7 +107,9 @@ func (c *Config) apply(raw rawConfig) {
 	c.SiteURL = getString(raw, "server.site_url", c.SiteURL)
 	c.APIURL = getString(raw, "server.api_url", c.APIURL)
 	c.ServerHost = getString(raw, "server.host", c.ServerHost)
-	c.ServerPort = strconv.Itoa(getInt(raw, "server.port", atoiDefault(c.ServerPort, 8000)))
+	if n := getInt(raw, "server.port", 0); n > 0 {
+		c.ServerPort = strconv.Itoa(n)
+	}
 	c.TexturesDir = getString(raw, "textures.directory", c.TexturesDir)
 	c.CarouselDir = getString(raw, "carousel.directory", c.CarouselDir)
 	c.RedisAddr = getString(raw, "redis.addr", c.RedisAddr)
@@ -165,109 +172,238 @@ func configRaw(cfg Config) rawConfig {
 	}
 }
 
-func applyEnvOverrides(cfg *Config, raw rawConfig) bool {
+func applyEnvOverrides(cfg *Config, raw rawConfig) (bool, error) {
 	changed := false
-	changed = applyStringEnv(raw, "JWT_SECRET", "jwt.secret", &cfg.JWTSecret) || changed
-	changed = applyIntEnv(raw, "JWT_EXPIRE_DAYS", "jwt.expire_days", &cfg.JWTExpireDays, nil) || changed
-	changed = applyIntEnv(raw, "JWT_ACCESS_EXPIRE_MINUTES", "jwt.access_expire_minutes", &cfg.AccessMinutes, nil) || changed
-	changed = applyStringEnv(raw, "KEYS_PRIVATE_KEY", "keys.private_key", &cfg.PrivateKeyPath) || changed
-	changed = applyStringEnv(raw, "KEYS_PUBLIC_KEY", "keys.public_key", &cfg.PublicKeyPath) || changed
-	changed = applyStringEnv(raw, "DATABASE_DSN", "database.dsn", &cfg.DatabaseDSN) || changed
-	changed = applyInt32Env(raw, "DATABASE_MAX_CONNECTIONS", "database.max_connections", &cfg.MaxConnections, positiveInt) || changed
-	changed = applyStringEnv(raw, "SERVER_SITE_URL", "server.site_url", &cfg.SiteURL) || changed
-	changed = applyStringEnv(raw, "SERVER_API_URL", "server.api_url", &cfg.APIURL) || changed
-	changed = applyStringEnv(raw, "SERVER_HOST", "server.host", &cfg.ServerHost) || changed
-	changed = applyServerPortEnv(raw, cfg) || changed
-	changed = applyStringEnv(raw, "TEXTURES_DIRECTORY", "textures.directory", &cfg.TexturesDir) || changed
-	changed = applyStringEnv(raw, "CAROUSEL_DIRECTORY", "carousel.directory", &cfg.CarouselDir) || changed
-	changed = applyStringEnv(raw, "REDIS_ADDR", "redis.addr", &cfg.RedisAddr) || changed
-	changed = applyStringEnv(raw, "REDIS_PASSWORD", "redis.password", &cfg.RedisPassword) || changed
-	changed = applyIntEnv(raw, "REDIS_DB", "redis.db", &cfg.RedisDB, nonNegativeInt) || changed
-	changed = applyStringEnv(raw, "REDIS_KEY_PREFIX", "redis.key_prefix", &cfg.RedisKeyPrefix) || changed
-	changed = applyIntEnv(raw, "REDIS_PUBLIC_CACHE_TTL_SECONDS", "redis.public_cache_ttl_seconds", &cfg.PublicCacheTTL, positiveInt) || changed
-	changed = applyIntEnv(raw, "REDIS_AUTH_CACHE_TTL_SECONDS", "redis.auth_cache_ttl_seconds", &cfg.AuthCacheTTL, positiveInt) || changed
-	changed = applyStringSliceEnv(raw, "CORS_ALLOW_ORIGINS", "cors.allow_origins", &cfg.CORSOrigins) || changed
-	changed = applyBoolEnv(raw, "CORS_ALLOW_CREDENTIALS", "cors.allow_credentials", &cfg.CORSCredentials) || changed
-	return changed
+	var applied bool
+	var err error
+	for _, apply := range []func() (bool, error){
+		func() (bool, error) { return applyStringEnv(raw, "JWT_SECRET", "jwt.secret", &cfg.JWTSecret) },
+		func() (bool, error) {
+			return applyIntEnv(raw, "JWT_EXPIRE_DAYS", "jwt.expire_days", &cfg.JWTExpireDays, positiveInt)
+		},
+		func() (bool, error) {
+			return applyIntEnv(raw, "JWT_ACCESS_EXPIRE_MINUTES", "jwt.access_expire_minutes", &cfg.AccessMinutes, positiveInt)
+		},
+		func() (bool, error) {
+			return applyStringEnv(raw, "KEYS_PRIVATE_KEY", "keys.private_key", &cfg.PrivateKeyPath)
+		},
+		func() (bool, error) {
+			return applyStringEnv(raw, "KEYS_PUBLIC_KEY", "keys.public_key", &cfg.PublicKeyPath)
+		},
+		func() (bool, error) { return applyStringEnv(raw, "DATABASE_DSN", "database.dsn", &cfg.DatabaseDSN) },
+		func() (bool, error) {
+			return applyInt32Env(raw, "DATABASE_MAX_CONNECTIONS", "database.max_connections", &cfg.MaxConnections, positiveInt)
+		},
+		func() (bool, error) { return applyStringEnv(raw, "SERVER_SITE_URL", "server.site_url", &cfg.SiteURL) },
+		func() (bool, error) { return applyStringEnv(raw, "SERVER_API_URL", "server.api_url", &cfg.APIURL) },
+		func() (bool, error) { return applyStringEnv(raw, "SERVER_HOST", "server.host", &cfg.ServerHost) },
+		func() (bool, error) { return applyServerPortEnv(raw, cfg) },
+		func() (bool, error) {
+			return applyStringEnv(raw, "TEXTURES_DIRECTORY", "textures.directory", &cfg.TexturesDir)
+		},
+		func() (bool, error) {
+			return applyStringEnv(raw, "CAROUSEL_DIRECTORY", "carousel.directory", &cfg.CarouselDir)
+		},
+		func() (bool, error) { return applyStringEnv(raw, "REDIS_ADDR", "redis.addr", &cfg.RedisAddr) },
+		func() (bool, error) {
+			return applyStringEnv(raw, "REDIS_PASSWORD", "redis.password", &cfg.RedisPassword)
+		},
+		func() (bool, error) { return applyIntEnv(raw, "REDIS_DB", "redis.db", &cfg.RedisDB, nonNegativeInt) },
+		func() (bool, error) {
+			return applyStringEnv(raw, "REDIS_KEY_PREFIX", "redis.key_prefix", &cfg.RedisKeyPrefix)
+		},
+		func() (bool, error) {
+			return applyIntEnv(raw, "REDIS_PUBLIC_CACHE_TTL_SECONDS", "redis.public_cache_ttl_seconds", &cfg.PublicCacheTTL, positiveInt)
+		},
+		func() (bool, error) {
+			return applyIntEnv(raw, "REDIS_AUTH_CACHE_TTL_SECONDS", "redis.auth_cache_ttl_seconds", &cfg.AuthCacheTTL, positiveInt)
+		},
+		func() (bool, error) {
+			return applyStringSliceEnv(raw, "CORS_ALLOW_ORIGINS", "cors.allow_origins", &cfg.CORSOrigins)
+		},
+		func() (bool, error) {
+			return applyBoolEnv(raw, "CORS_ALLOW_CREDENTIALS", "cors.allow_credentials", &cfg.CORSCredentials)
+		},
+	} {
+		applied, err = apply()
+		if err != nil {
+			return false, err
+		}
+		changed = changed || applied
+	}
+	return changed, nil
 }
 
-func applyStringEnv(raw rawConfig, envName, dotted string, target *string) bool {
+func validateRequiredConfig(cfg Config, raw rawConfig) error {
+	required := []string{
+		"database.dsn",
+		"database.max_connections",
+		"jwt.secret",
+		"jwt.expire_days",
+		"jwt.access_expire_minutes",
+		"server.site_url",
+		"server.api_url",
+		"server.host",
+		"server.port",
+		"textures.directory",
+		"carousel.directory",
+		"redis.addr",
+		"redis.db",
+		"redis.key_prefix",
+		"redis.public_cache_ttl_seconds",
+		"redis.auth_cache_ttl_seconds",
+		"keys.private_key",
+		"keys.public_key",
+		"cors.allow_origins",
+		"cors.allow_credentials",
+	}
+	var missing []string
+	for _, field := range required {
+		if _, ok := lookup(raw, field); !ok {
+			missing = append(missing, field)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required config fields: %s", strings.Join(missing, ", "))
+	}
+	for _, check := range []struct {
+		field string
+		ok    bool
+	}{
+		{field: "database.dsn", ok: cfg.DatabaseDSN != ""},
+		{field: "database.max_connections", ok: cfg.MaxConnections > 0},
+		{field: "jwt.secret", ok: cfg.JWTSecret != ""},
+		{field: "jwt.expire_days", ok: cfg.JWTExpireDays > 0},
+		{field: "jwt.access_expire_minutes", ok: cfg.AccessMinutes > 0},
+		{field: "server.site_url", ok: cfg.SiteURL != ""},
+		{field: "server.api_url", ok: cfg.APIURL != ""},
+		{field: "server.host", ok: cfg.ServerHost != ""},
+		{field: "server.port", ok: atoiDefault(cfg.ServerPort, 0) > 0},
+		{field: "textures.directory", ok: cfg.TexturesDir != ""},
+		{field: "carousel.directory", ok: cfg.CarouselDir != ""},
+		{field: "redis.addr", ok: cfg.RedisAddr != ""},
+		{field: "redis.db", ok: cfg.RedisDB >= 0},
+		{field: "redis.key_prefix", ok: cfg.RedisKeyPrefix != ""},
+		{field: "redis.public_cache_ttl_seconds", ok: cfg.PublicCacheTTL > 0},
+		{field: "redis.auth_cache_ttl_seconds", ok: cfg.AuthCacheTTL > 0},
+		{field: "keys.private_key", ok: cfg.PrivateKeyPath != ""},
+		{field: "keys.public_key", ok: cfg.PublicKeyPath != ""},
+		{field: "cors.allow_origins", ok: len(cfg.CORSOrigins) > 0},
+	} {
+		if !check.ok {
+			return fmt.Errorf("invalid config %s", check.field)
+		}
+	}
+	return nil
+}
+
+func applyStringEnv(raw rawConfig, envName, dotted string, target *string) (bool, error) {
 	value := os.Getenv(envName)
 	if value == "" {
-		return false
+		return false, nil
 	}
 	*target = value
 	setRaw(raw, dotted, value)
-	return true
+	return true, nil
 }
 
-func applyIntEnv(raw rawConfig, envName, dotted string, target *int, valid func(int) bool) bool {
-	value, ok := parseIntEnv(envName)
-	if !ok || valid != nil && !valid(value) {
-		return false
+func applyIntEnv(raw rawConfig, envName, dotted string, target *int, valid func(int) bool) (bool, error) {
+	value, ok, err := parseIntEnv(envName)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	if valid != nil && !valid(value) {
+		return false, fmt.Errorf("invalid environment variable %s", envName)
 	}
 	*target = value
 	setRaw(raw, dotted, value)
-	return true
+	return true, nil
 }
 
-func applyInt32Env(raw rawConfig, envName, dotted string, target *int32, valid func(int) bool) bool {
-	value, ok := parseIntEnv(envName)
-	if !ok || valid != nil && !valid(value) {
-		return false
+func applyInt32Env(raw rawConfig, envName, dotted string, target *int32, valid func(int) bool) (bool, error) {
+	value, ok, err := parseIntEnv(envName)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	if valid != nil && !valid(value) {
+		return false, fmt.Errorf("invalid environment variable %s", envName)
 	}
 	*target = int32(value)
 	setRaw(raw, dotted, value)
-	return true
+	return true, nil
 }
 
-func applyServerPortEnv(raw rawConfig, cfg *Config) bool {
-	value, ok := parseIntEnv("SERVER_PORT")
-	if !ok || !positiveInt(value) {
-		return false
+func applyServerPortEnv(raw rawConfig, cfg *Config) (bool, error) {
+	value, ok, err := parseIntEnv("SERVER_PORT")
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	if !positiveInt(value) {
+		return false, fmt.Errorf("invalid environment variable SERVER_PORT")
 	}
 	cfg.ServerPort = strconv.Itoa(value)
 	setRaw(raw, "server.port", value)
-	return true
+	return true, nil
 }
 
-func applyStringSliceEnv(raw rawConfig, envName, dotted string, target *[]string) bool {
+func applyStringSliceEnv(raw rawConfig, envName, dotted string, target *[]string) (bool, error) {
 	value := os.Getenv(envName)
 	if value == "" {
-		return false
+		return false, nil
 	}
 	items := splitEnvList(value)
+	if len(items) == 0 {
+		return false, fmt.Errorf("invalid environment variable %s", envName)
+	}
 	*target = items
 	setRaw(raw, dotted, items)
-	return true
+	return true, nil
 }
 
-func applyBoolEnv(raw rawConfig, envName, dotted string, target *bool) bool {
-	value, ok := parseBoolEnv(envName)
+func applyBoolEnv(raw rawConfig, envName, dotted string, target *bool) (bool, error) {
+	value, ok, err := parseBoolEnv(envName)
+	if err != nil {
+		return false, err
+	}
 	if !ok {
-		return false
+		return false, nil
 	}
 	*target = value
 	setRaw(raw, dotted, value)
-	return true
+	return true, nil
 }
 
-func parseIntEnv(envName string) (int, bool) {
+func parseIntEnv(envName string) (int, bool, error) {
 	raw := os.Getenv(envName)
 	if raw == "" {
-		return 0, false
+		return 0, false, nil
 	}
 	value, err := strconv.Atoi(raw)
-	return value, err == nil
+	if err != nil {
+		return 0, false, fmt.Errorf("invalid environment variable %s", envName)
+	}
+	return value, true, nil
 }
 
-func parseBoolEnv(envName string) (bool, bool) {
+func parseBoolEnv(envName string) (bool, bool, error) {
 	raw := strings.TrimSpace(os.Getenv(envName))
 	if raw == "" {
-		return false, false
+		return false, false, nil
 	}
 	value, err := strconv.ParseBool(raw)
-	return value, err == nil
+	if err != nil {
+		return false, false, fmt.Errorf("invalid environment variable %s", envName)
+	}
+	return value, true, nil
 }
 
 func splitEnvList(value string) []string {

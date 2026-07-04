@@ -83,6 +83,8 @@ services:
       - VITE_BASE_PATH=${VITE_BASE_PATH:-/}    # 👈 前端部署路径 (如 /skin/)
       - VITE_API_BASE=${VITE_API_BASE:-/skinapi} # 👈 后端 API 路径 (如 /skinapi)
       - JWT_SECRET=${JWT_SECRET:-prod-secret-please-change-to-a-very-long-string-in-production}
+      - JWT_EXPIRE_DAYS=${JWT_EXPIRE_DAYS:-7}
+      - JWT_ACCESS_EXPIRE_MINUTES=${JWT_ACCESS_EXPIRE_MINUTES:-30}
       - KEYS_PRIVATE_KEY=${KEYS_PRIVATE_KEY:-/app/data/private.pem}
       - KEYS_PUBLIC_KEY=${KEYS_PUBLIC_KEY:-/app/data/public.pem}
       - DATABASE_DSN=${DATABASE_DSN:-postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable}
@@ -114,9 +116,9 @@ services:
       - "8000:8000"
 ```
 
-> 💡 **动态配置**: 后端启动时会读取 `config.yaml`，再用同名环境变量覆盖配置并写回 `config.yaml`。如果文件不存在，会按默认值和环境变量创建一份。开发环境可以继续只改 `config.yaml`，Docker 部署可以只在 `docker compose` 里写环境变量。由于需要写回文件，`config.yaml` 不能以只读方式挂载。
+> 💡 **动态配置**: 后端启动时会读取 `config.yaml`，再用同名环境变量覆盖配置并写回 `config.yaml`。如果文件不存在，必须提供完整环境变量，后端才会创建配置文件；配置缺失或非法会直接启动失败。开发环境可以继续只改 `config.yaml`，Docker 部署可以只在 `docker compose` 里写环境变量。由于需要写回文件，`config.yaml` 不能以只读方式挂载。
 >
-> 常用环境变量包括：`JWT_SECRET`、`DATABASE_DSN`、`DATABASE_MAX_CONNECTIONS`、`REDIS_ADDR`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_KEY_PREFIX`、`SERVER_SITE_URL`、`SERVER_API_URL`、`SERVER_HOST`、`SERVER_PORT`、`TEXTURES_DIRECTORY`、`CAROUSEL_DIRECTORY`、`KEYS_PRIVATE_KEY`、`KEYS_PUBLIC_KEY`、`CORS_ALLOW_ORIGINS`、`CORS_ALLOW_CREDENTIALS`。`CORS_ALLOW_ORIGINS` 使用英文逗号分隔多个来源。
+> 常用环境变量包括：`JWT_SECRET`、`JWT_EXPIRE_DAYS`、`JWT_ACCESS_EXPIRE_MINUTES`、`DATABASE_DSN`、`DATABASE_MAX_CONNECTIONS`、`REDIS_ADDR`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_KEY_PREFIX`、`SERVER_SITE_URL`、`SERVER_API_URL`、`SERVER_HOST`、`SERVER_PORT`、`TEXTURES_DIRECTORY`、`CAROUSEL_DIRECTORY`、`KEYS_PRIVATE_KEY`、`KEYS_PUBLIC_KEY`、`CORS_ALLOW_ORIGINS`、`CORS_ALLOW_CREDENTIALS`。`CORS_ALLOW_ORIGINS` 使用英文逗号分隔多个来源。
 
 在宿主机创建 `config.yaml` 文件。这是系统运行的核心配置。
 
@@ -125,6 +127,8 @@ services:
 
 jwt:
   secret: "dev-secret-please-change-to-a-very-long-string-in-production"  # ⚠️ 生产环境必须修改为随机长字符串
+  expire_days: 7
+  access_expire_minutes: 30
 
 # RSA 密钥配置 (系统会自动生成并持久化)
 keys:

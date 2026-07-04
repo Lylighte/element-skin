@@ -40,6 +40,8 @@ services:
       - VITE_BASE_PATH=${VITE_BASE_PATH:-/}
       - VITE_API_BASE=${VITE_API_BASE:-/skinapi}
       - JWT_SECRET=${JWT_SECRET:-prod-secret-please-change-to-a-very-long-string-in-production}
+      - JWT_EXPIRE_DAYS=${JWT_EXPIRE_DAYS:-7}
+      - JWT_ACCESS_EXPIRE_MINUTES=${JWT_ACCESS_EXPIRE_MINUTES:-30}
       - KEYS_PRIVATE_KEY=${KEYS_PRIVATE_KEY:-/app/data/private.pem}
       - KEYS_PUBLIC_KEY=${KEYS_PUBLIC_KEY:-/app/data/public.pem}
       - DATABASE_DSN=${DATABASE_DSN:-postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable}
