@@ -190,6 +190,7 @@ import { Menu as MenuIcon, Moon, Sunny } from '@element-plus/icons-vue'
 
 import { useAvatar } from '@/composables/useAvatar'
 import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
+import { useTheme } from '@/composables/useTheme'
 import { appStorage } from '@/storage'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -211,6 +212,7 @@ import {
 const { currentAvatarImg: customAvatar, initializeAvatar } = useAvatar()
 const { hasUnreadNotifications, refreshUnreadNotifications, clearUnreadNotifications } =
   useNotificationIndicator()
+const { isDark, initTheme, toggleTheme } = useTheme()
 const route = useRoute()
 const { push } = useRouter()
 const isHome = computed(() => route.path === '/')
@@ -239,29 +241,6 @@ const updateFooterHeight = () => {
 }
 
 watch([() => route.path, footerText, filingIcp, filingMps], updateFooterHeight)
-
-const isDark = ref(false)
-function initTheme() {
-  const savedTheme = appStorage.theme.get()
-  if (savedTheme) isDark.value = savedTheme === 'dark'
-  else isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
-  applyTheme()
-}
-function toggleTheme() {
-  isDark.value = !isDark.value
-  appStorage.theme.set(isDark.value ? 'dark' : 'light')
-  applyTheme()
-}
-function applyTheme() {
-  document.documentElement.classList.toggle('dark', isDark.value)
-}
-
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-  if (!appStorage.theme.hasUserPreference()) {
-    isDark.value = e.matches
-    applyTheme()
-  }
-})
 
 provide('user', user)
 provide('fetchMe', fetchMe)
