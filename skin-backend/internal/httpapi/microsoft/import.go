@@ -38,7 +38,7 @@ func (h Handler) ImportProfile(w http.ResponseWriter, req *http.Request) {
 	}
 	profileID, _ := profile["id"].(string)
 	profileName, _ := profile["name"].(string)
-	res, err := (importsvc.ImportService{DB: h.db, TexturesDir: h.cfg.TexturesDir, HTTPClient: h.httpClient}).ImportProfile(req.Context(), shared.CurrentActor(req), profileID, profileName, microsoftProfileAssets(profile))
+	res, err := h.imports.ImportProfile(req.Context(), shared.CurrentActor(req), profileID, profileName, microsoftProfileAssets(profile))
 	if err != nil {
 		util.Error(w, err)
 		return
