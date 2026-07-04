@@ -40,147 +40,26 @@
 
 项目现在默认使用 **PostgreSQL 18 + Redis** 并支持自动化初始化。PostgreSQL 保存用户、设置、材质元数据等持久化数据；Redis 负责公开配置/首页媒体缓存、邮件验证码、限流数据和短期用户鉴权缓存等临时状态。
 
-### 1. 准备配置文件
+### 1. 准备 `.env`
 
-可以直接使用仓库中的 `docker-compose.yml`。部署前复制 `.env.example` 为 `.env`，在 `.env` 中填写数据库、Redis、站点 URL、API URL 和密钥等变量；Compose 文件只引用这些变量。
+Docker 部署只使用仓库根目录的 `docker-compose.yml`。复制 `.env.example` 为 `.env`，然后只修改 `.env`：
 
-如果需要自行创建 `docker-compose.yml`，结构如下：
-
-**docker-compose.yml**
-```yaml
-version: '3.8'
-services:
-  db:
-    image: postgres:18-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: elementskin
-      POSTGRES_PASSWORD: password123 #⚠️ 生产环境请修改密码
-      POSTGRES_DB: elementskin
-    volumes:
-      - ./data/db:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U elementskin"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    ports:
-      - "5432:5432" # 在迁移完成后可以关闭这个端口暴露
-  redis:
-    image: redis:8-alpine
-    restart: always
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "password123"]
-    volumes:
-      - ./data/redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "password123", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-  backend:
-    image: ghcr.io/water2004/element-skin:latest
-    container_name: element-skin
-    restart: unless-stopped
-    environment:
-      - VITE_BASE_PATH=${VITE_BASE_PATH:-/}    # 👈 前端部署路径 (如 /skin/)
-      - VITE_API_BASE=${VITE_API_BASE:-/skinapi} # 👈 后端 API 路径 (如 /skinapi)
-      - JWT_SECRET=${JWT_SECRET:-prod-secret-please-change-to-a-very-long-string-in-production}
-      - JWT_EXPIRE_DAYS=${JWT_EXPIRE_DAYS:-7}
-      - JWT_ACCESS_EXPIRE_MINUTES=${JWT_ACCESS_EXPIRE_MINUTES:-30}
-      - KEYS_PRIVATE_KEY=${KEYS_PRIVATE_KEY:-/app/data/private.pem}
-      - KEYS_PUBLIC_KEY=${KEYS_PUBLIC_KEY:-/app/data/public.pem}
-      - DATABASE_HOST=${DATABASE_HOST:-db}
-      - DATABASE_PORT=${DATABASE_PORT:-5432}
-      - DATABASE_USER=${DATABASE_USER:-elementskin}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-password123}
-      - DATABASE_NAME=${DATABASE_NAME:-elementskin}
-      - DATABASE_SSLMODE=${DATABASE_SSLMODE:-disable}
-      - DATABASE_MAX_CONNECTIONS=${DATABASE_MAX_CONNECTIONS:-20}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
-      - REDIS_DB=${REDIS_DB:-0}
-      - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-elementskin:}
-      - REDIS_PUBLIC_CACHE_TTL_SECONDS=${REDIS_PUBLIC_CACHE_TTL_SECONDS:-60}
-      - REDIS_AUTH_CACHE_TTL_SECONDS=${REDIS_AUTH_CACHE_TTL_SECONDS:-30}
-      - TEXTURES_DIRECTORY=${TEXTURES_DIRECTORY:-/app/frontend/static/textures}
-      - CAROUSEL_DIRECTORY=${CAROUSEL_DIRECTORY:-/app/frontend/static/carousel}
-      - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
-      - SERVER_PORT=${SERVER_PORT:-8000}
-      - SERVER_SITE_URL=${SERVER_SITE_URL:-http://yourdomain.com}
-      - SERVER_API_URL=${SERVER_API_URL:-http://yourdomain.com/skinapi}
-      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-*}
-      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./frontend:/app/frontend           # 前端、皮肤、首页媒体全部在这里
-      - ./data:/app/data                   # 密钥文件
-    ports:
-      - "8000:8000"
+```bash
+cp .env.example .env
 ```
 
-> 💡 **动态配置**: 后端启动时会读取 `config.yaml`，再用同名环境变量覆盖配置并写回 `config.yaml`。如果文件不存在，必须提供完整环境变量，后端才会创建配置文件；配置缺失或非法会直接启动失败。开发环境可以继续只改 `config.yaml`，Docker 部署推荐只在 `.env` / `docker compose` 里写环境变量，不需要挂载 `config.yaml`。
->
-> 常用环境变量包括：`JWT_SECRET`、`JWT_EXPIRE_DAYS`、`JWT_ACCESS_EXPIRE_MINUTES`、`DATABASE_HOST`、`DATABASE_PORT`、`DATABASE_USER`、`DATABASE_PASSWORD`、`DATABASE_NAME`、`DATABASE_SSLMODE`、`DATABASE_MAX_CONNECTIONS`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_KEY_PREFIX`、`SERVER_SITE_URL`、`SERVER_API_URL`、`SERVER_HOST`、`SERVER_PORT`、`TEXTURES_DIRECTORY`、`CAROUSEL_DIRECTORY`、`KEYS_PRIVATE_KEY`、`KEYS_PUBLIC_KEY`、`CORS_ALLOW_ORIGINS`、`CORS_ALLOW_CREDENTIALS`。`CORS_ALLOW_ORIGINS` 使用英文逗号分隔多个来源。
+必须重点修改这些值：
 
-如果不使用 `.env`，也可以在宿主机创建 `config.yaml` 文件作为传统配置文件。Docker 部署推荐使用 `.env`，本段配置主要用于本地开发或手动运行后端。
+- `ELEMENT_SKIN_IMAGE`：后端镜像，默认 `ghcr.io/water2004/element-skin:latest`
+- `JWT_SECRET`：生产环境随机长密钥
+- `DATABASE_PASSWORD` / `REDIS_PASSWORD`：数据库和 Redis 密码
+- `SERVER_SITE_URL`：站点外部访问地址
+- `SERVER_API_URL`：后端 API 外部访问地址
+- `CORS_ALLOW_ORIGINS`：允许访问 API 的前端来源
 
-```yaml
-# Element-Skin 配置文件
+后端启动时会读取环境变量，并从 `DATABASE_HOST/PORT/USER/PASSWORD/NAME/SSLMODE` 和 `REDIS_HOST/PORT` 派生连接地址。Docker 部署不需要挂载 `config.yaml`，也不维护第二份 Compose 配置。
 
-jwt:
-  secret: "dev-secret-please-change-to-a-very-long-string-in-production"  # ⚠️ 生产环境必须修改为随机长字符串
-  expire_days: 7
-  access_expire_minutes: 30
-
-# RSA 密钥配置 (系统会自动生成并持久化)
-keys:
-  private_key: "/app/data/private.pem"
-  public_key: "/app/data/public.pem"
-
-database:
-  host: "db"
-  port: "5432"
-  user: "elementskin"
-  password: "password123" # ⚠️ 请确保与 PostgreSQL 环境变量一致
-  name: "elementskin"
-  sslmode: "disable"
-  max_connections: 20
-
-redis:
-  host: "redis"
-  port: "6379"
-  password: "password123" # ⚠️ 与 docker compose 中 Redis 密码一致，生产环境请修改
-  db: 0
-  key_prefix: "elementskin:"
-  public_cache_ttl_seconds: 60
-  auth_cache_ttl_seconds: 30
-
-textures:
-  directory: "/app/frontend/static/textures"
-
-carousel:
-  directory: "/app/frontend/static/carousel"
-
-server:
-  host: "0.0.0.0"
-  port: 8000
-  # ⚠️ 站点的外部访问地址，用于页面、OAuth 回调和 /static/textures 材质静态文件
-  site_url: "http://yourdomain.com" 
-  # ⚠️ 后端 API 外部访问地址，用于 Yggdrasil/Authlib API 入口
-  api_url: "http://yourdomain.com/skinapi" 
-
-# CORS 跨域配置
-cors:
-  allow_origins: ["*"] # ⚠️ 生产环境请根据实际情况限制来源
-  allow_credentials: true
-```
-
-首次启动时如果 `/app/data/private.pem` 和 `/app/data/public.pem` 不存在，系统会自动生成并保存。请持久化 `./data` 目录，后续不要删除或替换私钥，否则已有 Yggdrasil 客户端会看到服务端签名身份变化。
+首次启动时如果 `/app/data/private.pem` 和 `/app/data/public.pem` 不存在，系统会自动生成并保存。请持久化 `./data` 目录，其中 `./data/db` 会挂载到 PostgreSQL 容器的 `/var/lib/postgresql`。后续不要删除或替换私钥，否则已有 Yggdrasil 客户端会看到服务端签名身份变化。
 
 **Nginx 主机配置**
 只需将 Nginx 的 `root` 指向宿主机的 `./frontend` 目录。
@@ -211,24 +90,27 @@ server {
     }
 }
 ```
-最后，启动 Docker：
+### 2. 启动服务
+
+拉取镜像并启动：
 
 ```bash
+docker compose pull
 docker compose up -d
 ```
 
-对于希望前端或后端地址部署在子目录的用户，可以通过参数灵活配置路径：
+对于希望前端或后端地址部署在子目录的用户，可以通过 `.env` 灵活配置路径：
 - **前端路径**: 通过 `VITE_BASE_PATH` 定义前端资源的基础路径
 - **后端路径**: 通过 `VITE_API_BASE` 定义后端 API 的基础路径
 
-根据你的路径需求，在启动时传入环境变量。前端会根据这些参数编译，并自动释放到宿主机的 `./frontend` 目录：
+根据你的路径需求修改 `.env`，然后重新执行 `docker compose up -d`。前端会根据这些参数在容器启动时替换路径，并自动释放到宿主机的 `./frontend` 目录：
 
-| 场景 | 前端路径 | 后端路径 | 启动命令 |
-|-----|---------|---------|---------|
-| **场景 1** | `/skin/` | `/skinapi` | `VITE_BASE_PATH=/skin/ docker compose up -d` |
-| **场景 2** | `/skin/` | `/skin/api/` | `VITE_BASE_PATH=/skin/ VITE_API_BASE=/skin/api docker compose up -d` |
+| 场景 | `VITE_BASE_PATH` | `VITE_API_BASE` |
+|-----|---------|---------|
+| **场景 1** | `/skin/` | `/skinapi` |
+| **场景 2** | `/skin/` | `/skin/api/` |
 
-需要注意的是，`config.yaml` 中的 `server.site_url` 和 `server.api_url` 也需要根据实际部署路径进行调整，以确保生成的链接正确。
+需要注意的是，`.env` 中的 `SERVER_SITE_URL` 和 `SERVER_API_URL` 也需要根据实际部署路径进行调整，以确保生成的链接正确。
 当 `VITE_API_BASE` 使用 `/skinapi`、`/skin/api` 这类前缀时，Nginx 的 `proxy_pass` 末尾必须带 `/`，这样会把前缀剥掉再转发给后端。例如 `/skinapi/me` 会转成后端实际路由 `/me`。
 
 **Nginx 主机配置 (对应场景 1)**
@@ -342,8 +224,9 @@ element-skin/
 │   ├── cmd/            # 进程入口
 │   ├── internal/       # HTTP、服务、数据库与测试模块
 │   └── config.yaml     # 后端配置文件
-├── config.yaml         # 配置文件
-├── pgdata/             # 数据库物理存储 (自动生成)
+├── .env.example        # Docker 部署环境变量模板
+├── data/               # Docker 持久化数据 (自动生成)
+├── frontend/           # Docker 释放的前端静态文件 (自动生成)
 ├── docker-compose.yml  
 └── README.md
 ```
