@@ -62,6 +62,7 @@ func TestParseFlagsAppliesEveryCommandLineOverrideExactly(t *testing.T) {
 		"-login-password=Secret123",
 		"-login-path=/custom-login",
 		"-cookie=access=abc; refresh=def",
+		"-bearer=oauth-access",
 		"-insecure=true",
 	}
 
@@ -81,6 +82,7 @@ func TestParseFlagsAppliesEveryCommandLineOverrideExactly(t *testing.T) {
 		loginPassword:   "Secret123",
 		loginPath:       "/custom-login",
 		cookieHeader:    "access=abc; refresh=def",
+		bearerToken:     "oauth-access",
 		insecureTLS:     true,
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -166,9 +168,10 @@ func TestRunReportsSuccessfulAndFailedCapacityExactly(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if req.Method != http.MethodPost || req.URL.Path != "/api/probe" ||
 					req.Header.Get("Content-Type") != "application/json" ||
-					req.Header.Get("Cookie") != "session=load" {
-					t.Fatalf("run request mismatch: method=%s path=%s content-type=%q cookie=%q",
-						req.Method, req.URL.Path, req.Header.Get("Content-Type"), req.Header.Get("Cookie"))
+					req.Header.Get("Cookie") != "session=load" ||
+					req.Header.Get("Authorization") != "Bearer oauth-access" {
+					t.Fatalf("run request mismatch: method=%s path=%s content-type=%q cookie=%q authorization=%q",
+						req.Method, req.URL.Path, req.Header.Get("Content-Type"), req.Header.Get("Cookie"), req.Header.Get("Authorization"))
 				}
 				body, err := io.ReadAll(req.Body)
 				if err != nil {
@@ -198,6 +201,7 @@ func TestRunReportsSuccessfulAndFailedCapacityExactly(t *testing.T) {
 				failThreshold:   0,
 				maxP95:          tc.maxP95,
 				cookieHeader:    "session=load",
+				bearerToken:     "oauth-access",
 			}, &stdout, &stderr)
 			output := stdout.String()
 			if code != 0 || stderr.Len() != 0 || calls.Load() <= 0 ||
@@ -511,15 +515,18 @@ func TestLoadTestConcurrency(t *testing.T) {
 func TestDefaultLoadScenariosIncludeExactYggdrasilEndpoints(t *testing.T) {
 	profileID := "load_profile_id"
 	seed := loadSeed{
-		User:           model.User{ID: "user-id", Email: "load-user@example.com"},
-		Admin:          model.User{ID: "admin-id", Email: "load-admin@example.com"},
-		YggUser:        model.User{ID: "ygg-user-id", Email: "load-ygg@example.com"},
-		ProfileID:      profileID,
-		ProfileName:    "LoadProfile",
-		TextureHash:    "load_texture_hash",
-		YggAccessToken: "access-token",
-		YggClientToken: "client-token",
-		YggServerID:    "server-id",
+		User:             model.User{ID: "user-id", Email: "load-user@example.com"},
+		Admin:            model.User{ID: "admin-id", Email: "load-admin@example.com"},
+		YggUser:          model.User{ID: "ygg-user-id", Email: "load-ygg@example.com"},
+		ProfileID:        profileID,
+		ProfileName:      "LoadProfile",
+		TextureHash:      "load_texture_hash",
+		YggAccessToken:   "access-token",
+		YggClientToken:   "client-token",
+		YggServerID:      "server-id",
+		OAuthUserToken:   "load-oauth-user",
+		OAuthAdminToken:  "load-oauth-admin",
+		OAuthClientToken: "load-oauth-client",
 	}
 	scenarios := defaultLoadScenarios(seed, "user_cookie=1", "admin_cookie=1", func(testing.TB) {})
 	got := map[string]loadScenario{}
@@ -550,8 +557,12 @@ func TestDefaultLoadScenariosIncludeExactYggdrasilEndpoints(t *testing.T) {
 	if got["ygg-has-joined"].Prepare == nil {
 		t.Fatal("ygg-has-joined should refresh its pre-joined session before measurement")
 	}
-	if len(scenarios) != 21 {
-		t.Fatalf("default scenario count mismatch: got=%d want=21", len(scenarios))
+	if got["oauth-me"].Bearer != "load-oauth-user" || got["oauth-admin-invites"].Bearer != "load-oauth-admin" ||
+		got["oauth-client-invites"].Bearer != "load-oauth-client" {
+		t.Fatalf("oauth scenario bearer mismatch: oauth-me=%q admin=%q client=%q", got["oauth-me"].Bearer, got["oauth-admin-invites"].Bearer, got["oauth-client-invites"].Bearer)
+	}
+	if len(scenarios) != 30 {
+		t.Fatalf("default scenario count mismatch: got=%d want=30", len(scenarios))
 	}
 }
 
@@ -587,10 +598,11 @@ func TestWriteLoadTestReportIncludesExactYggdrasilRows(t *testing.T) {
 	report := string(data)
 	for _, want := range []string{
 		"- Data set: 100 users, 300 profiles, 500 texture rows, 50 invites, 1 pre-joined Yggdrasil session",
+		"- OAuth seed: 1 active confidential client, 2 delegated bearer tokens, 1 client-credentials-style bearer token",
 		"- Test database: isolated `elementskin_go_test_*`, dropped by test cleanup\n- Redis: real test Redis with isolated `elementskin:test:*` key prefix, cleaned by test cleanup",
 		"| Yggdrasil | `ygg-profile` | `GET` | `/sessionserver/session/minecraft/profile/load_profile_id` |",
 		"| Yggdrasil | `ygg-profile` | 200 | 300 | 300 | 0 | 0.00 | 299.5 | 299.5 | 2.0ms | 1.0ms | 4.0ms | 5.0ms | `200:300` | `` |",
-		"- This report covers public, site, admin, and common Yggdrasil client endpoints; destructive write endpoints are intentionally excluded from high-concurrency runs.",
+		"- This report covers public, site-cookie, OAuth delegated, OAuth client-credentials-style, admin, and common Yggdrasil client endpoints; destructive write endpoints are intentionally excluded from high-concurrency runs.",
 	} {
 		if !strings.Contains(report, want) {
 			t.Fatalf("load-test report missing exact line:\n%s\n\nreport:\n%s", want, report)
