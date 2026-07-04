@@ -25,6 +25,9 @@ func TestPublicSettingsUsesCacheAndFallbackPrimaryEndpointExactly(t *testing.T) 
 	if err := db.Settings.Set(ctx, "allow_register", false); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Settings.Set(ctx, "require_invite", true); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Fallbacks.SaveEndpoints(ctx, []dbfallback.Endpoint{{
 		Priority: 1, SessionURL: "https://session.example", AccountURL: "https://account.example",
 		ServicesURL: "https://services.example", CacheTTL: 60, Note: "primary",
@@ -46,6 +49,7 @@ func TestPublicSettingsUsesCacheAndFallbackPrimaryEndpointExactly(t *testing.T) 
 	}
 	status := first["mojang_status_urls"].(map[string]any)
 	if first["site_name"] != "Cached Site" || first["allow_register"] != false ||
+		first["require_invite"] != true ||
 		first["site_url"] != "https://config.example/root" || first["api_url"] != "https://api.example/v1" ||
 		status["session"] != "https://session.example" || status["account"] != "https://account.example" || status["services"] != "https://services.example" {
 		t.Fatalf("public settings mismatch: %#v", first)
@@ -73,6 +77,49 @@ func TestPublicSettingsUsesCacheAndFallbackPrimaryEndpointExactly(t *testing.T) 
 	}
 	if refreshed["site_name"] != "Changed Site" {
 		t.Fatalf("invalidated public settings should reload database value: %#v", refreshed)
+	}
+}
+
+func TestPublicSettingsRefreshesLegacyCacheWithoutRequireInviteExactly(t *testing.T) {
+	db, _, redis := testutil.NewTestAppWithRedisTB(t)
+	ctx := context.Background()
+	if err := db.Settings.Set(ctx, "site_name", "Fresh Site"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Settings.Set(ctx, "allow_register", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Settings.Set(ctx, "require_invite", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := redis.SetPublicSettings(ctx, map[string]any{
+		"site_name":      "Legacy Cached Site",
+		"allow_register": false,
+	}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	svc := publicsitesvc.Service{
+		DB:       db,
+		Redis:    redis,
+		Settings: settingssvc.Settings{DB: db, Redis: redis},
+		SiteURL:  "https://site.example",
+		APIURL:   "https://api.example",
+		CacheTTL: time.Minute,
+	}
+
+	got, err := svc.PublicSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["site_name"] != "Fresh Site" || got["allow_register"] != true || got["require_invite"] != true {
+		t.Fatalf("legacy public settings cache should be refreshed from database: %#v", got)
+	}
+	cached, err := redis.GetPublicSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached["site_name"] != "Fresh Site" || cached["allow_register"] != true || cached["require_invite"] != true {
+		t.Fatalf("refreshed public settings should be written back to cache: %#v", cached)
 	}
 }
 

@@ -22,7 +22,12 @@ type Service struct {
 
 func (s Service) PublicSettings(ctx context.Context) (map[string]any, error) {
 	if cached, err := s.Redis.GetPublicSettings(ctx); err == nil {
-		return cached, nil
+		if currentPublicSettingsCache(cached) {
+			return cached, nil
+		}
+		if err := s.Redis.InvalidatePublicSettings(ctx); err != nil {
+			return nil, err
+		}
 	} else if !errors.Is(err, redisstore.ErrCacheMiss) {
 		return nil, err
 	}
@@ -34,6 +39,11 @@ func (s Service) PublicSettings(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+func currentPublicSettingsCache(cached map[string]any) bool {
+	_, ok := cached["require_invite"]
+	return ok
 }
 
 func (s Service) HomepageMedia(ctx context.Context) ([]model.HomepageMedia, error) {

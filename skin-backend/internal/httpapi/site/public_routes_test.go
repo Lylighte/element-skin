@@ -92,6 +92,7 @@ func TestPublicRoutesUseRedisCachedSettingsAndHomepageMediaExactly(t *testing.T)
 	if err := cache.SetPublicSettings(context.Background(), map[string]any{
 		"site_name":          "Cached Site",
 		"allow_register":     false,
+		"require_invite":     false,
 		"mojang_status_urls": map[string]any{"session": "cached-session"},
 		"cached_only_marker": true,
 	}, time.Duration(cfg.PublicCacheTTL)*time.Second); err != nil {
@@ -105,6 +106,7 @@ func TestPublicRoutesUseRedisCachedSettingsAndHomepageMediaExactly(t *testing.T)
 	rec := httptest.NewRecorder()
 	h.PublicSettings(rec, httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"site_name":"Cached Site"`) ||
+		!strings.Contains(rec.Body.String(), `"require_invite":false`) ||
 		!strings.Contains(rec.Body.String(), `"cached_only_marker":true`) {
 		t.Fatalf("public settings should return cached payload exactly: status=%d body=%q", rec.Code, rec.Body.String())
 	}
