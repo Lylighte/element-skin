@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-[calc(100vh-160px)] px-4 py-10">
-    <UiCard class="mx-auto max-w-2xl p-8">
+    <UiCard class="mx-auto max-w-3xl p-8">
       <div class="mb-6">
         <h1 class="m-0 text-2xl font-semibold text-[var(--color-heading)]">设备授权</h1>
         <p class="mt-2 mb-0 text-sm text-[var(--color-text-light)]">
@@ -21,38 +21,17 @@
         :title="message"
       />
 
-      <div v-if="details" class="mt-6 space-y-5">
-        <div class="rounded-lg border border-[var(--color-border)] p-5">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <h2 class="m-0 text-lg font-semibold text-[var(--color-heading)]">
-                {{ details.client.name }}
-              </h2>
-              <p class="mt-1 mb-0 break-all text-xs text-[var(--color-text-light)]">
-                {{ details.client.client_id }}
-              </p>
-            </div>
-            <el-tag>{{ details.status }}</el-tag>
-          </div>
-          <div class="mt-4 flex flex-wrap gap-2">
-            <PermissionToneTag
-              v-for="scope in details.scopes"
-              :key="scope.code"
-              :label="scope.code"
-              tone="sky"
-              :title="scope.description"
-            />
-          </div>
-          <p class="mt-4 mb-0 text-xs text-[var(--color-text-light)]">
-            过期时间：{{ formatTime(details.expires_at) }}
-          </p>
-        </div>
-
-        <div class="flex justify-end gap-3">
-          <el-button :loading="deciding" @click="decide(false)">拒绝</el-button>
-          <el-button type="primary" :loading="deciding" @click="decide(true)">批准</el-button>
-        </div>
-      </div>
+      <OAuthConsentPanel
+        v-if="details"
+        class="mt-6"
+        :client="details.client"
+        :scopes="details.scopes"
+        :request-details="deviceDetails"
+        :deciding="deciding"
+        approve-label="批准"
+        @approve="decide(true)"
+        @deny="decide(false)"
+      />
     </UiCard>
   </div>
 </template>
@@ -66,9 +45,14 @@ import {
   getDeviceAuthorization,
   type DeviceAuthorizationDetails,
 } from '@/api/oauth'
+import OAuthConsentPanel from '@/components/oauth/OAuthConsentPanel.vue'
 import UiCard from '@/components/ui/UiCard.vue'
-import PermissionToneTag from '@/components/admin/users/PermissionToneTag.vue'
 import { getErrorMessage } from '@/utils/error'
+
+interface OAuthConsentDetail {
+  label: string
+  value: string
+}
 
 const route = useRoute()
 const userCode = ref(String(route.query.user_code || ''))
@@ -79,6 +63,14 @@ const message = ref('')
 const messageType = ref<'success' | 'warning' | 'info' | 'error'>('info')
 
 const normalizedUserCode = computed(() => userCode.value.trim().toUpperCase())
+const deviceDetails = computed<OAuthConsentDetail[]>(() => {
+  if (!details.value) return []
+  return [
+    { label: '设备代码', value: normalizedUserCode.value },
+    { label: '授权状态', value: details.value.status },
+    { label: '过期时间', value: formatTime(details.value.expires_at) },
+  ]
+})
 
 onMounted(() => {
   if (normalizedUserCode.value) loadDetails()
