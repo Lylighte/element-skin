@@ -31,6 +31,8 @@ type Config struct {
 	AuthCacheTTL    int
 	PrivateKeyPath  string
 	PublicKeyPath   string
+	CORSOrigins     []string
+	CORSCredentials bool
 	FallbackDomains []string
 }
 
@@ -66,25 +68,27 @@ func Load(path string) (Config, error) {
 
 func Defaults() Config {
 	return Config{
-		DatabaseDSN:    "postgresql://elementskin:password@localhost:5432/elementskin",
-		MaxConnections: 10,
-		JWTSecret:      "dev-secret-please-change-to-a-very-long-string-in-production",
-		JWTExpireDays:  7,
-		AccessMinutes:  30,
-		SiteURL:        "http://localhost",
-		APIURL:         "",
-		ServerHost:     "0.0.0.0",
-		ServerPort:     "8000",
-		TexturesDir:    "textures",
-		CarouselDir:    "carousel",
-		RedisAddr:      "127.0.0.1:6379",
-		RedisPassword:  "",
-		RedisDB:        0,
-		RedisKeyPrefix: "elementskin:",
-		PublicCacheTTL: 60,
-		AuthCacheTTL:   30,
-		PrivateKeyPath: "private.pem",
-		PublicKeyPath:  "public.pem",
+		DatabaseDSN:     "postgresql://elementskin:password@localhost:5432/elementskin",
+		MaxConnections:  10,
+		JWTSecret:       "dev-secret-please-change-to-a-very-long-string-in-production",
+		JWTExpireDays:   7,
+		AccessMinutes:   30,
+		SiteURL:         "http://localhost",
+		APIURL:          "",
+		ServerHost:      "0.0.0.0",
+		ServerPort:      "8000",
+		TexturesDir:     "textures",
+		CarouselDir:     "carousel",
+		RedisAddr:       "127.0.0.1:6379",
+		RedisPassword:   "",
+		RedisDB:         0,
+		RedisKeyPrefix:  "elementskin:",
+		PublicCacheTTL:  60,
+		AuthCacheTTL:    30,
+		PrivateKeyPath:  "private.pem",
+		PublicKeyPath:   "public.pem",
+		CORSOrigins:     []string{"*"},
+		CORSCredentials: true,
 		FallbackDomains: []string{
 			"textures.minecraft.net",
 		},
@@ -119,6 +123,8 @@ func (c *Config) apply(raw rawConfig) {
 	}
 	c.PrivateKeyPath = getString(raw, "keys.private_key", c.PrivateKeyPath)
 	c.PublicKeyPath = getString(raw, "keys.public_key", c.PublicKeyPath)
+	c.CORSOrigins = getStringSlice(raw, "cors.allow_origins", c.CORSOrigins)
+	c.CORSCredentials = getBool(raw, "cors.allow_credentials", c.CORSCredentials)
 	c.FallbackDomains = getStringSlice(raw, "mojang.skin_domains", c.FallbackDomains)
 }
 
@@ -157,6 +163,10 @@ func configRaw(cfg Config) rawConfig {
 			"site_url": cfg.SiteURL,
 			"api_url":  cfg.APIURL,
 		},
+		"cors": map[string]any{
+			"allow_origins":     cfg.CORSOrigins,
+			"allow_credentials": cfg.CORSCredentials,
+		},
 		"mojang": map[string]any{
 			"skin_domains": cfg.FallbackDomains,
 		},
@@ -184,6 +194,8 @@ func applyEnvOverrides(cfg *Config, raw rawConfig) bool {
 	changed = applyStringEnv(raw, "REDIS_KEY_PREFIX", "redis.key_prefix", &cfg.RedisKeyPrefix) || changed
 	changed = applyIntEnv(raw, "REDIS_PUBLIC_CACHE_TTL_SECONDS", "redis.public_cache_ttl_seconds", &cfg.PublicCacheTTL, positiveInt) || changed
 	changed = applyIntEnv(raw, "REDIS_AUTH_CACHE_TTL_SECONDS", "redis.auth_cache_ttl_seconds", &cfg.AuthCacheTTL, positiveInt) || changed
+	changed = applyStringSliceEnv(raw, "CORS_ALLOW_ORIGINS", "cors.allow_origins", &cfg.CORSOrigins) || changed
+	changed = applyBoolEnv(raw, "CORS_ALLOW_CREDENTIALS", "cors.allow_credentials", &cfg.CORSCredentials) || changed
 	changed = applyStringSliceEnv(raw, "MOJANG_SKIN_DOMAINS", "mojang.skin_domains", &cfg.FallbackDomains) || changed
 	return changed
 }
@@ -239,12 +251,31 @@ func applyStringSliceEnv(raw rawConfig, envName, dotted string, target *[]string
 	return true
 }
 
+func applyBoolEnv(raw rawConfig, envName, dotted string, target *bool) bool {
+	value, ok := parseBoolEnv(envName)
+	if !ok {
+		return false
+	}
+	*target = value
+	setRaw(raw, dotted, value)
+	return true
+}
+
 func parseIntEnv(envName string) (int, bool) {
 	raw := os.Getenv(envName)
 	if raw == "" {
 		return 0, false
 	}
 	value, err := strconv.Atoi(raw)
+	return value, err == nil
+}
+
+func parseBoolEnv(envName string) (bool, bool) {
+	raw := strings.TrimSpace(os.Getenv(envName))
+	if raw == "" {
+		return false, false
+	}
+	value, err := strconv.ParseBool(raw)
 	return value, err == nil
 }
 
@@ -362,6 +393,25 @@ func getStringSlice(raw rawConfig, dotted string, fallback []string) []string {
 		}
 		if len(out) == len(items) {
 			return out
+		}
+		return fallback
+	default:
+		return fallback
+	}
+}
+
+func getBool(raw rawConfig, dotted string, fallback bool) bool {
+	v, ok := lookup(raw, dotted)
+	if !ok || v == nil {
+		return fallback
+	}
+	switch b := v.(type) {
+	case bool:
+		return b
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(b))
+		if err == nil {
+			return parsed
 		}
 		return fallback
 	default:
