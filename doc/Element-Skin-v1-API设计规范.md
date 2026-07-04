@@ -241,6 +241,7 @@ slim
   "email": "user@example.com",
   "display_name": "Steve",
   "roles": ["user"],
+  "protected": false,
   "permissions": ["profile.read.owned"],
   "avatar_hash": null,
   "banned_until": null,
@@ -661,7 +662,7 @@ account.delete.self
 
 限制：
 
-- 持有受保护角色的用户不能删除自己的账号。
+- 受保护主体不能删除自己的账号。
 
 替代旧端点：
 
@@ -1719,7 +1720,7 @@ account.delete.any
 限制：
 
 - 不能删除自己。
-- 不能修改受保护角色持有者，除非 Actor 拥有 `permission_protected.manage.any`。
+- 不能修改受保护主体，除非 Actor 拥有 `permission_protected.manage.any`。
 
 响应：
 
@@ -1763,6 +1764,7 @@ GET /v1/admin/users/{user_id}/permissions
 ```json
 {
   "roles": [],
+  "protected": false,
   "effective_permissions": [],
   "overrides": [],
   "catalog": {
@@ -1791,6 +1793,8 @@ permission.revoke.any
 ```text
 permission_protected.manage.any
 ```
+
+目标用户是受保护主体时，普通管理员不能授予或撤销其角色。Actor 必须拥有 `permission_protected.manage.any`。
 
 响应：
 
@@ -1825,6 +1829,11 @@ deny
 
 权限：由 permission service 内部按当前 Actor 校验。
 
+限制：
+
+- `permission_protected.manage.any` 不能通过本接口授予或清除，必须通过受保护主体转让接口完成。
+- `system` scope 权限和 `permission_protected.*` 权限属于受保护权限。除 `permission_protected.manage.any` 外，Actor 必须拥有 `permission_protected.manage.any` 才能设置或清除。
+
 响应：
 
 ```json
@@ -1835,7 +1844,35 @@ deny
 }
 ```
 
-### 17.8 封禁/解封用户
+### 17.8 转让受保护主体
+
+```http
+POST /v1/admin/users/{user_id}/protected-subject/transfer
+```
+
+权限：
+
+```text
+permission_protected.manage.any
+```
+
+语义：
+
+- 当前 Actor 必须是受保护用户主体。
+- 目标用户不能是当前 Actor 自己。
+- 转让成功后，旧受保护主体的 `protected` 变为 `false`，目标用户主体的 `protected` 变为 `true`。
+- 前端可以把 `protected = true` 的用户展示为“超级管理员”，但后端不再存在 `super_admin` 角色预设。
+
+响应：
+
+```json
+{
+  "ok": true,
+  "user_id": "target_user_id"
+}
+```
+
+### 17.9 封禁/解封用户
 
 ```http
 POST /v1/admin/users/{user_id}/ban
@@ -1862,6 +1899,7 @@ account.unban.any
 
 - 当前账号封禁语义是禁止加入 Minecraft 服务器。
 - 它不是禁止网页登录。
+- 不能封禁或解封受保护主体，除非 Actor 拥有 `permission_protected.manage.any`。
 - `reason` 必填，最大 500 个 Unicode 字符。
 - 封禁成功后，系统创建 `type = system`、`audience = targeted` 的定向通知投递给被封禁用户。
 - 封禁通知正文包含封禁截止时间与封禁原因，`ends_at` 固定为发布后 30 天。
@@ -1884,7 +1922,7 @@ account.unban.any
 }
 ```
 
-### 17.9 管理员重置用户密码
+### 17.10 管理员重置用户密码
 
 ```http
 POST /v1/admin/users/password/reset
