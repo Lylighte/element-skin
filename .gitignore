@@ -54,6 +54,9 @@ cover*.out
 *.pem
 *.key
 .env.local
+python-sdk/demo/.*.json
+python-sdk/demo/.*_authorize.out
+python-sdk/demo/.*_authorize.err
 
 ### Backend textures / uploaded assets (can be large)
 /skin-backend/textures/
