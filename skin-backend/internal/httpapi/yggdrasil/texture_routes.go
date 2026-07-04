@@ -1,14 +1,10 @@
 package yggdrasil
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
-	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/model"
-	"element-skin/backend/internal/permission"
 	texturesvc "element-skin/backend/internal/service/texture"
 	"element-skin/backend/internal/util"
 )
@@ -28,7 +24,7 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 401, Detail: "Invalid token"})
 		return
 	}
-	actor, err := h.yggTextureActor(req.Context(), tok)
+	actor, err := h.ygg.ActorForToken(req.Context(), tok, false)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -78,7 +74,7 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 401, Detail: "Invalid token"})
 		return
 	}
-	actor, err := h.yggTextureActor(req.Context(), tok)
+	actor, err := h.ygg.ActorForToken(req.Context(), tok, false)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -96,18 +92,4 @@ func (h Handler) DeleteTexture(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.WriteHeader(204)
-}
-
-func (h Handler) yggTextureActor(ctx context.Context, token model.Token) (permission.Actor, error) {
-	actor, err := h.db.Permissions.ActorForUser(ctx, token.UserID, permissiondb.EffectiveOptions{
-		SessionKind: permission.SessionKindYggdrasil,
-		Entrypoint:  permission.EntrypointYggdrasil,
-	})
-	if err != nil {
-		return permission.Actor{}, err
-	}
-	if token.ProfileID != nil {
-		actor.BoundProfileID = *token.ProfileID
-	}
-	return actor, nil
 }

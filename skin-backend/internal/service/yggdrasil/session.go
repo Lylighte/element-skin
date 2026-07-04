@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"element-skin/backend/internal/database"
-	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
@@ -37,15 +36,10 @@ func (y Yggdrasil) Join(ctx context.Context, access, profileID, serverID, ip str
 	if !owned {
 		return yggErr(403, "ForbiddenOperationException", "Invalid token.")
 	}
-	actor, err := y.DB.Permissions.ActorForUser(ctx, t.UserID, permissiondb.EffectiveOptions{
-		SessionKind:    permission.SessionKindYggdrasil,
-		Entrypoint:     permission.EntrypointYggdrasil,
-		ApplyBanPolicy: true,
-	})
+	actor, err := y.ActorForToken(ctx, t, true)
 	if err != nil {
 		return err
 	}
-	actor.BoundProfileID = profileID
 	if !actor.Has(yggJoinPermission) {
 		return yggErr(403, "ForbiddenOperationException", "Permission denied.")
 	}
@@ -80,14 +74,10 @@ func (y Yggdrasil) HasJoined(ctx context.Context, username, serverID string) (ma
 	if p == nil || p.UserID != t.UserID || p.Name != username {
 		return nil, 204, nil
 	}
-	actor, err := y.DB.Permissions.ActorForUser(ctx, t.UserID, permissiondb.EffectiveOptions{
-		SessionKind: permission.SessionKindYggdrasil,
-		Entrypoint:  permission.EntrypointYggdrasil,
-	})
+	actor, err := y.ActorForToken(ctx, t, false)
 	if err != nil {
 		return nil, 0, err
 	}
-	actor.BoundProfileID = p.ID
 	if !actor.Has(yggHasJoinedPermission) {
 		return nil, 0, yggErr(403, "ForbiddenOperationException", "Permission denied.")
 	}

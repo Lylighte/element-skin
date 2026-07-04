@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"element-skin/backend/internal/database"
-	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
@@ -259,10 +258,7 @@ func yggUserPayload(u model.User) map[string]any {
 }
 
 func (y Yggdrasil) requireYggPermission(ctx context.Context, userID string, def permission.Definition) error {
-	actor, err := y.DB.Permissions.ActorForUser(ctx, userID, permissiondb.EffectiveOptions{
-		SessionKind: permission.SessionKindYggdrasil,
-		Entrypoint:  permission.EntrypointYggdrasil,
-	})
+	actor, err := y.actorForUser(ctx, userID, false)
 	if err != nil {
 		return err
 	}
