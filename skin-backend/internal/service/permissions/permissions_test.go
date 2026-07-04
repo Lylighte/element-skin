@@ -163,19 +163,29 @@ func TestPermissionServiceProtectsProtectedPermissionsExactly(t *testing.T) {
 	grantOnly := actorWithPermissions(adminUser.ID, "permission.grant.any")
 
 	err := svc.SetUserPermissionOverride(ctx, grantOnly, target.ID, "permission_protected.manage.any", "allow")
-	if !httpErrorIs(err, http.StatusForbidden, "protected permission management required") {
-		t.Fatalf("protected grant without manage error mismatch: %#v", err)
+	if !httpErrorIs(err, http.StatusBadRequest, "protected management permission must be transferred") {
+		t.Fatalf("protected management grant error mismatch: %#v", err)
 	}
 	selfManager := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission_protected.manage.any")
 	err = svc.SetUserPermissionOverride(ctx, selfManager, adminUser.ID, "permission_protected.manage.any", "allow")
-	if !httpErrorIs(err, http.StatusForbidden, "cannot modify protected permission on yourself") {
-		t.Fatalf("self protected grant error mismatch: %#v", err)
+	if !httpErrorIs(err, http.StatusBadRequest, "protected management permission must be transferred") {
+		t.Fatalf("self protected management grant error mismatch: %#v", err)
 	}
 	manager := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any", "permission_protected.manage.any")
-	if err := svc.SetUserPermissionOverride(ctx, manager, target.ID, "permission_protected.manage.any", "allow"); err != nil {
+	err = svc.SetUserPermissionOverride(ctx, manager, target.ID, "permission_protected.manage.any", "allow")
+	if !httpErrorIs(err, http.StatusBadRequest, "protected management permission must be transferred") {
+		t.Fatalf("manager protected management grant error mismatch: %#v", err)
+	}
+	if overrides, err := db.Permissions.SubjectPermissionOverridesForUser(ctx, target.ID); err != nil || len(overrides) != 0 {
+		t.Fatalf("rejected protected management grants must not mutate overrides: overrides=%#v err=%v", overrides, err)
+	}
+	if err := svc.SetUserPermissionOverride(ctx, grantOnly, target.ID, "cache.invalidate.system", "allow"); !httpErrorIs(err, http.StatusForbidden, "protected permission management required") {
+		t.Fatalf("system-scope grant without manage error mismatch: %#v", err)
+	}
+	if err := svc.SetUserPermissionOverride(ctx, manager, target.ID, "cache.invalidate.system", "allow"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.ClearUserPermissionOverride(ctx, manager, target.ID, "permission_protected.manage.any"); err != nil {
+	if err := svc.ClearUserPermissionOverride(ctx, manager, target.ID, "cache.invalidate.system"); err != nil {
 		t.Fatal(err)
 	}
 }

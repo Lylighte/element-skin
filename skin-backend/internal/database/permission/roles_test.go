@@ -2,6 +2,7 @@ package permission_test
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -63,44 +64,98 @@ func TestGrantAndRevokeRoleExactState(t *testing.T) {
 	}
 }
 
-func TestUserHasProtectedRoleExact(t *testing.T) {
+func TestUserIsProtectedExact(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
-	user := testutil.CreateUser(t, db, "protected-role@test.com", "pw", "ProtectedRole", false)
+	user := testutil.CreateUser(t, db, "protected-subject@test.com", "pw", "ProtectedSubject", false)
 
-	hasProtected, err := db.Permissions.UserHasProtectedRole(ctx, user.ID)
-	if err != nil || hasProtected {
-		t.Fatalf("normal user should not have protected role: has=%v err=%v", hasProtected, err)
+	protected, err := db.Permissions.UserIsProtected(ctx, user.ID)
+	if err != nil || protected {
+		t.Fatalf("normal user should not be protected: protected=%v err=%v", protected, err)
 	}
-	if err := db.Permissions.GrantRole(ctx, user.ID, core.RoleSuperAdmin, ""); err != nil {
+	if _, err := db.Pool.Exec(ctx, `
+		UPDATE permission_subjects SET protected=TRUE WHERE id=$1
+	`, permissiondb.SubjectIDForUser(user.ID)); err != nil {
 		t.Fatal(err)
 	}
-	hasProtected, err = db.Permissions.UserHasProtectedRole(ctx, user.ID)
-	if err != nil || !hasProtected {
-		t.Fatalf("super admin should have protected role: has=%v err=%v", hasProtected, err)
+	protected, err = db.Permissions.UserIsProtected(ctx, user.ID)
+	if err != nil || !protected {
+		t.Fatalf("protected subject flag should be read exactly: protected=%v err=%v", protected, err)
 	}
 }
 
-func TestGrantInitialSuperAdminWhenExists(t *testing.T) {
+func TestTransferProtectedSubjectMovesFlagExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	actor := testutil.CreateUser(t, db, "transfer-actor@test.com", "pw", "TransferActor", true, true)
+	target := testutil.CreateUser(t, db, "transfer-target@test.com", "pw", "TransferTarget", false)
+	stale := testutil.CreateUser(t, db, "transfer-stale@test.com", "pw", "TransferStale", true, true)
+
+	if _, err := db.Permissions.TransferProtectedSubject(ctx, actor.ID, target.ID, permissiondb.SubjectIDForUser(actor.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if protected, err := db.Permissions.UserIsProtected(ctx, actor.ID); err != nil || protected {
+		t.Fatalf("actor protected flag after transfer = %v, %v; want false, nil", protected, err)
+	}
+	if protected, err := db.Permissions.UserIsProtected(ctx, target.ID); err != nil || !protected {
+		t.Fatalf("target protected flag after transfer = %v, %v; want true, nil", protected, err)
+	}
+	if protected, err := db.Permissions.UserIsProtected(ctx, stale.ID); err != nil || protected {
+		t.Fatalf("stale protected flag after transfer = %v, %v; want false, nil", protected, err)
+	}
+	var count int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM permission_subjects WHERE protected=TRUE`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("transfer should leave exactly one protected subject: got=%d", count)
+	}
+	if err := db.Permissions.SeedDefaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if protected, err := db.Permissions.UserIsProtected(ctx, target.ID); err != nil || !protected {
+		t.Fatalf("seed should preserve transferred protected subject: protected=%v err=%v", protected, err)
+	}
+}
+
+func TestTransferProtectedSubjectAffectedUsersExact(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	actor := testutil.CreateUser(t, db, "transfer-affected-actor@test.com", "pw", "TransferAffectedActor", true, true)
+	target := testutil.CreateUser(t, db, "transfer-affected-target@test.com", "pw", "TransferAffectedTarget", false)
+	stale := testutil.CreateUser(t, db, "transfer-affected-stale@test.com", "pw", "TransferAffectedStale", true, true)
+
+	affected, err := db.Permissions.TransferProtectedSubject(ctx, actor.ID, target.ID, permissiondb.SubjectIDForUser(actor.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedAffected := []string{actor.ID, stale.ID, target.ID}
+	sort.Strings(expectedAffected)
+	if !sameStringSlice(affected, expectedAffected) {
+		t.Fatalf("affected users mismatch: got=%#v want=%#v", affected, expectedAffected)
+	}
+}
+
+func TestGrantInitialProtectedManagerWhenExists(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 	first := testutil.CreateUser(t, db, "first-super@test.com", "pw", "FirstSuper", false)
-	granted, err := db.Permissions.GrantInitialSuperAdminIfNone(ctx, first.ID)
+	granted, err := db.Permissions.GrantInitialProtectedManagerIfNone(ctx, first.ID)
 	if err != nil || !granted {
-		t.Fatalf("first user should receive super admin: granted=%v err=%v", granted, err)
+		t.Fatalf("first user should become protected manager: granted=%v err=%v", granted, err)
 	}
 	second := testutil.CreateUser(t, db, "second-super@test.com", "pw", "SecondSuper", false)
-	grantedAgain, err := db.Permissions.GrantInitialSuperAdminIfNone(ctx, second.ID)
+	grantedAgain, err := db.Permissions.GrantInitialProtectedManagerIfNone(ctx, second.ID)
 	if err != nil || grantedAgain {
-		t.Fatalf("second call should not grant super admin again: granted=%v err=%v", grantedAgain, err)
+		t.Fatalf("second call should not create another protected manager: granted=%v err=%v", grantedAgain, err)
 	}
-	hasSuper, err := db.Permissions.UserHasRole(ctx, second.ID, core.RoleSuperAdmin)
-	if err != nil || hasSuper {
-		t.Fatalf("second user should not have super admin role: has=%v err=%v", hasSuper, err)
+	protected, err := db.Permissions.UserIsProtected(ctx, second.ID)
+	if err != nil || protected {
+		t.Fatalf("second user should not be protected: protected=%v err=%v", protected, err)
 	}
 }
 
-func TestGrantInitialSuperAdminIfNoneConcurrentCurrentModel(t *testing.T) {
+func TestGrantInitialProtectedManagerIfNoneConcurrentCurrentModel(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 	userIDs := []string{
@@ -111,7 +166,12 @@ func TestGrantInitialSuperAdminIfNoneConcurrentCurrentModel(t *testing.T) {
 		testutil.CreateUser(t, db, "concurrent-super-5@test.com", "pw", "ConcurrentSuper5", false).ID,
 		testutil.CreateUser(t, db, "concurrent-super-6@test.com", "pw", "ConcurrentSuper6", false).ID,
 	}
-	if _, err := db.Pool.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin); err != nil {
+	if _, err := db.Pool.Exec(ctx, `UPDATE permission_subjects SET protected=FALSE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		DELETE FROM subject_permission_overrides WHERE permission_id=$1
+	`, int64(core.MustDefinitionByCode("permission_protected.manage.any").ID)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +190,7 @@ func TestGrantInitialSuperAdminIfNoneConcurrentCurrentModel(t *testing.T) {
 			<-start
 			callCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			granted, err := db.Permissions.GrantInitialSuperAdminIfNone(callCtx, userID)
+			granted, err := db.Permissions.GrantInitialProtectedManagerIfNone(callCtx, userID)
 			results <- result{userID: userID, granted: granted, err: err}
 		}(userID)
 	}
@@ -142,7 +202,7 @@ func TestGrantInitialSuperAdminIfNoneConcurrentCurrentModel(t *testing.T) {
 	grantedUserID := ""
 	for item := range results {
 		if item.err != nil {
-			t.Fatalf("concurrent GrantInitialSuperAdminIfNone failed for %s: %v", item.userID, item.err)
+			t.Fatalf("concurrent GrantInitialProtectedManagerIfNone failed for %s: %v", item.userID, item.err)
 		}
 		if item.granted {
 			grantedCount++
@@ -150,37 +210,23 @@ func TestGrantInitialSuperAdminIfNoneConcurrentCurrentModel(t *testing.T) {
 		}
 	}
 	if grantedCount != 1 {
-		t.Fatalf("concurrent initial super admin grants=%d, want exactly 1", grantedCount)
+		t.Fatalf("concurrent initial protected manager grants=%d, want exactly 1", grantedCount)
 	}
 	var storedCount int
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin).Scan(&storedCount); err != nil {
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM permission_subjects WHERE protected=TRUE`).Scan(&storedCount); err != nil {
 		t.Fatal(err)
 	}
 	if storedCount != 1 {
-		t.Fatalf("subject_roles super_admin count=%d, want exactly 1", storedCount)
+		t.Fatalf("protected subject count=%d, want exactly 1", storedCount)
 	}
 	for _, userID := range userIDs {
-		hasSuper, err := db.Permissions.UserHasRole(ctx, userID, core.RoleSuperAdmin)
+		protected, err := db.Permissions.UserIsProtected(ctx, userID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if (userID == grantedUserID) != hasSuper {
-			t.Fatalf("super admin assignment mismatch for %s: has=%v winner=%s", userID, hasSuper, grantedUserID)
+		if (userID == grantedUserID) != protected {
+			t.Fatalf("protected subject assignment mismatch for %s: protected=%v winner=%s", userID, protected, grantedUserID)
 		}
-	}
-	roles, err := db.Permissions.RoleIDsForUser(ctx, grantedUserID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !containsRole(roles, core.RoleUser) || !containsRole(roles, core.RoleSuperAdmin) {
-		t.Fatalf("winner roles should contain user and super_admin exactly: %#v", roles)
-	}
-	bits, err := db.Permissions.EffectivePermissionsForUser(ctx, grantedUserID, permissiondb.EffectiveOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !has(bits, "permission_protected.manage.any") {
-		t.Fatal("winner should receive protected permission through current role model")
 	}
 }
 
@@ -240,11 +286,11 @@ func TestRoleIDsForUserCancelledContext(t *testing.T) {
 	assertCancelled(t, err)
 }
 
-func TestGrantInitialSuperAdminIfNoneErrorPath(t *testing.T) {
+func TestGrantInitialProtectedManagerIfNoneErrorPath(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := db.Permissions.GrantInitialSuperAdminIfNone(ctx, "nonexistent")
+	_, err := db.Permissions.GrantInitialProtectedManagerIfNone(ctx, "nonexistent")
 	assertCancelled(t, err)
 }
 
@@ -289,4 +335,16 @@ func containsRole(roles []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func sameStringSlice(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }

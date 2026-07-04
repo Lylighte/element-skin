@@ -77,28 +77,27 @@ func TestInitMigratesVersion241AdminColumnToPermissionRolesAndDropsIt(t *testing
 		t.Fatal(err)
 	}
 
-	var adminCount, superCount int
+	var adminCount, protectedCount int
 	if err := db.Pool.QueryRow(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM subject_roles WHERE role_id='admin'),
-			(SELECT COUNT(*) FROM subject_roles WHERE role_id='super_admin')
-	`).Scan(&adminCount, &superCount); err != nil {
+			(SELECT COUNT(*) FROM permission_subjects WHERE protected=TRUE)
+	`).Scan(&adminCount, &protectedCount); err != nil {
 		t.Fatal(err)
 	}
-	if adminCount != 2 || superCount != 1 {
-		t.Fatalf("2.4.1 role migration counts: admin=%d super=%d; want 2 and 1", adminCount, superCount)
+	if adminCount != 2 || protectedCount != 1 {
+		t.Fatalf("2.4.1 role migration counts: admin=%d protected=%d; want 2 and 1", adminCount, protectedCount)
 	}
-	var superUserID string
+	var protectedUserID string
 	if err := db.Pool.QueryRow(ctx, `
-		SELECT ps.user_id
-		FROM subject_roles sr
-		JOIN permission_subjects ps ON ps.id=sr.subject_id
-		WHERE sr.role_id='super_admin'
-	`).Scan(&superUserID); err != nil {
+		SELECT user_id
+		FROM permission_subjects
+		WHERE protected=TRUE
+	`).Scan(&protectedUserID); err != nil {
 		t.Fatal(err)
 	}
-	if superUserID != "a-admin" {
-		t.Fatalf("oldest 2.4.1 admin should become super admin, got %q", superUserID)
+	if protectedUserID != "a-admin" {
+		t.Fatalf("oldest 2.4.1 admin should become protected subject, got %q", protectedUserID)
 	}
 	var exists bool
 	if err := db.Pool.QueryRow(ctx, `
@@ -130,17 +129,16 @@ func TestInitPromotesOldestUserWhenVersion241HasNoAdmin(t *testing.T) {
 	if err := db.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var superUserID string
+	var protectedUserID string
 	if err := db.Pool.QueryRow(ctx, `
-		SELECT ps.user_id
-		FROM subject_roles sr
-		JOIN permission_subjects ps ON ps.id=sr.subject_id
-		WHERE sr.role_id='super_admin'
-	`).Scan(&superUserID); err != nil {
+		SELECT user_id
+		FROM permission_subjects
+		WHERE protected=TRUE
+	`).Scan(&protectedUserID); err != nil {
 		t.Fatal(err)
 	}
-	if superUserID != "a-user" {
-		t.Fatalf("oldest 2.4.1 user should become super admin when no admin exists, got %q", superUserID)
+	if protectedUserID != "a-user" {
+		t.Fatalf("oldest 2.4.1 user should become protected subject when no admin exists, got %q", protectedUserID)
 	}
 }
 

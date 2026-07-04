@@ -39,6 +39,10 @@ func (s AccountService) Me(ctx context.Context, actor permission.Actor) (map[str
 	if err != nil {
 		return nil, err
 	}
+	protected, err := s.DB.Permissions.UserIsProtected(ctx, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"id":            u.ID,
 		"email":         u.Email,
@@ -47,6 +51,7 @@ func (s AccountService) Me(ctx context.Context, actor permission.Actor) (map[str
 		"banned_until":  u.BannedUntil,
 		"avatar_hash":   u.AvatarHash,
 		"permissions":   actor.PermissionCodes(),
+		"protected":     protected,
 		"profile_count": profileCount,
 		"texture_count": textureCount,
 	}, nil
@@ -110,12 +115,19 @@ func (s AccountService) DeleteSelf(ctx context.Context, actor permission.Actor) 
 	if err := actor.Require(accountDeleteSelfPermission); err != nil {
 		return permissionDenied()
 	}
-	hasProtectedRole, err := s.DB.Permissions.UserHasProtectedRole(ctx, actor.UserID)
+	u, err := s.DB.Users.GetByID(ctx, actor.UserID)
 	if err != nil {
 		return err
 	}
-	if hasProtectedRole {
-		return util.HTTPError{Status: http.StatusForbidden, Detail: "protected role holders cannot delete their own account"}
+	if u == nil {
+		return util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
+	}
+	isProtected, err := s.DB.Permissions.UserIsProtected(ctx, actor.UserID)
+	if err != nil {
+		return err
+	}
+	if isProtected {
+		return util.HTTPError{Status: http.StatusForbidden, Detail: "protected subjects cannot delete their own account"}
 	}
 	if err := s.Redis.DeleteYggTokensByUser(ctx, actor.UserID); err != nil {
 		return err

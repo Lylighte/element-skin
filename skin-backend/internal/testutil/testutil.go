@@ -191,7 +191,7 @@ func dropTestDatabase(t testing.TB, ctx context.Context, dbName string) {
 	}
 }
 
-func CreateUser(t testing.TB, db *database.DB, email, password, username string, isAdmin bool, isSuperAdmin ...bool) model.User {
+func CreateUser(t testing.TB, db *database.DB, email, password, username string, isAdmin bool, protectedSubject ...bool) model.User {
 	t.Helper()
 	if email == "" {
 		email = randomID(t)[:8] + "@example.com"
@@ -203,9 +203,9 @@ func CreateUser(t testing.TB, db *database.DB, email, password, username string,
 	if err != nil {
 		t.Fatal(err)
 	}
-	super := false
-	if len(isSuperAdmin) > 0 {
-		super = isSuperAdmin[0]
+	protected := false
+	if len(protectedSubject) > 0 {
+		protected = protectedSubject[0]
 	}
 	user := model.User{
 		ID: randomID(t), Email: email, Password: hash,
@@ -222,9 +222,19 @@ func CreateUser(t testing.TB, db *database.DB, email, password, username string,
 			t.Fatalf("grant admin role: %v", err)
 		}
 	}
-	if super {
-		if err := db.Permissions.GrantRole(context.Background(), user.ID, permission.RoleSuperAdmin, ""); err != nil {
-			t.Fatalf("grant super admin role: %v", err)
+	if protected {
+		if !isAdmin {
+			if err := db.Permissions.GrantRole(context.Background(), user.ID, permission.RoleAdmin, ""); err != nil {
+				t.Fatalf("grant protected manager admin role: %v", err)
+			}
+		}
+		if _, err := db.Pool.Exec(context.Background(), `
+			UPDATE permission_subjects SET protected=TRUE WHERE id=$1
+		`, "user:"+user.ID); err != nil {
+			t.Fatalf("mark protected subject: %v", err)
+		}
+		if err := db.Permissions.SetSubjectPermissionOverride(context.Background(), user.ID, permission.MustDefinitionByCode("permission_protected.manage.any"), "allow", ""); err != nil {
+			t.Fatalf("grant protected manager permission: %v", err)
 		}
 	}
 	return user

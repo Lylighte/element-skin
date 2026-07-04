@@ -29,8 +29,8 @@ func TestAuthRegisterCreatesFirstAdminAndOfflineProfileExactly(t *testing.T) {
 	if err != nil || user == nil || user.Email != "auth-service@test.com" || user.DisplayName != "AuthService" {
 		t.Fatalf("registered user mismatch: user=%#v err=%v", user, err)
 	}
-	if hasRole, err := db.Permissions.UserHasRole(ctx, userID, "super_admin"); err != nil || !hasRole {
-		t.Fatalf("first registered user should receive super_admin role: hasRole=%v err=%v", hasRole, err)
+	if protected, err := db.Permissions.UserIsProtected(ctx, userID); err != nil || !protected {
+		t.Fatalf("first registered user should become protected subject: protected=%v err=%v", protected, err)
 	}
 	profiles, err := db.Profiles.GetByUser(ctx, userID, 10)
 	if err != nil || len(profiles) != 1 || profiles[0].ID != util.OfflineUUIDNoDash("auth_service") || profiles[0].Name != "auth_service" {
@@ -672,20 +672,19 @@ func TestConcurrentRegistrationsRetryConflictingGeneratedProfileName(t *testing.
 		stored[1].id != util.OfflineUUIDNoDash("same_local_1") {
 		t.Fatalf("generated offline profiles=%#v; want exact base and suffixed offline identities", stored)
 	}
-	var users, profiles, superAdmins int
+	var users, profiles, protectedSubjects int
 	if err := db.Pool.QueryRow(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM users WHERE id = ANY($1)),
 			(SELECT COUNT(*) FROM profiles WHERE user_id = ANY($1)),
 			(SELECT COUNT(*)
-			 FROM subject_roles sr
-			 JOIN permission_subjects ps ON ps.id=sr.subject_id
-			 WHERE ps.user_id = ANY($1) AND sr.role_id='super_admin')
-	`, userIDs).Scan(&users, &profiles, &superAdmins); err != nil {
+			 FROM permission_subjects ps
+			 WHERE ps.user_id = ANY($1) AND ps.protected=TRUE)
+	`, userIDs).Scan(&users, &profiles, &protectedSubjects); err != nil {
 		t.Fatal(err)
 	}
-	if users != 2 || profiles != 2 || superAdmins != 1 {
-		t.Fatalf("registration state: users=%d profiles=%d super_admins=%d; want 2, 2, 1", users, profiles, superAdmins)
+	if users != 2 || profiles != 2 || protectedSubjects != 1 {
+		t.Fatalf("registration state: users=%d profiles=%d protected_subjects=%d; want 2, 2, 1", users, profiles, protectedSubjects)
 	}
 }
 

@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS permission_subjects (
     user_id TEXT UNIQUE,
     kind TEXT NOT NULL CHECK(kind IN ('user', 'client', 'system')),
     status TEXT NOT NULL CHECK(status IN ('active', 'disabled', 'locked')),
+    protected BOOLEAN NOT NULL DEFAULT FALSE,
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -394,6 +395,7 @@ ALTER TABLE skin_library ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DE
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS tokens;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE permission_subjects ADD COLUMN IF NOT EXISTS protected BOOLEAN NOT NULL DEFAULT FALSE;
 UPDATE users SET created_at = 0 WHERE created_at IS NULL;
 UPDATE skin_library sl SET usage_count = CASE sl.texture_type
     WHEN 'skin' THEN (SELECT COUNT(*) FROM user_textures ut WHERE ut.hash = sl.skin_hash AND ut.texture_type = 'skin')

@@ -26,8 +26,8 @@ func (s Store) CreateClient(ctx context.Context, client model.OAuthClient, permi
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO permission_subjects (id,user_id,kind,status,created_at,updated_at)
-		VALUES ($1,NULL,'client','active',$2,$2)
+		INSERT INTO permission_subjects (id,user_id,kind,status,protected,created_at,updated_at)
+		VALUES ($1,NULL,'client','active',FALSE,$2,$2)
 		ON CONFLICT (id) DO UPDATE
 		SET kind='client', updated_at=EXCLUDED.updated_at
 	`, "client:"+client.ID, client.CreatedAt); err != nil {

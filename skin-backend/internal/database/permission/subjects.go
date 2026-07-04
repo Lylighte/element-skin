@@ -33,8 +33,8 @@ func (s Store) EnsureUserSubject(ctx context.Context, userID string) error {
 	defer tx.Rollback(ctx)
 	now := time.Now().UnixMilli()
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO permission_subjects (id,user_id,kind,status,created_at,updated_at)
-		VALUES ($1,$2,'user','active',$3,$3)
+		INSERT INTO permission_subjects (id,user_id,kind,status,protected,created_at,updated_at)
+		VALUES ($1,$2,'user','active',FALSE,$3,$3)
 		ON CONFLICT (id) DO UPDATE
 		SET user_id=EXCLUDED.user_id, kind='user', updated_at=EXCLUDED.updated_at
 	`, subjectID, userID, now); err != nil {
@@ -54,8 +54,8 @@ func (s Store) EnsureClientSubject(ctx context.Context, clientID string) error {
 	subjectID := SubjectIDForClient(clientID)
 	now := time.Now().UnixMilli()
 	_, err := s.conn().Exec(ctx, `
-		INSERT INTO permission_subjects (id,user_id,kind,status,created_at,updated_at)
-		VALUES ($1,NULL,'client','active',$2,$2)
+		INSERT INTO permission_subjects (id,user_id,kind,status,protected,created_at,updated_at)
+		VALUES ($1,NULL,'client','active',FALSE,$2,$2)
 		ON CONFLICT (id) DO UPDATE
 		SET kind='client', updated_at=EXCLUDED.updated_at
 	`, subjectID, now)

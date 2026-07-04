@@ -132,8 +132,8 @@ func seedSessionPolicies(ctx context.Context, tx pgx.Tx, now int64) error {
 
 func seedUserSubjects(ctx context.Context, tx pgx.Tx, now int64) error {
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO permission_subjects (id,user_id,kind,status,created_at,updated_at)
-		SELECT 'user:' || id, id, 'user', 'active', $1, $1
+		INSERT INTO permission_subjects (id,user_id,kind,status,protected,created_at,updated_at)
+		SELECT 'user:' || id, id, 'user', 'active', FALSE, $1, $1
 		FROM users
 		ON CONFLICT (id) DO UPDATE
 		SET user_id=EXCLUDED.user_id, updated_at=EXCLUDED.updated_at
@@ -163,35 +163,84 @@ func seedUserSubjects(ctx context.Context, tx pgx.Tx, now int64) error {
 			return err
 		}
 	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO subject_roles (subject_id,role_id,created_at)
-		SELECT ps.id, $1, $2
-		FROM permission_subjects ps
-		JOIN users u ON u.id=ps.user_id
-		LEFT JOIN subject_roles admin_role ON admin_role.subject_id=ps.id AND admin_role.role_id=$3
-		WHERE NOT EXISTS (SELECT 1 FROM subject_roles WHERE role_id=$1)
-		ORDER BY (admin_role.role_id IS NULL), u.created_at ASC, u.id ASC
-		LIMIT 1
-		ON CONFLICT (subject_id, role_id) DO NOTHING
-	`, core.RoleSuperAdmin, now, core.RoleAdmin); err != nil {
+	if err := seedProtectedUserSubject(ctx, tx, now); err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `
-		WITH ranked AS (
-			SELECT sr.subject_id,
-			       row_number() OVER (ORDER BY u.created_at ASC, u.id ASC) AS rn
-			FROM subject_roles sr
-			JOIN permission_subjects ps ON ps.id=sr.subject_id
-			JOIN users u ON u.id=ps.user_id
-			WHERE sr.role_id=$1
-		)
-		DELETE FROM subject_roles sr
-		USING ranked
-		WHERE sr.subject_id=ranked.subject_id
-		  AND sr.role_id=$1
-		  AND ranked.rn > 1
-	`, core.RoleSuperAdmin)
-	return err
+	return cleanupObsoleteSuperAdminRole(ctx, tx)
+}
+
+func seedProtectedUserSubject(ctx context.Context, tx pgx.Tx, now int64) error {
+	subjectID, err := protectedSeedCandidate(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if subjectID == "" {
+		return nil
+	}
+	return assignProtectedManager(ctx, tx, subjectID, "", now)
+}
+
+func protectedSeedCandidate(ctx context.Context, tx pgx.Tx) (string, error) {
+	var subjectID string
+	err := tx.QueryRow(ctx, `
+		SELECT id
+		FROM permission_subjects
+		WHERE kind='user' AND user_id IS NOT NULL AND protected=TRUE
+		ORDER BY updated_at DESC, id DESC
+		LIMIT 1
+	`).Scan(&subjectID)
+	if err == nil {
+		return subjectID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return "", err
+	}
+
+	err = tx.QueryRow(ctx, `
+		SELECT sr.subject_id
+		FROM subject_roles sr
+		JOIN permission_subjects ps ON ps.id=sr.subject_id
+		JOIN users u ON u.id=ps.user_id
+		WHERE sr.role_id=$1
+		ORDER BY sr.created_at DESC, u.created_at DESC, u.id DESC
+		LIMIT 1
+	`, obsoleteSuperAdminRoleID).Scan(&subjectID)
+	if err == nil {
+		return subjectID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return "", err
+	}
+
+	manageProtected := core.MustDefinitionByCode("permission_protected.manage.any")
+	err = tx.QueryRow(ctx, `
+		SELECT spo.subject_id
+		FROM subject_permission_overrides spo
+		JOIN permission_subjects ps ON ps.id=spo.subject_id
+		WHERE spo.permission_id=$1 AND spo.effect='allow' AND ps.kind='user' AND ps.user_id IS NOT NULL
+		ORDER BY spo.created_at DESC, spo.subject_id DESC
+		LIMIT 1
+	`, int64(manageProtected.ID)).Scan(&subjectID)
+	if err == nil {
+		return subjectID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return "", err
+	}
+
+	err = tx.QueryRow(ctx, `
+		SELECT ps.id
+		FROM permission_subjects ps
+		JOIN users u ON u.id=ps.user_id
+		LEFT JOIN subject_roles admin_role ON admin_role.subject_id=ps.id AND admin_role.role_id=$1
+		WHERE ps.kind='user' AND ps.user_id IS NOT NULL
+		ORDER BY (admin_role.role_id IS NULL), u.created_at ASC, u.id ASC
+		LIMIT 1
+	`, core.RoleAdmin).Scan(&subjectID)
+	if err == pgx.ErrNoRows {
+		return "", nil
+	}
+	return subjectID, err
 }
 
 func usersColumnExists(ctx context.Context, tx pgx.Tx, column string) (bool, error) {
@@ -210,8 +259,8 @@ func usersColumnExists(ctx context.Context, tx pgx.Tx, column string) (bool, err
 
 func seedClientSubjects(ctx context.Context, tx pgx.Tx, now int64) error {
 	_, err := tx.Exec(ctx, `
-		INSERT INTO permission_subjects (id,user_id,kind,status,created_at,updated_at)
-		SELECT 'client:' || id, NULL, 'client', 'active', $1, $1
+		INSERT INTO permission_subjects (id,user_id,kind,status,protected,created_at,updated_at)
+		SELECT 'client:' || id, NULL, 'client', 'active', FALSE, $1, $1
 		FROM delegated_clients
 		ON CONFLICT (id) DO UPDATE
 		SET kind='client', updated_at=EXCLUDED.updated_at

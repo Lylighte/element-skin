@@ -116,6 +116,7 @@ func (r *Router) routes() {
 	r.handle("GET /v1/admin/users/{user_id}/permissions", adminRoutes.Auth(adminRoutes.UserPermissions))
 	r.handle("PUT /v1/admin/users/{user_id}/roles/{role_id}", adminRoutes.Auth(adminRoutes.GrantUserRole))
 	r.handle("DELETE /v1/admin/users/{user_id}/roles/{role_id}", adminRoutes.Auth(adminRoutes.RevokeUserRole))
+	r.handle("POST /v1/admin/users/{user_id}/protected-subject/transfer", adminRoutes.Auth(adminRoutes.TransferProtectedSubject))
 	r.handle("PUT /v1/admin/users/{user_id}/permissions/{permission_code}", adminRoutes.Auth(adminRoutes.SetUserPermissionOverride))
 	r.handle("DELETE /v1/admin/users/{user_id}/permissions/{permission_code}", adminRoutes.Auth(adminRoutes.ClearUserPermissionOverride))
 	r.handle("DELETE /v1/admin/users/{user_id}", adminRoutes.Auth(adminRoutes.DeleteUser))

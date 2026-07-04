@@ -13,7 +13,6 @@ const (
 	RoleUser              = "user"
 	RoleModerator         = "moderator"
 	RoleAdmin             = "admin"
-	RoleSuperAdmin        = "super_admin"
 	RoleSystemMaintenance = "system_maintenance"
 
 	SessionKindWeb        = "web"
@@ -149,14 +148,6 @@ var Roles = []Role{
 			"oauth_grant.revoke.any",
 			"oauth_token.introspect.any",
 		),
-	},
-	{
-		ID:          RoleSuperAdmin,
-		Name:        "超级管理员",
-		Description: "拥有全部非系统权限与受保护权限管理能力",
-		SystemRole:  true,
-		Protected:   true,
-		Permissions: nonSystemDefinitions(),
 	},
 	{
 		ID:          RoleSystemMaintenance,

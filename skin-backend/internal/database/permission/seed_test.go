@@ -49,7 +49,7 @@ func TestSeedMigratesExistingAdminFlagsToRolesExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 	admin := testutil.CreateUser(t, db, "permission-admin@test.com", "pw", "PermissionAdmin", true)
-	super := testutil.CreateUser(t, db, "permission-super@test.com", "pw", "PermissionSuper", true, true)
+	protectedUser := testutil.CreateUser(t, db, "permission-protected@test.com", "pw", "PermissionProtected", true, true)
 	if err := db.Permissions.SeedDefaults(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -63,15 +63,9 @@ func TestSeedMigratesExistingAdminFlagsToRolesExactly(t *testing.T) {
 	if has(adminBits, "permission_protected.manage.any") {
 		t.Fatal("migrated admin must not manage protected permission subjects")
 	}
-	superBits, err := db.Permissions.EffectivePermissionsForUser(ctx, super.ID, permissiondb.EffectiveOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !has(superBits, "permission_protected.manage.any") {
-		t.Fatal("migrated super admin should manage protected permission subjects")
-	}
-	if has(superBits, "cache.invalidate.system") {
-		t.Fatal("super admin should not receive system-scope permissions")
+	protected, err := db.Permissions.UserIsProtected(ctx, protectedUser.ID)
+	if err != nil || !protected {
+		t.Fatalf("existing protected subject should remain protected: protected=%v err=%v", protected, err)
 	}
 }
 
@@ -105,12 +99,12 @@ func TestSeedUserSubjectsMigratesIsAdminColumnExactly(t *testing.T) {
 	}
 }
 
-func TestSeedDefaultsFirstRegisteredUserBecomesSuperAdmin(t *testing.T) {
+func TestSeedDefaultsFirstRegisteredUserBecomesProtectedSubject(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 
 	user := testutil.CreateUser(t, db, "first-user@test.com", "pw", "FirstUser", false)
-	if _, err := db.Pool.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin); err != nil {
+	if _, err := db.Pool.Exec(ctx, `UPDATE permission_subjects SET protected=FALSE`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Permissions.SeedDefaults(ctx); err != nil {
@@ -118,22 +112,25 @@ func TestSeedDefaultsFirstRegisteredUserBecomesSuperAdmin(t *testing.T) {
 	}
 
 	var count int
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin).Scan(&count); err != nil {
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM permission_subjects WHERE protected=TRUE`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
-		t.Fatalf("SeedDefaults should ensure exactly one super_admin after removal: got=%d", count)
+		t.Fatalf("SeedDefaults should ensure exactly one protected subject after removal: got=%d", count)
 	}
-	hasSuper, err := db.Permissions.UserHasRole(ctx, user.ID, core.RoleSuperAdmin)
-	if err != nil {
+	protected, err := db.Permissions.UserIsProtected(ctx, user.ID)
+	if err != nil || !protected {
+		t.Fatalf("the only user should become protected when none exists: protected=%v err=%v", protected, err)
+	}
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM roles WHERE id='super_admin'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if !hasSuper {
-		t.Fatal("the only user should become super_admin when none exists")
+	if count != 0 {
+		t.Fatalf("obsolete super_admin role should be cleaned up: got=%d", count)
 	}
 }
 
-func TestSeedDefaultsDeduplicatesMultipleSuperAdminsExactly(t *testing.T) {
+func TestSeedDefaultsMigratesLegacySuperAdminRolesToProtectedSubjectExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 
@@ -142,18 +139,28 @@ func TestSeedDefaultsDeduplicatesMultipleSuperAdminsExactly(t *testing.T) {
 	third := testutil.CreateUser(t, db, "dedup-third@test.com", "pw", "DedupThird", false)
 	now := time.Now().UnixMilli()
 
-	if _, err := db.Pool.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin); err != nil {
+	if _, err := db.Pool.Exec(ctx, `UPDATE permission_subjects SET protected=FALSE`); err != nil {
 		t.Fatal(err)
 	}
-	for _, u := range []struct{ id, sub string }{
-		{first.ID, permissiondb.SubjectIDForUser(first.ID)},
-		{second.ID, permissiondb.SubjectIDForUser(second.ID)},
-		{third.ID, permissiondb.SubjectIDForUser(third.ID)},
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO roles (id,name,description,system_role,protected,created_at,updated_at)
+		VALUES ('super_admin','Legacy Super Admin','Legacy role',TRUE,TRUE,$1,$1)
+		ON CONFLICT (id) DO NOTHING
+	`, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []struct {
+		sub       string
+		createdAt int64
+	}{
+		{permissiondb.SubjectIDForUser(first.ID), now - 3000},
+		{permissiondb.SubjectIDForUser(second.ID), now - 2000},
+		{permissiondb.SubjectIDForUser(third.ID), now - 1000},
 	} {
 		if _, err := db.Pool.Exec(ctx, `
 			INSERT INTO subject_roles (subject_id,role_id,created_at)
 			VALUES ($1,$2,$3)
-		`, u.sub, core.RoleSuperAdmin, now); err != nil {
+		`, u.sub, "super_admin", u.createdAt); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -162,25 +169,25 @@ func TestSeedDefaultsDeduplicatesMultipleSuperAdminsExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM subject_roles WHERE role_id=$1`, core.RoleSuperAdmin).Scan(&count); err != nil {
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM permission_subjects WHERE protected=TRUE`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
-		t.Fatalf("dedup should keep exactly one super_admin: got=%d", count)
+		t.Fatalf("legacy migration should keep exactly one protected subject: got=%d", count)
 	}
-	var keptSubject string
+	protected, err := db.Permissions.UserIsProtected(ctx, third.ID)
+	if err != nil || !protected {
+		t.Fatalf("latest explicit legacy super_admin grant should become protected: protected=%v err=%v", protected, err)
+	}
 	if err := db.Pool.QueryRow(ctx, `
-		SELECT sr.subject_id FROM subject_roles sr
-		JOIN permission_subjects ps ON ps.id=sr.subject_id
-		JOIN users u ON u.id=ps.user_id
-		WHERE sr.role_id=$1
-		ORDER BY u.created_at ASC, u.id ASC
-		LIMIT 1
-	`, core.RoleSuperAdmin).Scan(&keptSubject); err != nil {
+		SELECT COUNT(*)
+		FROM roles
+		WHERE id='super_admin'
+	`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if keptSubject != permissiondb.SubjectIDForUser(first.ID) {
-		t.Fatalf("dedup should keep earliest user: got=%s want=%s", keptSubject, permissiondb.SubjectIDForUser(first.ID))
+	if count != 0 {
+		t.Fatalf("obsolete super_admin role should be removed after migration: got=%d", count)
 	}
 }
 

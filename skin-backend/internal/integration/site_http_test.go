@@ -526,8 +526,8 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 	if err != nil || firstUser == nil {
 		t.Fatalf("first registered user should exist: user=%#v err=%v", firstUser, err)
 	}
-	if hasRole, err := db.Permissions.UserHasRole(ctx, firstUser.ID, "super_admin"); err != nil || !hasRole {
-		t.Fatalf("first registered user should have super_admin role: hasRole=%v err=%v", hasRole, err)
+	if protected, err := db.Permissions.UserIsProtected(ctx, firstUser.ID); err != nil || !protected {
+		t.Fatalf("first registered user should be protected: protected=%v err=%v", protected, err)
 	}
 	secondRegister := doJSON(t, h, "POST", "/v1/auth/register", map[string]any{"email": "second-normal@test.com", "password": "Password123", "username": "SecondNormal"})
 	if secondRegister.Code != 200 {
@@ -537,8 +537,8 @@ func TestRegistrationRestrictionsAndInviteConsumption(t *testing.T) {
 	if err != nil || secondUser == nil {
 		t.Fatalf("second registered user should exist: user=%#v err=%v", secondUser, err)
 	}
-	if hasRole, err := db.Permissions.UserHasRole(ctx, secondUser.ID, "super_admin"); err != nil || hasRole {
-		t.Fatalf("second registered user should not have super_admin role: hasRole=%v err=%v", hasRole, err)
+	if protected, err := db.Permissions.UserIsProtected(ctx, secondUser.ID); err != nil || protected {
+		t.Fatalf("second registered user should not be protected: protected=%v err=%v", protected, err)
 	}
 	duplicateEmail := doJSON(t, h, "POST", "/v1/auth/register", map[string]any{"email": "second-normal@test.com", "password": "Password123", "username": "DuplicateEmailUser"})
 	if duplicateEmail.Code != 400 || !strings.Contains(duplicateEmail.Body.String(), "Email already registered") {
