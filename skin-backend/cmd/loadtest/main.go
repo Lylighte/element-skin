@@ -57,6 +57,7 @@ type options struct {
 	loginPassword   string
 	loginPath       string
 	cookieHeader    string
+	bearerToken     string
 	insecureTLS     bool
 }
 
@@ -142,6 +143,7 @@ func parseFlags() options {
 	flag.StringVar(&opts.loginPassword, "login-password", "", "password used to log in before the test")
 	flag.StringVar(&opts.loginPath, "login-path", "/v1/auth/login", "login path")
 	flag.StringVar(&opts.cookieHeader, "cookie", "", "Cookie header to send with every request")
+	flag.StringVar(&opts.bearerToken, "bearer", "", "Bearer token to send with every request")
 	flag.BoolVar(&opts.insecureTLS, "insecure", false, "skip TLS certificate verification")
 	flag.Parse()
 	return opts
@@ -271,6 +273,9 @@ func doRequest(client *http.Client, target string, opts options, cookieHeader st
 	}
 	if cookieHeader != "" {
 		req.Header.Set("Cookie", cookieHeader)
+	}
+	if opts.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+opts.bearerToken)
 	}
 
 	start := time.Now()

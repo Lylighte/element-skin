@@ -13,9 +13,12 @@ import (
 	"time"
 
 	"element-skin/backend/internal/database"
+	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
 )
 
 type loadScenario struct {
@@ -25,6 +28,7 @@ type loadScenario struct {
 	Path    string
 	Body    string
 	Cookie  string
+	Bearer  string
 	Prepare func(testing.TB)
 }
 
@@ -35,15 +39,18 @@ type scenarioResult struct {
 }
 
 type loadSeed struct {
-	User           model.User
-	Admin          model.User
-	YggUser        model.User
-	ProfileID      string
-	ProfileName    string
-	TextureHash    string
-	YggAccessToken string
-	YggClientToken string
-	YggServerID    string
+	User             model.User
+	Admin            model.User
+	YggUser          model.User
+	ProfileID        string
+	ProfileName      string
+	TextureHash      string
+	YggAccessToken   string
+	YggClientToken   string
+	YggServerID      string
+	OAuthUserToken   string
+	OAuthAdminToken  string
+	OAuthClientToken string
 }
 
 func TestRealBackendLoad(t *testing.T) {
@@ -98,6 +105,7 @@ func TestRealBackendLoad(t *testing.T) {
 				contentType: "application/json",
 				duration:    cfg.Duration,
 				timeout:     5 * time.Second,
+				bearerToken: scenario.Bearer,
 			}
 			summary := runStep(client, target, opts, scenario.Cookie, concurrency)
 			client.CloseIdleConnections()
@@ -139,16 +147,25 @@ func defaultLoadScenarios(seed loadSeed, userCookie, adminCookie string, prepare
 		{Area: "Yggdrasil", Name: "ygg-lookup-name", Method: http.MethodGet, Path: "/api/users/profiles/minecraft/" + seed.ProfileName},
 		{Area: "Yggdrasil", Name: "ygg-has-joined", Method: http.MethodGet, Path: "/sessionserver/session/minecraft/hasJoined?username=" + seed.ProfileName + "&serverId=" + seed.YggServerID, Prepare: prepareYggHasJoined},
 		{Area: "User center", Name: "me", Method: http.MethodGet, Path: "/v1/users/me", Cookie: userCookie},
+		{Area: "OAuth delegated", Name: "oauth-me", Method: http.MethodGet, Path: "/v1/users/me", Bearer: seed.OAuthUserToken},
 		{Area: "User center", Name: "my-profiles", Method: http.MethodGet, Path: "/v1/users/me/profiles?limit=20", Cookie: userCookie},
+		{Area: "OAuth delegated", Name: "oauth-my-profiles", Method: http.MethodGet, Path: "/v1/users/me/profiles?limit=20", Bearer: seed.OAuthUserToken},
 		{Area: "User center", Name: "my-textures", Method: http.MethodGet, Path: "/v1/users/me/textures?limit=20", Cookie: userCookie},
+		{Area: "OAuth delegated", Name: "oauth-my-textures", Method: http.MethodGet, Path: "/v1/users/me/textures?limit=20", Bearer: seed.OAuthUserToken},
 		{Area: "User center", Name: "texture-detail", Method: http.MethodGet, Path: "/v1/users/me/textures/" + seed.TextureHash + "/skin", Cookie: userCookie},
+		{Area: "OAuth delegated", Name: "oauth-texture-detail", Method: http.MethodGet, Path: "/v1/users/me/textures/" + seed.TextureHash + "/skin", Bearer: seed.OAuthUserToken},
 		{Area: "Admin console", Name: "admin-users", Method: http.MethodGet, Path: "/v1/admin/users?limit=20&q=Load", Cookie: adminCookie},
+		{Area: "OAuth delegated admin", Name: "oauth-admin-users", Method: http.MethodGet, Path: "/v1/admin/users?limit=20&q=Load", Bearer: seed.OAuthAdminToken},
 		{Area: "Admin console", Name: "admin-user-detail", Method: http.MethodGet, Path: "/v1/admin/users/" + seed.User.ID, Cookie: adminCookie},
+		{Area: "OAuth delegated admin", Name: "oauth-admin-user-detail", Method: http.MethodGet, Path: "/v1/admin/users/" + seed.User.ID, Bearer: seed.OAuthAdminToken},
 		{Area: "Admin console", Name: "admin-user-profiles", Method: http.MethodGet, Path: "/v1/admin/users/" + seed.User.ID + "/profiles?limit=20", Cookie: adminCookie},
 		{Area: "Admin console", Name: "admin-profiles", Method: http.MethodGet, Path: "/v1/admin/profiles?limit=20", Cookie: adminCookie},
 		{Area: "Admin console", Name: "admin-textures", Method: http.MethodGet, Path: "/v1/admin/textures?limit=20", Cookie: adminCookie},
 		{Area: "Admin console", Name: "admin-invites", Method: http.MethodGet, Path: "/v1/admin/invites?limit=20", Cookie: adminCookie},
+		{Area: "OAuth delegated admin", Name: "oauth-admin-invites", Method: http.MethodGet, Path: "/v1/admin/invites?limit=20", Bearer: seed.OAuthAdminToken},
+		{Area: "OAuth client credentials", Name: "oauth-client-invites", Method: http.MethodGet, Path: "/v1/admin/invites?limit=20", Bearer: seed.OAuthClientToken},
 		{Area: "Admin console", Name: "admin-settings-site", Method: http.MethodGet, Path: "/v1/admin/settings/site", Cookie: adminCookie},
+		{Area: "OAuth delegated admin", Name: "oauth-admin-settings-site", Method: http.MethodGet, Path: "/v1/admin/settings/site", Bearer: seed.OAuthAdminToken},
 	}
 }
 
@@ -269,6 +286,7 @@ func seedLoadTestData(tb testing.TB, db *database.DB, redis redisstore.Store) lo
 	if seed.YggUser.ID == "" {
 		tb.Fatal("load seed ygg user was not initialized")
 	}
+	seedOAuthLoadTokens(tb, db, redis, &seed)
 	seed.YggAccessToken = "load_ygg_access_token"
 	seed.YggClientToken = "load_ygg_client_token"
 	seed.YggServerID = "load_ygg_server"
@@ -283,6 +301,92 @@ func seedLoadTestData(tb testing.TB, db *database.DB, redis redisstore.Store) lo
 		}
 	}
 	return seed
+}
+
+func seedOAuthLoadTokens(tb testing.TB, db *database.DB, redis redisstore.Store, seed *loadSeed) {
+	tb.Helper()
+	ctx := context.Background()
+	now := database.NowMS()
+	clientID := "load-oauth-client"
+	permissionIDs := loadOAuthPermissionIDs()
+	client := model.OAuthClient{
+		ID:          clientID,
+		OwnerUserID: seed.Admin.ID,
+		Name:        "Load OAuth Client",
+		Description: "Load test OAuth client",
+		RedirectURI: "https://load.example/callback",
+		WebsiteURL:  "https://load.example",
+		ClientType:  "confidential",
+		SecretHash:  "load-secret-hash",
+		Status:      "active",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := db.OAuth.CreateClient(ctx, client, permissionIDs); err != nil {
+		tb.Fatalf("seed oauth client: %v", err)
+	}
+	clientSubjectID := permissiondb.SubjectIDForClient(clientID)
+	for _, def := range permission.Definitions {
+		if def.Scope.ID == permission.ScopeSystem {
+			continue
+		}
+		if err := db.Permissions.SetPermissionOverrideForSubject(ctx, clientSubjectID, def, "allow", ""); err != nil {
+			tb.Fatalf("seed oauth client permission %s: %v", def.Code, err)
+		}
+	}
+
+	seed.OAuthUserToken = "load_oauth_user_access"
+	seed.OAuthAdminToken = "load_oauth_admin_access"
+	seed.OAuthClientToken = "load_oauth_client_access"
+	seedDelegatedOAuthToken(tb, db, redis, seed.OAuthUserToken, clientID, seed.User.ID, permissiondb.SubjectIDForUser(seed.User.ID), "load-oauth-user-grant", permissionIDs, now)
+	seedDelegatedOAuthToken(tb, db, redis, seed.OAuthAdminToken, clientID, seed.Admin.ID, permissiondb.SubjectIDForUser(seed.Admin.ID), "load-oauth-admin-grant", permissionIDs, now)
+	if err := redis.SetOAuthAccessToken(ctx, redisstore.OAuthAccessToken{
+		TokenHash:     util.HashRefreshToken(seed.OAuthClientToken),
+		ClientID:      clientID,
+		PermissionIDs: permissionIDs,
+		ExpiresAt:     now + int64((10*time.Minute)/time.Millisecond),
+		CreatedAt:     now,
+	}, 10*time.Minute); err != nil {
+		tb.Fatalf("seed oauth client access token: %v", err)
+	}
+}
+
+func seedDelegatedOAuthToken(tb testing.TB, db *database.DB, redis redisstore.Store, rawToken, clientID, userID, subjectID, grantID string, permissionIDs []int64, now int64) {
+	tb.Helper()
+	ctx := context.Background()
+	grant := model.OAuthGrant{
+		ID:        grantID,
+		UserID:    userID,
+		SubjectID: subjectID,
+		ClientID:  clientID,
+		Status:    "active",
+		CreatedAt: now,
+	}
+	if err := db.OAuth.CreateGrant(ctx, grant, permissionIDs); err != nil {
+		tb.Fatalf("seed oauth grant %s: %v", grantID, err)
+	}
+	if err := redis.SetOAuthAccessToken(ctx, redisstore.OAuthAccessToken{
+		TokenHash:     util.HashRefreshToken(rawToken),
+		ClientID:      clientID,
+		UserID:        userID,
+		GrantID:       grantID,
+		PermissionIDs: permissionIDs,
+		ExpiresAt:     now + int64((10*time.Minute)/time.Millisecond),
+		CreatedAt:     now,
+	}, 10*time.Minute); err != nil {
+		tb.Fatalf("seed oauth access token %s: %v", grantID, err)
+	}
+}
+
+func loadOAuthPermissionIDs() []int64 {
+	ids := make([]int64, 0, len(permission.Definitions))
+	for _, def := range permission.Definitions {
+		if def.Scope.ID == permission.ScopeSystem {
+			continue
+		}
+		ids = append(ids, int64(def.ID))
+	}
+	return ids
 }
 
 func refreshYggLoadSession(tb testing.TB, redis redisstore.Store, seed loadSeed) {
@@ -310,6 +414,7 @@ func writeLoadTestReport(path string, cfg loadTestConfigValue, concurrency int, 
 	fmt.Fprintf(&b, "- Generated at: `%s`\n", now)
 	fmt.Fprintf(&b, "- Harness: `go test ./cmd/loadtest -run TestRealBackendLoad -count=1 -v`\n")
 	fmt.Fprintf(&b, "- Data set: 100 users, 300 profiles, 500 texture rows, 50 invites, 1 pre-joined Yggdrasil session\n")
+	fmt.Fprintf(&b, "- OAuth seed: 1 active confidential client, 2 delegated bearer tokens, 1 client-credentials-style bearer token\n")
 	fmt.Fprintf(&b, "- Fixed concurrency: `%d`\n", concurrency)
 	fmt.Fprintf(&b, "- Duration per level: `%s`\n", cfg.Duration)
 	fmt.Fprintf(&b, "- Backend database pool used by harness: `%d` max connections\n", cfg.MaxDBConns)
@@ -354,7 +459,7 @@ func writeLoadTestReport(path string, cfg loadTestConfigValue, concurrency int, 
 	fmt.Fprintf(&b, "\n## Notes\n\n")
 	fmt.Fprintf(&b, "- Every scenario is measured once at the same fixed concurrency, default `200`, for a one-second window.\n")
 	fmt.Fprintf(&b, "- `Successful req/s` is the useful per-second throughput under that fixed concurrency.\n")
-	fmt.Fprintf(&b, "- This report covers public, site, admin, and common Yggdrasil client endpoints; destructive write endpoints are intentionally excluded from high-concurrency runs.\n")
+	fmt.Fprintf(&b, "- This report covers public, site-cookie, OAuth delegated, OAuth client-credentials-style, admin, and common Yggdrasil client endpoints; destructive write endpoints are intentionally excluded from high-concurrency runs.\n")
 	fmt.Fprintf(&b, "- A failure is any request with a transport error or non-2xx/3xx response.\n")
 	fmt.Fprintf(&b, "- The test harness closes the in-process HTTP server and drops the temporary PostgreSQL database during cleanup.\n")
 	return os.WriteFile(path, []byte(b.String()), 0o644)
