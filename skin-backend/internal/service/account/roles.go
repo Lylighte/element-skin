@@ -100,6 +100,16 @@ func (s AccountService) TransferProtectedSubject(ctx context.Context, actor perm
 		return err
 	}
 	for _, userID := range affectedUserIDs {
+		if err := s.reconcileOAuthAfterUserPermissionChange(ctx, userID); err != nil {
+			return err
+		}
+	}
+	for _, userID := range affectedUserIDs {
+		if err := s.createProtectedSubjectTransferNotice(ctx, userID, userID == targetID); err != nil {
+			return err
+		}
+	}
+	for _, userID := range affectedUserIDs {
 		if err := s.Redis.InvalidateAuthUser(ctx, userID); err != nil {
 			return err
 		}

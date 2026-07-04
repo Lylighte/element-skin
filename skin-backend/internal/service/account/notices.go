@@ -56,6 +56,36 @@ func (s AccountService) createRoleChangeNotice(ctx context.Context, targetID, ro
 	return err
 }
 
+func (s AccountService) createProtectedSubjectTransferNotice(ctx context.Context, targetID string, gained bool) error {
+	title := "权限已更新：受保护主体已转出"
+	summary := "你不再是受保护权限主体，详情请查看通知。"
+	result := "已转移"
+	if gained {
+		title = "权限已更新：受保护主体已转入"
+		summary = "你已成为受保护权限主体，详情请查看通知。"
+		result = "允许"
+	}
+	endsAt := database.NowMS() + accountPermissionTTL.Milliseconds()
+	content := fmt.Sprintf(
+		"你的受保护权限主体状态已变更。\n\n权限：`%s`\n\n说明：%s\n\n结果：%s",
+		manageProtectedPermission.Code,
+		manageProtectedPermission.Description,
+		result,
+	)
+	_, err := noticesvc.Service{DB: s.DB}.Create(ctx, permission.SystemMaintenanceActor(), noticesvc.CreateInput{
+		Type:            noticesvc.TypeSystem,
+		Title:           title,
+		Summary:         summary,
+		ContentMarkdown: content,
+		DisplayMode:     noticesvc.DisplayDetail,
+		Level:           noticesvc.LevelInfo,
+		Audience:        noticesvc.AudienceTargeted,
+		EndsAt:          &endsAt,
+		TargetUserIDs:   []string{targetID},
+	})
+	return err
+}
+
 func roleDisplayName(roleID string) string {
 	for _, role := range permission.Roles {
 		if role.ID == roleID {
