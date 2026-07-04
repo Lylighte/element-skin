@@ -3,7 +3,6 @@ package permission_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	permissiondb "element-skin/backend/internal/database/permission"
 	core "element-skin/backend/internal/permission"
@@ -121,73 +120,6 @@ func TestSeedDefaultsFirstRegisteredUserBecomesProtectedSubject(t *testing.T) {
 	protected, err := db.Permissions.UserIsProtected(ctx, user.ID)
 	if err != nil || !protected {
 		t.Fatalf("the only user should become protected when none exists: protected=%v err=%v", protected, err)
-	}
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM roles WHERE id='super_admin'`).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Fatalf("obsolete super_admin role should be cleaned up: got=%d", count)
-	}
-}
-
-func TestSeedDefaultsMigratesLegacySuperAdminRolesToProtectedSubjectExactly(t *testing.T) {
-	db, _ := testutil.NewTestAppTB(t)
-	ctx := context.Background()
-
-	first := testutil.CreateUser(t, db, "dedup-first@test.com", "pw", "DedupFirst", false)
-	second := testutil.CreateUser(t, db, "dedup-second@test.com", "pw", "DedupSecond", false)
-	third := testutil.CreateUser(t, db, "dedup-third@test.com", "pw", "DedupThird", false)
-	now := time.Now().UnixMilli()
-
-	if _, err := db.Pool.Exec(ctx, `UPDATE permission_subjects SET protected=FALSE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Pool.Exec(ctx, `
-		INSERT INTO roles (id,name,description,system_role,protected,created_at,updated_at)
-		VALUES ('super_admin','Legacy Super Admin','Legacy role',TRUE,TRUE,$1,$1)
-		ON CONFLICT (id) DO NOTHING
-	`, now); err != nil {
-		t.Fatal(err)
-	}
-	for _, u := range []struct {
-		sub       string
-		createdAt int64
-	}{
-		{permissiondb.SubjectIDForUser(first.ID), now - 3000},
-		{permissiondb.SubjectIDForUser(second.ID), now - 2000},
-		{permissiondb.SubjectIDForUser(third.ID), now - 1000},
-	} {
-		if _, err := db.Pool.Exec(ctx, `
-			INSERT INTO subject_roles (subject_id,role_id,created_at)
-			VALUES ($1,$2,$3)
-		`, u.sub, "super_admin", u.createdAt); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if err := db.Permissions.SeedDefaults(ctx); err != nil {
-		t.Fatal(err)
-	}
-	var count int
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM permission_subjects WHERE protected=TRUE`).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 1 {
-		t.Fatalf("legacy migration should keep exactly one protected subject: got=%d", count)
-	}
-	protected, err := db.Permissions.UserIsProtected(ctx, third.ID)
-	if err != nil || !protected {
-		t.Fatalf("latest explicit legacy super_admin grant should become protected: protected=%v err=%v", protected, err)
-	}
-	if err := db.Pool.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM roles
-		WHERE id='super_admin'
-	`).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Fatalf("obsolete super_admin role should be removed after migration: got=%d", count)
 	}
 }
 

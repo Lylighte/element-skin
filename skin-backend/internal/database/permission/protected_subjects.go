@@ -9,8 +9,7 @@ import (
 )
 
 const (
-	protectedSubjectLockID   int64  = 0x50524F5445535542
-	obsoleteSuperAdminRoleID string = "super_admin"
+	protectedSubjectLockID int64 = 0x50524F5445535542
 )
 
 func (s Store) GrantInitialProtectedManagerIfNone(ctx context.Context, userID string) (bool, error) {
@@ -40,9 +39,6 @@ func (s Store) GrantInitialProtectedManagerIfNone(ctx context.Context, userID st
 	}
 	now := time.Now().UnixMilli()
 	if err := assignProtectedManager(ctx, tx, SubjectIDForUser(userID), "", now); err != nil {
-		return false, err
-	}
-	if err := cleanupObsoleteSuperAdminRole(ctx, tx); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -86,9 +82,6 @@ func (s Store) TransferProtectedSubject(ctx context.Context, fromUserID, toUserI
 		VALUES ($1,$2,$3,$4)
 		ON CONFLICT (subject_id, role_id) DO NOTHING
 	`, SubjectIDForUser(fromUserID), core.RoleAdmin, nullString(grantedBySubjectID), now); err != nil {
-		return nil, err
-	}
-	if err := cleanupObsoleteSuperAdminRole(ctx, tx); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -175,12 +168,4 @@ func protectedManagerUserIDs(ctx context.Context, q Querier) (map[string]bool, e
 		out[userID] = true
 	}
 	return out, rows.Err()
-}
-
-func cleanupObsoleteSuperAdminRole(ctx context.Context, q Querier) error {
-	if _, err := q.Exec(ctx, `DELETE FROM subject_roles WHERE role_id=$1`, obsoleteSuperAdminRoleID); err != nil {
-		return err
-	}
-	_, err := q.Exec(ctx, `DELETE FROM roles WHERE id=$1`, obsoleteSuperAdminRoleID)
-	return err
 }
