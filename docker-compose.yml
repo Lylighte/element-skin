@@ -39,6 +39,24 @@ services:
     environment:
       - VITE_BASE_PATH=${VITE_BASE_PATH:-/}
       - VITE_API_BASE=${VITE_API_BASE:-/skinapi}
+      - JWT_SECRET=${JWT_SECRET:-prod-secret-please-change-to-a-very-long-string-in-production}
+      - KEYS_PRIVATE_KEY=${KEYS_PRIVATE_KEY:-/app/data/private.pem}
+      - KEYS_PUBLIC_KEY=${KEYS_PUBLIC_KEY:-/app/data/public.pem}
+      - DATABASE_DSN=${DATABASE_DSN:-postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable}
+      - DATABASE_MAX_CONNECTIONS=${DATABASE_MAX_CONNECTIONS:-20}
+      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-elementskin:}
+      - REDIS_PUBLIC_CACHE_TTL_SECONDS=${REDIS_PUBLIC_CACHE_TTL_SECONDS:-60}
+      - REDIS_AUTH_CACHE_TTL_SECONDS=${REDIS_AUTH_CACHE_TTL_SECONDS:-30}
+      - TEXTURES_DIRECTORY=${TEXTURES_DIRECTORY:-/app/frontend/static/textures}
+      - CAROUSEL_DIRECTORY=${CAROUSEL_DIRECTORY:-/app/frontend/static/carousel}
+      - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
+      - SERVER_PORT=${SERVER_PORT:-8000}
+      - SERVER_SITE_URL=${SERVER_SITE_URL:-http://yourdomain.com}
+      - SERVER_API_URL=${SERVER_API_URL:-http://yourdomain.com/skinapi}
+      - MOJANG_SKIN_DOMAINS=${MOJANG_SKIN_DOMAINS:-textures.minecraft.net}
     args: []
     depends_on:
       db:
@@ -46,7 +64,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      - ./config.yaml:/app/config.yaml
       - ./frontend:/app/frontend           # 👈 所有静态文件在此 (自动包含 static/ 皮肤数据)
       - ./data:/app/data                   # 👈 RSA 密钥等持久化数据在此
     ports:
