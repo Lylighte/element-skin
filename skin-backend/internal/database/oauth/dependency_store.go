@@ -13,47 +13,107 @@ type UserCleanupResult struct {
 	DeletedSubjects    int64
 }
 
-func (s Store) RevokeInvalidGrantsForUser(ctx context.Context, userID string, allowedPermissionIDs []int64, revokedAt int64) (int64, error) {
-	tag, err := s.Pool.Exec(ctx, `
-		UPDATE delegated_permission_grants g
-		SET status='revoked', revoked_at=$3
-		WHERE g.user_id=$1
-		  AND g.status='active'
-		  AND EXISTS (
-		      SELECT 1
-		      FROM delegated_grant_permissions gp
-		      LEFT JOIN delegated_client_permissions cp
-		        ON cp.client_id=g.client_id AND cp.permission_id=gp.permission_id
-		      WHERE gp.grant_id=g.id
-		        AND (NOT (gp.permission_id = ANY($2::bigint[])) OR cp.permission_id IS NULL)
-		  )
-	`, userID, allowedPermissionIDs, revokedAt)
-	if err != nil {
-		return 0, err
-	}
-	return tag.RowsAffected(), nil
+type RevokedGrantDependency struct {
+	GrantID    string
+	UserID     string
+	ClientID   string
+	ClientName string
+	RevokedAt  int64
 }
 
-func (s Store) DisableInvalidClientsForOwner(ctx context.Context, ownerUserID string, allowedPermissionIDs []int64, exemptPermissionIDs []int64, updatedAt int64) (int64, error) {
-	tag, err := s.Pool.Exec(ctx, `
-		UPDATE delegated_clients c
-		SET status='disabled', updated_at=$4
-		WHERE c.owner_user_id=$1
-		  AND c.status IN ('pending', 'active')
-		  AND EXISTS (
-		      SELECT 1
-		      FROM delegated_client_permissions cp
-		      WHERE cp.client_id=c.id
-		        AND NOT (
-		            cp.permission_id = ANY($2::bigint[])
-		            OR cp.permission_id = ANY($3::bigint[])
-		        )
-		  )
+type DisabledClientDependency struct {
+	ClientID    string
+	OwnerUserID string
+	Name        string
+	UpdatedAt   int64
+}
+
+func (s Store) RevokeInvalidGrantsForUser(ctx context.Context, userID string, allowedPermissionIDs []int64, revokedAt int64) ([]RevokedGrantDependency, error) {
+	rows, err := s.Pool.Query(ctx, `
+		WITH invalid AS (
+			SELECT DISTINCT g.id, c.name AS client_name
+			FROM delegated_permission_grants g
+			JOIN delegated_clients c ON c.id = g.client_id
+			WHERE g.user_id=$1
+			  AND g.status='active'
+			  AND EXISTS (
+			      SELECT 1
+			      FROM delegated_grant_permissions gp
+			      LEFT JOIN delegated_client_permissions cp
+			        ON cp.client_id=g.client_id AND cp.permission_id=gp.permission_id
+			      WHERE gp.grant_id=g.id
+			        AND (NOT (gp.permission_id = ANY($2::bigint[])) OR cp.permission_id IS NULL)
+			  )
+		),
+		updated AS (
+			UPDATE delegated_permission_grants g
+			SET status='revoked', revoked_at=$3
+			FROM invalid
+			WHERE g.id = invalid.id
+			RETURNING g.id, g.user_id, g.client_id, invalid.client_name, g.revoked_at
+		)
+		SELECT id, user_id, client_id, client_name, revoked_at
+		FROM updated
+		ORDER BY client_name, id
+	`, userID, allowedPermissionIDs, revokedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []RevokedGrantDependency{}
+	for rows.Next() {
+		var item RevokedGrantDependency
+		if err := rows.Scan(&item.GrantID, &item.UserID, &item.ClientID, &item.ClientName, &item.RevokedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s Store) DisableInvalidClientsForOwner(ctx context.Context, ownerUserID string, allowedPermissionIDs []int64, exemptPermissionIDs []int64, updatedAt int64) ([]DisabledClientDependency, error) {
+	rows, err := s.Pool.Query(ctx, `
+		WITH invalid AS (
+			SELECT DISTINCT c.id
+			FROM delegated_clients c
+			WHERE c.owner_user_id=$1
+			  AND c.status IN ('pending', 'active')
+			  AND EXISTS (
+			      SELECT 1
+			      FROM delegated_client_permissions cp
+			      WHERE cp.client_id=c.id
+			        AND NOT (
+			            cp.permission_id = ANY($2::bigint[])
+			            OR cp.permission_id = ANY($3::bigint[])
+			        )
+			  )
+		),
+		updated AS (
+			UPDATE delegated_clients c
+			SET status='disabled', updated_at=$4
+			FROM invalid
+			WHERE c.id = invalid.id
+			RETURNING c.id, c.owner_user_id, c.name, c.updated_at
+		)
+		SELECT id, owner_user_id, name, updated_at
+		FROM updated
+		ORDER BY name, id
 	`, ownerUserID, allowedPermissionIDs, exemptPermissionIDs, updatedAt)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return tag.RowsAffected(), nil
+	defer rows.Close()
+
+	items := []DisabledClientDependency{}
+	for rows.Next() {
+		var item DisabledClientDependency
+		if err := rows.Scan(&item.ClientID, &item.OwnerUserID, &item.Name, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s Store) DeleteUserOAuthData(ctx context.Context, userID string) (UserCleanupResult, error) {

@@ -10,8 +10,8 @@ import (
 )
 
 type PermissionDependencyResult struct {
-	RevokedGrants   int64
-	DisabledClients int64
+	RevokedGrants   []dboauth.RevokedGrantDependency
+	DisabledClients []dboauth.DisabledClientDependency
 }
 
 func (s Service) ReconcileUserPermissionDependents(ctx context.Context, userID string) (PermissionDependencyResult, error) {
@@ -32,7 +32,11 @@ func (s Service) ReconcileUserPermissionDependents(ctx context.Context, userID s
 	if err != nil {
 		return PermissionDependencyResult{}, err
 	}
-	return PermissionDependencyResult{RevokedGrants: revoked, DisabledClients: disabled}, nil
+	result := PermissionDependencyResult{RevokedGrants: revoked, DisabledClients: disabled}
+	if err := s.notifyPermissionDependencyChanges(ctx, result); err != nil {
+		return PermissionDependencyResult{}, err
+	}
+	return result, nil
 }
 
 func (s Service) DeleteUserOAuthData(ctx context.Context, userID string) (dboauth.UserCleanupResult, error) {

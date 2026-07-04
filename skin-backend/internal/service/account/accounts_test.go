@@ -439,6 +439,53 @@ func TestAccountServiceRevokeRoleReconcilesOAuthDependentsExactly(t *testing.T) 
 	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("role revoke should invalidate auth cache exactly, got %v", err)
 	}
+
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notices := page["items"].([]model.NoticeView)
+	if page["page_size"] != 4 || page["has_next"] != false || len(notices) != 4 {
+		t.Fatalf("role revoke notice page mismatch: page=%#v items=%#v", page, notices)
+	}
+	grantNotice := accountNoticeByTitle(t, notices, "权限已更新：角色已授予")
+	if grantNotice.ContentMarkdown != "你的站点角色已被授予：管理员（admin）。" ||
+		grantNotice.Summary != "你的站点角色已更新，详情请查看通知。" ||
+		grantNotice.Type != noticesvc.TypeSystem || grantNotice.Audience != noticesvc.AudienceTargeted ||
+		grantNotice.Level != noticesvc.LevelInfo || grantNotice.CreatedBy != nil {
+		t.Fatalf("role grant notice mismatch: %#v", grantNotice)
+	}
+	revokeNotice := accountNoticeByTitle(t, notices, "权限已更新：角色已撤销")
+	if revokeNotice.ContentMarkdown != "你的站点角色已被撤销：管理员（admin）。" ||
+		revokeNotice.Summary != "你的站点角色已更新，详情请查看通知。" ||
+		revokeNotice.Type != noticesvc.TypeSystem || revokeNotice.Audience != noticesvc.AudienceTargeted ||
+		revokeNotice.Level != noticesvc.LevelInfo || revokeNotice.CreatedBy != nil {
+		t.Fatalf("role revoke notice mismatch: %#v", revokeNotice)
+	}
+	grantDependencyNotice := accountNoticeByTitle(t, notices, "第三方应用授权已自动撤销")
+	wantGrantDependencyContent := "你的站点权限发生变化，以下第三方应用授权已自动撤销：\n\n" +
+		"- account-role-reconcile-client（`account-role-reconcile-client`）\n\n" +
+		"这些授权包含你当前已不再拥有的权限，后续访问会失败。需要继续使用时，请在权限恢复后重新授权。"
+	if grantDependencyNotice.Summary != "你的权限发生变化，1 个第三方应用授权已自动撤销。" ||
+		grantDependencyNotice.ContentMarkdown != wantGrantDependencyContent ||
+		grantDependencyNotice.Level != noticesvc.LevelWarning ||
+		grantDependencyNotice.LinkText != "查看授权" || grantDependencyNotice.LinkURL != "/dashboard/oauth" ||
+		strings.Contains(grantDependencyNotice.ContentMarkdown, unaffectedClient.ID) ||
+		grantDependencyNotice.CreatedBy != nil {
+		t.Fatalf("oauth grant dependency notice mismatch: %#v", grantDependencyNotice)
+	}
+	clientDependencyNotice := accountNoticeByTitle(t, notices, "第三方应用已自动停用")
+	wantClientDependencyContent := "你的站点权限发生变化，以下第三方应用已自动停用：\n\n" +
+		"- account-role-reconcile-client（`account-role-reconcile-client`）\n\n" +
+		"这些应用申请了你当前已不再拥有的权限。请调整应用权限后重新提交审核。"
+	if clientDependencyNotice.Summary != "你的权限发生变化，1 个你创建的第三方应用已自动停用。" ||
+		clientDependencyNotice.ContentMarkdown != wantClientDependencyContent ||
+		clientDependencyNotice.Level != noticesvc.LevelWarning ||
+		clientDependencyNotice.LinkText != "查看应用" || clientDependencyNotice.LinkURL != "/dashboard/oauth" ||
+		strings.Contains(clientDependencyNotice.ContentMarkdown, unaffectedClient.ID) ||
+		clientDependencyNotice.CreatedBy != nil {
+		t.Fatalf("oauth client dependency notice mismatch: %#v", clientDependencyNotice)
+	}
 }
 
 func TestAccountServiceListUsersAndUserDetailAttachRolesExactly(t *testing.T) {
@@ -859,6 +906,17 @@ func accountOAuthGrantByID(grants []model.OAuthGrant, id string) *model.OAuthGra
 		}
 	}
 	return nil
+}
+
+func accountNoticeByTitle(t testing.TB, notices []model.NoticeView, title string) model.NoticeView {
+	t.Helper()
+	for _, notice := range notices {
+		if notice.Title == title {
+			return notice
+		}
+	}
+	t.Fatalf("missing notice title %q in %#v", title, notices)
+	return model.NoticeView{}
 }
 
 type accountFailStore struct {
