@@ -8,6 +8,7 @@ import (
 	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	oauthsvc "element-skin/backend/internal/service/oauth"
 	"element-skin/backend/internal/util"
 )
 
@@ -129,6 +130,9 @@ func (s PermissionService) SetUserPermissionOverride(ctx context.Context, actor 
 	if err := s.DB.Permissions.SetSubjectPermissionOverride(ctx, targetID, def, effect, actor.SubjectID); err != nil {
 		return err
 	}
+	if err := s.reconcileOAuthAfterUserPermissionChange(ctx, targetID); err != nil {
+		return err
+	}
 	return s.Redis.InvalidateAuthUser(ctx, targetID)
 }
 
@@ -166,7 +170,15 @@ func (s PermissionService) ClearUserPermissionOverride(ctx context.Context, acto
 	if !cleared {
 		return util.HTTPError{Status: http.StatusNotFound, Detail: "permission override not found"}
 	}
+	if err := s.reconcileOAuthAfterUserPermissionChange(ctx, targetID); err != nil {
+		return err
+	}
 	return s.Redis.InvalidateAuthUser(ctx, targetID)
+}
+
+func (s PermissionService) reconcileOAuthAfterUserPermissionChange(ctx context.Context, userID string) error {
+	_, err := (oauthsvc.Service{DB: s.DB, Redis: s.Redis}).ReconcileUserPermissionDependents(ctx, userID)
+	return err
 }
 
 func (s PermissionService) permissionOverrideEffect(ctx context.Context, userID, code string) (string, error) {

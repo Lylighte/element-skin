@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
+	"element-skin/backend/internal/database"
 	permissiondb "element-skin/backend/internal/database/permission"
+	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	permissionssvc "element-skin/backend/internal/service/permissions"
@@ -112,6 +115,120 @@ func TestPermissionServiceSetAndClearOverrideInvalidatesAuthCacheExactly(t *test
 	}
 	if len(overrides) != 0 {
 		t.Fatalf("override should be cleared exactly: %#v", overrides)
+	}
+}
+
+func TestPermissionServiceSetOverrideReconcilesOAuthDependentsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-perms-oauth@test.com", "Password123", "AdminPermsOAuth", true)
+	target := testutil.CreateUser(t, db, "target-perms-oauth@test.com", "Password123", "TargetPermsOAuth", false)
+	cache := redisstore.NewMemoryStore()
+	svc := permissionssvc.PermissionService{DB: db, Redis: cache}
+	actor := actorWithPermissions(adminUser.ID, "permission.revoke.any")
+	client := model.OAuthClient{
+		ID:          "permission-reconcile-client",
+		OwnerUserID: target.ID,
+		Name:        "Permission reconcile client",
+		Description: "client disabled when owner loses requested permission",
+		RedirectURI: "https://permission-reconcile.example/callback",
+		WebsiteURL:  "https://permission-reconcile.example",
+		ClientType:  "confidential",
+		SecretHash:  "secret-hash",
+		Status:      "active",
+		CreatedAt:   1000,
+		UpdatedAt:   1000,
+	}
+	clientPermissionIDs := permissionTestIDs("account.read.self", "profile.update.owned", "minecraft_session.hasjoined.server")
+	if err := db.OAuth.CreateClient(ctx, client, clientPermissionIDs); err != nil {
+		t.Fatal(err)
+	}
+	grant := model.OAuthGrant{
+		ID:        "permission-reconcile-grant",
+		UserID:    target.ID,
+		SubjectID: permissiondb.SubjectIDForUser(target.ID),
+		ClientID:  client.ID,
+		Status:    "active",
+		CreatedAt: 1100,
+	}
+	if err := db.OAuth.CreateGrant(ctx, grant, permissionTestIDs("profile.update.owned")); err != nil {
+		t.Fatal(err)
+	}
+	unaffectedClient := model.OAuthClient{
+		ID:          "permission-reconcile-unaffected-client",
+		OwnerUserID: target.ID,
+		Name:        "Permission reconcile unaffected client",
+		Description: "client kept active when owner keeps requested permission",
+		RedirectURI: "https://permission-reconcile-unaffected.example/callback",
+		WebsiteURL:  "https://permission-reconcile-unaffected.example",
+		ClientType:  "confidential",
+		SecretHash:  "unaffected-secret-hash",
+		Status:      "active",
+		CreatedAt:   1200,
+		UpdatedAt:   1200,
+	}
+	if err := db.OAuth.CreateClient(ctx, unaffectedClient, permissionTestIDs("account.read.self")); err != nil {
+		t.Fatal(err)
+	}
+	unaffectedGrant := model.OAuthGrant{
+		ID:        "permission-reconcile-unaffected-grant",
+		UserID:    target.ID,
+		SubjectID: permissiondb.SubjectIDForUser(target.ID),
+		ClientID:  unaffectedClient.ID,
+		Status:    "active",
+		CreatedAt: 1300,
+	}
+	if err := db.OAuth.CreateGrant(ctx, unaffectedGrant, permissionTestIDs("account.read.self")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, 0); err != nil {
+		t.Fatal(err)
+	}
+	before := database.NowMS()
+
+	if err := svc.SetUserPermissionOverride(ctx, actor, target.ID, "profile.update.owned", "deny"); err != nil {
+		t.Fatal(err)
+	}
+
+	grants, err := db.OAuth.ListGrantsByUser(ctx, target.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 2 {
+		t.Fatalf("grant count after permission denial = %d want 2: %#v", len(grants), grants)
+	}
+	revokedGrant := oauthGrantByID(grants, grant.ID)
+	if revokedGrant == nil || revokedGrant.Status != "revoked" ||
+		revokedGrant.RevokedAt == nil || *revokedGrant.RevokedAt < before {
+		t.Fatalf("oauth grant should be revoked exactly after permission denial: %#v", grants)
+	}
+	keptGrant := oauthGrantByID(grants, unaffectedGrant.ID)
+	if keptGrant == nil || keptGrant.Status != "active" || keptGrant.RevokedAt != nil {
+		t.Fatalf("unaffected oauth grant should remain active exactly: %#v", grants)
+	}
+	gotClient, err := db.OAuth.GetClient(ctx, client.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotClient == nil || gotClient.Status != "disabled" || gotClient.UpdatedAt < before {
+		t.Fatalf("oauth client should be disabled exactly after owner permission denial: %#v", gotClient)
+	}
+	gotUnaffectedClient, err := db.OAuth.GetClient(ctx, unaffectedClient.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotUnaffectedClient == nil || gotUnaffectedClient.Status != "active" || gotUnaffectedClient.UpdatedAt != unaffectedClient.UpdatedAt {
+		t.Fatalf("unaffected oauth client should remain active exactly: %#v", gotUnaffectedClient)
+	}
+	gotClientPermissionIDs, err := db.OAuth.ClientPermissionIDs(ctx, client.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !int64SliceEqual(gotClientPermissionIDs, clientPermissionIDs) {
+		t.Fatalf("client permission list must be preserved: got=%v want=%v", gotClientPermissionIDs, clientPermissionIDs)
+	}
+	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("auth cache should still be invalidated exactly, got %v", err)
 	}
 }
 
@@ -297,6 +414,18 @@ func stringSliceEqual(got, want []string) bool {
 	return true
 }
 
+func int64SliceEqual(got, want []int64) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func hasOverride(overrides []permissionssvc.PermissionOverrideResponse, code, effect string) bool {
 	for _, override := range overrides {
 		if override.PermissionCode == code && override.Effect == effect && override.CreatedAt > 0 {
@@ -304,4 +433,22 @@ func hasOverride(overrides []permissionssvc.PermissionOverrideResponse, code, ef
 		}
 	}
 	return false
+}
+
+func oauthGrantByID(grants []model.OAuthGrant, id string) *model.OAuthGrant {
+	for i := range grants {
+		if grants[i].ID == id {
+			return &grants[i]
+		}
+	}
+	return nil
+}
+
+func permissionTestIDs(codes ...string) []int64 {
+	ids := make([]int64, 0, len(codes))
+	for _, code := range codes {
+		ids = append(ids, int64(permission.MustDefinitionByCode(code).ID))
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
 }
