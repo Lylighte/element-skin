@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
+	oauthsvc "element-skin/backend/internal/service/oauth"
 	"element-skin/backend/internal/util"
 )
 
@@ -110,4 +111,20 @@ type appBody struct {
 	ClientType      string   `json:"client_type"`
 	Status          string   `json:"status"`
 	PermissionCodes []string `json:"permissions"`
+}
+
+type appReviewBody struct {
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+}
+
+func (b appBody) input() oauthsvc.ClientInput {
+	return oauthsvc.ClientInput{
+		Name:            b.Name,
+		Description:     b.Description,
+		RedirectURI:     b.RedirectURI,
+		WebsiteURL:      b.WebsiteURL,
+		ClientType:      b.ClientType,
+		PermissionCodes: b.PermissionCodes,
+	}
 }
