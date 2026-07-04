@@ -1,7 +1,6 @@
 package remote
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
@@ -17,14 +16,19 @@ var (
 )
 
 func (h Handler) GetProfiles(w http.ResponseWriter, req *http.Request) {
-	var body map[string]any
+	var body struct {
+		APIURL   string `json:"api_url"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	profiles, _ := body["profiles"].([]any)
-	if profiles == nil {
-		profiles = []any{}
+	profiles, err := (importsvc.RemoteYggService{DB: h.db, HTTPClient: h.httpClient}).PreviewProfiles(req.Context(), body.APIURL, body.Username, body.Password)
+	if err != nil {
+		util.Error(w, err)
+		return
 	}
 	util.JSON(w, 200, map[string]any{"profiles": profiles})
 }
@@ -48,10 +52,7 @@ func (h Handler) ImportProfiles(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	importer := importsvc.ImportService{DB: h.db}
-	res := importer.ImportProfiles(req.Context(), shared.CurrentActor(req), profiles, func(ctx context.Context, id string) ([]importsvc.TextureAsset, error) {
-		return []importsvc.TextureAsset{{URL: id + ":skin", Kind: "skin", Variant: "classic"}}, nil
-	})
+	res := (importsvc.RemoteYggService{DB: h.db, HTTPClient: h.httpClient}).ImportProfiles(req.Context(), shared.CurrentActor(req), shared.AsString(body["api_url"]), profiles)
 	util.JSON(w, 200, res)
 }
 
@@ -75,8 +76,7 @@ func (h Handler) ImportProfile(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "profile_id and profile_name are required"})
 		return
 	}
-	importer := importsvc.ImportService{DB: h.db}
-	res, err := importer.ImportProfile(req.Context(), shared.CurrentActor(req), profileID, profileName, []importsvc.TextureAsset{{URL: profileID + ":skin", Kind: "skin", Variant: "classic"}})
+	res, err := (importsvc.RemoteYggService{DB: h.db, HTTPClient: h.httpClient}).ImportProfile(req.Context(), shared.CurrentActor(req), body["api_url"], profileID, profileName)
 	if err != nil {
 		util.Error(w, err)
 		return

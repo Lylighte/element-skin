@@ -1,6 +1,9 @@
 package remote_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,14 +15,14 @@ import (
 
 func TestRemoteYggRoutesValidateAndReturnExactBodies(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
-	h := remote.New(db, nil)
+	h := remote.NewWithHTTPClient(db, nil, remoteYggTestClient(t))
 	user := testutil.CreateUser(t, db, "remote-direct@test.com", "Password123", "RemoteDirect", false)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/imports/remote-ygg/profiles/preview", strings.NewReader(`{"profiles":[{"id":"p1","name":"One"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/imports/remote-ygg/profiles/preview", strings.NewReader(`{"api_url":"https://93.184.216.34/ygg","username":"remote-user","password":"remote-password"}`))
 	req = withUserActor(req, user.ID)
 	rec := httptest.NewRecorder()
 	h.GetProfiles(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != "{\"profiles\":[{\"id\":\"p1\",\"name\":\"One\"}]}\n" {
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"profiles\":[{\"id\":\"remote_profile_one\",\"name\":\"RemoteOne\"},{\"id\":\"remote_profile_two\",\"name\":\"RemoteTwo\"}]}\n" {
 		t.Fatalf("get profiles exact body mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
@@ -97,10 +100,10 @@ func TestRemoteYggRoutesRejectMissingFineGrainedPermissionsExactly(t *testing.T)
 
 func TestRemoteYggRoutesImportProfileAndBatchPersistExactProfiles(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
-	h := remote.New(db, nil)
+	h := remote.NewWithHTTPClient(db, nil, remoteYggTestClient(t))
 	user := testutil.CreateUser(t, db, "remote-import@test.com", "Password123", "RemoteImport", false)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/imports/remote-ygg/profiles/import", strings.NewReader(`{"profile_id":"remote_profile_one","profile_name":"RemoteOne"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/imports/remote-ygg/profiles/import", strings.NewReader(`{"api_url":"https://93.184.216.34/ygg","profile_id":"remote_profile_one","profile_name":"RemoteOne"}`))
 	req = withUserActor(req, user.ID)
 	rec := httptest.NewRecorder()
 	h.ImportProfile(rec, req)
@@ -109,11 +112,11 @@ func TestRemoteYggRoutesImportProfileAndBatchPersistExactProfiles(t *testing.T) 
 	}
 	profile, err := db.Profiles.GetByID(req.Context(), "remote_profile_one")
 	if err != nil || profile == nil || profile.UserID != user.ID || profile.Name != "RemoteOne" ||
-		profile.TextureModel != "default" || profile.SkinHash == nil || profile.CapeHash != nil {
-		t.Fatalf("single remote import should persist profile with skin only: profile=%#v err=%v", profile, err)
+		profile.TextureModel != "slim" || profile.SkinHash == nil || profile.CapeHash == nil {
+		t.Fatalf("single remote import should persist profile with slim skin and cape: profile=%#v err=%v", profile, err)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/v1/imports/remote-ygg/profiles/import-batch", strings.NewReader(`{"profiles":[{"profile_id":"remote_batch_one","profile_name":"BatchOne"},{"profile_id":"","profile_name":"Broken"}]}`))
+	req = httptest.NewRequest(http.MethodPost, "/v1/imports/remote-ygg/profiles/import-batch", strings.NewReader(`{"api_url":"https://93.184.216.34/ygg","profiles":[{"profile_id":"remote_batch_one","profile_name":"BatchOne"},{"profile_id":"","profile_name":"Broken"}]}`))
 	req = withUserActor(req, user.ID)
 	rec = httptest.NewRecorder()
 	h.ImportProfiles(rec, req)
@@ -126,5 +129,55 @@ func TestRemoteYggRoutesImportProfileAndBatchPersistExactProfiles(t *testing.T) 
 	profile, err = db.Profiles.GetByID(req.Context(), "remote_batch_one")
 	if err != nil || profile == nil || profile.UserID != user.ID || profile.Name != "BatchOne" || profile.SkinHash == nil {
 		t.Fatalf("batch remote import should persist successful profile: profile=%#v err=%v", profile, err)
+	}
+}
+
+func remoteYggTestClient(t *testing.T) *http.Client {
+	t.Helper()
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/ygg/authserver/authenticate":
+			if req.Method != http.MethodPost {
+				t.Fatalf("authenticate method=%s want POST", req.Method)
+			}
+			var body map[string]any
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+				t.Fatalf("decode authenticate body: %v", err)
+			}
+			if body["username"] != "remote-user" || body["password"] != "remote-password" || body["requestUser"] != true {
+				t.Fatalf("authenticate body mismatch: %#v", body)
+			}
+			agent, ok := body["agent"].(map[string]any)
+			if !ok || agent["name"] != "Minecraft" || agent["version"] != float64(1) {
+				t.Fatalf("authenticate agent mismatch: %#v", body["agent"])
+			}
+			return jsonResponse(http.StatusOK, `{"availableProfiles":[{"id":"remote_profile_one","name":"RemoteOne"},{"id":"remote_profile_two","name":"RemoteTwo"},{"id":"","name":"Broken"}]}`), nil
+		case "/ygg/sessionserver/session/minecraft/profile/remote_profile_one",
+			"/ygg/sessionserver/session/minecraft/profile/remote_batch_one":
+			return jsonResponse(http.StatusOK, remoteProfileJSON(req.URL.Path)), nil
+		default:
+			t.Fatalf("unexpected remote ygg request: %s %s", req.Method, req.URL.String())
+			return jsonResponse(http.StatusNotFound, `{}`), nil
+		}
+	})}
+}
+
+func remoteProfileJSON(path string) string {
+	profileID := path[strings.LastIndex(path, "/")+1:]
+	payload := base64.StdEncoding.EncodeToString([]byte(`{"textures":{"SKIN":{"url":"https://textures.example/skin.png","metadata":{"model":"slim"}},"CAPE":{"url":"https://textures.example/cape.png"}}}`))
+	return `{"id":"` + profileID + `","name":"Remote","properties":[{"name":"textures","value":"` + payload + `"}]}`
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func jsonResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
 	}
 }
