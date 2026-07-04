@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       POSTGRES_DB: ${DATABASE_NAME:?DATABASE_NAME is required}
     volumes:
-      - ./data/db:/var/lib/postgresql/data
+      - ./data/db:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\""]
       interval: 5s
@@ -29,9 +29,7 @@ services:
       retries: 5
 
   backend:
-    build:
-      context: .
-      dockerfile: skin-backend/Dockerfile
+    image: ${ELEMENT_SKIN_IMAGE:?ELEMENT_SKIN_IMAGE is required}
     restart: always
     environment:
       VITE_BASE_PATH: ${VITE_BASE_PATH:?VITE_BASE_PATH is required}
