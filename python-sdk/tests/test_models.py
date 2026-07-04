@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from element_skin_sdk.models import DeviceAuthorization, PermissionDefinition, TokenSet
+from element_skin_sdk import UserInfo as ExportedUserInfo
+from element_skin_sdk.models import DeviceAuthorization, PermissionDefinition, TokenSet, UserInfo
 
 
 def test_token_set_accepts_space_separated_permissions_and_defaults() -> None:
@@ -17,6 +18,45 @@ def test_token_set_accepts_space_separated_permissions_and_defaults() -> None:
     assert tokens.scope == ""
     assert tokens.refresh_token is None
     assert tokens.permissions == ("account.read.self", "profile.read.owned")
+
+
+def test_user_info_parses_protected_flag_and_permissions_exactly() -> None:
+    user = UserInfo.from_mapping(
+        {
+            "id": "user-1",
+            "email": "alice@example.test",
+            "display_name": "Alice",
+            "protected": True,
+            "permissions": "account.read.self permission_protected.manage.any",
+        }
+    )
+
+    assert user.id == "user-1"
+    assert user.email == "alice@example.test"
+    assert user.display_name == "Alice"
+    assert user.protected is True
+    assert user.permissions == (
+        "account.read.self",
+        "permission_protected.manage.any",
+    )
+
+
+def test_user_info_defaults_to_unprotected_and_uses_username_fallback() -> None:
+    user = UserInfo.from_mapping(
+        {
+            "id": "user-2",
+            "email": "bob@example.test",
+            "username": "Bob",
+            "permissions": ["account.read.self"],
+        }
+    )
+
+    assert ExportedUserInfo is UserInfo
+    assert user.id == "user-2"
+    assert user.email == "bob@example.test"
+    assert user.display_name == "Bob"
+    assert user.protected is False
+    assert user.permissions == ("account.read.self",)
 
 
 def test_device_authorization_accepts_space_separated_permissions_and_defaults() -> None:

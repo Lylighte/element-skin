@@ -7,6 +7,29 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class UserInfo:
+    id: str
+    email: str
+    display_name: str = ""
+    protected: bool = False
+    permissions: tuple[str, ...] = ()
+
+    @classmethod
+    def from_mapping(cls, data: dict[str, Any]) -> "UserInfo":
+        permissions = data.get("permissions") or []
+        if isinstance(permissions, str):
+            permissions = permissions.split()
+
+        return cls(
+            id=str(data["id"]),
+            email=str(data["email"]),
+            display_name=str(data.get("display_name") or data.get("username") or ""),
+            protected=bool(data.get("protected", False)),
+            permissions=tuple(str(permission) for permission in permissions),
+        )
+
+
+@dataclass(frozen=True)
 class TokenSet:
     access_token: str
     token_type: str
