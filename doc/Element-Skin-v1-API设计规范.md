@@ -1153,6 +1153,54 @@ GET /v1/public/settings
 
 响应：`SiteSettings`。
 
+字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `site_name` | string | 站点名称。 |
+| `site_subtitle` | string | 首页副标题。 |
+| `site_url` | string | 规范化后的站点公开地址。 |
+| `api_url` | string | 规范化后的 API 公开地址。 |
+| `allow_register` | boolean | 是否允许新用户注册。 |
+| `require_invite` | boolean | 注册是否需要邀请码；前端注册页应仅在该值为 `true` 时展示邀请码输入。 |
+| `enable_skin_library` | boolean | 是否启用公开皮肤库。 |
+| `email_verify_enabled` | boolean | 注册、重置密码等流程是否启用邮箱验证码。 |
+| `footer_text` | string | 页脚文本。 |
+| `filing_icp` | string | ICP 备案文本。 |
+| `filing_icp_link` | string | ICP 备案链接。 |
+| `filing_mps` | string | 公安备案文本。 |
+| `filing_mps_link` | string | 公安备案链接。 |
+| `easter_eggs.enabled` | string[] | 当前启用的彩蛋标识。 |
+| `mojang_status_urls` | object | Mojang / fallback 服务状态探测地址。 |
+
+响应示例：
+
+```json
+{
+  "site_name": "Element Skin",
+  "site_subtitle": "简洁、高效、现代的 Minecraft 皮肤管理站",
+  "site_url": "https://skin.example.com",
+  "api_url": "https://skin.example.com",
+  "allow_register": true,
+  "require_invite": false,
+  "enable_skin_library": true,
+  "email_verify_enabled": false,
+  "footer_text": "Element Skin保留所有权利",
+  "filing_icp": "",
+  "filing_icp_link": "",
+  "filing_mps": "",
+  "filing_mps_link": "",
+  "easter_eggs": {
+    "enabled": []
+  },
+  "mojang_status_urls": {
+    "session": "https://sessionserver.mojang.com",
+    "account": "https://api.mojang.com",
+    "services": "https://api.minecraftservices.com"
+  }
+}
+```
+
 替代旧端点：
 
 ```text
