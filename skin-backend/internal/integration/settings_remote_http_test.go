@@ -164,22 +164,18 @@ func TestSettingsGroupsAndRemoteYggImportHTTP(t *testing.T) {
 		t.Fatalf("homepage media delete status=%d body=%s", homepageDelete.Code, homepageDelete.Body.String())
 	}
 
-	getProfiles := doJSON(t, h, "POST", "/v1/imports/remote-ygg/profiles/preview", map[string]any{"profiles": []any{map[string]any{"id": "remote_1", "name": "RemoteOne"}}}, userCookie)
-	if getProfiles.Code != 200 || len(parseJSON(t, getProfiles)["profiles"].([]any)) != 1 {
-		t.Fatalf("remote get-profiles unexpected: %d %s", getProfiles.Code, getProfiles.Body.String())
+	getProfiles := doJSON(t, h, "POST", "/v1/imports/remote-ygg/profiles/preview", map[string]any{}, userCookie)
+	if getProfiles.Code != 400 || !strings.Contains(getProfiles.Body.String(), "api_url, username and password are required") {
+		t.Fatalf("remote get-profiles validation unexpected: %d %s", getProfiles.Code, getProfiles.Body.String())
 	}
 	testutil.CreateProfile(t, db, user.ID, "existing_remote_name", "RemotePlayer")
 	single := doJSON(t, h, "POST", "/v1/imports/remote-ygg/profiles/import", map[string]any{"profile_id": "remote_single", "profile_name": "RemotePlayer"}, userCookie)
-	if single.Code != 200 {
-		t.Fatalf("single remote import status=%d body=%s", single.Code, single.Body.String())
-	}
-	singleBody := parseJSON(t, single)
-	if singleBody["id"] != "remote_single" || singleBody["name"] != "RemotePlayer_1" {
-		t.Fatalf("unexpected single import response: %#v", singleBody)
+	if single.Code != 400 || !strings.Contains(single.Body.String(), "api_url is required") {
+		t.Fatalf("single remote import validation status=%d body=%s", single.Code, single.Body.String())
 	}
 	singleProfile, _ := db.Profiles.GetByID(context.Background(), "remote_single")
-	if singleProfile == nil || singleProfile.Name != "RemotePlayer_1" {
-		t.Fatalf("single import not persisted: %#v", singleProfile)
+	if singleProfile != nil {
+		t.Fatalf("single import without api_url should not persist: %#v", singleProfile)
 	}
 	notList := doJSON(t, h, "POST", "/v1/imports/remote-ygg/profiles/import-batch", map[string]any{"profiles": "bad"}, userCookie)
 	if notList.Code != 400 {
@@ -198,12 +194,12 @@ func TestSettingsGroupsAndRemoteYggImportHTTP(t *testing.T) {
 		t.Fatalf("remote import status=%d body=%s", imported.Code, imported.Body.String())
 	}
 	importBody := parseJSON(t, imported)
-	if importBody["success_count"] != float64(2) || importBody["failure_count"] != float64(1) {
+	if importBody["success_count"] != float64(0) || importBody["failure_count"] != float64(3) {
 		t.Fatalf("unexpected remote import result: %#v", importBody)
 	}
 	p1, _ := db.Profiles.GetByID(context.Background(), "remote_pid_1")
 	p2, _ := db.Profiles.GetByID(context.Background(), "remote_pid_2")
-	if p1 == nil || p2 == nil || p1.Name != "RemotePlayer1" || p2.Name != "RemotePlayer2" {
-		t.Fatalf("remote profiles not persisted: %#v %#v", p1, p2)
+	if p1 != nil || p2 != nil {
+		t.Fatalf("remote profiles without api_url should not persist: %#v %#v", p1, p2)
 	}
 }
