@@ -12,7 +12,6 @@ import (
 )
 
 type Handler struct {
-	db       *database.DB
 	profiles profilesvc.Service
 	textures texturesvc.LibraryService
 	uploads  texturesvc.UploadService
@@ -24,7 +23,6 @@ func New(cfg config.Config, db *database.DB, redis redisstore.Store, settings se
 	ygg.Redis = redis
 	ygg.Settings = settings
 	return Handler{
-		db:       db,
 		profiles: profilesvc.Service{DB: db, Settings: settings},
 		textures: texturesvc.LibraryService{DB: db, Settings: settings},
 		uploads:  texturesvc.UploadService{DB: db, TexturesDir: cfg.TexturesDir},
