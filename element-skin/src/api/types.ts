@@ -13,6 +13,7 @@ export interface User {
   email: string
   display_name?: string
   roles?: string[]
+  protected?: boolean
   permissions?: string[]
   avatar_hash?: string | null
   banned_until?: number | null
@@ -110,6 +111,7 @@ export interface UserPermissionOverride {
 
 export interface UserPermissionsResponse {
   roles: string[]
+  protected: boolean
   effective_permissions: string[]
   overrides: UserPermissionOverride[]
   catalog: {

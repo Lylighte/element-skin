@@ -12,12 +12,18 @@
       <el-button
         v-if="!isBanned"
         type="warning"
-        :disabled="isProtectedUser || isSelf"
+        :disabled="protectedActionDisabled"
         @click="$emit('show-ban')"
       >
         执行封禁
       </el-button>
-      <el-button v-else type="success" @click="$emit('unban', user)">解除封禁</el-button>
+      <el-button
+        v-else
+        type="success"
+        :disabled="protectedActionDisabled"
+        @click="$emit('unban', user)"
+        >解除封禁</el-button
+      >
     </div>
     <div
       class="flex items-center justify-between gap-4 rounded-lg border border-[var(--color-border)] p-4"
@@ -26,7 +32,9 @@
         <div class="font-semibold text-[var(--color-heading)]">强制重置密码</div>
         <div class="mt-1 text-sm text-[var(--color-text-light)]">手动为该用户设置新密码。</div>
       </div>
-      <el-button @click="$emit('show-reset-password')">重置密码</el-button>
+      <el-button :disabled="protectedMutationDisabled" @click="$emit('show-reset-password')">
+        重置密码
+      </el-button>
     </div>
     <div
       class="flex items-center justify-between gap-4 rounded-lg border border-[var(--el-color-danger-light-7)] p-4 md:col-span-2"
@@ -37,7 +45,7 @@
       </div>
       <el-button
         type="danger"
-        :disabled="isProtectedUser || isSelf"
+        :disabled="protectedActionDisabled"
         @click="$emit('delete-user', user)"
       >
         删除用户
@@ -55,6 +63,8 @@ const props = defineProps<{
   isBanned: boolean
   isSelf: boolean
   permissionState: UserPermissionsResponse | null
+  currentPermissions: string[]
+  currentUserProtected: boolean
 }>()
 
 defineEmits<{
@@ -64,9 +74,18 @@ defineEmits<{
   'delete-user': [user: User]
 }>()
 
-const roleIds = computed(() => new Set(props.permissionState?.roles || props.user.roles || []))
-const isProtectedUser = computed(() => {
-  const protectedRoles = props.permissionState?.catalog.roles.filter((role) => role.protected) || []
-  return protectedRoles.some((role) => roleIds.value.has(role.id))
-})
+const isProtectedUser = computed(
+  () => props.permissionState?.protected || props.user.protected || false,
+)
+const canManageProtectedSubject = computed(
+  () =>
+    props.currentUserProtected &&
+    props.currentPermissions.includes('permission_protected.manage.any'),
+)
+const protectedActionDisabled = computed(
+  () => props.isSelf || (isProtectedUser.value && !canManageProtectedSubject.value),
+)
+const protectedMutationDisabled = computed(
+  () => isProtectedUser.value && !canManageProtectedSubject.value,
+)
 </script>

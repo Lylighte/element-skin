@@ -47,7 +47,7 @@
         <el-table-column prop="email" label="邮箱" min-width="220" />
         <el-table-column label="身份状态" width="120">
           <template #default="{ row }">
-            <el-tag v-if="hasUserRole(row, 'super_admin')" type="danger" effect="dark" size="small">
+            <el-tag v-if="row.protected" type="danger" effect="dark" size="small">
               超级管理员
             </el-tag>
             <el-tag v-else-if="hasUserRole(row, 'admin')" type="danger" effect="light" size="small">
@@ -103,10 +103,12 @@
       :permission-state="currentPermissionState"
       :permissions-loading="permissionsLoading"
       :current-permissions="loggedInUser?.permissions || []"
+      :current-user-protected="Boolean(loggedInUser?.protected)"
       @profiles-prev="handleProfilesPrevPage"
       @profiles-next="handleProfilesNextPage"
       @grant-role="grantRole"
       @revoke-role="revokeRole"
+      @transfer-protected-subject="transferProtected"
       @set-permission="setPermission"
       @clear-permission="clearPermission"
       @show-ban="showBanDialog"
@@ -156,6 +158,7 @@ import {
   getUserPermissions,
   grantUserRole,
   revokeUserRole,
+  transferProtectedSubject,
   setUserPermissionOverride,
   clearUserPermissionOverride,
   deleteUser as apiDeleteUser,
@@ -163,6 +166,7 @@ import {
   unbanUser as apiUnbanUser,
   resetUserPassword,
 } from '@/api/admin/users'
+import { getMe } from '@/api/me'
 import type { PermissionOverrideEffect, User, Profile, UserPermissionsResponse } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 
@@ -278,6 +282,7 @@ async function showUserDetailDialog(user: User) {
     currentUser.value = {
       ...userRes.data,
       roles: permissionsRes.data.roles,
+      protected: permissionsRes.data.protected,
     }
     await fetchUserProfilesAdmin()
     userDetailDialogVisible.value = true
@@ -294,7 +299,10 @@ async function fetchUserPermissions(userId = currentUser.value?.id) {
   try {
     const res = await getUserPermissions(userId)
     currentPermissionState.value = res.data
-    if (currentUser.value?.id === userId) currentUser.value.roles = res.data.roles
+    if (currentUser.value?.id === userId) {
+      currentUser.value.roles = res.data.roles
+      currentUser.value.protected = res.data.protected
+    }
   } finally {
     permissionsLoading.value = false
   }
@@ -352,6 +360,22 @@ async function revokeRole(roleId: string) {
     ElMessage.success('角色已撤销')
     await fetchUserPermissions()
     await refreshUsers()
+  } catch {}
+}
+
+async function transferProtected() {
+  if (!currentUser.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定将超级管理员转让给 ${currentUser.value.display_name || currentUser.value.email} 吗？`,
+      '确认转让',
+      { type: 'warning' },
+    )
+    await transferProtectedSubject(currentUser.value.id)
+    ElMessage.success('超级管理员已转让')
+    await fetchUserPermissions()
+    await refreshUsers()
+    await refreshLoggedInUser()
   } catch {}
 }
 
@@ -444,6 +468,13 @@ async function unbanUser(user: User) {
     ElMessage.success('封禁已解除')
     await refreshUsers()
     if (currentUser.value) currentUser.value.banned_until = 0
+  } catch {}
+}
+
+async function refreshLoggedInUser() {
+  try {
+    const res = await getMe()
+    if (loggedInUser) loggedInUser.value = res.data
   } catch {}
 }
 

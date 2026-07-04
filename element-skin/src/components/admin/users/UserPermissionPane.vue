@@ -3,7 +3,19 @@
     <section>
       <div class="mb-3 flex items-center justify-between gap-3">
         <h4 class="m-0 text-base font-semibold text-[var(--color-heading)]">角色授权</h4>
-        <el-text size="small" type="info">角色提供批量权限，单项覆盖用于精细调整</el-text>
+        <div class="flex items-center gap-2">
+          <el-text size="small" type="info">角色提供批量权限，单项覆盖用于精细调整</el-text>
+          <el-button
+            v-if="editor.canTransferProtectedSubject.value"
+            size="small"
+            type="danger"
+            plain
+            :icon="Switch"
+            @click="emit('transfer-protected-subject')"
+          >
+            转让超级管理员
+          </el-button>
+        </div>
       </div>
       <div class="rounded-lg bg-[var(--color-background-soft)] p-4">
         <div class="mb-4 flex flex-wrap gap-2">
@@ -188,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Switch } from '@element-plus/icons-vue'
 import PermissionToneTag from '@/components/admin/users/PermissionToneTag.vue'
 import { useUserPermissionEditor } from '@/components/admin/users/useUserPermissionEditor'
 import type { PermissionOverrideEffect, User, UserPermissionsResponse } from '@/api/types'
@@ -200,11 +212,13 @@ const props = defineProps<{
   permissionState: UserPermissionsResponse | null
   permissionsLoading: boolean
   currentPermissions: string[]
+  currentUserProtected: boolean
 }>()
 
 const emit = defineEmits<{
   'grant-role': [roleId: string]
   'revoke-role': [roleId: string]
+  'transfer-protected-subject': []
   'set-permission': [permissionCode: string, effect: PermissionOverrideEffect]
   'clear-permission': [permissionCode: string]
 }>()
@@ -214,6 +228,7 @@ const editor = useUserPermissionEditor({
   user: () => props.user,
   permissionState: () => props.permissionState,
   currentPermissions: () => props.currentPermissions,
+  currentUserProtected: () => props.currentUserProtected,
   isSelf: () => props.isSelf,
 })
 
