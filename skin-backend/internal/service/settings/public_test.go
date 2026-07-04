@@ -17,6 +17,7 @@ func TestSettingsPublicUsesSavedValuesAndPrimaryFallback(t *testing.T) {
 	if err := settings.SaveGroup(ctx, "site", map[string]any{
 		"site_name":      "Exact Skin",
 		"allow_register": false,
+		"require_invite": true,
 		"site_url":       "skin.example.com/root/",
 		"api_url":        "https://api.example.com/skinapi/",
 	}); err != nil {
@@ -45,7 +46,7 @@ func TestSettingsPublicUsesSavedValuesAndPrimaryFallback(t *testing.T) {
 	status := public["mojang_status_urls"].(map[string]any)
 	easterEggs := public["easter_eggs"].(map[string]any)
 	enabled := easterEggs["enabled"].([]string)
-	if public["site_name"] != "Exact Skin" || public["allow_register"] != false ||
+	if public["site_name"] != "Exact Skin" || public["allow_register"] != false || public["require_invite"] != true ||
 		public["site_url"] != "https://skin.example.com/root" || public["api_url"] != "https://api.example.com/skinapi" ||
 		status["session"] != "https://session.example" || status["account"] != "https://account.example" || status["services"] != "https://services.example" ||
 		len(enabled) != 3 || enabled[0] != "april-fools" || enabled[1] != "children-day" || enabled[2] != "mid-autumn" {
@@ -66,6 +67,7 @@ func TestSettingsPublicPropagatesEachSettingReadErrorExactly(t *testing.T) {
 	keys := []string{
 		"site_name",
 		"allow_register",
+		"require_invite",
 		"site_url",
 		"api_url",
 		"site_subtitle",

@@ -15,6 +15,10 @@ func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map
 	if err != nil {
 		return nil, err
 	}
+	requireInvite, err := s.Get(ctx, "require_invite", SettingDefaults["require_invite"])
+	if err != nil {
+		return nil, err
+	}
 	siteURL, err := s.Get(ctx, "site_url", cfgSiteURL)
 	if err != nil {
 		return nil, err
@@ -80,6 +84,7 @@ func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map
 		"site_url":             util.NormalizePublicURL(siteURL),
 		"api_url":              util.NormalizePublicURL(apiURL),
 		"allow_register":       settingBool(allow),
+		"require_invite":       settingBool(requireInvite),
 		"enable_skin_library":  settingBool(enableLibrary),
 		"email_verify_enabled": settingBool(emailVerify),
 		"footer_text":          footer,
