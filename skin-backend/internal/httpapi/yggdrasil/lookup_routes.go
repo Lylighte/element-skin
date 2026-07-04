@@ -18,7 +18,7 @@ func (h Handler) HasJoined(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if status == 204 {
-		resp, err := (fallbacksvc.Fallback{DB: h.db, Redis: h.redis, Settings: h.settings}).HasJoined(req.Context(), username, serverID, req.URL.Query().Get("ip"))
+		resp, err := h.fallback.HasJoined(req.Context(), username, serverID, req.URL.Query().Get("ip"))
 		if err != nil {
 			util.Error(w, err)
 			return
@@ -40,7 +40,7 @@ func (h Handler) Profile(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if status == 204 {
-		resp, err := (fallbacksvc.Fallback{DB: h.db, Redis: h.redis, Settings: h.settings}).GetProfile(req.Context(), req.PathValue("uuid"), unsigned)
+		resp, err := h.fallback.GetProfile(req.Context(), req.PathValue("uuid"), unsigned)
 		if err != nil {
 			util.Error(w, err)
 			return
@@ -78,9 +78,9 @@ func (h Handler) LookupName(w http.ResponseWriter, req *http.Request) {
 	if status == 204 {
 		var resp *fallbacksvc.FallbackResponse
 		if strings.HasPrefix(req.URL.Path, "/api/minecraft/profile/lookup/name/") || strings.HasPrefix(req.URL.Path, "/minecraft/profile/lookup/name/") {
-			resp, err = (fallbacksvc.Fallback{DB: h.db, Redis: h.redis, Settings: h.settings}).ServicesLookup(req.Context(), playerName)
+			resp, err = h.fallback.ServicesLookup(req.Context(), playerName)
 		} else {
-			resp, err = (fallbacksvc.Fallback{DB: h.db, Redis: h.redis, Settings: h.settings}).GetProfileByName(req.Context(), playerName)
+			resp, err = h.fallback.GetProfileByName(req.Context(), playerName)
 		}
 		if err != nil {
 			util.Error(w, err)
@@ -101,34 +101,10 @@ func (h Handler) LookupNames(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "Request body must be an array"})
 		return
 	}
-	profiles, err := h.db.Profiles.SearchByNames(req.Context(), names, 100)
+	profiles, err := h.fallback.LookupNames(req.Context(), names)
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(profiles))
-	for _, p := range profiles {
-		out = append(out, map[string]any{"id": p.ID, "name": p.Name})
-	}
-	found := map[string]bool{}
-	for _, p := range profiles {
-		found[strings.ToLower(p.Name)] = true
-	}
-	missing := make([]string, 0, len(names))
-	for _, name := range names {
-		if !found[strings.ToLower(name)] {
-			missing = append(missing, name)
-		}
-	}
-	if len(missing) > 0 {
-		fallbackProfiles, err := (fallbacksvc.Fallback{DB: h.db, Redis: h.redis, Settings: h.settings}).BulkLookup(req.Context(), missing)
-		if err != nil {
-			util.Error(w, err)
-			return
-		}
-		if len(fallbackProfiles) > 0 {
-			out = append(out, fallbackProfiles...)
-		}
-	}
-	util.JSON(w, 200, out)
+	util.JSON(w, 200, profiles)
 }

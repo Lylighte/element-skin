@@ -243,6 +243,66 @@ func TestFallbackLookupRoutesForwardExactRequests(t *testing.T) {
 	}
 }
 
+func TestFallbackLookupNamesMergesLocalAndFallbackProfilesExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "fallback-lookup-names@test.com", "Password123", "FallbackLookupNames", false)
+	local := testutil.CreateProfile(t, db, user.ID, "fallback_lookup_local", "LocalLookup")
+	fallbackCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fallbackCalls++
+		if r.Method != http.MethodPost || r.URL.Path != "/profiles/minecraft" {
+			t.Fatalf("fallback lookup names request=%s %s; want POST /profiles/minecraft", r.Method, r.URL.Path)
+		}
+		var names []string
+		if err := json.NewDecoder(r.Body).Decode(&names); err != nil {
+			t.Fatalf("decode fallback lookup names body: %v", err)
+		}
+		if len(names) != 2 || names[0] != "RemoteLookup" || names[1] != "remoteSecond" {
+			t.Fatalf("fallback lookup names body=%#v; want only missing names in request order", names)
+		}
+		_, _ = w.Write([]byte(`[{"id":"remote-lookup","name":"RemoteLookup"},{"id":"remote-second","name":"remoteSecond"}]`))
+	}))
+	defer server.Close()
+	if err := db.Fallbacks.SaveEndpoints(ctx, []dbfallback.Endpoint{{
+		Priority:      1,
+		SessionURL:    server.URL,
+		AccountURL:    server.URL,
+		ServicesURL:   server.URL,
+		CacheTTL:      60,
+		EnableProfile: true,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	fb := newFallback(db, server.Client())
+
+	got, err := fb.LookupNames(ctx, []string{"RemoteLookup", "LocalLookup", "remoteSecond", "LOCALLOOKUP"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []map[string]any{
+		{"id": local.ID, "name": "LocalLookup"},
+		{"id": "remote-lookup", "name": "RemoteLookup"},
+		{"id": "remote-second", "name": "remoteSecond"},
+	}
+	if len(got) != len(want) || fallbackCalls != 1 {
+		t.Fatalf("lookup names result count/calls mismatch: got=%#v calls=%d", got, fallbackCalls)
+	}
+	for i := range want {
+		if got[i]["id"] != want[i]["id"] || got[i]["name"] != want[i]["name"] {
+			t.Fatalf("lookup names item %d=%#v want %#v; all=%#v", i, got[i], want[i], got)
+		}
+	}
+
+	got, err = fb.LookupNames(ctx, []string{"LocalLookup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0]["id"] != local.ID || got[0]["name"] != "LocalLookup" || fallbackCalls != 1 {
+		t.Fatalf("local-only lookup should not call fallback: got=%#v calls=%d", got, fallbackCalls)
+	}
+}
+
 func TestFallbackSerialFailoverSkipsEmptyURLsAndRejectsMalformedBulk(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()

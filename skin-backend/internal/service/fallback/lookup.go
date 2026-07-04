@@ -117,3 +117,35 @@ func (f Fallback) BulkLookup(ctx context.Context, names []string) ([]map[string]
 	}
 	return out, nil
 }
+
+func (f Fallback) LookupNames(ctx context.Context, names []string) ([]map[string]any, error) {
+	profiles, err := f.DB.Profiles.SearchByNames(ctx, names, 100)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(profiles))
+	for _, p := range profiles {
+		out = append(out, map[string]any{"id": p.ID, "name": p.Name})
+	}
+	found := map[string]bool{}
+	for _, p := range profiles {
+		found[strings.ToLower(p.Name)] = true
+	}
+	missing := make([]string, 0, len(names))
+	for _, name := range names {
+		if !found[strings.ToLower(name)] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) == 0 {
+		return out, nil
+	}
+	fallbackProfiles, err := f.BulkLookup(ctx, missing)
+	if err != nil {
+		return nil, err
+	}
+	if len(fallbackProfiles) > 0 {
+		out = append(out, fallbackProfiles...)
+	}
+	return out, nil
+}
