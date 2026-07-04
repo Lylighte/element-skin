@@ -19,13 +19,31 @@ func (y Yggdrasil) Metadata(ctx context.Context) (map[string]any, error) {
 	if i := strings.Index(host, "/"); i >= 0 {
 		host = host[:i]
 	}
+	domains, err := y.DB.Fallbacks.CollectSkinDomains(ctx)
+	if err != nil {
+		return nil, err
+	}
+	domains = appendUniqueDomain(domains, host)
 	return map[string]any{
 		"meta": map[string]any{
 			"serverName": name, "implementationName": "element-skin", "implementationVersion": "go",
 			"links":                   map[string]any{"homepage": site + "/", "register": site + "/register/"},
 			"feature.non_email_login": true,
 		},
-		"skinDomains":        append(y.Cfg.FallbackDomains, host),
+		"skinDomains":        domains,
 		"signaturePublickey": signer.PublicKeyPEM(),
 	}, nil
+}
+
+func appendUniqueDomain(domains []string, domain string) []string {
+	domain = strings.TrimSpace(domain)
+	if domain == "" {
+		return domains
+	}
+	for _, existing := range domains {
+		if existing == domain {
+			return domains
+		}
+	}
+	return append(domains, domain)
 }

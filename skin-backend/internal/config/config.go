@@ -33,7 +33,6 @@ type Config struct {
 	PublicKeyPath   string
 	CORSOrigins     []string
 	CORSCredentials bool
-	FallbackDomains []string
 }
 
 type rawConfig = map[string]any
@@ -89,9 +88,6 @@ func Defaults() Config {
 		PublicKeyPath:   "public.pem",
 		CORSOrigins:     []string{"*"},
 		CORSCredentials: true,
-		FallbackDomains: []string{
-			"textures.minecraft.net",
-		},
 	}
 }
 
@@ -125,7 +121,6 @@ func (c *Config) apply(raw rawConfig) {
 	c.PublicKeyPath = getString(raw, "keys.public_key", c.PublicKeyPath)
 	c.CORSOrigins = getStringSlice(raw, "cors.allow_origins", c.CORSOrigins)
 	c.CORSCredentials = getBool(raw, "cors.allow_credentials", c.CORSCredentials)
-	c.FallbackDomains = getStringSlice(raw, "mojang.skin_domains", c.FallbackDomains)
 }
 
 func configRaw(cfg Config) rawConfig {
@@ -167,9 +162,6 @@ func configRaw(cfg Config) rawConfig {
 			"allow_origins":     cfg.CORSOrigins,
 			"allow_credentials": cfg.CORSCredentials,
 		},
-		"mojang": map[string]any{
-			"skin_domains": cfg.FallbackDomains,
-		},
 	}
 }
 
@@ -196,7 +188,6 @@ func applyEnvOverrides(cfg *Config, raw rawConfig) bool {
 	changed = applyIntEnv(raw, "REDIS_AUTH_CACHE_TTL_SECONDS", "redis.auth_cache_ttl_seconds", &cfg.AuthCacheTTL, positiveInt) || changed
 	changed = applyStringSliceEnv(raw, "CORS_ALLOW_ORIGINS", "cors.allow_origins", &cfg.CORSOrigins) || changed
 	changed = applyBoolEnv(raw, "CORS_ALLOW_CREDENTIALS", "cors.allow_credentials", &cfg.CORSCredentials) || changed
-	changed = applyStringSliceEnv(raw, "MOJANG_SKIN_DOMAINS", "mojang.skin_domains", &cfg.FallbackDomains) || changed
 	return changed
 }
 

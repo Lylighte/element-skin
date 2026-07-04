@@ -29,6 +29,12 @@ import (
 
 func TestYggdrasilAuthenticateJoinAndProfile(t *testing.T) {
 	db, h, redis := testutil.NewTestAppWithRedisTB(t)
+	if err := db.Fallbacks.SaveEndpoints(context.Background(), []fallback.Endpoint{{
+		Priority: 1, SessionURL: "https://session.example", AccountURL: "https://account.example", ServicesURL: "https://services.example",
+		CacheTTL: 60, SkinDomains: "textures.minecraft.net",
+	}}); err != nil {
+		t.Fatal(err)
+	}
 	user := testutil.CreateUser(t, db, "ygg@test.com", "YggPassword123", "YggUser", false)
 	skin := "my_skin_hash"
 	cape := "my_cape_hash"

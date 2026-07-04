@@ -36,11 +36,3 @@ server:
 cors:
   allow_origins: ["*"]
   allow_credentials: true
-
-mojang:
-  session_url: "https://sessionserver.mojang.com"
-  account_url: "https://api.mojang.com"
-  services_url: "https://api.minecraftservices.com"
-  skin_domains:
-    - "textures.minecraft.net"
-  cache_ttl: 3600
