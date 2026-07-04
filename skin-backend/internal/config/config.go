@@ -130,48 +130,6 @@ func (c *Config) apply(raw rawConfig) {
 	c.CORSCredentials = getBool(raw, "cors.allow_credentials", c.CORSCredentials)
 }
 
-func configRaw(cfg Config) rawConfig {
-	return rawConfig{
-		"jwt": map[string]any{
-			"secret":                cfg.JWTSecret,
-			"expire_days":           cfg.JWTExpireDays,
-			"access_expire_minutes": cfg.AccessMinutes,
-		},
-		"keys": map[string]any{
-			"private_key": cfg.PrivateKeyPath,
-			"public_key":  cfg.PublicKeyPath,
-		},
-		"database": map[string]any{
-			"dsn":             cfg.DatabaseDSN,
-			"max_connections": int(cfg.MaxConnections),
-		},
-		"redis": map[string]any{
-			"addr":                     cfg.RedisAddr,
-			"password":                 cfg.RedisPassword,
-			"db":                       cfg.RedisDB,
-			"key_prefix":               cfg.RedisKeyPrefix,
-			"public_cache_ttl_seconds": cfg.PublicCacheTTL,
-			"auth_cache_ttl_seconds":   cfg.AuthCacheTTL,
-		},
-		"textures": map[string]any{
-			"directory": cfg.TexturesDir,
-		},
-		"carousel": map[string]any{
-			"directory": cfg.CarouselDir,
-		},
-		"server": map[string]any{
-			"host":     cfg.ServerHost,
-			"port":     atoiDefault(cfg.ServerPort, 8000),
-			"site_url": cfg.SiteURL,
-			"api_url":  cfg.APIURL,
-		},
-		"cors": map[string]any{
-			"allow_origins":     cfg.CORSOrigins,
-			"allow_credentials": cfg.CORSCredentials,
-		},
-	}
-}
-
 func applyEnvOverrides(cfg *Config, raw rawConfig) (bool, error) {
 	changed := false
 	var applied bool
