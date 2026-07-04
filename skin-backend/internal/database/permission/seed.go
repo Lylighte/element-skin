@@ -163,21 +163,6 @@ func seedUserSubjects(ctx context.Context, tx pgx.Tx, now int64) error {
 			return err
 		}
 	}
-	hasSuperAdmin, err := usersColumnExists(ctx, tx, "is_super_admin")
-	if err != nil {
-		return err
-	}
-	if hasSuperAdmin {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO subject_roles (subject_id,role_id,created_at)
-			SELECT 'user:' || id, $1, $2
-			FROM users
-			WHERE is_super_admin=TRUE
-			ON CONFLICT (subject_id, role_id) DO NOTHING
-		`, core.RoleSuperAdmin, now); err != nil {
-			return err
-		}
-	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO subject_roles (subject_id,role_id,created_at)
 		SELECT ps.id, $1, $2
