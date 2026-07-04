@@ -446,6 +446,9 @@ func TestSetProfileTextureSkipsExactNoOpWrites(t *testing.T) {
 	}
 
 	different := "different_skin_hash"
+	if err := db.Textures.AddToLibrary(ctx, user.ID, different, "skin", "different skin", false, "default"); err != nil {
+		t.Fatal(err)
+	}
 	err := svc.SetProfileTexture(ctx, adminActor, profile.ID, "skin", &different)
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
@@ -461,6 +464,9 @@ func TestSetProfileTextureCapeAndMissingProfileExactState(t *testing.T) {
 	profile := testutil.CreateProfile(t, db, user.ID, "profile_set_cape", "ProfileSetCape")
 	actor := testActorWithCodes("profile-set-cape-admin", "profile.update.any")
 	cape := "new_cape_hash"
+	if err := db.Textures.AddToLibrary(ctx, user.ID, cape, "cape", "new cape", false, "default"); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := svc.SetProfileTexture(ctx, actor, profile.ID, "cape", &cape); err != nil {
 		t.Fatal(err)

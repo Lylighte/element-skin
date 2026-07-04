@@ -620,7 +620,7 @@ account.update.self
 }
 ```
 
-所有字段均可选。
+所有字段均可选。`avatar_hash` 为 `null` 或空字符串时清空头像；非空时必须是当前用户材质库中存在的 `skin` 材质 hash。
 
 响应：
 

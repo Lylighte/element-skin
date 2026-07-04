@@ -39,6 +39,12 @@ func TestProfileRoutesListDeleteAndTexturePatchExactState(t *testing.T) {
 	profile := testutil.CreateProfile(t, db, user.ID, "admin_profile_texture", "AdminProfileTexture")
 	skinHash := "admin_profile_skin_hash"
 	capeHash := "admin_profile_cape_hash"
+	if err := db.Textures.AddToLibrary(context.Background(), user.ID, skinHash, "skin", "admin skin", false, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Textures.AddToLibrary(context.Background(), user.ID, capeHash, "cape", "admin cape", false, "default"); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/profiles?q=AdminProfileTexture", nil)
 	req = withAdminActor(req, "admin-test-user")
@@ -89,6 +95,9 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	existing := testutil.CreateProfile(t, db, user.ID, "admin_profile_existing", "AdminExisting")
 	target := testutil.CreateProfile(t, db, user.ID, "admin_profile_target", "AdminTarget")
 	skinHash := "admin_error_skin"
+	if err := db.Textures.AddToLibrary(context.Background(), user.ID, skinHash, "skin", "existing skin", false, "default"); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Profiles.UpdateSkin(context.Background(), target.ID, &skinHash); err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +157,19 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 	h.UpdateProfile(rec, req)
 	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"profile not found\"}\n" {
 		t.Fatalf("profile update missing mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/profiles/"+target.ID+"/skin", strings.NewReader(`{"hash":"missing_texture_hash"}`))
+	req = withAdminActor(req, "admin-test-user")
+	req.SetPathValue("profile_id", target.ID)
+	rec = httptest.NewRecorder()
+	h.UpdateProfileSkin(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"Texture not found\"}\n" {
+		t.Fatalf("profile skin missing texture mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	unchangedTexture, err := db.Profiles.GetByID(req.Context(), target.ID)
+	if err != nil || unchangedTexture == nil || unchangedTexture.SkinHash == nil || *unchangedTexture.SkinHash != skinHash {
+		t.Fatalf("missing texture should not mutate profile: profile=%#v err=%v", unchangedTexture, err)
 	}
 
 	req = httptest.NewRequest(http.MethodPatch, "/v1/admin/profiles/"+target.ID+"/skin", strings.NewReader(`{"hash":null}`))

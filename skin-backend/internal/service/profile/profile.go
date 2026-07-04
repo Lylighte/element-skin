@@ -276,10 +276,17 @@ func (s Service) setProfileTexture(ctx context.Context, profileID, textureType s
 	if p == nil {
 		return util.HTTPError{Status: http.StatusNotFound, Detail: "profile not found"}
 	}
-	switch strings.ToLower(textureType) {
+	normalizedType := strings.ToLower(textureType)
+	if normalizedType != "skin" && normalizedType != "cape" {
+		return util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid texture_type"}
+	}
+	switch normalizedType {
 	case "skin":
 		if sameHash(p.SkinHash, hash) {
 			return nil
+		}
+		if err := s.requireLibraryTexture(ctx, hash, normalizedType); err != nil {
+			return err
 		}
 		if err := s.DB.Profiles.UpdateSkin(ctx, profileID, hash); err != nil {
 			return profileUpdateError(err)
@@ -288,11 +295,26 @@ func (s Service) setProfileTexture(ctx context.Context, profileID, textureType s
 		if sameHash(p.CapeHash, hash) {
 			return nil
 		}
+		if err := s.requireLibraryTexture(ctx, hash, normalizedType); err != nil {
+			return err
+		}
 		if err := s.DB.Profiles.UpdateCape(ctx, profileID, hash); err != nil {
 			return profileUpdateError(err)
 		}
-	default:
-		return util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid texture_type"}
+	}
+	return nil
+}
+
+func (s Service) requireLibraryTexture(ctx context.Context, hash *string, textureType string) error {
+	if hash == nil {
+		return nil
+	}
+	ok, err := s.DB.Textures.Exists(ctx, *hash, textureType)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return util.HTTPError{Status: http.StatusNotFound, Detail: "Texture not found"}
 	}
 	return nil
 }
