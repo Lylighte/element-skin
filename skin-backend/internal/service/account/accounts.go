@@ -13,6 +13,7 @@ import (
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	noticesvc "element-skin/backend/internal/service/notice"
+	oauthsvc "element-skin/backend/internal/service/oauth"
 	"element-skin/backend/internal/util"
 )
 
@@ -121,6 +122,9 @@ func (s AccountService) GrantUserRole(ctx context.Context, actor permission.Acto
 	if err := s.DB.Permissions.GrantRole(ctx, targetID, roleID, actor.SubjectID); err != nil {
 		return err
 	}
+	if err := s.reconcileOAuthAfterUserPermissionChange(ctx, targetID); err != nil {
+		return err
+	}
 	return s.Redis.InvalidateAuthUser(ctx, targetID)
 }
 
@@ -148,6 +152,9 @@ func (s AccountService) RevokeUserRole(ctx context.Context, actor permission.Act
 	}
 	if !ok {
 		return util.HTTPError{Status: http.StatusNotFound, Detail: "role assignment not found"}
+	}
+	if err := s.reconcileOAuthAfterUserPermissionChange(ctx, targetID); err != nil {
+		return err
 	}
 	return s.Redis.InvalidateAuthUser(ctx, targetID)
 }
@@ -200,6 +207,9 @@ func (s AccountService) DeleteUser(ctx context.Context, actor permission.Actor, 
 	if err := s.Redis.DeleteYggTokensByUser(ctx, target.ID); err != nil {
 		return err
 	}
+	if err := s.deleteUserOAuthData(ctx, target.ID); err != nil {
+		return err
+	}
 	ok, err := s.DB.Users.Delete(ctx, target.ID)
 	if err != nil {
 		return err
@@ -208,6 +218,16 @@ func (s AccountService) DeleteUser(ctx context.Context, actor permission.Actor, 
 		return util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
 	}
 	return s.Redis.InvalidateAuthUser(ctx, target.ID)
+}
+
+func (s AccountService) reconcileOAuthAfterUserPermissionChange(ctx context.Context, userID string) error {
+	_, err := (oauthsvc.Service{DB: s.DB, Redis: s.Redis}).ReconcileUserPermissionDependents(ctx, userID)
+	return err
+}
+
+func (s AccountService) deleteUserOAuthData(ctx context.Context, userID string) error {
+	_, err := (oauthsvc.Service{DB: s.DB, Redis: s.Redis}).DeleteUserOAuthData(ctx, userID)
+	return err
 }
 
 func (s AccountService) ResetPassword(ctx context.Context, actor permission.Actor, input ResetPasswordInput) error {

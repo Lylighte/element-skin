@@ -361,6 +361,28 @@ func TestAccountServiceDeleteSelfRejectsProtectedRoleAndDeletesPlainUserExactly(
 	if err := cache.SetYggToken(ctx, model.Token{AccessToken: "self_delete_ygg", UserID: plain.ID, CreatedAt: database.NowMS()}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
+	client := createAccountOAuthClient(t, db, plain.ID, "self-delete-owned-client", "account.read.self")
+	grant := model.OAuthGrant{
+		ID:        "self-delete-grant",
+		UserID:    plain.ID,
+		SubjectID: permissiondb.SubjectIDForUser(plain.ID),
+		ClientID:  client.ID,
+		Status:    "active",
+		CreatedAt: 4100,
+	}
+	if err := db.OAuth.CreateGrant(ctx, grant, accountOAuthPermissionIDs("account.read.self")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.OAuth.CreateRefreshToken(ctx, model.OAuthToken{
+		TokenHash: "self-delete-refresh",
+		ClientID:  client.ID,
+		UserID:    plain.ID,
+		GrantID:   grant.ID,
+		ExpiresAt: 9000,
+		CreatedAt: 4200,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := svc.DeleteSelf(ctx, actorWithPermissions(plain.ID, "account.delete.self")); err != nil {
 		t.Fatal(err)
 	}
@@ -373,6 +395,10 @@ func TestAccountServiceDeleteSelfRejectsProtectedRoleAndDeletesPlainUserExactly(
 	if _, err := cache.GetYggToken(ctx, "self_delete_ygg"); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("DeleteSelf should revoke ygg tokens exactly, got %v", err)
 	}
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_clients WHERE id=$1`, client.ID, 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM permission_subjects WHERE id=$1`, permissiondb.SubjectIDForClient(client.ID), 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_permission_grants WHERE id=$1`, grant.ID, 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM oauth_refresh_tokens WHERE token_hash=$1`, "self-delete-refresh", 0)
 }
 
 func TestAccountServiceDeleteSelfPreservesUserWhenYggRevocationFails(t *testing.T) {

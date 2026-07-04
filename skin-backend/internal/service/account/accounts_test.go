@@ -359,6 +359,88 @@ func TestAccountServiceGrantAndRevokeRolesExactly(t *testing.T) {
 	}
 }
 
+func TestAccountServiceRevokeRoleReconcilesOAuthDependentsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-account-role-oauth@test.com", "Password123", "AdminRoleOAuth", true)
+	target := testutil.CreateUser(t, db, "target-account-role-oauth@test.com", "Password123", "TargetRoleOAuth", false)
+	cache := redisstore.NewMemoryStore()
+	svc := accountsvc.AccountService{DB: db, Redis: cache}
+	actor := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any")
+	if err := svc.GrantUserRole(ctx, actor, target.ID, permission.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	client := createAccountOAuthClient(t, db, target.ID, "account-role-reconcile-client", "invite.create.any")
+	grant := model.OAuthGrant{
+		ID:        "account-role-reconcile-grant",
+		UserID:    target.ID,
+		SubjectID: permissiondb.SubjectIDForUser(target.ID),
+		ClientID:  client.ID,
+		Status:    "active",
+		CreatedAt: 2100,
+	}
+	if err := db.OAuth.CreateGrant(ctx, grant, accountOAuthPermissionIDs("invite.create.any")); err != nil {
+		t.Fatal(err)
+	}
+	unaffectedClient := createAccountOAuthClient(t, db, target.ID, "account-role-unaffected-client", "account.read.self")
+	unaffectedGrant := model.OAuthGrant{
+		ID:        "account-role-unaffected-grant",
+		UserID:    target.ID,
+		SubjectID: permissiondb.SubjectIDForUser(target.ID),
+		ClientID:  unaffectedClient.ID,
+		Status:    "active",
+		CreatedAt: 2200,
+	}
+	if err := db.OAuth.CreateGrant(ctx, unaffectedGrant, accountOAuthPermissionIDs("account.read.self")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	before := database.NowMS()
+
+	if err := svc.RevokeUserRole(ctx, actor, target.ID, permission.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+
+	if hasRole, err := db.Permissions.UserHasRole(ctx, target.ID, permission.RoleAdmin); err != nil || hasRole {
+		t.Fatalf("role revoke should persist before OAuth assertions: has=%v err=%v", hasRole, err)
+	}
+	grants, err := db.OAuth.ListGrantsByUser(ctx, target.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 2 {
+		t.Fatalf("grant count after role revoke = %d want 2: %#v", len(grants), grants)
+	}
+	revokedGrant := accountOAuthGrantByID(grants, grant.ID)
+	if revokedGrant == nil || revokedGrant.Status != "revoked" ||
+		revokedGrant.RevokedAt == nil || *revokedGrant.RevokedAt < before {
+		t.Fatalf("oauth grant should be revoked exactly after role revoke: %#v", grants)
+	}
+	keptGrant := accountOAuthGrantByID(grants, unaffectedGrant.ID)
+	if keptGrant == nil || keptGrant.Status != "active" || keptGrant.RevokedAt != nil {
+		t.Fatalf("unaffected oauth grant should remain active exactly: %#v", grants)
+	}
+	gotClient, err := db.OAuth.GetClient(ctx, client.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotClient == nil || gotClient.Status != "disabled" || gotClient.UpdatedAt < before {
+		t.Fatalf("oauth client should be disabled exactly after owner role revoke: %#v", gotClient)
+	}
+	gotUnaffectedClient, err := db.OAuth.GetClient(ctx, unaffectedClient.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotUnaffectedClient == nil || gotUnaffectedClient.Status != "active" || gotUnaffectedClient.UpdatedAt != unaffectedClient.UpdatedAt {
+		t.Fatalf("unaffected oauth client should remain active exactly: %#v", gotUnaffectedClient)
+	}
+	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("role revoke should invalidate auth cache exactly, got %v", err)
+	}
+}
+
 func TestAccountServiceListUsersAndUserDetailAttachRolesExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
@@ -499,6 +581,8 @@ func TestAccountServiceDeleteUserCascadesAndInvalidatesExactly(t *testing.T) {
 	ctx := context.Background()
 	adminUser := testutil.CreateUser(t, db, "admin-account-delete@test.com", "Password123", "AdminAccountDelete", true)
 	target := testutil.CreateUser(t, db, "target-account-delete@test.com", "Password123", "TargetAccountDelete", false)
+	other := testutil.CreateUser(t, db, "other-account-delete@test.com", "Password123", "OtherAccountDelete", false)
+	unaffected := testutil.CreateUser(t, db, "unaffected-account-delete@test.com", "Password123", "UnaffectedAccountDelete", false)
 	profile := testutil.CreateProfile(t, db, target.ID, "account_delete_profile", "AccountDeleteProfile")
 	cache := redisstore.NewMemoryStore()
 	svc := accountsvc.AccountService{DB: db, Redis: cache}
@@ -507,6 +591,79 @@ func TestAccountServiceDeleteUserCascadesAndInvalidatesExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := cache.SetYggToken(ctx, model.Token{AccessToken: "account_delete_ygg", UserID: target.ID, CreatedAt: database.NowMS()}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	ownedClient := createAccountOAuthClient(t, db, target.ID, "account-delete-owned-client", "account.read.self")
+	otherClient := createAccountOAuthClient(t, db, other.ID, "account-delete-other-client", "account.read.self")
+	targetGrantToOther := model.OAuthGrant{
+		ID:        "account-delete-target-grant",
+		UserID:    target.ID,
+		SubjectID: permissiondb.SubjectIDForUser(target.ID),
+		ClientID:  otherClient.ID,
+		Status:    "active",
+		CreatedAt: 3100,
+	}
+	otherGrantToTargetApp := model.OAuthGrant{
+		ID:        "account-delete-other-grant",
+		UserID:    other.ID,
+		SubjectID: permissiondb.SubjectIDForUser(other.ID),
+		ClientID:  ownedClient.ID,
+		Status:    "active",
+		CreatedAt: 3200,
+	}
+	if err := db.OAuth.CreateGrant(ctx, targetGrantToOther, accountOAuthPermissionIDs("account.read.self")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.OAuth.CreateGrant(ctx, otherGrantToTargetApp, accountOAuthPermissionIDs("account.read.self")); err != nil {
+		t.Fatal(err)
+	}
+	unaffectedClient := createAccountOAuthClient(t, db, unaffected.ID, "account-delete-unaffected-client", "account.read.self")
+	unaffectedGrant := model.OAuthGrant{
+		ID:        "account-delete-unaffected-grant",
+		UserID:    unaffected.ID,
+		SubjectID: permissiondb.SubjectIDForUser(unaffected.ID),
+		ClientID:  unaffectedClient.ID,
+		Status:    "active",
+		CreatedAt: 3250,
+	}
+	if err := db.OAuth.CreateGrant(ctx, unaffectedGrant, accountOAuthPermissionIDs("account.read.self")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.OAuth.CreateRefreshToken(ctx, model.OAuthToken{
+		TokenHash: "account-delete-refresh",
+		ClientID:  otherClient.ID,
+		UserID:    target.ID,
+		GrantID:   targetGrantToOther.ID,
+		ExpiresAt: 9000,
+		CreatedAt: 3300,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.OAuth.CreateAuthorizationCode(ctx, model.OAuthAuthorizationCode{
+		CodeHash:            "account-delete-code",
+		ClientID:            otherClient.ID,
+		UserID:              target.ID,
+		GrantID:             targetGrantToOther.ID,
+		RedirectURI:         otherClient.RedirectURI,
+		CodeChallenge:       "challenge",
+		CodeChallengeMethod: "S256",
+		ExpiresAt:           9000,
+		CreatedAt:           3400,
+	}, accountOAuthPermissionIDs("account.read.self")); err != nil {
+		t.Fatal(err)
+	}
+	userID := target.ID
+	subjectID := permissiondb.SubjectIDForUser(target.ID)
+	if err := db.OAuth.CreateDeviceCode(ctx, model.OAuthDeviceCode{
+		DeviceCodeHash: "account-delete-device",
+		UserCodeHash:   "account-delete-user-code",
+		ClientID:       otherClient.ID,
+		UserID:         &userID,
+		SubjectID:      &subjectID,
+		Status:         "approved",
+		ExpiresAt:      9000,
+		CreatedAt:      3500,
+	}, accountOAuthPermissionIDs("account.read.self")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -525,6 +682,17 @@ func TestAccountServiceDeleteUserCascadesAndInvalidatesExactly(t *testing.T) {
 	if _, err := cache.GetYggToken(ctx, "account_delete_ygg"); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("delete should revoke ygg tokens exactly, got %v", err)
 	}
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_clients WHERE id=$1`, ownedClient.ID, 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM permission_subjects WHERE id=$1`, permissiondb.SubjectIDForClient(ownedClient.ID), 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_clients WHERE id=$1`, otherClient.ID, 1)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_permission_grants WHERE id=$1`, targetGrantToOther.ID, 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_permission_grants WHERE id=$1`, otherGrantToTargetApp.ID, 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_clients WHERE id=$1`, unaffectedClient.ID, 1)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM permission_subjects WHERE id=$1`, permissiondb.SubjectIDForClient(unaffectedClient.ID), 1)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_permission_grants WHERE id=$1`, unaffectedGrant.ID, 1)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM oauth_refresh_tokens WHERE token_hash=$1`, "account-delete-refresh", 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM oauth_authorization_codes WHERE code_hash=$1`, "account-delete-code", 0)
+	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM oauth_device_codes WHERE device_code_hash=$1`, "account-delete-device", 0)
 
 	if err := svc.DeleteUser(ctx, actor, adminUser.ID); !httpErrorIs(err, http.StatusForbidden, "cannot delete yourself") {
 		t.Fatalf("self delete error mismatch: %#v", err)
@@ -642,6 +810,55 @@ func actorWithPermissions(userID string, codes ...string) permission.Actor {
 func httpErrorIs(err error, status int, detail string) bool {
 	var httpErr util.HTTPError
 	return errors.As(err, &httpErr) && httpErr.Status == status && httpErr.Detail == detail
+}
+
+func createAccountOAuthClient(t testing.TB, db *database.DB, ownerUserID, clientID string, codes ...string) model.OAuthClient {
+	t.Helper()
+	client := model.OAuthClient{
+		ID:          clientID,
+		OwnerUserID: ownerUserID,
+		Name:        clientID,
+		Description: "account service oauth fixture",
+		RedirectURI: "https://" + clientID + ".example/callback",
+		WebsiteURL:  "https://" + clientID + ".example",
+		ClientType:  "confidential",
+		SecretHash:  clientID + "-secret-hash",
+		Status:      "active",
+		CreatedAt:   2000,
+		UpdatedAt:   2000,
+	}
+	if err := db.OAuth.CreateClient(context.Background(), client, accountOAuthPermissionIDs(codes...)); err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
+func accountOAuthPermissionIDs(codes ...string) []int64 {
+	ids := make([]int64, 0, len(codes))
+	for _, code := range codes {
+		ids = append(ids, int64(permission.MustDefinitionByCode(code).ID))
+	}
+	return ids
+}
+
+func assertAccountRowCount(t testing.TB, db *database.DB, query string, arg any, want int) {
+	t.Helper()
+	var got int
+	if err := db.Pool.QueryRow(context.Background(), query, arg).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("row count mismatch for %q arg=%v: got=%d want=%d", query, arg, got, want)
+	}
+}
+
+func accountOAuthGrantByID(grants []model.OAuthGrant, id string) *model.OAuthGrant {
+	for i := range grants {
+		if grants[i].ID == id {
+			return &grants[i]
+		}
+	}
+	return nil
 }
 
 type accountFailStore struct {
