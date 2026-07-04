@@ -220,6 +220,27 @@ func TestServiceRejectsInvalidAuthorizationRequestExactly(t *testing.T) {
 			assertHTTPError(t, err, tc.status, tc.detail)
 		})
 	}
+
+	serverClient, err := svc.CreateClient(ctx, actor, oauth.ClientInput{
+		Name:            "Delegated server denied",
+		RedirectURI:     "https://server-delegated.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"minecraft_session.hasjoined.server"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverClientID := serverClient["client_id"].(string)
+	activateOAuthClient(t, db, serverClientID)
+	_, err = svc.AuthorizationDetails(ctx, actor, oauth.AuthorizationRequest{
+		ResponseType:        "code",
+		ClientID:            serverClientID,
+		RedirectURI:         "https://server-delegated.example/callback",
+		Scope:               "minecraft_session.hasjoined.server",
+		CodeChallenge:       pkceChallenge("server-denied-verifier-abcdefghijklmnopqrstuvwxyz"),
+		CodeChallengeMethod: "S256",
+	})
+	assertHTTPError(t, err, 400, "invalid scope")
 }
 
 func TestServiceClientPermissionAndGrantManagementExactly(t *testing.T) {

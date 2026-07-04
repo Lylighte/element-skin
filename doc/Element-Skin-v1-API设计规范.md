@@ -2998,7 +2998,10 @@ oauth_app.delete.owned
 说明：
 
 - OAuth 应用资源必须进入权限 catalog。
-- 应用允许申请的权限上限应使用现有 permission code。
+- 应用允许申请的权限集合应使用现有 permission code。
+- 开发者创建或更新应用时，可以申请当前用户已拥有的非 `system` 权限；机密应用还可以申请 `server` scope 权限。
+- 公开应用不得申请 `server` scope，`system` scope 不能被第三方应用申请。
+- Authorization Code 和 Device Code 流程不得签发 `server` scope。Client Credentials 流程可使用机密应用主体 `client:{client_id}` 有效权限中的 `public`、`server` 和 app-only 策略允许的权限。
 
 ### 27.2 当前用户授权
 

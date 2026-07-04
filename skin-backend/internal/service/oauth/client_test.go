@@ -397,12 +397,28 @@ func TestServicePublicClientSecretAndInputValidationPathsExactly(t *testing.T) {
 		{name: "bad type", input: oauth.ClientInput{Name: "Bad type", RedirectURI: "https://app.example/callback", ClientType: "native", PermissionCodes: []string{"account.read.self"}}, status: 400, detail: "invalid client_type"},
 		{name: "bad scope", input: oauth.ClientInput{Name: "Bad scope", RedirectURI: "https://app.example/callback", PermissionCodes: []string{"permission.catalog.system"}}, status: 400, detail: "invalid scope"},
 		{name: "missing actor scope", input: oauth.ClientInput{Name: "Missing actor scope", RedirectURI: "https://app.example/callback", PermissionCodes: []string{"account.ban.any"}}, status: 403, detail: "permission denied"},
+		{name: "public server scope", input: oauth.ClientInput{Name: "Public server scope", RedirectURI: "https://server-public.example/callback", ClientType: oauth.ClientTypePublic, PermissionCodes: []string{"minecraft_session.hasjoined.server"}}, status: 400, detail: "server scope requires confidential client"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := svc.CreateClient(ctx, actor, tc.input)
 			assertHTTPError(t, err, tc.status, tc.detail)
 		})
+	}
+	serverClient, err := svc.CreateClient(ctx, actor, oauth.ClientInput{
+		Name:            "Server scope app",
+		RedirectURI:     "https://server-scope.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"account.read.self", "minecraft_session.hasjoined.server"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverPermissions := serverClient["permissions"].([]string)
+	if len(serverPermissions) != 2 ||
+		serverPermissions[0] != "account.read.self" ||
+		serverPermissions[1] != "minecraft_session.hasjoined.server" {
+		t.Fatalf("server scope application permissions mismatch: %#v", serverPermissions)
 	}
 	publicClient, err := svc.CreateClient(ctx, actor, oauth.ClientInput{
 		Name:            "Public no secret",

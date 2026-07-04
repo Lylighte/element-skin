@@ -27,6 +27,9 @@ func (s Service) StartDeviceAuthorization(ctx context.Context, req DeviceAuthori
 	clientAllowed := idSet(clientIDs)
 	for _, code := range codes {
 		def := permission.MustDefinitionByCode(code)
+		if def.Scope.ID == permission.ScopeServer {
+			return DeviceAuthorizationResponse{}, badRequest("invalid scope")
+		}
 		if !clientAllowed[int64(def.ID)] {
 			return DeviceAuthorizationResponse{}, badRequest("scope exceeds client permission limit")
 		}
@@ -104,7 +107,11 @@ func (s Service) DecideDeviceAuthorization(ctx context.Context, actor permission
 	}
 	codes := permissionCodesFromIDs(permissionIDs)
 	for _, scope := range codes {
-		if !actor.Has(permission.MustDefinitionByCode(scope)) {
+		def := permission.MustDefinitionByCode(scope)
+		if def.Scope.ID == permission.ScopeServer {
+			return badRequest("invalid scope")
+		}
+		if !actor.Has(def) {
 			return forbidden()
 		}
 	}
