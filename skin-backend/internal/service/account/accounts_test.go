@@ -589,6 +589,18 @@ func TestAccountServiceTransfersProtectedSubjectExactly(t *testing.T) {
 	cache := redisstore.NewMemoryStore()
 	svc := accountsvc.AccountService{DB: db, Redis: cache}
 	actor := actorWithPermissions(actorUser.ID, "permission_protected.manage.any")
+	dependentClient := createAccountOAuthClient(t, db, actorUser.ID, "account-transfer-dependent-client", "permission_protected.manage.any")
+	dependentGrant := model.OAuthGrant{
+		ID:        "account-transfer-dependent-grant",
+		UserID:    actorUser.ID,
+		SubjectID: permissiondb.SubjectIDForUser(actorUser.ID),
+		ClientID:  dependentClient.ID,
+		Status:    "active",
+		CreatedAt: 4100,
+	}
+	if err := db.OAuth.CreateGrant(ctx, dependentGrant, accountOAuthPermissionIDs("permission_protected.manage.any")); err != nil {
+		t.Fatal(err)
+	}
 	for _, userID := range []string{actorUser.ID, target.ID, stale.ID} {
 		if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: userID}, time.Hour); err != nil {
 			t.Fatal(err)
@@ -616,10 +628,88 @@ func TestAccountServiceTransfersProtectedSubjectExactly(t *testing.T) {
 	if protected, err := db.Permissions.UserIsProtected(ctx, stale.ID); err != nil || protected {
 		t.Fatalf("stale protected flag after transfer = %v, %v; want false, nil", protected, err)
 	}
+	grants, err := db.OAuth.ListGrantsByUser(ctx, actorUser.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 1 || grants[0].ID != dependentGrant.ID || grants[0].Status != "revoked" || grants[0].RevokedAt == nil {
+		t.Fatalf("protected transfer should revoke dependent grants exactly: %#v", grants)
+	}
+	gotDependentClient, err := db.OAuth.GetClient(ctx, dependentClient.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotDependentClient == nil || gotDependentClient.Status != "disabled" {
+		t.Fatalf("protected transfer should disable dependent client exactly: %#v", gotDependentClient)
+	}
 	for _, userID := range []string{actorUser.ID, target.ID, stale.ID} {
 		if _, err := cache.GetAuthUser(ctx, userID); !errors.Is(err, redisstore.ErrCacheMiss) {
 			t.Fatalf("transfer should invalidate auth cache for %s exactly, got %v", userID, err)
 		}
+	}
+	actorPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: actorUser.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorNotices := actorPage["items"].([]model.NoticeView)
+	if actorPage["page_size"] != 3 || actorPage["has_next"] != false || len(actorNotices) != 3 {
+		t.Fatalf("actor transfer notice page mismatch: page=%#v items=%#v", actorPage, actorNotices)
+	}
+	lostNotice := accountNoticeByTitle(t, actorNotices, "权限已更新：受保护主体已转出")
+	wantLostContent := "你的受保护权限主体状态已变更。\n\n权限：`permission_protected.manage.any`\n\n说明：管理受保护权限主体\n\n结果：已转移"
+	if lostNotice.Summary != "你不再是受保护权限主体，详情请查看通知。" ||
+		lostNotice.ContentMarkdown != wantLostContent ||
+		lostNotice.Type != noticesvc.TypeSystem || lostNotice.Audience != noticesvc.AudienceTargeted ||
+		lostNotice.Level != noticesvc.LevelInfo || lostNotice.CreatedBy != nil {
+		t.Fatalf("protected subject lost notice mismatch: %#v", lostNotice)
+	}
+	grantDependencyNotice := accountNoticeByTitle(t, actorNotices, "第三方应用授权已自动撤销")
+	wantGrantDependencyContent := "你的站点权限发生变化，以下第三方应用授权已自动撤销：\n\n" +
+		"- account-transfer-dependent-client（`account-transfer-dependent-client`）\n\n" +
+		"这些授权包含你当前已不再拥有的权限，后续访问会失败。需要继续使用时，请在权限恢复后重新授权。"
+	if grantDependencyNotice.ContentMarkdown != wantGrantDependencyContent ||
+		grantDependencyNotice.Summary != "你的权限发生变化，1 个第三方应用授权已自动撤销。" ||
+		grantDependencyNotice.LinkText != "查看授权" || grantDependencyNotice.LinkURL != "/dashboard/oauth" ||
+		grantDependencyNotice.CreatedBy != nil {
+		t.Fatalf("protected transfer grant dependency notice mismatch: %#v", grantDependencyNotice)
+	}
+	clientDependencyNotice := accountNoticeByTitle(t, actorNotices, "第三方应用已自动停用")
+	wantClientDependencyContent := "你的站点权限发生变化，以下第三方应用已自动停用：\n\n" +
+		"- account-transfer-dependent-client（`account-transfer-dependent-client`）\n\n" +
+		"这些应用申请了你当前已不再拥有的权限。请调整应用权限后重新提交审核。"
+	if clientDependencyNotice.ContentMarkdown != wantClientDependencyContent ||
+		clientDependencyNotice.Summary != "你的权限发生变化，1 个你创建的第三方应用已自动停用。" ||
+		clientDependencyNotice.LinkText != "查看应用" || clientDependencyNotice.LinkURL != "/dashboard/oauth" ||
+		clientDependencyNotice.CreatedBy != nil {
+		t.Fatalf("protected transfer client dependency notice mismatch: %#v", clientDependencyNotice)
+	}
+	targetPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetNotices := targetPage["items"].([]model.NoticeView)
+	if targetPage["page_size"] != 1 || targetPage["has_next"] != false || len(targetNotices) != 1 {
+		t.Fatalf("target transfer notice page mismatch: page=%#v items=%#v", targetPage, targetNotices)
+	}
+	gainedNotice := targetNotices[0]
+	wantGainedContent := "你的受保护权限主体状态已变更。\n\n权限：`permission_protected.manage.any`\n\n说明：管理受保护权限主体\n\n结果：允许"
+	if gainedNotice.Title != "权限已更新：受保护主体已转入" ||
+		gainedNotice.Summary != "你已成为受保护权限主体，详情请查看通知。" ||
+		gainedNotice.ContentMarkdown != wantGainedContent ||
+		gainedNotice.Type != noticesvc.TypeSystem || gainedNotice.Audience != noticesvc.AudienceTargeted ||
+		gainedNotice.Level != noticesvc.LevelInfo || gainedNotice.CreatedBy != nil {
+		t.Fatalf("protected subject gained notice mismatch: %#v", gainedNotice)
+	}
+	stalePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: stale.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleNotices := stalePage["items"].([]model.NoticeView)
+	if stalePage["page_size"] != 1 || stalePage["has_next"] != false || len(staleNotices) != 1 {
+		t.Fatalf("stale transfer notice page mismatch: page=%#v items=%#v", stalePage, staleNotices)
+	}
+	if staleNotices[0].Title != "权限已更新：受保护主体已转出" || staleNotices[0].ContentMarkdown != wantLostContent {
+		t.Fatalf("stale protected subject lost notice mismatch: %#v", staleNotices[0])
 	}
 }
 
