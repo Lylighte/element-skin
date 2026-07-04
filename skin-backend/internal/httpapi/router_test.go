@@ -116,3 +116,78 @@ func TestRouterRegistersRepresentativeRouteGroups(t *testing.T) {
 		})
 	}
 }
+
+func TestRouterAppliesConfiguredCORSExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.APIURL = "https://api.example/root"
+	cfg.CORSOrigins = []string{"https://app.example", "http://localhost:5173"}
+	cfg.CORSCredentials = true
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil)
+	req.Header.Set("Origin", "https://app.example")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK ||
+		rec.Header().Get("Access-Control-Allow-Origin") != "https://app.example" ||
+		rec.Header().Get("Access-Control-Allow-Credentials") != "true" ||
+		rec.Header().Values("Vary")[0] != "Origin" ||
+		rec.Header().Get("X-Authlib-Injector-API-Location") != "https://api.example/root" {
+		t.Fatalf("cors simple response mismatch: status=%d headers=%#v body=%q", rec.Code, rec.Header(), rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodOptions, "/v1/users/me", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
+	req.Header.Set("Access-Control-Request-Method", "PATCH")
+	req.Header.Set("Access-Control-Request-Headers", "content-type, authorization")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent ||
+		rec.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" ||
+		rec.Header().Get("Access-Control-Allow-Methods") != "GET, POST, PUT, PATCH, DELETE, OPTIONS" ||
+		rec.Header().Get("Access-Control-Allow-Headers") != "content-type, authorization" ||
+		rec.Header().Get("Access-Control-Max-Age") != "600" ||
+		rec.Body.String() != "" {
+		t.Fatalf("cors preflight response mismatch: status=%d headers=%#v body=%q", rec.Code, rec.Header(), rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodOptions, "/v1/users/me", nil)
+	req.Header.Set("Origin", "https://blocked.example")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("blocked preflight mismatch: status=%d headers=%#v body=%q", rec.Code, rec.Header(), rec.Body.String())
+	}
+}
+
+func TestRouterWildcardCORSDoesNotUseStarWhenCredentialsAreAllowed(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cfg.CORSOrigins = []string{"*"}
+	cfg.CORSCredentials = true
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil)
+	req.Header.Set("Origin", "https://any.example")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK ||
+		rec.Header().Get("Access-Control-Allow-Origin") != "https://any.example" ||
+		rec.Header().Get("Access-Control-Allow-Credentials") != "true" {
+		t.Fatalf("credentialed wildcard cors mismatch: status=%d headers=%#v body=%q", rec.Code, rec.Header(), rec.Body.String())
+	}
+
+	cfg.CORSCredentials = false
+	router = httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	req = httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil)
+	req.Header.Set("Origin", "https://any.example")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK ||
+		rec.Header().Get("Access-Control-Allow-Origin") != "*" ||
+		rec.Header().Get("Access-Control-Allow-Credentials") != "" {
+		t.Fatalf("non-credentialed wildcard cors mismatch: status=%d headers=%#v body=%q", rec.Code, rec.Header(), rec.Body.String())
+	}
+}

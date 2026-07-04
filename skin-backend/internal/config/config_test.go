@@ -41,6 +41,11 @@ redis:
   key_prefix: "custom:"
   public_cache_ttl_seconds: 120
   auth_cache_ttl_seconds: 15
+cors:
+  allow_origins:
+    - "https://skin.example.com"
+    - "http://localhost:5173"
+  allow_credentials: false
 mojang:
   skin_domains:
     - "textures.minecraft.net"
@@ -78,8 +83,11 @@ mojang:
 	if cfg.PrivateKeyPath != filepath.Join(dir, "keys", "private.pem") || cfg.PublicKeyPath != filepath.Join(dir, "keys", "public.pem") {
 		t.Fatalf("key paths should resolve relative to config file: %#v", cfg)
 	}
+	if !reflect.DeepEqual(cfg.CORSOrigins, []string{"https://skin.example.com", "http://localhost:5173"}) || cfg.CORSCredentials {
+		t.Fatalf("cors fields not parsed: origins=%#v credentials=%v", cfg.CORSOrigins, cfg.CORSCredentials)
+	}
 	if !reflect.DeepEqual(cfg.FallbackDomains, []string{"textures.minecraft.net", "cdn.example"}) {
-		t.Fatalf("fallback skin domains not parsed: %#v", cfg.FallbackDomains)
+		t.Fatalf("mojang skin domains not parsed: %#v", cfg.FallbackDomains)
 	}
 }
 
@@ -110,6 +118,10 @@ carousel:
 redis:
   public_cache_ttl_seconds: 12
   auth_cache_ttl_seconds: 13
+cors:
+  allow_origins:
+    - "https://file.example"
+  allow_credentials: false
 mojang:
   skin_domains:
     - "file.example"
@@ -135,7 +147,9 @@ mojang:
 	t.Setenv("REDIS_KEY_PREFIX", "envprefix:")
 	t.Setenv("REDIS_PUBLIC_CACHE_TTL_SECONDS", "220")
 	t.Setenv("REDIS_AUTH_CACHE_TTL_SECONDS", "25")
-	t.Setenv("MOJANG_SKIN_DOMAINS", "textures.minecraft.net, cdn.env.example")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://env.example, http://localhost:5173")
+	t.Setenv("CORS_ALLOW_CREDENTIALS", "true")
+	t.Setenv("MOJANG_SKIN_DOMAINS", "textures.minecraft.net, cdn.example")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -162,8 +176,11 @@ mojang:
 		cfg.PublicCacheTTL != 220 || cfg.AuthCacheTTL != 25 {
 		t.Fatalf("redis env should override file/defaults: %#v", cfg)
 	}
-	if !reflect.DeepEqual(cfg.FallbackDomains, []string{"textures.minecraft.net", "cdn.env.example"}) {
-		t.Fatalf("mojang skin domains env mismatch: %#v", cfg.FallbackDomains)
+	if !reflect.DeepEqual(cfg.CORSOrigins, []string{"https://env.example", "http://localhost:5173"}) || !cfg.CORSCredentials {
+		t.Fatalf("cors env mismatch: origins=%#v credentials=%v", cfg.CORSOrigins, cfg.CORSCredentials)
+	}
+	if !reflect.DeepEqual(cfg.FallbackDomains, []string{"textures.minecraft.net", "cdn.example"}) {
+		t.Fatalf("mojang env mismatch: %#v", cfg.FallbackDomains)
 	}
 
 	var persisted rawConfig
@@ -180,7 +197,11 @@ mojang:
 	assertRawValue(t, persisted, "database.max_connections", 31)
 	assertRawValue(t, persisted, "server.port", 8100)
 	assertRawValue(t, persisted, "redis.public_cache_ttl_seconds", 220)
-	if got, _ := lookup(persisted, "mojang.skin_domains"); !reflect.DeepEqual(got, []any{"textures.minecraft.net", "cdn.env.example"}) {
+	assertRawValue(t, persisted, "cors.allow_credentials", true)
+	if got, _ := lookup(persisted, "cors.allow_origins"); !reflect.DeepEqual(got, []any{"https://env.example", "http://localhost:5173"}) {
+		t.Fatalf("persisted cors.allow_origins=%#v", got)
+	}
+	if got, _ := lookup(persisted, "mojang.skin_domains"); !reflect.DeepEqual(got, []any{"textures.minecraft.net", "cdn.example"}) {
 		t.Fatalf("persisted mojang.skin_domains=%#v", got)
 	}
 }
@@ -211,6 +232,7 @@ func TestLoadMissingFileCreatesExactDefaultConfig(t *testing.T) {
 	}
 	assertRawValue(t, persisted, "database.dsn", want.DatabaseDSN)
 	assertRawValue(t, persisted, "server.port", 8000)
+	assertRawValue(t, persisted, "cors.allow_credentials", true)
 }
 
 func TestLoadMalformedFilePreservesExactDefaultsAndDoesNotRewrite(t *testing.T) {
@@ -370,6 +392,8 @@ func clearConfigEnv(t *testing.T) {
 		"REDIS_KEY_PREFIX",
 		"REDIS_PUBLIC_CACHE_TTL_SECONDS",
 		"REDIS_AUTH_CACHE_TTL_SECONDS",
+		"CORS_ALLOW_ORIGINS",
+		"CORS_ALLOW_CREDENTIALS",
 		"MOJANG_SKIN_DOMAINS",
 	} {
 		t.Setenv(key, "")

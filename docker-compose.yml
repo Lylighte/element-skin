@@ -56,6 +56,8 @@ services:
       - SERVER_PORT=${SERVER_PORT:-8000}
       - SERVER_SITE_URL=${SERVER_SITE_URL:-http://yourdomain.com}
       - SERVER_API_URL=${SERVER_API_URL:-http://yourdomain.com/skinapi}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-*}
+      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
       - MOJANG_SKIN_DOMAINS=${MOJANG_SKIN_DOMAINS:-textures.minecraft.net}
     args: []
     depends_on:
