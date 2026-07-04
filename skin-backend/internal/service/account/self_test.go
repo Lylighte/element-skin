@@ -54,6 +54,7 @@ func TestAccountServiceMeReturnsCountsAndUpdateSelfPersistsExactFields(t *testin
 		me["avatar_hash"].(*string) == nil ||
 		*me["avatar_hash"].(*string) != "avatar_hash" ||
 		!containsString(permissions, "account.read.self") ||
+		me["protected"] != false ||
 		me["profile_count"] != 0 ||
 		me["texture_count"] != 0 {
 		t.Fatalf("Me response mismatch: %#v", me)
@@ -342,7 +343,7 @@ func TestAccountServiceDeleteSelfRejectsProtectedRoleAndDeletesPlainUserExactly(
 	protected := testutil.CreateUser(t, db, "self-delete-protected@test.com", "Password123", "SelfDeleteProtected", true, true)
 	plain := testutil.CreateUser(t, db, "self-delete-plain@test.com", "Password123", "SelfDeletePlain", false)
 
-	if err := svc.DeleteSelf(ctx, actorWithPermissions(protected.ID, "account.delete.self")); !httpErrorIs(err, http.StatusForbidden, "protected role holders cannot delete their own account") {
+	if err := svc.DeleteSelf(ctx, actorWithPermissions(protected.ID, "account.delete.self")); !httpErrorIs(err, http.StatusForbidden, "protected subjects cannot delete their own account") {
 		t.Fatalf("protected self delete mismatch: %#v", err)
 	}
 	if got, err := db.Users.GetByID(ctx, protected.ID); err != nil || got == nil {

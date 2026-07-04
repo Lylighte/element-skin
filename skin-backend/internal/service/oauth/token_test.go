@@ -272,6 +272,15 @@ func TestServiceClientCredentialsDefaultScopeAndInactiveClientExactly(t *testing
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 	user := testutil.CreateUser(t, db, "oauth-client-credentials-default@test.com", "Password123", "OAuthClientDefault", true, true)
+	if err := db.Permissions.SetSubjectPermissionOverride(
+		ctx,
+		user.ID,
+		permission.MustDefinitionByCode("minecraft_session.hasjoined.server"),
+		"allow",
+		"",
+	); err != nil {
+		t.Fatal(err)
+	}
 	actor, err := db.Permissions.ActorForUser(ctx, user.ID, permissiondb.EffectiveOptions{})
 	if err != nil {
 		t.Fatal(err)

@@ -154,22 +154,22 @@ func TestUserRoutesListAndProtectCurrentUserExactly(t *testing.T) {
 		t.Fatalf("self delete should be forbidden exactly: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+adminUser.ID+"/roles/super_admin", nil)
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+adminUser.ID+"/protected-subject/transfer", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", adminUser.ID)
-	req.SetPathValue("role_id", permission.RoleSuperAdmin)
 	req = withProtectedActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
-	h.GrantUserRole(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "cannot grant protected role to yourself") {
-		t.Fatalf("self protected role grant should be forbidden exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	h.TransferProtectedSubject(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"cannot transfer protected subject to yourself\"}\n" {
+		t.Fatalf("protected subject self transfer should be rejected exactly: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
 func TestRoleGrantAndRevokeControlsExactPermissions(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
-	h := admin.New(cfg, db, nil)
+	cache := testutil.NewMemoryRedis()
+	h := admin.NewWithRedis(cfg, db, cache, nil)
 	protectedAdmin := testutil.CreateUser(t, db, "protected-role@test.com", "Password123", "ProtectedRole", true, true)
 	plainAdmin := testutil.CreateUser(t, db, "plain-role@test.com", "Password123", "PlainRole", true)
 	target := testutil.CreateUser(t, db, "target-role@test.com", "Password123", "TargetRole", false)
@@ -188,29 +188,41 @@ func TestRoleGrantAndRevokeControlsExactPermissions(t *testing.T) {
 		t.Fatalf("target admin role after grant = %v, %v; want true, nil", hasRole, err)
 	}
 
-	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/roles/super_admin", nil)
+	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/roles/system_maintenance", nil)
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", target.ID)
-	req.SetPathValue("role_id", permission.RoleSuperAdmin)
+	req.SetPathValue("role_id", permission.RoleSystemMaintenance)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec = httptest.NewRecorder()
 	h.GrantUserRole(rec, req)
 	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"protected role management required\"}\n" {
-		t.Fatalf("plain admin protected role grant mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		t.Fatalf("plain admin protected role generic grant mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/roles/super_admin", nil)
-	req = withAdminActor(req, "admin-test-user")
-	req.SetPathValue("user_id", target.ID)
-	req.SetPathValue("role_id", permission.RoleSuperAdmin)
-	req = withProtectedActor(req, protectedAdmin.ID)
-	rec = httptest.NewRecorder()
-	h.GrantUserRole(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true,\"role_id\":\"super_admin\"}\n" {
-		t.Fatalf("protected role grant response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if err := cache.SetAuthUser(t.Context(), redisstore.AuthUser{ID: protectedAdmin.ID}, time.Minute); err != nil {
+		t.Fatal(err)
 	}
-	if hasRole, err := db.Permissions.UserHasRole(req.Context(), target.ID, permission.RoleSuperAdmin); err != nil || !hasRole {
-		t.Fatalf("target super admin role after grant = %v, %v; want true, nil", hasRole, err)
+	if err := cache.SetAuthUser(t.Context(), redisstore.AuthUser{ID: target.ID}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+target.ID+"/protected-subject/transfer", nil)
+	req = withProtectedActor(req, protectedAdmin.ID)
+	req.SetPathValue("user_id", target.ID)
+	rec = httptest.NewRecorder()
+	h.TransferProtectedSubject(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true,\"user_id\":\""+target.ID+"\"}\n" {
+		t.Fatalf("protected subject transfer response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if protected, err := db.Permissions.UserIsProtected(req.Context(), target.ID); err != nil || !protected {
+		t.Fatalf("target protected flag after transfer = %v, %v; want true, nil", protected, err)
+	}
+	if protected, err := db.Permissions.UserIsProtected(req.Context(), protectedAdmin.ID); err != nil || protected {
+		t.Fatalf("actor protected flag after transfer = %v, %v; want false, nil", protected, err)
+	}
+	for _, userID := range []string{protectedAdmin.ID, target.ID} {
+		if _, err := cache.GetAuthUser(t.Context(), userID); !errors.Is(err, redisstore.ErrCacheMiss) {
+			t.Fatalf("transfer should invalidate auth cache for %s exactly, got %v", userID, err)
+		}
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
@@ -220,15 +232,25 @@ func TestRoleGrantAndRevokeControlsExactPermissions(t *testing.T) {
 	req = withAdminActor(req, plainAdmin.ID)
 	rec = httptest.NewRecorder()
 	h.RevokeUserRole(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"cannot modify protected subject\"}\n" {
+		t.Fatalf("plain admin protected subject role revoke mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
+	req = withProtectedActor(req, target.ID)
+	req.SetPathValue("user_id", target.ID)
+	req.SetPathValue("role_id", permission.RoleAdmin)
+	rec = httptest.NewRecorder()
+	h.RevokeUserRole(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true,\"role_id\":\"admin\"}\n" {
-		t.Fatalf("role revoke response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		t.Fatalf("protected subject role revoke response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	if hasRole, err := db.Permissions.UserHasRole(req.Context(), target.ID, permission.RoleAdmin); err != nil || hasRole {
 		t.Fatalf("target admin role after revoke = %v, %v; want false, nil", hasRole, err)
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/admin", nil)
-	req = withAdminActor(req, plainAdmin.ID)
+	req = withProtectedActor(req, target.ID)
 	req.SetPathValue("user_id", target.ID)
 	req.SetPathValue("role_id", permission.RoleAdmin)
 	rec = httptest.NewRecorder()
@@ -237,24 +259,14 @@ func TestRoleGrantAndRevokeControlsExactPermissions(t *testing.T) {
 		t.Fatalf("missing role revoke response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/super_admin", nil)
+	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/system_maintenance", nil)
 	req = withAdminActor(req, plainAdmin.ID)
 	req.SetPathValue("user_id", target.ID)
-	req.SetPathValue("role_id", permission.RoleSuperAdmin)
+	req.SetPathValue("role_id", permission.RoleSystemMaintenance)
 	rec = httptest.NewRecorder()
 	h.RevokeUserRole(rec, req)
 	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"protected role management required\"}\n" {
-		t.Fatalf("plain admin protected role revoke mismatch: status=%d body=%q", rec.Code, rec.Body.String())
-	}
-
-	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+protectedAdmin.ID+"/roles/super_admin", nil)
-	req = withProtectedActor(req, protectedAdmin.ID)
-	req.SetPathValue("user_id", protectedAdmin.ID)
-	req.SetPathValue("role_id", permission.RoleSuperAdmin)
-	rec = httptest.NewRecorder()
-	h.RevokeUserRole(rec, req)
-	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"cannot revoke protected role from yourself\"}\n" {
-		t.Fatalf("self protected role revoke mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+		t.Fatalf("plain admin protected role generic revoke mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -389,7 +401,7 @@ func TestUserPermissionRoutesRejectInvalidAndProtectedOperationsExactly(t *testi
 	db, _ := testutil.NewTestApp(t)
 	h := admin.New(testutil.TestConfig(), db, nil)
 	adminUser := testutil.CreateUser(t, db, "admin-permission-reject@test.com", "Password123", "AdminPermissionReject", true)
-	superAdmin := testutil.CreateUser(t, db, "super-permission-reject@test.com", "Password123", "SuperPermissionReject", true, true)
+	protectedAdmin := testutil.CreateUser(t, db, "protected-permission-reject@test.com", "Password123", "ProtectedPermissionReject", true, true)
 	target := testutil.CreateUser(t, db, "target-permission-reject@test.com", "Password123", "TargetPermissionReject", false)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/users/missing-user/permissions", nil)
@@ -427,28 +439,28 @@ func TestUserPermissionRoutesRejectInvalidAndProtectedOperationsExactly(t *testi
 	req.SetPathValue("permission_code", "permission_protected.manage.any")
 	rec = httptest.NewRecorder()
 	h.SetUserPermissionOverride(rec, req)
-	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"protected permission management required\"}\n" {
-		t.Fatalf("plain admin protected permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"protected management permission must be transferred\"}\n" {
+		t.Fatalf("plain admin protected management permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/permissions/permission_protected.manage.any", strings.NewReader(`{"effect":"allow"}`))
-	req = withProtectedActor(req, superAdmin.ID)
+	req = withProtectedActor(req, protectedAdmin.ID)
 	req.SetPathValue("user_id", target.ID)
 	req.SetPathValue("permission_code", "permission_protected.manage.any")
 	rec = httptest.NewRecorder()
 	h.SetUserPermissionOverride(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != "{\"effect\":\"allow\",\"ok\":true,\"permission_code\":\"permission_protected.manage.any\"}\n" {
-		t.Fatalf("protected actor grant protected permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"protected management permission must be transferred\"}\n" {
+		t.Fatalf("protected actor grant protected management permission mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+superAdmin.ID+"/permissions/permission_protected.manage.any", strings.NewReader(`{"effect":"deny"}`))
-	req = withProtectedActor(req, superAdmin.ID)
-	req.SetPathValue("user_id", superAdmin.ID)
+	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+protectedAdmin.ID+"/permissions/permission_protected.manage.any", strings.NewReader(`{"effect":"deny"}`))
+	req = withProtectedActor(req, protectedAdmin.ID)
+	req.SetPathValue("user_id", protectedAdmin.ID)
 	req.SetPathValue("permission_code", "permission_protected.manage.any")
 	rec = httptest.NewRecorder()
 	h.SetUserPermissionOverride(rec, req)
-	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"cannot modify protected permission on yourself\"}\n" {
-		t.Fatalf("self protected override mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"protected management permission must be transferred\"}\n" {
+		t.Fatalf("self protected management override mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/permissions/notice.create.any", nil)
@@ -1076,6 +1088,11 @@ func TestUserRoutesReturnInternalServerErrorWhenDatabaseIsClosedExactly(t *testi
 			req.SetPathValue("role_id", permission.RoleAdmin)
 			return req
 		}(), "admin-closed-db"), h.RevokeUserRole},
+		{"transfer protected subject", withProtectedActor(func() *http.Request {
+			req := httptest.NewRequest(http.MethodPost, "/v1/admin/users/user-closed-db/protected-subject/transfer", nil)
+			req.SetPathValue("user_id", "user-closed-db")
+			return req
+		}(), "admin-closed-db"), h.TransferProtectedSubject},
 		{"delete user", withProtectedActor(func() *http.Request {
 			req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/user-closed-db", nil)
 			req.SetPathValue("user_id", "user-closed-db")
@@ -1127,41 +1144,41 @@ func TestUserRoutesReturnInternalServerErrorWhenDatabaseIsClosedExactly(t *testi
 	}
 }
 
-func TestUserRoutesProtectSuperAdminFromPlainAdminExactly(t *testing.T) {
+func TestUserRoutesProtectProtectedSubjectFromPlainAdminExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	h := admin.New(cfg, db, nil)
 	plainAdmin := testutil.CreateUser(t, db, "plain-protect@test.com", "Password123", "PlainProtect", true)
-	superAdmin := testutil.CreateUser(t, db, "super-protect@test.com", "Password123", "SuperProtect", true, true)
+	protectedAdmin := testutil.CreateUser(t, db, "protected-subject-protect@test.com", "Password123", "ProtectedSubjectProtect", true, true)
 
-	req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+superAdmin.ID, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+protectedAdmin.ID, nil)
 	req = withAdminActor(req, "admin-test-user")
-	req.SetPathValue("user_id", superAdmin.ID)
+	req.SetPathValue("user_id", protectedAdmin.ID)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec := httptest.NewRecorder()
 	h.DeleteUser(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"detail":"cannot modify super admin"`) {
-		t.Fatalf("plain admin deleting super admin mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"detail":"cannot modify protected subject"`) {
+		t.Fatalf("plain admin deleting protected subject mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+superAdmin.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`,"reason":"protected target"}`))
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+protectedAdmin.ID+"/ban", strings.NewReader(`{"banned_until":`+strconvI64(time.Now().Add(time.Hour).UnixMilli())+`,"reason":"protected target"}`))
 	req = withAdminActor(req, "admin-test-user")
-	req.SetPathValue("user_id", superAdmin.ID)
+	req.SetPathValue("user_id", protectedAdmin.ID)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec = httptest.NewRecorder()
 	h.BanUser(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"detail":"cannot modify super admin"`) {
-		t.Fatalf("plain admin banning super admin mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"detail":"cannot modify protected subject"`) {
+		t.Fatalf("plain admin banning protected subject mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+superAdmin.ID+"/unban", nil)
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/"+protectedAdmin.ID+"/unban", nil)
 	req = withAdminActor(req, "admin-test-user")
-	req.SetPathValue("user_id", superAdmin.ID)
+	req.SetPathValue("user_id", protectedAdmin.ID)
 	req = withAdminActor(req, plainAdmin.ID)
 	rec = httptest.NewRecorder()
 	h.UnbanUser(rec, req)
-	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"cannot modify super admin\"}\n" {
-		t.Fatalf("plain admin unbanning super admin mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"cannot modify protected subject\"}\n" {
+		t.Fatalf("plain admin unbanning protected subject mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -1169,7 +1186,7 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	h := admin.New(cfg, db, nil)
-	superAdmin := testutil.CreateUser(t, db, "admin-missing-super@test.com", "Password123", "AdminMissingSuper", true, true)
+	protectedAdmin := testutil.CreateUser(t, db, "admin-missing-protected@test.com", "Password123", "AdminMissingProtected", true, true)
 	target := testutil.CreateUser(t, db, "admin-reset-unchanged@test.com", "Password123", "AdminResetUnchanged", false)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/users?cursor=not-base64", nil)
@@ -1202,15 +1219,24 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("user_id", "missing-user")
 	req.SetPathValue("role_id", permission.RoleAdmin)
-	req = withProtectedActor(req, superAdmin.ID)
+	req = withProtectedActor(req, protectedAdmin.ID)
 	rec = httptest.NewRecorder()
 	h.GrantUserRole(rec, req)
 	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
 		t.Fatalf("missing role grant target mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/missing-user/protected-subject/transfer", nil)
+	req = withProtectedActor(req, protectedAdmin.ID)
+	req.SetPathValue("user_id", "missing-user")
+	rec = httptest.NewRecorder()
+	h.TransferProtectedSubject(rec, req)
+	if rec.Code != http.StatusNotFound || rec.Body.String() != "{\"detail\":\"user not found\"}\n" {
+		t.Fatalf("missing transfer target mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodPut, "/v1/admin/users/"+target.ID+"/roles/", nil)
-	req = withProtectedActor(req, superAdmin.ID)
+	req = withProtectedActor(req, protectedAdmin.ID)
 	req.SetPathValue("user_id", target.ID)
 	req.SetPathValue("role_id", "")
 	rec = httptest.NewRecorder()
@@ -1220,7 +1246,7 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID+"/roles/", nil)
-	req = withProtectedActor(req, superAdmin.ID)
+	req = withProtectedActor(req, protectedAdmin.ID)
 	req.SetPathValue("user_id", target.ID)
 	req.SetPathValue("role_id", "")
 	rec = httptest.NewRecorder()
@@ -1231,7 +1257,7 @@ func TestUserRoutesRejectMissingTargetsAndMalformedResetWithoutMutation(t *testi
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/password/reset", strings.NewReader(`{`))
 	req = withAdminActor(req, "admin-test-user")
-	req = withProtectedActor(req, superAdmin.ID)
+	req = withProtectedActor(req, protectedAdmin.ID)
 	rec = httptest.NewRecorder()
 	h.ResetUserPassword(rec, req)
 	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"invalid json\"}\n" {
@@ -1283,7 +1309,7 @@ func TestUserRoutesReturnExactErrorsAfterPrimaryLookupSucceeds(t *testing.T) {
 		h := admin.New(testutil.TestConfig(), db, nil)
 		adminUser := testutil.CreateUser(t, db, "admin-role-attach-fail@test.com", "Password123", "AdminRoleAttachFail", true)
 		target := testutil.CreateUser(t, db, "target-role-attach-fail@test.com", "Password123", "TargetRoleAttachFail", false)
-		if _, err := db.Pool.Exec(t.Context(), `DROP TABLE subject_roles CASCADE`); err != nil {
+		if _, err := db.Pool.Exec(t.Context(), `DROP TABLE permission_subjects CASCADE`); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1351,12 +1377,12 @@ func TestUserRoutesReturnExactErrorsAfterPrimaryLookupSucceeds(t *testing.T) {
 		}
 	})
 
-	t.Run("protected role check dependency failure", func(t *testing.T) {
+	t.Run("protected subject check dependency failure", func(t *testing.T) {
 		db, _ := testutil.NewTestApp(t)
 		h := admin.New(testutil.TestConfig(), db, nil)
 		adminUser := testutil.CreateUser(t, db, "admin-protected-check-fail@test.com", "Password123", "AdminProtectedCheckFail", true)
 		target := testutil.CreateUser(t, db, "target-protected-check-fail@test.com", "Password123", "TargetProtectedCheckFail", false)
-		if _, err := db.Pool.Exec(t.Context(), `DROP TABLE subject_roles CASCADE`); err != nil {
+		if _, err := db.Pool.Exec(t.Context(), `DROP TABLE permission_subjects CASCADE`); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1366,7 +1392,7 @@ func TestUserRoutesReturnExactErrorsAfterPrimaryLookupSucceeds(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.UnbanUser(rec, req)
 		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
-			t.Fatalf("unban protected-role check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+			t.Fatalf("unban protected-subject check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 		}
 
 		req = httptest.NewRequest(http.MethodDelete, "/v1/admin/users/"+target.ID, nil)
@@ -1375,7 +1401,7 @@ func TestUserRoutesReturnExactErrorsAfterPrimaryLookupSucceeds(t *testing.T) {
 		rec = httptest.NewRecorder()
 		h.DeleteUser(rec, req)
 		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
-			t.Fatalf("delete protected-role check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+			t.Fatalf("delete protected-subject check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 		}
 
 		req = httptest.NewRequest(http.MethodPost, "/v1/admin/users/password/reset", strings.NewReader(`{"user_id":"`+target.ID+`","new_password":"ChangedPassword123"}`))
@@ -1383,7 +1409,7 @@ func TestUserRoutesReturnExactErrorsAfterPrimaryLookupSucceeds(t *testing.T) {
 		rec = httptest.NewRecorder()
 		h.ResetUserPassword(rec, req)
 		if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
-			t.Fatalf("reset protected-role check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+			t.Fatalf("reset protected-subject check failure mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 		}
 	})
 }

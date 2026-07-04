@@ -198,10 +198,10 @@ func TestSessionRoutesRegisterCreatesFirstAdminAndProfileExactly(t *testing.T) {
 	id := jsonStringField(t, rec.Body.String(), "id")
 	user, err := db.Users.GetByID(req.Context(), id)
 	if err != nil || user == nil || user.Email != "new-user@test.com" || user.DisplayName != "New User" {
-		t.Fatalf("first registered user should be super admin exactly: user=%#v err=%v", user, err)
+		t.Fatalf("first registered user mismatch: user=%#v err=%v", user, err)
 	}
-	if hasRole, err := db.Permissions.UserHasRole(req.Context(), id, "super_admin"); err != nil || !hasRole {
-		t.Fatalf("first registered user role = %v, %v; want super_admin", hasRole, err)
+	if protected, err := db.Permissions.UserIsProtected(req.Context(), id); err != nil || !protected {
+		t.Fatalf("first registered user protected flag = %v, %v; want true, nil", protected, err)
 	}
 	profiles, err := db.Profiles.GetByUser(req.Context(), id, 10)
 	if err != nil || len(profiles) != 1 || profiles[0].Name != "new_user" || profiles[0].ID != util.OfflineUUIDNoDash("new_user") {

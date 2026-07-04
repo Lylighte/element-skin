@@ -46,6 +46,15 @@ func (h Handler) RevokeUserRole(w http.ResponseWriter, req *http.Request) {
 	util.JSON(w, 200, map[string]any{"ok": true, "role_id": roleID})
 }
 
+func (h Handler) TransferProtectedSubject(w http.ResponseWriter, req *http.Request) {
+	targetID := req.PathValue("user_id")
+	if err := h.accounts.TransferProtectedSubject(req.Context(), shared.CurrentActor(req), targetID); err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, 200, map[string]any{"ok": true, "user_id": targetID})
+}
+
 func (h Handler) UserPermissions(w http.ResponseWriter, req *http.Request) {
 	res, err := h.perms.UserPermissions(req.Context(), shared.CurrentActor(req), req.PathValue("user_id"))
 	if err != nil {

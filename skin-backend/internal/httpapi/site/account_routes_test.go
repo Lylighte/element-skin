@@ -25,7 +25,10 @@ func TestAccountRoutesMeAndAdminSelfDeleteExactResponses(t *testing.T) {
 	req = withUserActor(req, user.ID)
 	rec := httptest.NewRecorder()
 	h.Me(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"`+user.ID+`"`) || !strings.Contains(rec.Body.String(), `"email":"site-account@test.com"`) {
+	if rec.Code != http.StatusOK ||
+		!strings.Contains(rec.Body.String(), `"id":"`+user.ID+`"`) ||
+		!strings.Contains(rec.Body.String(), `"email":"site-account@test.com"`) ||
+		!strings.Contains(rec.Body.String(), `"protected":false`) {
 		t.Fatalf("me response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
@@ -34,8 +37,8 @@ func TestAccountRoutesMeAndAdminSelfDeleteExactResponses(t *testing.T) {
 	req = withUserActor(req, adminUser.ID)
 	rec = httptest.NewRecorder()
 	h.DeleteMe(rec, req)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "protected role holders cannot delete their own account") {
-		t.Fatalf("protected role self delete should be rejected exactly: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "protected subjects cannot delete their own account") {
+		t.Fatalf("protected subject self delete should be rejected exactly: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	if got, err := db.Users.GetByID(req.Context(), adminUser.ID); err != nil || got == nil {
 		t.Fatalf("admin should still exist after rejected delete: user=%#v err=%v", got, err)
@@ -309,7 +312,7 @@ func TestDeleteMeErrorPaths(t *testing.T) {
 	h := site.NewWithRedis(cfg, db, redis, nil)
 	user := testutil.CreateUser(t, db, "site-delete-me-err@test.com", "Password123", "SiteDeleteMeErr", false)
 
-	// DB error on UserHasProtectedRole: cancelled context causes query failure
+	// DB error on UserIsProtected: cancelled context causes query failure
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	req := httptest.NewRequest(http.MethodDelete, "/v1/users/me", nil).WithContext(ctx)

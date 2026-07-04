@@ -3,11 +3,7 @@ package permission
 import (
 	"context"
 	"time"
-
-	core "element-skin/backend/internal/permission"
 )
-
-const firstSuperAdminRoleLockID int64 = 0x5045524D53555052
 
 func (s Store) GrantRole(ctx context.Context, userID, roleID, grantedBySubjectID string) error {
 	if err := s.EnsureUserSubject(ctx, userID); err != nil {
@@ -20,7 +16,7 @@ func (s Store) GrantRole(ctx context.Context, userID, roleID, grantedBySubjectID
 		ON CONFLICT (subject_id, role_id) DO UPDATE
 		SET granted_by_subject_id=EXCLUDED.granted_by_subject_id
 	`, SubjectIDForUser(userID), roleID, nullString(grantedBySubjectID), now)
-		if err == nil && s.Cache != nil {
+	if err == nil && s.Cache != nil {
 		_ = s.Cache.DeleteEffective(ctx, SubjectIDForUser(userID))
 	}
 	return err
@@ -39,39 +35,6 @@ func (s Store) RevokeRole(ctx context.Context, userID, roleID string) (bool, err
 		_ = s.Cache.DeleteEffective(ctx, SubjectIDForUser(userID))
 	}
 	return affected, nil
-}
-
-func (s Store) GrantInitialSuperAdminIfNone(ctx context.Context, userID string) (bool, error) {
-	if err := s.EnsureUserSubject(ctx, userID); err != nil {
-		return false, err
-	}
-	tx, err := s.conn().Begin(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, firstSuperAdminRoleLockID); err != nil {
-		return false, err
-	}
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM subject_roles WHERE role_id=$1)`, core.RoleSuperAdmin).Scan(&exists); err != nil {
-		return false, err
-	}
-	if exists {
-		return false, tx.Commit(ctx)
-	}
-	now := time.Now().UnixMilli()
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO subject_roles (subject_id,role_id,created_at)
-		VALUES ($1,$2,$3), ($1,$4,$3)
-		ON CONFLICT (subject_id, role_id) DO NOTHING
-	`, SubjectIDForUser(userID), core.RoleUser, now, core.RoleSuperAdmin); err != nil {
-			if err == nil && s.Cache != nil {
-		_ = s.Cache.DeleteEffective(ctx, SubjectIDForUser(userID))
-	}
-	return false, err
-	}
-	return true, tx.Commit(ctx)
 }
 
 func (s Store) RoleIDsForUser(ctx context.Context, userID string) ([]string, error) {
@@ -111,15 +74,15 @@ func (s Store) UserHasRole(ctx context.Context, userID, roleID string) (bool, er
 	return exists, err
 }
 
-func (s Store) UserHasProtectedRole(ctx context.Context, userID string) (bool, error) {
-	var exists bool
+func (s Store) UserIsProtected(ctx context.Context, userID string) (bool, error) {
+	if err := s.EnsureUserSubject(ctx, userID); err != nil {
+		return false, err
+	}
+	var protected bool
 	err := s.conn().QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM subject_roles sr
-			JOIN roles r ON r.id=sr.role_id
-			WHERE sr.subject_id=$1 AND r.protected=TRUE
-		)
-	`, SubjectIDForUser(userID)).Scan(&exists)
-	return exists, err
+		SELECT COALESCE(protected, FALSE)
+		FROM permission_subjects
+		WHERE id=$1
+	`, SubjectIDForUser(userID)).Scan(&protected)
+	return protected, err
 }

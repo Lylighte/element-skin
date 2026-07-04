@@ -91,16 +91,18 @@ func (s AccountService) UserDetail(ctx context.Context, actor permission.Actor, 
 	if err != nil {
 		return nil, err
 	}
+	protected, err := s.DB.Permissions.UserIsProtected(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
 	out["roles"] = roles
+	out["protected"] = protected
 	return out, nil
 }
 
 func (s AccountService) GrantUserRole(ctx context.Context, actor permission.Actor, targetID, roleID string) error {
 	if roleID == "" {
 		return util.HTTPError{Status: http.StatusBadRequest, Detail: "role_id required"}
-	}
-	if roleID == permission.RoleSuperAdmin && targetID == actor.UserID {
-		return util.HTTPError{Status: http.StatusForbidden, Detail: "cannot grant protected role to yourself"}
 	}
 	if err := actor.Require(permissionGrantAny); err != nil {
 		return permissionDenied()
@@ -113,6 +115,9 @@ func (s AccountService) GrantUserRole(ctx context.Context, actor permission.Acto
 	} else if !ok {
 		return util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
 	}
+	if err := s.ensureProtectedSubjectMutationAllowed(ctx, actor, targetID); err != nil {
+		return err
+	}
 	if err := s.DB.Permissions.GrantRole(ctx, targetID, roleID, actor.SubjectID); err != nil {
 		return err
 	}
@@ -122,9 +127,6 @@ func (s AccountService) GrantUserRole(ctx context.Context, actor permission.Acto
 func (s AccountService) RevokeUserRole(ctx context.Context, actor permission.Actor, targetID, roleID string) error {
 	if roleID == "" {
 		return util.HTTPError{Status: http.StatusBadRequest, Detail: "role_id required"}
-	}
-	if roleID == permission.RoleSuperAdmin && targetID == actor.UserID {
-		return util.HTTPError{Status: http.StatusForbidden, Detail: "cannot revoke protected role from yourself"}
 	}
 	if err := actor.Require(permissionRevokeAny); err != nil {
 		return permissionDenied()
@@ -137,6 +139,9 @@ func (s AccountService) RevokeUserRole(ctx context.Context, actor permission.Act
 	} else if !ok {
 		return util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
 	}
+	if err := s.ensureProtectedSubjectMutationAllowed(ctx, actor, targetID); err != nil {
+		return err
+	}
 	ok, err := s.DB.Permissions.RevokeRole(ctx, targetID, roleID)
 	if err != nil {
 		return err
@@ -145,6 +150,40 @@ func (s AccountService) RevokeUserRole(ctx context.Context, actor permission.Act
 		return util.HTTPError{Status: http.StatusNotFound, Detail: "role assignment not found"}
 	}
 	return s.Redis.InvalidateAuthUser(ctx, targetID)
+}
+
+func (s AccountService) TransferProtectedSubject(ctx context.Context, actor permission.Actor, targetID string) error {
+	if targetID == "" {
+		return util.HTTPError{Status: http.StatusBadRequest, Detail: "user_id required"}
+	}
+	if targetID == actor.UserID {
+		return util.HTTPError{Status: http.StatusForbidden, Detail: "cannot transfer protected subject to yourself"}
+	}
+	if err := actor.Require(manageProtectedPermission); err != nil {
+		return util.HTTPError{Status: http.StatusForbidden, Detail: "protected subject management required"}
+	}
+	isProtected, err := s.DB.Permissions.UserIsProtected(ctx, actor.UserID)
+	if err != nil {
+		return err
+	}
+	if !isProtected {
+		return util.HTTPError{Status: http.StatusForbidden, Detail: "protected subject ownership required"}
+	}
+	if ok, err := s.userExists(ctx, targetID); err != nil {
+		return err
+	} else if !ok {
+		return util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
+	}
+	affectedUserIDs, err := s.DB.Permissions.TransferProtectedSubject(ctx, actor.UserID, targetID, actor.SubjectID)
+	if err != nil {
+		return err
+	}
+	for _, userID := range affectedUserIDs {
+		if err := s.Redis.InvalidateAuthUser(ctx, userID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s AccountService) DeleteUser(ctx context.Context, actor permission.Actor, targetID string) error {
@@ -256,14 +295,25 @@ func (s AccountService) modifiableUser(ctx context.Context, actor permission.Act
 	if target == nil {
 		return nil, util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
 	}
-	hasProtectedRole, err := s.DB.Permissions.UserHasProtectedRole(ctx, target.ID)
+	isProtected, err := s.DB.Permissions.UserIsProtected(ctx, target.ID)
 	if err != nil {
 		return nil, err
 	}
-	if hasProtectedRole && !actor.Has(manageProtectedPermission) {
-		return nil, util.HTTPError{Status: http.StatusForbidden, Detail: "cannot modify super admin"}
+	if isProtected && !actor.Has(manageProtectedPermission) {
+		return nil, util.HTTPError{Status: http.StatusForbidden, Detail: "cannot modify protected subject"}
 	}
 	return target, nil
+}
+
+func (s AccountService) ensureProtectedSubjectMutationAllowed(ctx context.Context, actor permission.Actor, targetID string) error {
+	isProtected, err := s.DB.Permissions.UserIsProtected(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	if isProtected && !actor.Has(manageProtectedPermission) {
+		return util.HTTPError{Status: http.StatusForbidden, Detail: "cannot modify protected subject"}
+	}
+	return nil
 }
 
 func (s AccountService) userExists(ctx context.Context, userID string) (bool, error) {
@@ -275,7 +325,7 @@ func (s AccountService) userExists(ctx context.Context, userID string) (bool, er
 }
 
 func ensureRoleMutationAllowed(actor permission.Actor, roleID string) error {
-	if roleID == permission.RoleSuperAdmin || roleID == permission.RoleSystemMaintenance {
+	if roleID == permission.RoleSystemMaintenance {
 		if !actor.Has(manageProtectedPermission) {
 			return util.HTTPError{Status: http.StatusForbidden, Detail: "protected role management required"}
 		}
@@ -326,7 +376,12 @@ func (s AccountService) attachRoles(ctx context.Context, rawItems any) error {
 		if err != nil {
 			return err
 		}
+		protected, err := s.DB.Permissions.UserIsProtected(ctx, userID)
+		if err != nil {
+			return err
+		}
 		item["roles"] = roles
+		item["protected"] = protected
 	}
 	return nil
 }

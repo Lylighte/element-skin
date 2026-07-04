@@ -235,7 +235,7 @@ func TestClientCredentialsAPISessionPolicyOnlyIncludesAppOnlyPermissions(t *test
 	t.Fatal("client credentials API session policy not found")
 }
 
-func TestAdminRoleDoesNotIncludeSuperAdminOrSystemPermissions(t *testing.T) {
+func TestAdminRoleDoesNotIncludeProtectedManagementOrSystemPermissions(t *testing.T) {
 	adminRole := roleByID(permission.RoleAdmin)
 	if adminRole == nil {
 		t.Fatal("admin role not found")
@@ -298,7 +298,7 @@ func TestAdminRoleDoesNotIncludeSuperAdminOrSystemPermissions(t *testing.T) {
 			t.Fatalf("admin role must include %s", code)
 		}
 	}
-	superAdminCodes := map[string]bool{
+	protectedManagementCodes := map[string]bool{
 		"permission_protected.manage.any": true,
 		"permission_role.create.any":      true,
 		"permission_role.update.any":      true,
@@ -312,8 +312,8 @@ func TestAdminRoleDoesNotIncludeSuperAdminOrSystemPermissions(t *testing.T) {
 		"cache.invalidate.system":         true,
 	}
 	for _, def := range adminRole.Permissions {
-		if superAdminCodes[def.Code] {
-			t.Fatalf("admin role should not include super-admin permission %q", def.Code)
+		if protectedManagementCodes[def.Code] {
+			t.Fatalf("admin role should not include protected management permission %q", def.Code)
 		}
 		if systemCodes[def.Code] {
 			t.Fatalf("admin role should not include system-scope permission %q", def.Code)

@@ -197,9 +197,9 @@ func TestAdminUserControlsHTTP(t *testing.T) {
 		t.Fatalf("invalid admin user cursor should be 400, got %d", invalidCursor.Code)
 	}
 
-	selfGrant := doJSON(t, h, "PUT", "/v1/admin/users/"+admin.ID+"/roles/super_admin", nil, adminCookie)
+	selfGrant := doJSON(t, h, "POST", "/v1/admin/users/"+admin.ID+"/protected-subject/transfer", nil, adminCookie)
 	if selfGrant.Code != 403 {
-		t.Fatalf("self protected role grant should be 403, got %d body=%s", selfGrant.Code, selfGrant.Body.String())
+		t.Fatalf("self protected subject transfer should be 403, got %d body=%s", selfGrant.Code, selfGrant.Body.String())
 	}
 	granted := doJSON(t, h, "PUT", "/v1/admin/users/"+user.ID+"/roles/admin", nil, adminCookie)
 	if granted.Code != 200 || parseJSON(t, granted)["role_id"] != "admin" {

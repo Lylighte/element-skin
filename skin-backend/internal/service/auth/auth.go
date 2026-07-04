@@ -162,7 +162,7 @@ func (s Service) Register(ctx context.Context, email, password, username, invite
 			if err := s.DB.Permissions.EnsureUserSubject(ctx, userID); err != nil {
 				return "", err
 			}
-			if _, err := s.DB.Permissions.GrantInitialSuperAdminIfNone(ctx, userID); err != nil {
+			if _, err := s.DB.Permissions.GrantInitialProtectedManagerIfNone(ctx, userID); err != nil {
 				return "", err
 			}
 			if verifiedEmail {

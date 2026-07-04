@@ -53,6 +53,7 @@ type PermissionOverrideResponse struct {
 
 type UserPermissionsResponse struct {
 	Roles                []string                     `json:"roles"`
+	Protected            bool                         `json:"protected"`
 	EffectivePermissions []string                     `json:"effective_permissions"`
 	Overrides            []PermissionOverrideResponse `json:"overrides"`
 	Catalog              PermissionCatalogResponse    `json:"catalog"`
@@ -87,8 +88,13 @@ func (s PermissionService) UserPermissions(ctx context.Context, actor permission
 	if err != nil {
 		return UserPermissionsResponse{}, err
 	}
+	protected, err := s.DB.Permissions.UserIsProtected(ctx, targetID)
+	if err != nil {
+		return UserPermissionsResponse{}, err
+	}
 	return UserPermissionsResponse{
 		Roles:                roles,
+		Protected:            protected,
 		EffectivePermissions: permissionCodesFromBitSet(bits),
 		Overrides:            permissionOverrideResponses(overrides),
 		Catalog:              permissionCatalog(),
@@ -185,6 +191,9 @@ func (s PermissionService) userExists(ctx context.Context, userID string) (bool,
 }
 
 func ensurePermissionOverrideAllowed(actor permission.Actor, targetID string, def permission.Definition) error {
+	if def.Code == manageProtectedPermission.Code {
+		return util.HTTPError{Status: http.StatusBadRequest, Detail: "protected management permission must be transferred"}
+	}
 	if !protectedPermission(def) {
 		return nil
 	}

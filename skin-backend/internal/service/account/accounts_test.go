@@ -120,7 +120,7 @@ func TestAccountServiceBanUserRejectsInvalidInputsWithoutMutation(t *testing.T) 
 	}
 }
 
-func TestAccountServiceProtectsSuperAdminAndUnbansExactly(t *testing.T) {
+func TestAccountServiceProtectsProtectedSubjectAndUnbansExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
 	plainAdmin := testutil.CreateUser(t, db, "plain-account-protect@test.com", "Password123", "PlainAccountProtect", true)
@@ -131,7 +131,7 @@ func TestAccountServiceProtectsSuperAdminAndUnbansExactly(t *testing.T) {
 
 	plainActor := actorWithPermissions(plainAdmin.ID, "account.ban.any")
 	future := database.NowMS() + int64(time.Hour/time.Millisecond)
-	if _, err := svc.BanUser(ctx, plainActor, protectedAdmin.ID, accountsvc.BanUserInput{BannedUntil: future, Reason: "protected"}); !httpErrorIs(err, http.StatusForbidden, "cannot modify super admin") {
+	if _, err := svc.BanUser(ctx, plainActor, protectedAdmin.ID, accountsvc.BanUserInput{BannedUntil: future, Reason: "protected"}); !httpErrorIs(err, http.StatusForbidden, "cannot modify protected subject") {
 		t.Fatalf("protected admin ban error mismatch: %#v", err)
 	}
 	if banned, err := db.Users.IsBanned(ctx, protectedAdmin.ID); err != nil || banned {
@@ -175,6 +175,7 @@ func TestAccountServicePropagatesClosedDatabaseErrors(t *testing.T) {
 		"account.read.any",
 		"permission.grant.any",
 		"permission.revoke.any",
+		"permission_protected.manage.any",
 		"account.delete.any",
 		"account.update.any",
 		"account.ban.any",
@@ -193,6 +194,9 @@ func TestAccountServicePropagatesClosedDatabaseErrors(t *testing.T) {
 	}
 	if err := svc.RevokeUserRole(ctx, actor, adminUser.ID, permission.RoleAdmin); err == nil || !strings.Contains(err.Error(), "closed pool") {
 		t.Fatalf("RevokeUserRole closed db error mismatch: %#v", err)
+	}
+	if err := svc.TransferProtectedSubject(ctx, actor, "target-account-closed"); err == nil || !strings.Contains(err.Error(), "closed pool") {
+		t.Fatalf("TransferProtectedSubject closed db error mismatch: %#v", err)
 	}
 	if err := svc.DeleteUser(ctx, actor, "target-account-closed"); err == nil || !strings.Contains(err.Error(), "closed pool") {
 		t.Fatalf("DeleteUser closed db error mismatch: %#v", err)
@@ -377,6 +381,7 @@ func TestAccountServiceListUsersAndUserDetailAttachRolesExactly(t *testing.T) {
 	}
 	roles := items[0]["roles"].([]string)
 	if items[0]["id"] != target.ID || items[0]["email"] != target.Email || items[0]["display_name"] != target.DisplayName ||
+		items[0]["protected"] != false ||
 		!stringSliceSetEquals(roles, []string{permission.RoleUser, permission.RoleAdmin}) {
 		t.Fatalf("list users item mismatch: %#v", items[0])
 	}
@@ -387,6 +392,7 @@ func TestAccountServiceListUsersAndUserDetailAttachRolesExactly(t *testing.T) {
 	}
 	detailRoles := detail["roles"].([]string)
 	if detail["id"] != other.ID || detail["email"] != other.Email || detail["display_name"] != other.DisplayName ||
+		detail["protected"] != false ||
 		!stringSliceSetEquals(detailRoles, []string{permission.RoleUser, permission.RoleAdmin}) {
 		t.Fatalf("user detail mismatch: %#v", detail)
 	}
@@ -425,26 +431,66 @@ func TestAccountServiceProtectsProtectedRoleMutationsExactly(t *testing.T) {
 	plainActor := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any")
 	managerActor := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any", "permission_protected.manage.any")
 
-	if err := svc.GrantUserRole(ctx, plainActor, target.ID, permission.RoleSuperAdmin); !httpErrorIs(err, http.StatusForbidden, "protected role management required") {
-		t.Fatalf("plain protected role grant mismatch: %#v", err)
+	if err := svc.GrantUserRole(ctx, plainActor, target.ID, permission.RoleSystemMaintenance); !httpErrorIs(err, http.StatusForbidden, "protected role management required") {
+		t.Fatalf("protected role generic grant mismatch: %#v", err)
 	}
-	if err := svc.GrantUserRole(ctx, managerActor, adminUser.ID, permission.RoleSuperAdmin); !httpErrorIs(err, http.StatusForbidden, "cannot grant protected role to yourself") {
-		t.Fatalf("self protected role grant mismatch: %#v", err)
+	if hasRole, err := db.Permissions.UserHasRole(ctx, target.ID, permission.RoleSystemMaintenance); err != nil || hasRole {
+		t.Fatalf("rejected protected role generic grant must not mutate target: has=%v err=%v", hasRole, err)
 	}
-	if err := svc.GrantUserRole(ctx, managerActor, target.ID, permission.RoleSuperAdmin); err != nil {
+	if err := svc.GrantUserRole(ctx, managerActor, target.ID, permission.RoleSystemMaintenance); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RevokeUserRole(ctx, plainActor, target.ID, permission.RoleSuperAdmin); !httpErrorIs(err, http.StatusForbidden, "protected role management required") {
-		t.Fatalf("plain protected role revoke mismatch: %#v", err)
+	if hasRole, err := db.Permissions.UserHasRole(ctx, target.ID, permission.RoleSystemMaintenance); err != nil || !hasRole {
+		t.Fatalf("manager protected role grant mismatch: has=%v err=%v", hasRole, err)
 	}
-	if err := svc.RevokeUserRole(ctx, managerActor, adminUser.ID, permission.RoleSuperAdmin); !httpErrorIs(err, http.StatusForbidden, "cannot revoke protected role from yourself") {
-		t.Fatalf("self protected role revoke mismatch: %#v", err)
+	if err := svc.RevokeUserRole(ctx, plainActor, target.ID, permission.RoleSystemMaintenance); !httpErrorIs(err, http.StatusForbidden, "protected role management required") {
+		t.Fatalf("protected role generic revoke mismatch: %#v", err)
 	}
-	if err := svc.RevokeUserRole(ctx, managerActor, target.ID, permission.RoleSuperAdmin); err != nil {
+	if hasRole, err := db.Permissions.UserHasRole(ctx, target.ID, permission.RoleSystemMaintenance); err != nil || !hasRole {
+		t.Fatalf("rejected protected role generic revoke must preserve target: has=%v err=%v", hasRole, err)
+	}
+}
+
+func TestAccountServiceTransfersProtectedSubjectExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	actorUser := testutil.CreateUser(t, db, "actor-account-transfer@test.com", "Password123", "ActorAccountTransfer", true, true)
+	target := testutil.CreateUser(t, db, "target-account-transfer@test.com", "Password123", "TargetAccountTransfer", false)
+	stale := testutil.CreateUser(t, db, "stale-account-transfer@test.com", "Password123", "StaleAccountTransfer", true, true)
+	cache := redisstore.NewMemoryStore()
+	svc := accountsvc.AccountService{DB: db, Redis: cache}
+	actor := actorWithPermissions(actorUser.ID, "permission_protected.manage.any")
+	for _, userID := range []string{actorUser.ID, target.ID, stale.ID} {
+		if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: userID}, time.Hour); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := svc.TransferProtectedSubject(ctx, permission.Actor{}, target.ID); !httpErrorIs(err, http.StatusForbidden, "protected subject management required") {
+		t.Fatalf("transfer without protected permission mismatch: %#v", err)
+	}
+	if err := svc.TransferProtectedSubject(ctx, actor, actorUser.ID); !httpErrorIs(err, http.StatusForbidden, "cannot transfer protected subject to yourself") {
+		t.Fatalf("self transfer mismatch: %#v", err)
+	}
+	if err := svc.TransferProtectedSubject(ctx, actor, "missing-account-transfer"); !httpErrorIs(err, http.StatusNotFound, "user not found") {
+		t.Fatalf("missing transfer target mismatch: %#v", err)
+	}
+	if err := svc.TransferProtectedSubject(ctx, actor, target.ID); err != nil {
 		t.Fatal(err)
 	}
-	if hasRole, err := db.Permissions.UserHasRole(ctx, target.ID, permission.RoleSuperAdmin); err != nil || hasRole {
-		t.Fatalf("manager revoke protected role mismatch: has=%v err=%v", hasRole, err)
+	if protected, err := db.Permissions.UserIsProtected(ctx, actorUser.ID); err != nil || protected {
+		t.Fatalf("actor protected flag after transfer = %v, %v; want false, nil", protected, err)
+	}
+	if protected, err := db.Permissions.UserIsProtected(ctx, target.ID); err != nil || !protected {
+		t.Fatalf("target protected flag after transfer = %v, %v; want true, nil", protected, err)
+	}
+	if protected, err := db.Permissions.UserIsProtected(ctx, stale.ID); err != nil || protected {
+		t.Fatalf("stale protected flag after transfer = %v, %v; want false, nil", protected, err)
+	}
+	for _, userID := range []string{actorUser.ID, target.ID, stale.ID} {
+		if _, err := cache.GetAuthUser(ctx, userID); !errors.Is(err, redisstore.ErrCacheMiss) {
+			t.Fatalf("transfer should invalidate auth cache for %s exactly, got %v", userID, err)
+		}
 	}
 }
 
