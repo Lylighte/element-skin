@@ -25,7 +25,7 @@ func (h Handler) GetProfiles(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
 		return
 	}
-	profiles, err := (importsvc.RemoteYggService{DB: h.db, HTTPClient: h.httpClient}).PreviewProfiles(req.Context(), body.APIURL, body.Username, body.Password)
+	profiles, err := (importsvc.RemoteYggService{DB: h.db, TexturesDir: h.cfg.TexturesDir, HTTPClient: h.httpClient}).PreviewProfiles(req.Context(), body.APIURL, body.Username, body.Password)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -52,7 +52,7 @@ func (h Handler) ImportProfiles(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, err)
 		return
 	}
-	res := (importsvc.RemoteYggService{DB: h.db, HTTPClient: h.httpClient}).ImportProfiles(req.Context(), shared.CurrentActor(req), shared.AsString(body["api_url"]), profiles)
+	res := (importsvc.RemoteYggService{DB: h.db, TexturesDir: h.cfg.TexturesDir, HTTPClient: h.httpClient}).ImportProfiles(req.Context(), shared.CurrentActor(req), shared.AsString(body["api_url"]), profiles)
 	util.JSON(w, 200, res)
 }
 
@@ -76,7 +76,7 @@ func (h Handler) ImportProfile(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "profile_id and profile_name are required"})
 		return
 	}
-	res, err := (importsvc.RemoteYggService{DB: h.db, HTTPClient: h.httpClient}).ImportProfile(req.Context(), shared.CurrentActor(req), body["api_url"], profileID, profileName)
+	res, err := (importsvc.RemoteYggService{DB: h.db, TexturesDir: h.cfg.TexturesDir, HTTPClient: h.httpClient}).ImportProfile(req.Context(), shared.CurrentActor(req), body["api_url"], profileID, profileName)
 	if err != nil {
 		util.Error(w, err)
 		return

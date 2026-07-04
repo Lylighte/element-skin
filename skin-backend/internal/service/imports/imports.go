@@ -2,11 +2,14 @@ package imports
 
 import (
 	"context"
+	"net/http"
+	"strings"
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/database/profile"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
+	texturesvc "element-skin/backend/internal/service/texture"
 	"element-skin/backend/internal/util"
 )
 
@@ -18,6 +21,8 @@ type TextureAsset struct {
 
 type ImportService struct {
 	DB              *database.DB
+	TexturesDir     string
+	HTTPClient      *http.Client
 	DownloadTexture func(context.Context, string) ([]byte, error)
 	ProcessTexture  func([]byte, string) (string, error)
 }
@@ -52,6 +57,10 @@ func (s ImportService) ImportProfile(ctx context.Context, actor permission.Actor
 	var skinHash *string
 	var capeHash *string
 	for _, asset := range assets {
+		asset.Kind = normalizedImportTextureKind(asset.Kind)
+		if asset.Kind == "" {
+			continue
+		}
 		if asset.URL == "" {
 			continue
 		}
@@ -59,7 +68,7 @@ func (s ImportService) ImportProfile(ctx context.Context, actor permission.Actor
 		if err != nil {
 			continue
 		}
-		hash, err := s.process(data, asset.Kind)
+		hash, err := s.process(ctx, actor, data, asset)
 		if err != nil {
 			continue
 		}
@@ -136,7 +145,7 @@ func (s ImportService) ImportProfiles(ctx context.Context, actor permission.Acto
 
 func hasTextureAsset(assets []TextureAsset) bool {
 	for _, asset := range assets {
-		if asset.URL != "" {
+		if asset.URL != "" && normalizedImportTextureKind(asset.Kind) != "" {
 			return true
 		}
 	}
@@ -147,12 +156,40 @@ func (s ImportService) download(ctx context.Context, rawURL string) ([]byte, err
 	if s.DownloadTexture != nil {
 		return s.DownloadTexture(ctx, rawURL)
 	}
-	return []byte(rawURL), nil
+	return util.DownloadTexture(s.HTTPClient, rawURL, 0)
 }
 
-func (s ImportService) process(data []byte, kind string) (string, error) {
+func (s ImportService) process(ctx context.Context, actor permission.Actor, data []byte, asset TextureAsset) (string, error) {
 	if s.ProcessTexture != nil {
-		return s.ProcessTexture(data, kind)
+		return s.ProcessTexture(data, asset.Kind)
 	}
-	return util.HashRefreshToken(string(data) + ":" + kind), nil
+	storage, err := texturesvc.NewTextureStorage(s.TexturesDir)
+	if err != nil {
+		return "", err
+	}
+	hash, created, err := storage.ProcessAndSaveTracked(data, asset.Kind)
+	if err != nil {
+		return "", err
+	}
+	modelName := "default"
+	if asset.Kind == "skin" {
+		modelName = profile.NormalizeModel(asset.Variant)
+	}
+	if err := s.DB.Textures.AddToLibrary(ctx, actor.UserID, hash, asset.Kind, "", false, modelName); err != nil {
+		if created {
+			if inUse, checkErr := s.DB.Textures.ExistsHash(ctx, hash); checkErr == nil && !inUse {
+				_ = storage.DeleteFile(hash)
+			}
+		}
+		return "", err
+	}
+	return hash, nil
+}
+
+func normalizedImportTextureKind(raw string) string {
+	kind := strings.ToLower(strings.TrimSpace(raw))
+	if kind != "skin" && kind != "cape" {
+		return ""
+	}
+	return kind
 }

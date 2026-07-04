@@ -1,8 +1,15 @@
 package microsoft_test
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -129,7 +136,9 @@ func TestImportProfileRejectsInvalidTokenOwnerAndPayloadExactly(t *testing.T) {
 func TestImportProfileCreatesProfileFromStateExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	states := redisstore.NewMemoryStore()
-	h := microsoft.New(testutil.TestConfig(), db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, nil, states)
+	cfg := testutil.TestConfig()
+	cfg.TexturesDir = t.TempDir()
+	h := microsoft.NewWithHTTPClient(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, nil, states, microsoftImportTextureClient(t))
 	user := testutil.CreateUser(t, db, "ms-import-ok@test.com", "Password123", "MSImportOK", false)
 	if err := microsoft.SeedStateForTest(states, "import-ok", map[string]any{
 		"user_id": user.ID,
@@ -137,8 +146,8 @@ func TestImportProfileCreatesProfileFromStateExactly(t *testing.T) {
 		"profile": map[string]any{
 			"id":    "ms_import_ok_profile",
 			"name":  "MSImportOK",
-			"skins": []any{map[string]any{"url": "http://skin-bytes", "variant": "slim"}},
-			"capes": []any{map[string]any{"url": "http://cape-bytes"}},
+			"skins": []any{map[string]any{"url": "https://93.184.216.34/ms-skin.png", "variant": "slim"}},
+			"capes": []any{map[string]any{"url": "https://93.184.216.34/ms-cape.png"}},
 		},
 	}, time.Minute); err != nil {
 		t.Fatal(err)
@@ -157,6 +166,59 @@ func TestImportProfileCreatesProfileFromStateExactly(t *testing.T) {
 	if err != nil || profile == nil || profile.UserID != user.ID || profile.Name != "MSImportOK" ||
 		profile.TextureModel != "slim" || profile.SkinHash == nil || profile.CapeHash == nil {
 		t.Fatalf("import should persist profile with skin/cape: profile=%#v err=%v", profile, err)
+	}
+	assertMicrosoftTextureFileExists(t, cfg.TexturesDir, profile.SkinHash)
+	assertMicrosoftTextureFileExists(t, cfg.TexturesDir, profile.CapeHash)
+}
+
+func microsoftImportTextureClient(t *testing.T) *http.Client {
+	t.Helper()
+	return &http.Client{Transport: microsoftImportRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/ms-skin.png":
+			return microsoftImportPNGResponse(t, 64, 64, color.RGBA{R: 40, G: 120, B: 210, A: 255}), nil
+		case "/ms-cape.png":
+			return microsoftImportPNGResponse(t, 64, 32, color.RGBA{R: 210, G: 120, B: 40, A: 255}), nil
+		default:
+			t.Fatalf("unexpected microsoft texture request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})}
+}
+
+type microsoftImportRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f microsoftImportRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func microsoftImportPNGResponse(t *testing.T, width, height int, c color.RGBA) *http.Response {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetRGBA(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode microsoft import png: %v", err)
+	}
+	return &http.Response{
+		StatusCode:    http.StatusOK,
+		Header:        http.Header{"Content-Type": []string{"image/png"}},
+		ContentLength: int64(buf.Len()),
+		Body:          io.NopCloser(bytes.NewReader(buf.Bytes())),
+	}
+}
+
+func assertMicrosoftTextureFileExists(t *testing.T, dir string, hash *string) {
+	t.Helper()
+	if hash == nil {
+		t.Fatal("texture hash should not be nil")
+	}
+	if _, err := os.Stat(filepath.Join(dir, *hash+".png")); err != nil {
+		t.Fatalf("imported microsoft texture file missing for hash %s: %v", *hash, err)
 	}
 }
 

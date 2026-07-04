@@ -7,11 +7,12 @@ import (
 
 	"element-skin/backend/internal/httpapi/remote"
 	"element-skin/backend/internal/permission"
+	"element-skin/backend/internal/testutil"
 )
 
 func TestHandlerAuthRequestsUserAccess(t *testing.T) {
 	var required []permission.Definition
-	h := remote.New(nil, func(next http.HandlerFunc, defs ...permission.Definition) http.HandlerFunc {
+	h := remote.New(testutil.TestConfig(), nil, func(next http.HandlerFunc, defs ...permission.Definition) http.HandlerFunc {
 		required = defs
 		return next
 	})
