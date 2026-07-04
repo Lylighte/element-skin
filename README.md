@@ -42,7 +42,9 @@
 
 ### 1. 准备配置文件
 
-在宿主机创建`docker-compose.yml`文件，内容如下：
+可以直接使用仓库中的 `docker-compose.yml`。部署前复制 `.env.example` 为 `.env`，在 `.env` 中填写数据库、Redis、站点 URL、API URL 和密钥等变量；Compose 文件只引用这些变量。
+
+如果需要自行创建 `docker-compose.yml`，结构如下：
 
 **docker-compose.yml**
 ```yaml
@@ -87,9 +89,15 @@ services:
       - JWT_ACCESS_EXPIRE_MINUTES=${JWT_ACCESS_EXPIRE_MINUTES:-30}
       - KEYS_PRIVATE_KEY=${KEYS_PRIVATE_KEY:-/app/data/private.pem}
       - KEYS_PUBLIC_KEY=${KEYS_PUBLIC_KEY:-/app/data/public.pem}
-      - DATABASE_DSN=${DATABASE_DSN:-postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable}
+      - DATABASE_HOST=${DATABASE_HOST:-db}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_USER=${DATABASE_USER:-elementskin}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-password123}
+      - DATABASE_NAME=${DATABASE_NAME:-elementskin}
+      - DATABASE_SSLMODE=${DATABASE_SSLMODE:-disable}
       - DATABASE_MAX_CONNECTIONS=${DATABASE_MAX_CONNECTIONS:-20}
-      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
       - REDIS_DB=${REDIS_DB:-0}
       - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-elementskin:}
@@ -109,18 +117,17 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./config.yaml:/app/config.yaml
       - ./frontend:/app/frontend           # 前端、皮肤、首页媒体全部在这里
       - ./data:/app/data                   # 密钥文件
     ports:
       - "8000:8000"
 ```
 
-> 💡 **动态配置**: 后端启动时会读取 `config.yaml`，再用同名环境变量覆盖配置并写回 `config.yaml`。如果文件不存在，必须提供完整环境变量，后端才会创建配置文件；配置缺失或非法会直接启动失败。开发环境可以继续只改 `config.yaml`，Docker 部署可以只在 `docker compose` 里写环境变量。由于需要写回文件，`config.yaml` 不能以只读方式挂载。
+> 💡 **动态配置**: 后端启动时会读取 `config.yaml`，再用同名环境变量覆盖配置并写回 `config.yaml`。如果文件不存在，必须提供完整环境变量，后端才会创建配置文件；配置缺失或非法会直接启动失败。开发环境可以继续只改 `config.yaml`，Docker 部署推荐只在 `.env` / `docker compose` 里写环境变量，不需要挂载 `config.yaml`。
 >
-> 常用环境变量包括：`JWT_SECRET`、`JWT_EXPIRE_DAYS`、`JWT_ACCESS_EXPIRE_MINUTES`、`DATABASE_DSN`、`DATABASE_MAX_CONNECTIONS`、`REDIS_ADDR`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_KEY_PREFIX`、`SERVER_SITE_URL`、`SERVER_API_URL`、`SERVER_HOST`、`SERVER_PORT`、`TEXTURES_DIRECTORY`、`CAROUSEL_DIRECTORY`、`KEYS_PRIVATE_KEY`、`KEYS_PUBLIC_KEY`、`CORS_ALLOW_ORIGINS`、`CORS_ALLOW_CREDENTIALS`。`CORS_ALLOW_ORIGINS` 使用英文逗号分隔多个来源。
+> 常用环境变量包括：`JWT_SECRET`、`JWT_EXPIRE_DAYS`、`JWT_ACCESS_EXPIRE_MINUTES`、`DATABASE_HOST`、`DATABASE_PORT`、`DATABASE_USER`、`DATABASE_PASSWORD`、`DATABASE_NAME`、`DATABASE_SSLMODE`、`DATABASE_MAX_CONNECTIONS`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_KEY_PREFIX`、`SERVER_SITE_URL`、`SERVER_API_URL`、`SERVER_HOST`、`SERVER_PORT`、`TEXTURES_DIRECTORY`、`CAROUSEL_DIRECTORY`、`KEYS_PRIVATE_KEY`、`KEYS_PUBLIC_KEY`、`CORS_ALLOW_ORIGINS`、`CORS_ALLOW_CREDENTIALS`。`CORS_ALLOW_ORIGINS` 使用英文逗号分隔多个来源。
 
-在宿主机创建 `config.yaml` 文件。这是系统运行的核心配置。
+如果不使用 `.env`，也可以在宿主机创建 `config.yaml` 文件作为传统配置文件。Docker 部署推荐使用 `.env`，本段配置主要用于本地开发或手动运行后端。
 
 ```yaml
 # Element-Skin 配置文件
@@ -136,12 +143,17 @@ keys:
   public_key: "/app/data/public.pem"
 
 database:
-  # 格式: postgresql://用户名:密码@db:5432/数据库名?sslmode=disable
-  dsn: "postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable" #⚠️ 用户名和密码请确保与 PostgreSQL 环境变量一致
+  host: "db"
+  port: "5432"
+  user: "elementskin"
+  password: "password123" # ⚠️ 请确保与 PostgreSQL 环境变量一致
+  name: "elementskin"
+  sslmode: "disable"
   max_connections: 20
 
 redis:
-  addr: "redis:6379"
+  host: "redis"
+  port: "6379"
   password: "password123" # ⚠️ 与 docker compose 中 Redis 密码一致，生产环境请修改
   db: 0
   key_prefix: "elementskin:"
@@ -282,11 +294,15 @@ location = /skin/api {
     CREATE USER elementskin WITH PASSWORD 'password123';
     CREATE DATABASE elementskin OWNER elementskin;
     ```
-3.  **修改配置**: 编辑 `skin-backend/config.yaml` 中的 `database.dsn`：
+3.  **修改配置**: 编辑 `skin-backend/config.yaml` 中的数据库字段：
     ```yaml
     database:
-      # 必须匹配：.../数据库名?sslmode...
-      dsn: "postgresql://elementskin:password123@localhost:5432/elementskin?sslmode=disable"
+      host: "localhost"
+      port: "5432"
+      user: "elementskin"
+      password: "password123"
+      name: "elementskin"
+      sslmode: "disable"
     ```
     > 💡 **自动初始化**: 后端在每次启动时会自动同步数据库结构（创建缺失的表及默认配置），无需手动执行 SQL 脚本。
 
@@ -295,7 +311,8 @@ location = /skin/api {
 
 ```yaml
 redis:
-  addr: "127.0.0.1:6379"
+  host: "127.0.0.1"
+  port: "6379"
   password: ""
   db: 0
   key_prefix: "elementskin:"
