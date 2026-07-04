@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from element_skin_sdk.exceptions import InvalidScope
-from element_skin_sdk.permissions import AccountScopes, MinecraftScopes, PermissionCatalog, PermissionValidator
+from element_skin_sdk.permissions import AccountScopes, InviteScopes, MinecraftScopes, PermissionCatalog, PermissionValidator
 
 from .fixtures import PERMISSION_CATALOG_RESPONSE
 
@@ -58,12 +58,13 @@ def test_validator_accepts_delegated_user_scope_and_rejects_server_scope() -> No
     assert exc.value.invalid_scopes == ["minecraft_session.hasjoined.server"]
 
 
-def test_validator_accepts_client_credentials_server_scope_and_rejects_self_scope() -> None:
+def test_validator_accepts_client_credentials_app_only_scopes_and_rejects_self_scope() -> None:
     validator = PermissionValidator()
 
     assert validator.validate_client_credentials(MinecraftScopes.SESSION_HASJOINED_SERVER) == (
         "minecraft_session.hasjoined.server",
     )
+    assert validator.validate_client_credentials([InviteScopes.READ_ANY]) == ("invite.read.any",)
     with pytest.raises(InvalidScope) as exc:
         validator.validate_client_credentials([AccountScopes.READ_SELF])
 

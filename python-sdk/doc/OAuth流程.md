@@ -122,8 +122,19 @@ tokens = oauth.client_credentials(
 )
 ```
 
-SDK 只允许 Client Credentials 请求 `public` 和 `server` 范围权限。类似
-`account.read.self` 的用户委托权限会被拒绝。
+SDK 允许 Client Credentials 请求 `public`、`server` 和经管理员审核授予应用主体的
+`any` 范围权限。类似 `account.read.self` 的用户委托权限会被拒绝。
+
+```python
+from element_skin_sdk.permissions import InviteScopes
+
+tokens = oauth.client_credentials(
+    [InviteScopes.READ_ANY, InviteScopes.CREATE_ANY]
+)
+```
+
+`any` 权限不是用户授权。应用必须先在站点中申请对应权限，通过管理员审核后，再由
+管理员授予应用主体可用的 app-only 权限，否则服务端会拒绝签发或使用 token。
 
 ## Refresh Token
 

@@ -10,7 +10,7 @@ from .catalog import PermissionCatalog
 
 class PermissionValidator:
     DELEGATED_FORBIDDEN_SCOPES = frozenset({"server", "system"})
-    CLIENT_CREDENTIALS_ALLOWED_SCOPES = frozenset({"server", "public"})
+    CLIENT_CREDENTIALS_ALLOWED_SCOPES = frozenset({"any", "public", "server"})
 
     def __init__(self, catalog: PermissionCatalog | None = None):
         self.catalog = catalog
@@ -47,7 +47,7 @@ class PermissionValidator:
         ]
         if invalid:
             raise InvalidScope(
-                "client credentials flow can only request public or server scopes",
+                "client credentials flow can only request public, server, or any scopes",
                 invalid_scopes=invalid,
             )
         return normalized

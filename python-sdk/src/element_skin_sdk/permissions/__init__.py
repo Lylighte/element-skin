@@ -3,6 +3,7 @@
 from .catalog import PermissionCatalog
 from .scopes import (
     AccountScopes,
+    InviteScopes,
     MinecraftScopes,
     NoticeScopes,
     OAuthScopes,
@@ -14,6 +15,7 @@ from .validator import PermissionValidator
 
 __all__ = [
     "AccountScopes",
+    "InviteScopes",
     "MinecraftScopes",
     "NoticeScopes",
     "OAuthScopes",
