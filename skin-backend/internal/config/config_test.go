@@ -1,10 +1,10 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -189,21 +189,56 @@ cors:
 	}
 }
 
-func TestLoadMissingFileCreatesExactDefaultConfig(t *testing.T) {
+func TestLoadMissingFileWithoutCompleteEnvironmentFailsAndDoesNotWrite(t *testing.T) {
 	clearConfigEnv(t)
 	missingPath := filepath.Join(t.TempDir(), "missing.yaml")
-	got, err := Load(missingPath)
+	cfg, err := Load(missingPath)
+	if err == nil || !strings.HasPrefix(err.Error(), "missing required config fields: ") {
+		t.Fatalf("missing config error=%v cfg=%#v; want missing required fields", err, cfg)
+	}
+	if !reflect.DeepEqual(cfg, Config{}) {
+		t.Fatalf("missing incomplete config should return zero config, got %#v", cfg)
+	}
+	if _, err := os.Stat(missingPath); !os.IsNotExist(err) {
+		t.Fatalf("incomplete env should not create config file, stat err=%v", err)
+	}
+}
+
+func TestLoadMissingFileWithCompleteEnvironmentCreatesExactConfig(t *testing.T) {
+	clearConfigEnv(t)
+	dir := t.TempDir()
+	missingPath := filepath.Join(dir, "generated.yaml")
+	setCompleteConfigEnv(t)
+
+	cfg, err := Load(missingPath)
 	if err != nil {
-		t.Fatalf("missing config should use defaults: %v", err)
+		t.Fatalf("complete environment should create config: %v", err)
 	}
-	want := Defaults()
-	want.PrivateKeyPath = filepath.Join(filepath.Dir(missingPath), want.PrivateKeyPath)
-	want.PublicKeyPath = filepath.Join(filepath.Dir(missingPath), want.PublicKeyPath)
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("missing config mismatch:\n got: %#v\nwant: %#v", got, want)
+	want := Config{
+		DatabaseDSN:     "postgresql://env",
+		MaxConnections:  31,
+		JWTSecret:       "env-secret-abcdefghijklmnopqrstuvwxyz",
+		JWTExpireDays:   8,
+		AccessMinutes:   35,
+		SiteURL:         "https://env.example",
+		APIURL:          "https://env.example/api",
+		ServerHost:      "0.0.0.0",
+		ServerPort:      "8100",
+		TexturesDir:     "/env/textures",
+		CarouselDir:     "/env/carousel",
+		RedisAddr:       "127.0.0.1:6380",
+		RedisPassword:   "env-redis-password",
+		RedisDB:         3,
+		RedisKeyPrefix:  "envprefix:",
+		PublicCacheTTL:  220,
+		AuthCacheTTL:    25,
+		PrivateKeyPath:  filepath.Join(dir, "env-private.pem"),
+		PublicKeyPath:   filepath.Join(dir, "abs", "env-public.pem"),
+		CORSOrigins:     []string{"https://env.example", "http://localhost:5173"},
+		CORSCredentials: false,
 	}
-	if _, err := os.Stat(missingPath); err != nil {
-		t.Fatalf("missing config should be created: %v", err)
+	if !reflect.DeepEqual(cfg, want) {
+		t.Fatalf("generated config mismatch:\n got: %#v\nwant: %#v", cfg, want)
 	}
 	var persisted rawConfig
 	b, err := os.ReadFile(missingPath)
@@ -213,22 +248,29 @@ func TestLoadMissingFileCreatesExactDefaultConfig(t *testing.T) {
 	if err := yaml.Unmarshal(b, &persisted); err != nil {
 		t.Fatal(err)
 	}
-	assertRawValue(t, persisted, "database.dsn", want.DatabaseDSN)
-	assertRawValue(t, persisted, "server.port", 8000)
-	assertRawValue(t, persisted, "cors.allow_credentials", true)
+	assertRawValue(t, persisted, "jwt.secret", "env-secret-abcdefghijklmnopqrstuvwxyz")
+	assertRawValue(t, persisted, "jwt.expire_days", 8)
+	assertRawValue(t, persisted, "jwt.access_expire_minutes", 35)
+	assertRawValue(t, persisted, "database.dsn", "postgresql://env")
+	assertRawValue(t, persisted, "database.max_connections", 31)
+	assertRawValue(t, persisted, "server.port", 8100)
+	assertRawValue(t, persisted, "redis.password", "env-redis-password")
+	assertRawValue(t, persisted, "cors.allow_credentials", false)
+	if got, _ := lookup(persisted, "cors.allow_origins"); !reflect.DeepEqual(got, []any{"https://env.example", "http://localhost:5173"}) {
+		t.Fatalf("persisted cors.allow_origins=%#v", got)
+	}
 }
 
-func TestLoadMalformedFilePreservesExactDefaultsAndDoesNotRewrite(t *testing.T) {
+func TestLoadMalformedFileReturnsZeroConfigAndDoesNotRewrite(t *testing.T) {
 	clearConfigEnv(t)
-	want := Defaults()
 	malformedPath := filepath.Join(t.TempDir(), "malformed.yaml")
 	malformed := []byte("jwt:\n  secret: [unterminated")
 	if err := os.WriteFile(malformedPath, malformed, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Load(malformedPath)
-	if err == nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("malformed config result: cfg=%#v err=%v; want exact defaults plus YAML error", got, err)
+	if err == nil || !reflect.DeepEqual(got, Config{}) {
+		t.Fatalf("malformed config result: cfg=%#v err=%v; want zero config plus YAML error", got, err)
 	}
 	after, readErr := os.ReadFile(malformedPath)
 	if readErr != nil || string(after) != string(malformed) {
@@ -236,45 +278,65 @@ func TestLoadMalformedFilePreservesExactDefaultsAndDoesNotRewrite(t *testing.T) 
 	}
 }
 
-func TestLoadRejectsInvalidNumericOverridesWithoutChangingSafeValues(t *testing.T) {
+func TestLoadRejectsInvalidConfigValuesWithoutRewrite(t *testing.T) {
 	clearConfigEnv(t)
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	absolutePublic := filepath.Join(dir, "absolute-public.pem")
-	raw := fmt.Sprintf(`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	raw := `
+jwt:
+  secret: "file-secret-abcdefghijklmnopqrstuvwxyz"
+  expire_days: 7
+  access_expire_minutes: 30
+keys:
+  private_key: "private.pem"
+  public_key: "public.pem"
 database:
+  dsn: "postgresql://file"
   max_connections: 0
 server:
-  port: "invalid"
+  site_url: "https://file.example"
+  api_url: "https://file.example/api"
+  host: "127.0.0.1"
+  port: 9000
+textures:
+  directory: "/file/textures"
+carousel:
+  directory: "/file/carousel"
 redis:
-  db: -1
-  public_cache_ttl_seconds: 0
-  auth_cache_ttl_seconds: -5
-keys:
-  private_key: ""
-  public_key: %q
-`, filepath.ToSlash(absolutePublic))
+  addr: "redis:6379"
+  db: 0
+  key_prefix: "file:"
+  public_cache_ttl_seconds: 60
+  auth_cache_ttl_seconds: 30
+cors:
+  allow_origins:
+    - "https://file.example"
+  allow_credentials: true
+`
 	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("REDIS_DB", "not-an-int")
-	t.Setenv("DATABASE_MAX_CONNECTIONS", "-1")
-	t.Setenv("SERVER_PORT", "not-a-port")
-	t.Setenv("REDIS_PUBLIC_CACHE_TTL_SECONDS", "0")
 
 	cfg, err := Load(path)
-	if err != nil {
+	if err == nil || err.Error() != "invalid config database.max_connections" {
+		t.Fatalf("invalid config error=%v cfg=%#v; want exact database.max_connections error", err, cfg)
+	}
+	after, readErr := os.ReadFile(path)
+	if readErr != nil || string(after) != raw {
+		t.Fatalf("invalid config should not be rewritten: readErr=%v after=%q", readErr, string(after))
+	}
+}
+
+func TestLoadRejectsInvalidEnvironmentOverride(t *testing.T) {
+	clearConfigEnv(t)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(minimalConfigYAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	defaults := Defaults()
-	if cfg.MaxConnections != defaults.MaxConnections ||
-		cfg.ServerPort != defaults.ServerPort ||
-		cfg.RedisDB != defaults.RedisDB ||
-		cfg.PublicCacheTTL != defaults.PublicCacheTTL ||
-		cfg.AuthCacheTTL != defaults.AuthCacheTTL ||
-		cfg.PrivateKeyPath != "" ||
-		filepath.Clean(cfg.PublicKeyPath) != filepath.Clean(absolutePublic) {
-		t.Fatalf("invalid numeric/path fallback mismatch: %#v", cfg)
+	t.Setenv("SERVER_PORT", "not-a-port")
+
+	cfg, err := Load(path)
+	if err == nil || err.Error() != "invalid environment variable SERVER_PORT" {
+		t.Fatalf("invalid env error=%v cfg=%#v; want exact SERVER_PORT error", err, cfg)
 	}
 }
 
@@ -329,7 +391,7 @@ func TestConfigLookupAndIntegerCoercionExactValues(t *testing.T) {
 func TestLoadWithoutEnvironmentDoesNotRewriteExistingFile(t *testing.T) {
 	clearConfigEnv(t)
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	original := "jwt:\n  secret: \"file-secret-abcdefghijklmnopqrstuvwxyz\"\n"
+	original := minimalConfigYAML()
 	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -351,6 +413,65 @@ func assertRawValue(t *testing.T, raw rawConfig, dotted string, want any) {
 	if !ok || !reflect.DeepEqual(got, want) {
 		t.Fatalf("raw %s=%#v,%v; want %#v,true", dotted, got, ok, want)
 	}
+}
+
+func minimalConfigYAML() string {
+	return `
+jwt:
+  secret: "file-secret-abcdefghijklmnopqrstuvwxyz"
+  expire_days: 7
+  access_expire_minutes: 30
+keys:
+  private_key: "private.pem"
+  public_key: "public.pem"
+database:
+  dsn: "postgresql://file"
+  max_connections: 10
+server:
+  site_url: "https://file.example"
+  api_url: "https://file.example/api"
+  host: "127.0.0.1"
+  port: 9000
+textures:
+  directory: "/file/textures"
+carousel:
+  directory: "/file/carousel"
+redis:
+  addr: "redis:6379"
+  db: 0
+  key_prefix: "file:"
+  public_cache_ttl_seconds: 60
+  auth_cache_ttl_seconds: 30
+cors:
+  allow_origins:
+    - "https://file.example"
+  allow_credentials: true
+`
+}
+
+func setCompleteConfigEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("JWT_SECRET", "env-secret-abcdefghijklmnopqrstuvwxyz")
+	t.Setenv("JWT_EXPIRE_DAYS", "8")
+	t.Setenv("JWT_ACCESS_EXPIRE_MINUTES", "35")
+	t.Setenv("KEYS_PRIVATE_KEY", "env-private.pem")
+	t.Setenv("KEYS_PUBLIC_KEY", "/abs/env-public.pem")
+	t.Setenv("DATABASE_DSN", "postgresql://env")
+	t.Setenv("DATABASE_MAX_CONNECTIONS", "31")
+	t.Setenv("SERVER_SITE_URL", "https://env.example")
+	t.Setenv("SERVER_API_URL", "https://env.example/api")
+	t.Setenv("SERVER_HOST", "0.0.0.0")
+	t.Setenv("SERVER_PORT", "8100")
+	t.Setenv("TEXTURES_DIRECTORY", "/env/textures")
+	t.Setenv("CAROUSEL_DIRECTORY", "/env/carousel")
+	t.Setenv("REDIS_ADDR", "127.0.0.1:6380")
+	t.Setenv("REDIS_PASSWORD", "env-redis-password")
+	t.Setenv("REDIS_DB", "3")
+	t.Setenv("REDIS_KEY_PREFIX", "envprefix:")
+	t.Setenv("REDIS_PUBLIC_CACHE_TTL_SECONDS", "220")
+	t.Setenv("REDIS_AUTH_CACHE_TTL_SECONDS", "25")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://env.example, http://localhost:5173")
+	t.Setenv("CORS_ALLOW_CREDENTIALS", "false")
 }
 
 func clearConfigEnv(t *testing.T) {

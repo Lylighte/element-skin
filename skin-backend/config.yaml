@@ -5,6 +5,8 @@
 # JWT 认证配置
 jwt:
   secret: "prod-secret-please-change-to-a-very-long-string-in-production-dev"  # 生产环境务必修改！
+  expire_days: 7
+  access_expire_minutes: 30
 
 # RSA 密钥配置
 keys:

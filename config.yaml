@@ -2,6 +2,8 @@
 
 jwt:
   secret: "prod-secret-please-change-to-a-very-long-string-in-production"  # ⚠️ 生产环境必须修改
+  expire_days: 7
+  access_expire_minutes: 30
 
 # RSA 密钥配置
 keys:
