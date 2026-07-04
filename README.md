@@ -82,20 +82,40 @@ services:
     environment:
       - VITE_BASE_PATH=${VITE_BASE_PATH:-/}    # 👈 前端部署路径 (如 /skin/)
       - VITE_API_BASE=${VITE_API_BASE:-/skinapi} # 👈 后端 API 路径 (如 /skinapi)
+      - JWT_SECRET=${JWT_SECRET:-prod-secret-please-change-to-a-very-long-string-in-production}
+      - KEYS_PRIVATE_KEY=${KEYS_PRIVATE_KEY:-/app/data/private.pem}
+      - KEYS_PUBLIC_KEY=${KEYS_PUBLIC_KEY:-/app/data/public.pem}
+      - DATABASE_DSN=${DATABASE_DSN:-postgresql://elementskin:password123@db:5432/elementskin?sslmode=disable}
+      - DATABASE_MAX_CONNECTIONS=${DATABASE_MAX_CONNECTIONS:-20}
+      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-elementskin:}
+      - REDIS_PUBLIC_CACHE_TTL_SECONDS=${REDIS_PUBLIC_CACHE_TTL_SECONDS:-60}
+      - REDIS_AUTH_CACHE_TTL_SECONDS=${REDIS_AUTH_CACHE_TTL_SECONDS:-30}
+      - TEXTURES_DIRECTORY=${TEXTURES_DIRECTORY:-/app/frontend/static/textures}
+      - CAROUSEL_DIRECTORY=${CAROUSEL_DIRECTORY:-/app/frontend/static/carousel}
+      - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
+      - SERVER_PORT=${SERVER_PORT:-8000}
+      - SERVER_SITE_URL=${SERVER_SITE_URL:-http://yourdomain.com}
+      - SERVER_API_URL=${SERVER_API_URL:-http://yourdomain.com/skinapi}
+      - MOJANG_SKIN_DOMAINS=${MOJANG_SKIN_DOMAINS:-textures.minecraft.net}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      - ./config.yaml:/app/config.yaml
       - ./frontend:/app/frontend           # 前端、皮肤、首页媒体全部在这里
       - ./data:/app/data                   # 密钥文件
     ports:
       - "8000:8000"
 ```
 
-> 💡 **动态路径配置**: 镜像支持在启动时通过环境变量动态修改路径。修改后直接 `docker compose restart` 即可生效，无需重新构建。
+> 💡 **动态配置**: 后端启动时会读取 `config.yaml`，再用同名环境变量覆盖配置并写回 `config.yaml`。如果文件不存在，会按默认值和环境变量创建一份。开发环境可以继续只改 `config.yaml`，Docker 部署可以只在 `docker compose` 里写环境变量。由于需要写回文件，`config.yaml` 不能以只读方式挂载。
+>
+> 常用环境变量包括：`JWT_SECRET`、`DATABASE_DSN`、`DATABASE_MAX_CONNECTIONS`、`REDIS_ADDR`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_KEY_PREFIX`、`SERVER_SITE_URL`、`SERVER_API_URL`、`SERVER_HOST`、`SERVER_PORT`、`TEXTURES_DIRECTORY`、`CAROUSEL_DIRECTORY`、`KEYS_PRIVATE_KEY`、`KEYS_PUBLIC_KEY`、`MOJANG_SKIN_DOMAINS`。`MOJANG_SKIN_DOMAINS` 使用英文逗号分隔多个域名。
 
 在宿主机创建 `config.yaml` 文件。这是系统运行的核心配置。
 

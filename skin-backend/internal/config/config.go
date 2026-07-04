@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -37,36 +38,29 @@ type rawConfig = map[string]any
 
 func Load(path string) (Config, error) {
 	cfg := Defaults()
+	raw := configRaw(cfg)
+	writeConfig := false
 	if b, err := os.ReadFile(path); err == nil {
-		var raw rawConfig
+		raw = rawConfig{}
 		if err := yaml.Unmarshal(b, &raw); err != nil {
 			return cfg, err
 		}
 		cfg.apply(raw)
-		cfg.resolveKeyPaths(filepath.Dir(path))
 	} else if errors.Is(err, os.ErrNotExist) {
 		log.Printf("警告：配置文件 %s 未找到，使用默认配置（JWT secret 为占位值，启动将失败）", path)
+		writeConfig = true
 	} else {
 		return cfg, err
 	}
-	if env := os.Getenv("DATABASE_DSN"); env != "" {
-		cfg.DatabaseDSN = env
+	if applyEnvOverrides(&cfg, raw) {
+		writeConfig = true
 	}
-	if env := os.Getenv("JWT_SECRET"); env != "" {
-		cfg.JWTSecret = env
+	if writeConfig {
+		if err := writeConfigFile(path, raw); err != nil {
+			return cfg, err
+		}
 	}
-	if env := os.Getenv("REDIS_ADDR"); env != "" {
-		cfg.RedisAddr = env
-	}
-	if env := os.Getenv("REDIS_PASSWORD"); env != "" {
-		cfg.RedisPassword = env
-	}
-	if env := os.Getenv("REDIS_DB"); env != "" {
-		cfg.RedisDB = atoiDefault(env, cfg.RedisDB)
-	}
-	if env := os.Getenv("REDIS_KEY_PREFIX"); env != "" {
-		cfg.RedisKeyPrefix = env
-	}
+	cfg.resolveKeyPaths(filepath.Dir(path))
 	return cfg, nil
 }
 
@@ -125,6 +119,188 @@ func (c *Config) apply(raw rawConfig) {
 	}
 	c.PrivateKeyPath = getString(raw, "keys.private_key", c.PrivateKeyPath)
 	c.PublicKeyPath = getString(raw, "keys.public_key", c.PublicKeyPath)
+	c.FallbackDomains = getStringSlice(raw, "mojang.skin_domains", c.FallbackDomains)
+}
+
+func configRaw(cfg Config) rawConfig {
+	return rawConfig{
+		"jwt": map[string]any{
+			"secret":                cfg.JWTSecret,
+			"expire_days":           cfg.JWTExpireDays,
+			"access_expire_minutes": cfg.AccessMinutes,
+		},
+		"keys": map[string]any{
+			"private_key": cfg.PrivateKeyPath,
+			"public_key":  cfg.PublicKeyPath,
+		},
+		"database": map[string]any{
+			"dsn":             cfg.DatabaseDSN,
+			"max_connections": int(cfg.MaxConnections),
+		},
+		"redis": map[string]any{
+			"addr":                     cfg.RedisAddr,
+			"password":                 cfg.RedisPassword,
+			"db":                       cfg.RedisDB,
+			"key_prefix":               cfg.RedisKeyPrefix,
+			"public_cache_ttl_seconds": cfg.PublicCacheTTL,
+			"auth_cache_ttl_seconds":   cfg.AuthCacheTTL,
+		},
+		"textures": map[string]any{
+			"directory": cfg.TexturesDir,
+		},
+		"carousel": map[string]any{
+			"directory": cfg.CarouselDir,
+		},
+		"server": map[string]any{
+			"host":     cfg.ServerHost,
+			"port":     atoiDefault(cfg.ServerPort, 8000),
+			"site_url": cfg.SiteURL,
+			"api_url":  cfg.APIURL,
+		},
+		"mojang": map[string]any{
+			"skin_domains": cfg.FallbackDomains,
+		},
+	}
+}
+
+func applyEnvOverrides(cfg *Config, raw rawConfig) bool {
+	changed := false
+	changed = applyStringEnv(raw, "JWT_SECRET", "jwt.secret", &cfg.JWTSecret) || changed
+	changed = applyIntEnv(raw, "JWT_EXPIRE_DAYS", "jwt.expire_days", &cfg.JWTExpireDays, nil) || changed
+	changed = applyIntEnv(raw, "JWT_ACCESS_EXPIRE_MINUTES", "jwt.access_expire_minutes", &cfg.AccessMinutes, nil) || changed
+	changed = applyStringEnv(raw, "KEYS_PRIVATE_KEY", "keys.private_key", &cfg.PrivateKeyPath) || changed
+	changed = applyStringEnv(raw, "KEYS_PUBLIC_KEY", "keys.public_key", &cfg.PublicKeyPath) || changed
+	changed = applyStringEnv(raw, "DATABASE_DSN", "database.dsn", &cfg.DatabaseDSN) || changed
+	changed = applyInt32Env(raw, "DATABASE_MAX_CONNECTIONS", "database.max_connections", &cfg.MaxConnections, positiveInt) || changed
+	changed = applyStringEnv(raw, "SERVER_SITE_URL", "server.site_url", &cfg.SiteURL) || changed
+	changed = applyStringEnv(raw, "SERVER_API_URL", "server.api_url", &cfg.APIURL) || changed
+	changed = applyStringEnv(raw, "SERVER_HOST", "server.host", &cfg.ServerHost) || changed
+	changed = applyServerPortEnv(raw, cfg) || changed
+	changed = applyStringEnv(raw, "TEXTURES_DIRECTORY", "textures.directory", &cfg.TexturesDir) || changed
+	changed = applyStringEnv(raw, "CAROUSEL_DIRECTORY", "carousel.directory", &cfg.CarouselDir) || changed
+	changed = applyStringEnv(raw, "REDIS_ADDR", "redis.addr", &cfg.RedisAddr) || changed
+	changed = applyStringEnv(raw, "REDIS_PASSWORD", "redis.password", &cfg.RedisPassword) || changed
+	changed = applyIntEnv(raw, "REDIS_DB", "redis.db", &cfg.RedisDB, nonNegativeInt) || changed
+	changed = applyStringEnv(raw, "REDIS_KEY_PREFIX", "redis.key_prefix", &cfg.RedisKeyPrefix) || changed
+	changed = applyIntEnv(raw, "REDIS_PUBLIC_CACHE_TTL_SECONDS", "redis.public_cache_ttl_seconds", &cfg.PublicCacheTTL, positiveInt) || changed
+	changed = applyIntEnv(raw, "REDIS_AUTH_CACHE_TTL_SECONDS", "redis.auth_cache_ttl_seconds", &cfg.AuthCacheTTL, positiveInt) || changed
+	changed = applyStringSliceEnv(raw, "MOJANG_SKIN_DOMAINS", "mojang.skin_domains", &cfg.FallbackDomains) || changed
+	return changed
+}
+
+func applyStringEnv(raw rawConfig, envName, dotted string, target *string) bool {
+	value := os.Getenv(envName)
+	if value == "" {
+		return false
+	}
+	*target = value
+	setRaw(raw, dotted, value)
+	return true
+}
+
+func applyIntEnv(raw rawConfig, envName, dotted string, target *int, valid func(int) bool) bool {
+	value, ok := parseIntEnv(envName)
+	if !ok || valid != nil && !valid(value) {
+		return false
+	}
+	*target = value
+	setRaw(raw, dotted, value)
+	return true
+}
+
+func applyInt32Env(raw rawConfig, envName, dotted string, target *int32, valid func(int) bool) bool {
+	value, ok := parseIntEnv(envName)
+	if !ok || valid != nil && !valid(value) {
+		return false
+	}
+	*target = int32(value)
+	setRaw(raw, dotted, value)
+	return true
+}
+
+func applyServerPortEnv(raw rawConfig, cfg *Config) bool {
+	value, ok := parseIntEnv("SERVER_PORT")
+	if !ok || !positiveInt(value) {
+		return false
+	}
+	cfg.ServerPort = strconv.Itoa(value)
+	setRaw(raw, "server.port", value)
+	return true
+}
+
+func applyStringSliceEnv(raw rawConfig, envName, dotted string, target *[]string) bool {
+	value := os.Getenv(envName)
+	if value == "" {
+		return false
+	}
+	items := splitEnvList(value)
+	*target = items
+	setRaw(raw, dotted, items)
+	return true
+}
+
+func parseIntEnv(envName string) (int, bool) {
+	raw := os.Getenv(envName)
+	if raw == "" {
+		return 0, false
+	}
+	value, err := strconv.Atoi(raw)
+	return value, err == nil
+}
+
+func splitEnvList(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func positiveInt(value int) bool {
+	return value > 0
+}
+
+func nonNegativeInt(value int) bool {
+	return value >= 0
+}
+
+func setRaw(raw rawConfig, dotted string, value any) {
+	cur := raw
+	start := 0
+	for i := 0; i <= len(dotted); i++ {
+		if i != len(dotted) && dotted[i] != '.' {
+			continue
+		}
+		key := dotted[start:i]
+		if i == len(dotted) {
+			cur[key] = value
+			return
+		}
+		next, ok := cur[key].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			cur[key] = next
+		}
+		cur = next
+		start = i + 1
+	}
+}
+
+func writeConfigFile(path string, raw rawConfig) error {
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	out, err := yaml.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o600)
 }
 
 func (c *Config) resolveKeyPaths(baseDir string) {
@@ -164,6 +340,30 @@ func getInt(raw rawConfig, dotted string, fallback int) int {
 		return int(n)
 	case string:
 		return atoiDefault(n, fallback)
+	default:
+		return fallback
+	}
+}
+
+func getStringSlice(raw rawConfig, dotted string, fallback []string) []string {
+	v, ok := lookup(raw, dotted)
+	if !ok || v == nil {
+		return fallback
+	}
+	switch items := v.(type) {
+	case []string:
+		return append([]string(nil), items...)
+	case []any:
+		out := make([]string, 0, len(items))
+		for _, item := range items {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		if len(out) == len(items) {
+			return out
+		}
+		return fallback
 	default:
 		return fallback
 	}
