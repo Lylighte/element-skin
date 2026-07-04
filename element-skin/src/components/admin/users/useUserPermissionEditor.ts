@@ -22,6 +22,7 @@ interface UserPermissionEditorInput {
   user: () => User
   permissionState: () => UserPermissionsResponse | null
   currentPermissions: () => string[]
+  currentUserProtected: () => boolean
   isSelf: () => boolean
 }
 
@@ -52,6 +53,16 @@ export function useUserPermissionEditor(input: UserPermissionEditorInput) {
   const canRevokePermission = computed(() =>
     currentPermissionSet.value.has('permission.revoke.any'),
   )
+  const targetProtected = computed(
+    () => input.permissionState()?.protected || input.user().protected || false,
+  )
+  const canTransferProtectedSubject = computed(
+    () =>
+      input.currentUserProtected() &&
+      canManageProtected.value &&
+      !input.isSelf() &&
+      !targetProtected.value,
+  )
   const assignedRoleLabels = computed(() => {
     const roles = input.permissionState()?.catalog.roles || []
     const selected = roles.filter((role) => roleIds.value.has(role.id))
@@ -61,7 +72,7 @@ export function useUserPermissionEditor(input: UserPermissionEditorInput) {
       name: role,
       description: '',
       system_role: true,
-      protected: role === 'super_admin',
+      protected: false,
       permissions: [],
     }))
   })
@@ -159,6 +170,7 @@ export function useUserPermissionEditor(input: UserPermissionEditorInput) {
   }
 
   function permissionControlDisabled(row: PermissionDefinition) {
+    if (row.code === 'permission_protected.manage.any') return true
     if (input.isSelf() && isProtectedPermission(row)) return true
     if (isProtectedPermission(row) && !canManageProtected.value) return true
     const current = overrideMap.value.get(row.code) || 'inherit'
@@ -199,6 +211,7 @@ export function useUserPermissionEditor(input: UserPermissionEditorInput) {
     selectedOverridePermissionGroup,
     grantablePermissionOptions,
     canAddSelectedPermission,
+    canTransferProtectedSubject,
     selectPermissionGroup,
     isSelectedPermissionGroup,
     roleTagClosable,

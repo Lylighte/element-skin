@@ -29,8 +29,10 @@
             :permission-state="permissionState"
             :permissions-loading="permissionsLoading"
             :current-permissions="currentPermissions"
+            :current-user-protected="currentUserProtected"
             @grant-role="(roleId) => $emit('grant-role', roleId)"
             @revoke-role="(roleId) => $emit('revoke-role', roleId)"
+            @transfer-protected-subject="$emit('transfer-protected-subject')"
             @set-permission="
               (permissionCode, effect) => $emit('set-permission', permissionCode, effect)
             "
@@ -44,6 +46,8 @@
             :is-banned="isBanned"
             :is-self="isSelf"
             :permission-state="permissionState"
+            :current-permissions="currentPermissions"
+            :current-user-protected="currentUserProtected"
             @show-ban="$emit('show-ban')"
             @unban="(targetUser) => $emit('unban', targetUser)"
             @show-reset-password="$emit('show-reset-password')"
@@ -78,6 +82,7 @@ defineProps<{
   permissionState: UserPermissionsResponse | null
   permissionsLoading: boolean
   currentPermissions: string[]
+  currentUserProtected: boolean
 }>()
 
 defineEmits<{
@@ -85,6 +90,7 @@ defineEmits<{
   'profiles-next': []
   'grant-role': [roleId: string]
   'revoke-role': [roleId: string]
+  'transfer-protected-subject': []
   'set-permission': [permissionCode: string, effect: PermissionOverrideEffect]
   'clear-permission': [permissionCode: string]
   'show-ban': []

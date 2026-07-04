@@ -18,6 +18,9 @@
         <h3 class="m-0 text-xl font-semibold text-[var(--color-heading)]">
           {{ user.display_name || '未设置显示名' }}
         </h3>
+        <el-tag v-if="isProtectedSubject" type="danger" effect="dark" size="small">
+          超级管理员
+        </el-tag>
         <el-tag
           v-for="role in assignedRoleLabels"
           :key="role.id"
@@ -60,6 +63,9 @@ const props = defineProps<{
 }>()
 
 const roleIds = computed(() => new Set(props.permissionState?.roles || props.user.roles || []))
+const isProtectedSubject = computed(
+  () => props.permissionState?.protected || props.user.protected || false,
+)
 const assignedRoleLabels = computed(() => {
   const roles = props.permissionState?.catalog.roles || []
   const selected = roles.filter((role) => roleIds.value.has(role.id))
@@ -69,7 +75,7 @@ const assignedRoleLabels = computed(() => {
     name: role,
     description: '',
     system_role: true,
-    protected: role === 'super_admin',
+    protected: false,
     permissions: [],
   }))
 })

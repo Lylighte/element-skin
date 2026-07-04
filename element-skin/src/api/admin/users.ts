@@ -38,6 +38,12 @@ export function revokeUserRole(
   return client.delete(`/v1/admin/users/${userId}/roles/${roleId}`)
 }
 
+export function transferProtectedSubject(
+  userId: string,
+): Promise<{ data: { ok: boolean; user_id: string } }> {
+  return client.post(`/v1/admin/users/${userId}/protected-subject/transfer`)
+}
+
 export function setUserPermissionOverride(
   userId: string,
   permissionCode: string,

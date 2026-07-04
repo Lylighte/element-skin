@@ -34,6 +34,7 @@ import {
   resetUserPassword,
   revokeUserRole,
   setUserPermissionOverride,
+  transferProtectedSubject,
   unbanUser,
 } from '../../admin/users'
 import { addWhitelistUser, getWhitelist, removeWhitelistUser } from '../../admin/whitelist'
@@ -331,6 +332,12 @@ function adminUserCases(): ApiCase[] {
       args: ['/v1/admin/users/user-1/roles/admin'],
     },
     {
+      name: 'transferProtectedSubject posts transfer endpoint',
+      method: 'post',
+      call: () => transferProtectedSubject('user-1'),
+      args: ['/v1/admin/users/user-1/protected-subject/transfer'],
+    },
+    {
       name: 'setUserPermissionOverride puts permission effect',
       method: 'put',
       call: () => setUserPermissionOverride('user-1', 'notice.create.any', 'allow'),
@@ -364,7 +371,10 @@ function adminUserCases(): ApiCase[] {
       name: 'resetUserPassword posts reset payload',
       method: 'post',
       call: () => resetUserPassword({ user_id: 'user-1', new_password: 'NewPassword123' }),
-      args: ['/v1/admin/users/password/reset', { user_id: 'user-1', new_password: 'NewPassword123' }],
+      args: [
+        '/v1/admin/users/password/reset',
+        { user_id: 'user-1', new_password: 'NewPassword123' },
+      ],
     },
   ]
 }
