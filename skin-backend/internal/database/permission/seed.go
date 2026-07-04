@@ -166,7 +166,7 @@ func seedUserSubjects(ctx context.Context, tx pgx.Tx, now int64) error {
 	if err := seedProtectedUserSubject(ctx, tx, now); err != nil {
 		return err
 	}
-	return cleanupObsoleteSuperAdminRole(ctx, tx)
+	return nil
 }
 
 func seedProtectedUserSubject(ctx context.Context, tx pgx.Tx, now int64) error {
@@ -189,22 +189,6 @@ func protectedSeedCandidate(ctx context.Context, tx pgx.Tx) (string, error) {
 		ORDER BY updated_at DESC, id DESC
 		LIMIT 1
 	`).Scan(&subjectID)
-	if err == nil {
-		return subjectID, nil
-	}
-	if err != pgx.ErrNoRows {
-		return "", err
-	}
-
-	err = tx.QueryRow(ctx, `
-		SELECT sr.subject_id
-		FROM subject_roles sr
-		JOIN permission_subjects ps ON ps.id=sr.subject_id
-		JOIN users u ON u.id=ps.user_id
-		WHERE sr.role_id=$1
-		ORDER BY sr.created_at DESC, u.created_at DESC, u.id DESC
-		LIMIT 1
-	`, obsoleteSuperAdminRoleID).Scan(&subjectID)
 	if err == nil {
 		return subjectID, nil
 	}
