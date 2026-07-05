@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import type { FallbackRow } from '@/components/admin/mojang/types'
-import { hasWhitelistChanges } from '@/components/admin/mojang/whitelist'
+import {
+  createWhitelistEntryDraft,
+  getWhitelistChanges,
+  hasWhitelistChanges,
+} from '@/components/admin/mojang/whitelist'
 
 const baseRow: FallbackRow = {
   id: 1,
@@ -56,5 +60,39 @@ describe('hasWhitelistChanges', () => {
 
     expect(hasWhitelistChanges(added)).toBe(true)
     expect(hasWhitelistChanges(removed)).toBe(true)
+  })
+
+  it('returns exact added and removed entries', () => {
+    const row = rowWithLists(['Steve', 'Alex'], ['alex', 'Herobrine'])
+
+    expect(getWhitelistChanges(row)).toEqual({
+      toAdd: [{ username: 'Herobrine', created_at: 2001 }],
+      toRemove: [{ username: 'Steve', created_at: 1000 }],
+    })
+  })
+
+  it('creates trimmed whitelist entry drafts with exact timestamps', () => {
+    const row = rowWithLists([], ['Alex'])
+
+    expect(createWhitelistEntryDraft(row, ' Steve ', 123456)).toEqual({
+      ok: true,
+      entry: {
+        username: 'Steve',
+        created_at: 123456,
+      },
+    })
+  })
+
+  it('rejects empty and duplicate whitelist entry drafts exactly', () => {
+    const row = rowWithLists([], ['Alex'])
+
+    expect(createWhitelistEntryDraft(row, '   ', 123456)).toEqual({
+      ok: false,
+      reason: 'empty',
+    })
+    expect(createWhitelistEntryDraft(row, 'alex', 123456)).toEqual({
+      ok: false,
+      reason: 'duplicate',
+    })
   })
 })
