@@ -189,12 +189,25 @@ import { getWhitelist, addWhitelistUser, removeWhitelistUser } from '@/api/admin
 import PageHeader from '@/components/common/PageHeader.vue'
 import FallbackEndpointEditor from '@/components/admin/mojang/FallbackEndpointEditor.vue'
 import type { FallbackEndpoint, FallbackRow } from '@/components/admin/mojang/types'
-import { hasWhitelistChanges } from '@/components/admin/mojang/whitelist'
+import {
+  createEmptyFallbackRow,
+  findSavedEndpoint,
+  moveFallback,
+  normalizeFallbackSettings,
+  removeFallbackAt,
+  toFallbackSettingsPayload,
+  type FallbackSettingsForm,
+} from '@/components/admin/mojang/fallbackSettings'
+import {
+  createWhitelistEntryDraft,
+  getWhitelistChanges,
+  hasWhitelistChanges,
+} from '@/components/admin/mojang/whitelist'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
 import { getErrorMessage } from '@/utils/error'
 
-const settings = ref<{ fallback_strategy: string; fallback_probe_interval: number }>({
+const settings = ref<FallbackSettingsForm>({
   fallback_strategy: 'serial',
   fallback_probe_interval: 600,
 })
@@ -204,37 +217,9 @@ const saving = ref(false)
 async function fetchSettings() {
   try {
     const res = await getAdminSettingsGroup('fallback')
-    settings.value.fallback_strategy = (res.data.fallback_strategy as string) || 'serial'
-    const interval = Number(res.data.fallback_probe_interval ?? 600)
-    settings.value.fallback_probe_interval =
-      Number.isFinite(interval) && interval >= 60 ? interval : 600
-
-    const raw = Array.isArray(res.data.fallbacks) ? (res.data.fallbacks as FallbackEndpoint[]) : []
-
-    const newFallbacks = raw.map((item, index) => {
-      const existing = fallbacks.value.find(
-        (f) =>
-          (f.id && f.id === item.id) ||
-          (f.session_url === item.session_url && f.note === item.note),
-      )
-
-      const row = reactive<FallbackRow>({
-        ...item,
-        rowKey: item.id || (existing ? existing.rowKey : `new_${Date.now()}_${index}`),
-        note: item.note || '',
-        skin_domains_text: Array.isArray(item.skin_domains)
-          ? item.skin_domains.join(',')
-          : String(item.skin_domains || ''),
-        _whitelist: existing ? existing._whitelist : [],
-        _initialWhitelist: existing ? existing._initialWhitelist : [],
-        _new_user: existing ? existing._new_user : '',
-        _loaded: existing ? existing._loaded : false,
-      })
-      return row
-    })
-
-    fallbacks.value = newFallbacks
-    fallbacks.value.sort((a, b) => a.priority - b.priority)
+    const normalized = normalizeFallbackSettings(res.data, fallbacks.value)
+    settings.value = normalized.settings
+    fallbacks.value = normalized.rows.map((row) => reactive(row))
   } catch {
     ElMessage.error('加载 Fallback 配置失败')
   }
@@ -247,27 +232,10 @@ async function saveSettings() {
   })
   saving.value = true
   try {
-    const payload = {
-      fallback_strategy: settings.value.fallback_strategy,
-      fallback_probe_interval: settings.value.fallback_probe_interval,
-      fallbacks: fallbacks.value.map((item) => ({
-        id: item.id,
-        priority: item.priority,
-        session_url: item.session_url,
-        account_url: item.account_url,
-        services_url: item.services_url,
-        cache_ttl: item.cache_ttl,
-        enable_profile: !!item.enable_profile,
-        enable_hasjoined: !!item.enable_hasjoined,
-        enable_whitelist: !!item.enable_whitelist,
-        note: item.note,
-        skin_domains: item.skin_domains_text
-          .split(',')
-          .map((s) => s.trim())
-          .filter((s) => s),
-      })),
-    }
-    await saveAdminSettingsGroup('fallback', payload)
+    await saveAdminSettingsGroup(
+      'fallback',
+      toFallbackSettingsPayload(settings.value, fallbacks.value),
+    )
 
     const res = await getAdminSettingsGroup('fallback')
     const updatedFallbacksFromDB = Array.isArray(res.data.fallbacks)
@@ -275,24 +243,14 @@ async function saveSettings() {
       : []
 
     for (const localRow of fallbacks.value) {
-      const dbEndpoint = updatedFallbacksFromDB.find(
-        (f) => f.session_url === localRow.session_url && f.note === localRow.note,
-      )
+      const dbEndpoint = findSavedEndpoint(localRow, updatedFallbacksFromDB)
       if (!dbEndpoint || !dbEndpoint.id) continue
 
       const endpointId = dbEndpoint.id
       localRow.id = endpointId
 
       if (localRow._loaded && hasWhitelistChanges(localRow)) {
-        const initialNames = localRow._initialWhitelist.map((u) => u.username.toLowerCase())
-        const currentNames = localRow._whitelist.map((u) => u.username.toLowerCase())
-
-        const toAdd = localRow._whitelist.filter(
-          (u) => !initialNames.includes(u.username.toLowerCase()),
-        )
-        const toRemove = localRow._initialWhitelist.filter(
-          (u) => !currentNames.includes(u.username.toLowerCase()),
-        )
+        const { toAdd, toRemove } = getWhitelistChanges(localRow)
 
         const promises = [
           ...toAdd.map((u) => addWhitelistUser({ username: u.username, endpoint_id: endpointId })),
@@ -315,57 +273,19 @@ async function saveSettings() {
 }
 
 function addFallback() {
-  fallbacks.value.push(
-    reactive<FallbackRow>({
-      id: null,
-      rowKey: `new_${Date.now()}_${fallbacks.value.length}`,
-      priority: fallbacks.value.length + 1,
-      session_url: '',
-      account_url: '',
-      services_url: '',
-      cache_ttl: 60,
-      enable_profile: true,
-      enable_hasjoined: true,
-      enable_whitelist: false,
-      note: '',
-      skin_domains_text: '',
-      _whitelist: [],
-      _initialWhitelist: [],
-      _new_user: '',
-      _loaded: true,
-    }),
-  )
+  fallbacks.value.push(reactive(createEmptyFallbackRow(fallbacks.value.length)))
 }
 
 function removeFallback(index: number) {
-  fallbacks.value.splice(index, 1)
-  syncPriority()
+  fallbacks.value = removeFallbackAt(fallbacks.value, index)
 }
 
 function moveUp(index: number) {
-  if (index === 0) return
-  const list = [...fallbacks.value]
-  const temp = list[index]!
-  list[index] = list[index - 1]!
-  list[index - 1] = temp
-  fallbacks.value = list
-  syncPriority()
+  fallbacks.value = moveFallback(fallbacks.value, index, -1)
 }
 
 function moveDown(index: number) {
-  if (index === fallbacks.value.length - 1) return
-  const list = [...fallbacks.value]
-  const temp = list[index]!
-  list[index] = list[index + 1]!
-  list[index + 1] = temp
-  fallbacks.value = list
-  syncPriority()
-}
-
-function syncPriority() {
-  fallbacks.value.forEach((item, index) => {
-    item.priority = index + 1
-  })
+  fallbacks.value = moveFallback(fallbacks.value, index, 1)
 }
 
 function handleExpandChange(row: FallbackRow, expandedRows: FallbackRow[]) {
@@ -388,16 +308,14 @@ async function fetchWhitelist(row: FallbackRow) {
 }
 
 function addUser(row: FallbackRow) {
-  if (!row._new_user) return
-  const username = row._new_user.trim()
-  if (row._whitelist.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
-    ElMessage.warning('用户已在列表中')
+  const draft = createWhitelistEntryDraft(row, row._new_user)
+  if (!draft.ok) {
+    if (draft.reason === 'duplicate') {
+      ElMessage.warning('用户已在列表中')
+    }
     return
   }
-  row._whitelist.unshift({
-    username: username,
-    created_at: Date.now(),
-  })
+  row._whitelist.unshift(draft.entry)
   row._new_user = ''
 }
 
