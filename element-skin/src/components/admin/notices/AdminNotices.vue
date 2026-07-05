@@ -156,7 +156,7 @@ import {
   noticeLifecycleLabel,
   validateNoticeContent,
   validateNoticeSettings,
-} from './notices/noticeForm'
+} from './noticeForm'
 
 const notices = ref<Notice[]>([])
 const status = ref<NoticeStatus>('all')
