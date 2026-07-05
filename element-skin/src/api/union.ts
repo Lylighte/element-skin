@@ -1,4 +1,4 @@
-import client from './client'
+import client from './union-client'
 
 // Union profile (role binding entry)
 export interface UnionProfile {
