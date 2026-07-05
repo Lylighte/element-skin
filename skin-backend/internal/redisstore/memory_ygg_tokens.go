@@ -9,18 +9,6 @@ import (
 	"element-skin/backend/internal/model"
 )
 
-func (s *MemoryStore) yggTokenKey(access string) string {
-	return s.key("ygg", "token", access)
-}
-
-func (s *MemoryStore) yggUserTokensKey(userID string) string {
-	return s.key("ygg", "user", userID, "tokens")
-}
-
-func (s *MemoryStore) yggSessionKey(serverID string) string {
-	return s.key("ygg", "session", serverID)
-}
-
 func (s *MemoryStore) SetYggToken(_ context.Context, token model.Token, ttl time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -178,23 +166,4 @@ func (s *MemoryStore) yggTokenIndex(userID string) (map[string]int64, error) {
 		index = map[string]int64{}
 	}
 	return index, nil
-}
-
-func (s *MemoryStore) SetYggSession(_ context.Context, session model.Session, ttl time.Duration) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.set(s.yggSessionKey(session.ServerID), session, ttl)
-}
-
-func (s *MemoryStore) GetYggSession(_ context.Context, serverID string) (model.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	v, err := s.get(s.yggSessionKey(serverID))
-	if err != nil {
-		return model.Session{}, err
-	}
-	b, _ := json.Marshal(v)
-	var session model.Session
-	_ = json.Unmarshal(b, &session)
-	return session, nil
 }
