@@ -24,57 +24,12 @@
     />
 
     <UiCard shadow="never">
-      <el-table :data="users" class="modern-table w-full" v-loading="loading">
-        <el-table-column prop="display_name" label="用户名" min-width="150">
-          <template #default="{ row }">
-            <div class="flex items-center">
-              <el-avatar
-                :size="32"
-                :shape="row.avatar_hash ? 'square' : 'circle'"
-                :class="[row.avatar_hash ? 'has-custom' : 'avatar-fallback', 'mr-2']"
-                :src="userAvatars[row.avatar_hash || ''] || ''"
-              >
-                {{
-                  !row.avatar_hash
-                    ? row.display_name?.charAt(0).toUpperCase() || row.email.charAt(0).toUpperCase()
-                    : ''
-                }}
-              </el-avatar>
-              <span>{{ row.display_name || '未设置' }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="email" label="邮箱" min-width="220" />
-        <el-table-column label="身份状态" width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.protected" type="danger" effect="dark" size="small">
-              超级管理员
-            </el-tag>
-            <el-tag v-else-if="hasUserRole(row, 'admin')" type="danger" effect="light" size="small">
-              管理员
-            </el-tag>
-            <el-tag
-              v-else-if="hasUserRole(row, 'moderator')"
-              type="warning"
-              effect="light"
-              size="small"
-            >
-              审核员
-            </el-tag>
-            <el-tag v-else-if="getUserBanStatus(row)" type="warning" effect="light" size="small"
-              >已封禁</el-tag
-            >
-            <el-tag v-else type="success" effect="light" size="small">正常</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="管理操作" width="120" align="center">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" @click="showUserDetailDialog(row)" class="">
-              管理
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <AdminUserTable
+        :users="users"
+        :loading="loading"
+        :user-avatars="userAvatars"
+        @manage="showUserDetailDialog"
+      />
 
       <div class="pagination-container">
         <CursorPager
@@ -97,7 +52,7 @@
       :profiles-loading="profilesPagination.isLoading.value"
       :profiles-prev-disabled="!profilesPagination.canGoPrev.value"
       :profiles-next-disabled="!profilesPagination.canGoNext.value"
-      :is-banned="currentUser ? getUserBanStatus(currentUser) : false"
+      :is-banned="currentUser ? isUserBanned(currentUser) : false"
       :ban-remaining="formatBanRemaining(currentUser?.banned_until)"
       :is-self="currentUser ? isCurrentUserSelf(currentUser) : false"
       :permission-state="currentPermissionState"
@@ -146,6 +101,7 @@ import { Refresh, UserFilled } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
+import AdminUserTable from '@/components/admin/users/AdminUserTable.vue'
 import UserDetailDialog from '@/components/admin/users/UserDetailDialog.vue'
 import ResetPasswordDialog from '@/components/admin/users/ResetPasswordDialog.vue'
 import BanUserDialog from '@/components/admin/users/BanUserDialog.vue'
@@ -169,8 +125,14 @@ import {
 import { getMe } from '@/api/me'
 import type { PermissionOverrideEffect, User, Profile, UserPermissionsResponse } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
-
-type UserQueryParams = { cursor?: string | null; limit?: number; q?: string }
+import {
+  banDurationPresets,
+  buildUserSearchParams,
+  formatBanRemaining,
+  formatBanUntilTime as formatBanUntilTimeLabel,
+  isUserBanned,
+  type UserQueryParams,
+} from '@/components/admin/users/userListDisplay'
 
 const users = ref<User[]>([])
 const limit = 15
@@ -196,18 +158,10 @@ const banCustomHours = ref(24)
 const banReason = ref('')
 const banning = ref(false)
 
-const presetDurations = [
-  { label: '1小时', value: 1 },
-  { label: '1天', value: 24 },
-  { label: '3天', value: 72 },
-  { label: '7天', value: 168 },
-  { label: '30天', value: 720 },
-]
+const presetDurations = banDurationPresets
 
 function buildSearchParams(extraParams: UserQueryParams = {}): UserQueryParams {
-  const params: UserQueryParams = { limit, ...extraParams }
-  if (activeSearchQuery.value) params.q = activeSearchQuery.value
-  return params
+  return buildUserSearchParams(activeSearchQuery.value, limit, extraParams)
 }
 
 async function refreshUsers() {
@@ -478,22 +432,10 @@ async function refreshLoggedInUser() {
   } catch {}
 }
 
-// Helpers
-const getUserBanStatus = (user: User) => user.banned_until != null && Date.now() < user.banned_until
-const hasUserRole = (user: User, role: string) => (user.roles || []).includes(role)
 const loggedInUser = inject<Ref<User | null>>('user', ref(null))
 const isCurrentUserSelf = (user: User) => loggedInUser?.value?.id === user.id
-const formatBanRemaining = (ts: number | null | undefined) => {
-  if (ts == null) return ''
-  const m = Math.ceil((ts - Date.now()) / 60000)
-  if (m > 1440) return Math.floor(m / 1440) + ' 天'
-  if (m > 60) return Math.floor(m / 60) + ' 小时'
-  return m + ' 分钟'
-}
-const formatBanUntilTime = () => {
-  const h = banDurationType.value === 'preset' ? banPresetDuration.value : banCustomHours.value
-  return new Date(Date.now() + h * 3600000).toLocaleString()
-}
+const formatBanUntilTime = () =>
+  formatBanUntilTimeLabel(banDurationType.value, banPresetDuration.value, banCustomHours.value)
 
 onMounted(refreshUsersFromFirst)
 
@@ -510,23 +452,3 @@ watch(currentUser, async (u) => {
   }
 })
 </script>
-
-<style scoped>
-.count-text {
-  font-weight: 600;
-  color: var(--color-text);
-  font-family: var(--el-font-family-mono);
-  background: var(--color-background-soft);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.modern-table :deep(.el-table__inner-wrapper::before) {
-  display: none;
-}
-
-.modern-table :deep(.el-table__row) {
-  transition: background-color 0.3s ease;
-}
-</style>
