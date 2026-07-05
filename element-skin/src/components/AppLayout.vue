@@ -64,71 +64,15 @@
             />
           </div>
 
-          <!-- Account Popover -->
-          <el-popover
+          <AccountMenu
             v-if="authReady && isLogged"
-            placement="bottom-end"
-            :width="240"
-            trigger="hover"
-            popper-class="account-popover"
-            :show-arrow="false"
-            :offset="4"
-          >
-            <template #reference>
-              <div class="account-trigger">
-                <el-avatar
-                  :shape="customAvatar ? 'square' : 'circle'"
-                  size="small"
-                  :class="[
-                    'account-avatar',
-                    {
-                      'bg-gradient-to-br from-[#b37feb] to-[#8553cf]': !customAvatar,
-                      'has-custom': !!customAvatar,
-                    },
-                  ]"
-                  :src="customAvatar || ''"
-                >
-                  {{ !customAvatar ? avatarInitial : '' }}
-                </el-avatar>
-                <span class="account-name">{{ accountName }}</span>
-              </div>
-            </template>
-            <div
-              class="account-panel rounded-[16px] border border-[var(--color-border)] bg-[var(--color-card-background)] shadow-[0_4px_12px_rgba(0,0,0,0.05)]"
-            >
-              <div class="account-header">
-                <el-avatar
-                  :shape="customAvatar ? 'square' : 'circle'"
-                  :size="48"
-                  :class="[
-                    'account-avatar',
-                    {
-                      'bg-gradient-to-br from-[#b37feb] to-[#8553cf]': !customAvatar,
-                      'has-custom': !!customAvatar,
-                    },
-                  ]"
-                  :src="customAvatar || ''"
-                >
-                  {{ !customAvatar ? avatarInitial : '' }}
-                </el-avatar>
-                <div class="account-meta">
-                  <h4>{{ accountName }}</h4>
-                  <p>{{ accountRoleLabel }}</p>
-                </div>
-              </div>
-              <div class="account-actions">
-                <UiButton variant="outline" @click="go('/dashboard')">
-                  <span>个人面板</span>
-                </UiButton>
-                <UiButton v-if="canAccessAdmin" variant="outline" @click="go('/admin')">
-                  <span>管理面板</span>
-                </UiButton>
-                <UiButton variant="outline-danger" @click="logout">
-                  <span>退出登录</span>
-                </UiButton>
-              </div>
-            </div>
-          </el-popover>
+            :avatar-src="customAvatar || ''"
+            :account-name="accountName"
+            :role-label="accountRoleLabel"
+            :can-access-admin="canAccessAdmin"
+            @navigate="go"
+            @logout="logout"
+          />
 
           <!-- Auth Buttons -->
           <template v-if="authReady && !isLogged">
@@ -193,7 +137,7 @@ import { useNotificationIndicator } from '@/composables/useNotificationIndicator
 import { useTheme } from '@/composables/useTheme'
 import { appStorage } from '@/storage'
 import AppFooter from '@/components/layout/AppFooter.vue'
-import UiButton from '@/components/ui/UiButton.vue'
+import AccountMenu from '@/components/layout/AccountMenu.vue'
 import {
   buildDefaultOpeneds,
   buildDrawerLinks,
@@ -283,7 +227,6 @@ const accountRoleLabel = computed(() =>
   isSuperAdmin.value ? '超级管理员' : canAccessAdmin.value ? '管理员' : '普通用户',
 )
 const accountName = computed(() => user.value?.display_name || user.value?.email || '用户')
-const avatarInitial = computed(() => (accountName.value || 'U').slice(0, 1).toUpperCase())
 
 let resizeObserver: ResizeObserver | null = null
 let unreadRefreshTimer: number | null = null
@@ -486,7 +429,7 @@ onUnmounted(() => {
 
 /* Home Layout UI Enforcement - Scoped to .layout-header */
 .is-home-layout .layout-header .logo,
-.is-home-layout .layout-header .account-name,
+.is-home-layout .layout-header :deep(.account-name),
 .is-home-layout .layout-header .theme-toggle,
 .is-home-layout .layout-header .mobile-menu-btn,
 .is-home-layout .layout-header :deep(.el-menu-item),
@@ -494,7 +437,7 @@ onUnmounted(() => {
   color: #fff !important;
 }
 
-.is-home-layout .layout-header .account-trigger:hover,
+.is-home-layout .layout-header :deep(.account-trigger:hover),
 .is-home-layout .layout-header .logo:hover,
 .is-home-layout .layout-header .theme-toggle:hover,
 .is-home-layout .layout-header .mobile-menu-btn:hover,
@@ -636,74 +579,6 @@ onUnmounted(() => {
   padding: 0 !important;
 }
 
-/* Account */
-.account-trigger {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  transition: background-color 0.2s;
-}
-.account-trigger:hover {
-  background: var(--color-background-soft);
-}
-.account-name {
-  font-size: 14px;
-  color: var(--color-text);
-  font-weight: 500;
-}
-.account-popover {
-  padding: 0 !important;
-  background: var(--color-popover-background) !important;
-  border: 1px solid var(--color-border) !important;
-}
-
-.account-panel {
-  padding: 20px;
-  width: 100%;
-  border: none !important;
-}
-.account-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-border);
-}
-.account-meta h4 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-heading);
-}
-.account-meta p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--color-text-light);
-}
-.account-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-}
-.account-actions :deep(.el-button) {
-  width: 100%;
-}
-.account-actions :deep(.el-button + .el-button) {
-  margin-left: 0 !important;
-}
-
-.account-avatar.has-custom {
-  background: transparent !important;
-}
-.account-avatar.has-custom :deep(img) {
-  object-fit: contain;
-}
-
 .filing-icon {
   width: 13px;
 }
@@ -749,7 +624,7 @@ onUnmounted(() => {
     display: none;
   }
 
-  .account-name {
+  :deep(.account-name) {
     display: none;
   }
 }
