@@ -119,6 +119,66 @@ func TestPermissionServiceSetAndClearOverrideInvalidatesAuthCacheExactly(t *test
 	}
 }
 
+func TestPermissionServiceClearOverrideSendsExactSystemNotice(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-perms-clear-notice@test.com", "Password123", "AdminPermsClearNotice", true)
+	target := testutil.CreateUser(t, db, "target-perms-clear-notice@test.com", "Password123", "TargetPermsClearNotice", false)
+	other := testutil.CreateUser(t, db, "other-perms-clear-notice@test.com", "Password123", "OtherPermsClearNotice", false)
+	svc := permissionssvc.PermissionService{DB: db, Redis: redisstore.NewMemoryStore()}
+	actor := actorWithPermissions(adminUser.ID, "permission.grant.any", "permission.revoke.any")
+
+	if err := svc.SetUserPermissionOverride(ctx, actor, target.ID, "notice.create.any", "allow"); err != nil {
+		t.Fatal(err)
+	}
+	beforeClear := database.NowMS()
+	if err := svc.ClearUserPermissionOverride(ctx, actor, target.ID, "notice.create.any"); err != nil {
+		t.Fatal(err)
+	}
+	afterClear := database.NowMS()
+
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notices := page["items"].([]model.NoticeView)
+	if page["page_size"] != 2 || page["has_next"] != false || len(notices) != 2 {
+		t.Fatalf("target permission notice page mismatch: page=%#v items=%#v", page, notices)
+	}
+
+	clearNotice := permissionNoticeByTitle(t, notices, "权限已更新：单项权限覆盖已移除")
+	wantContent := "你的单项权限覆盖已被移除。\n\n权限：`notice.create.any`\n\n说明：发布通知\n\n原覆盖结果：允许\n\n当前结果将由你的角色和其他权限规则决定。"
+	if clearNotice.Summary != "你的单项权限覆盖已被移除，详情请查看通知。" ||
+		clearNotice.ContentMarkdown != wantContent ||
+		clearNotice.Type != noticesvc.TypeSystem ||
+		clearNotice.DisplayMode != noticesvc.DisplayDetail ||
+		clearNotice.Level != noticesvc.LevelInfo ||
+		clearNotice.Audience != noticesvc.AudienceTargeted ||
+		!clearNotice.Enabled ||
+		clearNotice.Pinned ||
+		!clearNotice.Dismissible ||
+		clearNotice.Read ||
+		clearNotice.CreatedBy != nil ||
+		clearNotice.LinkText != "" ||
+		clearNotice.LinkURL != "" {
+		t.Fatalf("clear override notice mismatch: %#v", clearNotice)
+	}
+	const permissionNoticeTTLMS = int64(30 * 24 * 60 * 60 * 1000)
+	if clearNotice.EndsAt == nil ||
+		*clearNotice.EndsAt < beforeClear+permissionNoticeTTLMS ||
+		*clearNotice.EndsAt > afterClear+permissionNoticeTTLMS {
+		t.Fatalf("clear override notice ends_at mismatch: ends_at=%v before=%d after=%d", clearNotice.EndsAt, beforeClear, afterClear)
+	}
+
+	otherPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: other.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherPage["page_size"] != 0 || len(otherPage["items"].([]model.NoticeView)) != 0 {
+		t.Fatalf("permission notices must be targeted only: %#v", otherPage)
+	}
+}
+
 func TestPermissionServiceSetOverrideReconcilesOAuthDependentsExactly(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()
