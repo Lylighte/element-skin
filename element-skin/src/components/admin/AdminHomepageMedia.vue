@@ -84,10 +84,18 @@ import {
 } from '@/api/admin/homepage-media'
 import HomepageMediaCard from '@/components/admin/homepage/HomepageMediaCard.vue'
 import HomepageMediaDialog from '@/components/admin/homepage/HomepageMediaDialog.vue'
+import {
+  buildHomepageMediaPatch,
+  changedHomepageMediaItems,
+  cloneHomepageMediaItems,
+  homepageMediaOrderChanged,
+  homepageMediaPreviewUrl,
+  homepageMediaSnapshot,
+  isHomepageMediaDirty,
+  normalizeHomepageMedia,
+} from '@/components/admin/homepage/homepageMediaState'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { getErrorMessage } from '@/utils/error'
-
-type HomepageMediaPatch = Parameters<typeof patchHomepageMedia>[1]
 
 const items = ref<HomepageMedia[]>([])
 const savedItems = ref<HomepageMedia[]>([])
@@ -114,26 +122,22 @@ let ghostOffsetY = 0
 let lastReorderKey: string | null = null
 
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value))
-const hasChanges = computed(() => snapshot(items.value) !== snapshot(savedItems.value))
+const hasChanges = computed(
+  () => homepageMediaSnapshot(items.value) !== homepageMediaSnapshot(savedItems.value),
+)
 const savedById = computed(() => new Map(savedItems.value.map((item) => [item.id, item])))
 
-function mediaUrl(item: HomepageMedia, face?: string) {
-  const base = import.meta.env.BASE_URL
-  const suffix = face ? `${item.storage_path}/${face}` : item.storage_path
-  return `${base}static/carousel/${suffix}`.replace(/\/+/g, '/')
-}
-
 function previewUrl(item: HomepageMedia) {
-  return item.type === 'panorama' ? mediaUrl(item, 'panorama_0.png') : mediaUrl(item)
+  return homepageMediaPreviewUrl(item, import.meta.env.BASE_URL)
 }
 
 async function fetchItems() {
   loading.value = true
   try {
     const res = await listHomepageMedia()
-    const normalized = res.data.map(normalizeItem)
-    items.value = cloneItems(normalized)
-    savedItems.value = cloneItems(normalized)
+    const normalized = res.data.map(normalizeHomepageMedia)
+    items.value = cloneHomepageMediaItems(normalized)
+    savedItems.value = cloneHomepageMediaItems(normalized)
   } catch {
     ElMessage.error('获取首页媒体失败')
   } finally {
@@ -141,49 +145,10 @@ async function fetchItems() {
   }
 }
 
-function normalizeItem(item: HomepageMedia): HomepageMedia {
-  return {
-    ...item,
-    duration_ms: Number(item.duration_ms),
-    enabled: Boolean(item.enabled),
-    overlay_opacity_light: Number(item.overlay_opacity_light),
-    overlay_opacity_dark: Number(item.overlay_opacity_dark),
-    start_yaw: Number(item.start_yaw),
-    start_pitch: Number(item.start_pitch),
-    yaw_speed_dps: Number(item.yaw_speed_dps),
-    pitch_speed_dps: Number(item.pitch_speed_dps),
-  }
-}
-
-function cloneItems(source: HomepageMedia[]) {
-  return source.map((item) => ({ ...item }))
-}
-
-function snapshot(source: HomepageMedia[]) {
-  return JSON.stringify(source.map(snapshotItem))
-}
-
-function snapshotItem(item: HomepageMedia) {
-  return {
-    id: item.id,
-    title: item.title,
-    enabled: Boolean(item.enabled),
-    duration_ms: Number(item.duration_ms),
-    overlay_opacity_light: Number(item.overlay_opacity_light),
-    overlay_opacity_dark: Number(item.overlay_opacity_dark),
-    start_yaw: Number(item.start_yaw),
-    start_pitch: Number(item.start_pitch),
-    yaw_speed_dps: Number(item.yaw_speed_dps),
-    pitch_speed_dps: Number(item.pitch_speed_dps),
-  }
-}
-
 function isItemDirty(id: string) {
   const current = items.value.find((item) => item.id === id)
   const saved = savedById.value.get(id)
-  return current && saved
-    ? JSON.stringify(snapshotItem(current)) !== JSON.stringify(snapshotItem(saved))
-    : false
+  return isHomepageMediaDirty(current, saved)
 }
 
 function openDetails(item: HomepageMedia) {
@@ -197,7 +162,7 @@ function openDetails(item: HomepageMedia) {
 
 function updateSelectedItem(updated: HomepageMedia) {
   const item = items.value.find((candidate) => candidate.id === updated.id)
-  if (item) Object.assign(item, normalizeItem(updated))
+  if (item) Object.assign(item, normalizeHomepageMedia(updated))
 }
 
 async function uploadImage({ file }: UploadRequestOptions) {
@@ -236,24 +201,18 @@ async function saveChanges() {
   if (!hasChanges.value) return
   saving.value = true
   try {
-    const savedMap = savedById.value
-    const changedItems = items.value.filter((item) => {
-      const saved = savedMap.get(item.id)
-      return !saved || JSON.stringify(snapshotItem(item)) !== JSON.stringify(snapshotItem(saved))
-    })
-    const orderChanged =
-      items.value.map((item) => item.id).join(',') !==
-      savedItems.value.map((item) => item.id).join(',')
+    const changedItems = changedHomepageMediaItems(items.value, savedItems.value)
+    const orderChanged = homepageMediaOrderChanged(items.value, savedItems.value)
 
     for (const item of changedItems) {
-      const res = await patchHomepageMedia(item.id, buildPatch(item))
-      Object.assign(item, normalizeItem(res.data))
+      const res = await patchHomepageMedia(item.id, buildHomepageMediaPatch(item))
+      Object.assign(item, normalizeHomepageMedia(res.data))
     }
     if (orderChanged) {
       await reorderHomepageMedia(items.value.map((item) => item.id))
     }
 
-    savedItems.value = cloneItems(items.value.map(normalizeItem))
+    savedItems.value = cloneHomepageMediaItems(items.value.map(normalizeHomepageMedia))
     ElMessage.success('配置已保存')
   } catch (e: unknown) {
     ElMessage.error(getErrorMessage(e, '保存失败'))
@@ -261,23 +220,6 @@ async function saveChanges() {
   } finally {
     saving.value = false
   }
-}
-
-function buildPatch(item: HomepageMedia): HomepageMediaPatch {
-  const body: HomepageMediaPatch = {
-    title: item.title,
-    enabled: item.enabled,
-    duration_ms: Number(item.duration_ms),
-    overlay_opacity_light: Number(item.overlay_opacity_light),
-    overlay_opacity_dark: Number(item.overlay_opacity_dark),
-  }
-  if (item.type === 'panorama') {
-    body.start_yaw = Number(item.start_yaw)
-    body.start_pitch = Number(item.start_pitch)
-    body.yaw_speed_dps = Number(item.yaw_speed_dps)
-    body.pitch_speed_dps = Number(item.pitch_speed_dps)
-  }
-  return body
 }
 
 function startDrag(id: string, event: DragEvent) {
