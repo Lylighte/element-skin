@@ -95,164 +95,13 @@
         @expand-change="handleExpandChange"
       >
         <el-table-column type="expand">
-          <template #default="{ row }">
-            <div class="expanded-wrapper">
-              <div class="config-section">
-                <div
-                  class="text-[13px] font-semibold text-[var(--color-text-light)] mb-3 uppercase tracking-wide"
-                >
-                  API 接口定义
-                </div>
-                <div class="url-grid">
-                  <div class="url-item">
-                    <label>Session URL</label>
-                    <el-input
-                      v-model="row.session_url"
-                      placeholder="https://sessionserver.mojang.com"
-                    />
-                  </div>
-                  <div class="url-item">
-                    <label>Account URL</label>
-                    <el-input v-model="row.account_url" placeholder="https://api.mojang.com" />
-                  </div>
-                  <div class="url-item">
-                    <label>Services URL</label>
-                    <el-input
-                      v-model="row.services_url"
-                      placeholder="https://api.minecraftservices.com"
-                    />
-                  </div>
-                  <div class="url-item">
-                    <label>材质域名 (逗号分隔)</label>
-                    <el-input
-                      v-model="row.skin_domains_text"
-                      placeholder="textures.minecraft.net"
-                    />
-                  </div>
-                  <div class="url-item">
-                    <label>缓存 TTL (秒)</label>
-                    <el-input-number
-                      v-model="row.cache_ttl"
-                      :min="0"
-                      :controls="true"
-                      class="w-full"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div class="config-section mt-6">
-                <div
-                  class="text-[13px] font-semibold text-[var(--color-text-light)] mb-3 uppercase tracking-wide"
-                >
-                  功能与权限控制
-                </div>
-                <div class="features-panel">
-                  <div class="feature-card-item" :class="{ active: row.enable_profile }">
-                    <div class="flex items-start gap-3">
-                      <el-switch v-model="row.enable_profile" />
-                      <div class="flex flex-col">
-                        <span class="text-sm font-semibold text-[var(--color-heading)]"
-                          >Profile 转发</span
-                        >
-                        <span class="text-[11px] text-[var(--color-text-light)] mt-1"
-                          >允许向此端点查询 UUID 和皮肤材质</span
-                        >
-                      </div>
-                    </div>
-                  </div>
-                  <div class="feature-card-item" :class="{ active: row.enable_hasjoined }">
-                    <div class="flex items-start gap-3">
-                      <el-switch v-model="row.enable_hasjoined" />
-                      <div class="flex flex-col">
-                        <span class="text-sm font-semibold text-[var(--color-heading)]"
-                          >Auth 认证回退</span
-                        >
-                        <span class="text-[11px] text-[var(--color-text-light)] mt-1"
-                          >本地验证失败后尝试以此端点验证 session</span
-                        >
-                      </div>
-                    </div>
-                  </div>
-                  <div class="feature-card-item" :class="{ active: row.enable_whitelist }">
-                    <div class="flex items-start gap-3">
-                      <el-switch
-                        v-model="row.enable_whitelist"
-                        @change="(val: string | number | boolean) => onWhitelistToggle(row, val)"
-                      />
-                      <div class="flex flex-col">
-                        <span class="text-sm font-semibold text-[var(--color-heading)]"
-                          >开启白名单</span
-                        >
-                        <span class="text-[11px] text-[var(--color-text-light)] mt-1"
-                          >仅允许特定玩家使用此端点进行验证</span
-                        >
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Whitelist Section -->
-              <transition name="el-zoom-in-top">
-                <div v-if="row.enable_whitelist" class="whitelist-box mt-6">
-                  <div class="section-header-small">
-                    <div
-                      class="text-[13px] font-semibold text-[var(--color-text-light)] mb-3 uppercase tracking-wide"
-                    >
-                      端点白名单列表
-                      <el-tag
-                        v-if="hasWhitelistChanges(row)"
-                        size="small"
-                        type="warning"
-                        effect="dark"
-                        class="ml-2"
-                        >有未保存更改</el-tag
-                      >
-                    </div>
-                    <div class="add-user-form-box">
-                      <el-input
-                        v-model="row._new_user"
-                        placeholder="输入 Minecraft ID"
-                        size="small"
-                        @keyup.enter="addUser(row)"
-                      >
-                        <template #append>
-                          <el-button @click="addUser(row)">添加</el-button>
-                        </template>
-                      </el-input>
-                    </div>
-                  </div>
-
-                  <div class="whitelist-table-wrapper">
-                    <el-table
-                      :data="row._whitelist || []"
-                      size="small"
-                      class="inner-table"
-                      max-height="250"
-                    >
-                      <el-table-column prop="username" label="玩家 ID" />
-                      <el-table-column prop="created_at" label="添加时间" width="160">
-                        <template #default="scope">
-                          {{ new Date(scope.row.created_at).toLocaleDateString() }}
-                        </template>
-                      </el-table-column>
-                      <el-table-column label="操作" width="60" align="center">
-                        <template #default="scope">
-                          <el-button
-                            type="danger"
-                            :icon="Delete"
-                            size="small"
-                            @click="removeUser(row, scope.row.username)"
-                            link
-                          />
-                        </template>
-                      </el-table-column>
-                    </el-table>
-                  </div>
-                </div>
-              </transition>
-            </div>
+          <template #default="{ $index }">
+            <FallbackEndpointEditor
+              v-model:row="fallbacks[$index]!"
+              @load-whitelist="fetchWhitelist"
+              @add-user="addUser"
+              @remove-user="removeUser"
+            />
           </template>
         </el-table-column>
 
@@ -337,44 +186,13 @@ import {
 } from '@element-plus/icons-vue'
 import { getAdminSettingsGroup, saveAdminSettingsGroup } from '@/api/admin/settings'
 import { getWhitelist, addWhitelistUser, removeWhitelistUser } from '@/api/admin/whitelist'
-import type { WhitelistEntry } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
+import FallbackEndpointEditor from '@/components/admin/mojang/FallbackEndpointEditor.vue'
+import type { FallbackEndpoint, FallbackRow } from '@/components/admin/mojang/types'
+import { hasWhitelistChanges } from '@/components/admin/mojang/whitelist'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
 import { getErrorMessage } from '@/utils/error'
-
-interface FallbackRow {
-  id: number | null
-  rowKey: string | number
-  priority: number
-  session_url: string
-  account_url: string
-  services_url: string
-  cache_ttl: number
-  enable_profile: boolean
-  enable_hasjoined: boolean
-  enable_whitelist: boolean
-  note: string
-  skin_domains_text: string
-  _whitelist: WhitelistEntry[]
-  _initialWhitelist: WhitelistEntry[]
-  _new_user: string
-  _loaded: boolean
-}
-
-interface FallbackEndpoint {
-  id: number | null
-  priority: number
-  session_url: string
-  account_url: string
-  services_url: string
-  cache_ttl: number
-  enable_profile: boolean
-  enable_hasjoined: boolean
-  enable_whitelist: boolean
-  note?: string
-  skin_domains?: string[] | string | null
-}
 
 const settings = ref<{ fallback_strategy: string; fallback_probe_interval: number }>({
   fallback_strategy: 'serial',
@@ -391,9 +209,7 @@ async function fetchSettings() {
     settings.value.fallback_probe_interval =
       Number.isFinite(interval) && interval >= 60 ? interval : 600
 
-    const raw = Array.isArray(res.data.fallbacks)
-      ? (res.data.fallbacks as FallbackEndpoint[])
-      : []
+    const raw = Array.isArray(res.data.fallbacks) ? (res.data.fallbacks as FallbackEndpoint[]) : []
 
     const newFallbacks = raw.map((item, index) => {
       const existing = fallbacks.value.find(
@@ -498,19 +314,6 @@ async function saveSettings() {
   }
 }
 
-function hasWhitelistChanges(row: FallbackRow) {
-  if (!row._loaded) return false
-  const initial = row._initialWhitelist
-    .map((u) => u.username.toLowerCase())
-    .sort()
-    .join(',')
-  const current = row._whitelist
-    .map((u) => u.username.toLowerCase())
-    .sort()
-    .join(',')
-  return initial !== current
-}
-
 function addFallback() {
   fallbacks.value.push(
     reactive<FallbackRow>({
@@ -568,12 +371,6 @@ function syncPriority() {
 function handleExpandChange(row: FallbackRow, expandedRows: FallbackRow[]) {
   const isExpanded = expandedRows.find((r) => r.rowKey === row.rowKey)
   if (isExpanded && row.enable_whitelist && row.id && !row._loaded) {
-    fetchWhitelist(row)
-  }
-}
-
-function onWhitelistToggle(row: FallbackRow, val: string | number | boolean) {
-  if (val && row.id && !row._loaded) {
     fetchWhitelist(row)
   }
 }
@@ -650,75 +447,5 @@ onMounted(fetchSettings)
 }
 .i-whitelist {
   color: var(--el-color-warning);
-}
-
-/* Expanded Area */
-.expanded-wrapper {
-  padding: 24px 30px;
-  background: var(--color-background-soft);
-  border-top: 1px solid var(--color-border);
-}
-.url-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-.url-item label {
-  display: block;
-  font-size: 12px;
-  color: var(--color-text-light);
-  margin-bottom: 6px;
-}
-
-/* Features Panel */
-.features-panel {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-.feature-card-item {
-  background: var(--color-card-background);
-  border: 1px solid var(--color-border);
-  padding: 16px;
-  border-radius: 10px;
-  transition: var(--transition-base);
-}
-.feature-card-item.active {
-  border-color: var(--el-color-primary-light-5);
-  background: rgba(64, 158, 255, 0.05);
-}
-/* Whitelist Section */
-.whitelist-box {
-  background: var(--color-card-background);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 20px;
-}
-.section-header-small {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-}
-.add-user-form-box {
-  width: 300px;
-}
-
-@media (max-width: 768px) {
-  .url-grid,
-  .features-panel {
-    grid-template-columns: 1fr;
-  }
-  .expanded-wrapper {
-    padding: 16px;
-  }
-  .section-header-small {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .add-user-form-box {
-    width: 100%;
-  }
 }
 </style>
