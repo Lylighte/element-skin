@@ -39,6 +39,43 @@ func TestAccountServiceGrantAndRevokeRolesExactly(t *testing.T) {
 	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("grant role should invalidate auth cache exactly, got %v", err)
 	}
+	grantPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grantNotices := grantPage["items"].([]model.NoticeView)
+	if grantPage["page_size"] != 1 || grantPage["has_next"] != false || len(grantNotices) != 1 {
+		t.Fatalf("grant role notice page mismatch: page=%#v items=%#v", grantPage, grantNotices)
+	}
+	grantNotice := grantNotices[0]
+	if grantNotice.Title != "权限已更新：角色已授予" ||
+		grantNotice.Summary != "你的站点角色已更新，详情请查看通知。" ||
+		grantNotice.ContentMarkdown != "你的站点角色已被授予：管理员（admin）。" ||
+		grantNotice.Type != noticesvc.TypeSystem ||
+		grantNotice.DisplayMode != noticesvc.DisplayDetail ||
+		grantNotice.Level != noticesvc.LevelInfo ||
+		grantNotice.Audience != noticesvc.AudienceTargeted ||
+		grantNotice.CreatedBy != nil {
+		t.Fatalf("grant role notice mismatch: %#v", grantNotice)
+	}
+
+	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.GrantUserRole(ctx, actor, target.ID, permission.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if cached, err := cache.GetAuthUser(ctx, target.ID); err != nil || cached.ID != target.ID {
+		t.Fatalf("duplicate role grant must not invalidate cache: cached=%#v err=%v", cached, err)
+	}
+	duplicateGrantPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicateGrantNotices := duplicateGrantPage["items"].([]model.NoticeView)
+	if duplicateGrantPage["page_size"] != 1 || len(duplicateGrantNotices) != 1 || duplicateGrantNotices[0].ID != grantNotice.ID {
+		t.Fatalf("duplicate role grant must not create notices: page=%#v items=%#v", duplicateGrantPage, duplicateGrantNotices)
+	}
 
 	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, time.Hour); err != nil {
 		t.Fatal(err)
@@ -51,6 +88,24 @@ func TestAccountServiceGrantAndRevokeRolesExactly(t *testing.T) {
 	}
 	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("revoke role should invalidate auth cache exactly, got %v", err)
+	}
+	revokePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	revokeNotices := revokePage["items"].([]model.NoticeView)
+	if revokePage["page_size"] != 2 || revokePage["has_next"] != false || len(revokeNotices) != 2 {
+		t.Fatalf("revoke role notice page mismatch: page=%#v items=%#v", revokePage, revokeNotices)
+	}
+	revokeNotice := accountNoticeByTitle(t, revokeNotices, "权限已更新：角色已撤销")
+	if revokeNotice.Summary != "你的站点角色已更新，详情请查看通知。" ||
+		revokeNotice.ContentMarkdown != "你的站点角色已被撤销：管理员（admin）。" ||
+		revokeNotice.Type != noticesvc.TypeSystem ||
+		revokeNotice.DisplayMode != noticesvc.DisplayDetail ||
+		revokeNotice.Level != noticesvc.LevelInfo ||
+		revokeNotice.Audience != noticesvc.AudienceTargeted ||
+		revokeNotice.CreatedBy != nil {
+		t.Fatalf("revoke role notice mismatch: %#v", revokeNotice)
 	}
 
 	if err := svc.GrantUserRole(ctx, permission.Actor{}, target.ID, permission.RoleAdmin); !httpErrorIs(err, http.StatusForbidden, "permission denied") {
