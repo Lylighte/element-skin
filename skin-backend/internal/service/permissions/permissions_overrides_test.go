@@ -60,6 +60,73 @@ func TestPermissionServiceSetAndClearOverrideInvalidatesAuthCacheExactly(t *test
 	}
 }
 
+func TestPermissionServiceSetOverrideSendsExactSystemNoticeOnlyOnChange(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	adminUser := testutil.CreateUser(t, db, "admin-perms-set-notice@test.com", "Password123", "AdminPermsSetNotice", true)
+	target := testutil.CreateUser(t, db, "target-perms-set-notice@test.com", "Password123", "TargetPermsSetNotice", false)
+	cache := redisstore.NewMemoryStore()
+	svc := permissionssvc.PermissionService{DB: db, Redis: cache}
+	actor := actorWithPermissions(adminUser.ID, "permission.grant.any")
+	beforeSet := database.NowMS()
+
+	if err := svc.SetUserPermissionOverride(ctx, actor, target.ID, "notice.create.any", "allow"); err != nil {
+		t.Fatal(err)
+	}
+	afterSet := database.NowMS()
+
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notices := page["items"].([]model.NoticeView)
+	if page["page_size"] != 1 || page["has_next"] != false || len(notices) != 1 {
+		t.Fatalf("set override notice page mismatch: page=%#v items=%#v", page, notices)
+	}
+	notice := notices[0]
+	wantContent := "你的单项权限已被调整。\n\n权限：`notice.create.any`\n\n说明：发布通知\n\n结果：允许"
+	if notice.Title != "权限已更新：单项权限已调整" ||
+		notice.Summary != "你的单项权限已被管理员调整，详情请查看通知。" ||
+		notice.ContentMarkdown != wantContent ||
+		notice.Type != noticesvc.TypeSystem ||
+		notice.DisplayMode != noticesvc.DisplayDetail ||
+		notice.Level != noticesvc.LevelInfo ||
+		notice.Audience != noticesvc.AudienceTargeted ||
+		!notice.Enabled ||
+		notice.Pinned ||
+		!notice.Dismissible ||
+		notice.Read ||
+		notice.CreatedBy != nil ||
+		notice.LinkText != "" ||
+		notice.LinkURL != "" {
+		t.Fatalf("set override notice mismatch: %#v", notice)
+	}
+	const permissionNoticeTTLMS = int64(30 * 24 * 60 * 60 * 1000)
+	if notice.EndsAt == nil ||
+		*notice.EndsAt < beforeSet+permissionNoticeTTLMS ||
+		*notice.EndsAt > afterSet+permissionNoticeTTLMS {
+		t.Fatalf("set override notice ends_at mismatch: ends_at=%v before=%d after=%d", notice.EndsAt, beforeSet, afterSet)
+	}
+
+	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetUserPermissionOverride(ctx, actor, target.ID, "notice.create.any", "allow"); err != nil {
+		t.Fatal(err)
+	}
+	if cached, err := cache.GetAuthUser(ctx, target.ID); err != nil || cached.ID != target.ID {
+		t.Fatalf("duplicate override must not invalidate cache: cached=%#v err=%v", cached, err)
+	}
+	duplicatePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicateNotices := duplicatePage["items"].([]model.NoticeView)
+	if duplicatePage["page_size"] != 1 || len(duplicateNotices) != 1 || duplicateNotices[0].ID != notice.ID {
+		t.Fatalf("duplicate override must not create notices: page=%#v items=%#v", duplicatePage, duplicateNotices)
+	}
+}
+
 func TestPermissionServiceClearOverrideSendsExactSystemNotice(t *testing.T) {
 	db, _ := testutil.NewTestAppTB(t)
 	ctx := context.Background()

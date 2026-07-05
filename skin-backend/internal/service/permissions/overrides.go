@@ -34,6 +34,13 @@ func (s PermissionService) SetUserPermissionOverride(ctx context.Context, actor 
 	if err := ensurePermissionOverrideAllowed(actor, targetID, def); err != nil {
 		return err
 	}
+	currentEffect, err := s.permissionOverrideEffect(ctx, targetID, code)
+	if err != nil {
+		return err
+	}
+	if currentEffect == effect {
+		return nil
+	}
 	if err := s.DB.Permissions.SetSubjectPermissionOverride(ctx, targetID, def, effect, actor.SubjectID); err != nil {
 		return err
 	}

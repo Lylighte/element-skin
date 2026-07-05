@@ -27,6 +27,13 @@ func (s AccountService) GrantUserRole(ctx context.Context, actor permission.Acto
 	if err := s.ensureProtectedSubjectMutationAllowed(ctx, actor, targetID); err != nil {
 		return err
 	}
+	hasRole, err := s.DB.Permissions.UserHasRole(ctx, targetID, roleID)
+	if err != nil {
+		return err
+	}
+	if hasRole {
+		return nil
+	}
 	if err := s.DB.Permissions.GrantRole(ctx, targetID, roleID, actor.SubjectID); err != nil {
 		return err
 	}
