@@ -183,6 +183,7 @@ import CursorPager from '@/components/common/CursorPager.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
 import TextureCard from '@/components/textures/TextureCard.vue'
 import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
+import { textureAssetUrl as texturesUrl } from '@/components/textures/textureAssets'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
@@ -209,12 +210,6 @@ const typeFilter = ref<string | null>(null)
 const showPreview = ref(false)
 const selectedItem = ref<Texture | null>(null)
 const previewNote = ref('')
-
-function texturesUrl(hash: string | null | undefined) {
-  if (!hash) return ''
-  const base = import.meta.env.BASE_URL
-  return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
-}
 
 function buildSearchParams(extraParams: TextureQueryParams = {}): TextureQueryParams {
   const params: TextureQueryParams = { limit, ...extraParams }

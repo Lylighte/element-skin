@@ -126,6 +126,7 @@ import RolePreviewDialog from '@/components/dashboard/roles/RolePreviewDialog.vu
 import CreateRoleDialog from '@/components/dashboard/roles/CreateRoleDialog.vue'
 import MicrosoftImportDialog from '@/components/dashboard/roles/MicrosoftImportDialog.vue'
 import RemoteYggImportDialog from '@/components/dashboard/roles/RemoteYggImportDialog.vue'
+import { textureAssetUrl as texturesUrl } from '@/components/textures/textureAssets'
 import { useMicrosoftProfileImport } from '@/components/dashboard/roles/useMicrosoftProfileImport'
 import { useRemoteYggProfileImport } from '@/components/dashboard/roles/useRemoteYggProfileImport'
 import { useCursorPagination } from '@/composables/useCursorPagination'
@@ -202,12 +203,6 @@ const {
 function openPreviewDialog(profile: Profile) {
   selectedProfile.value = profile
   showPreviewDialog.value = true
-}
-
-function texturesUrl(hash: string | null | undefined) {
-  if (!hash) return ''
-  const base = import.meta.env.BASE_URL
-  return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
 }
 
 async function fetchProfiles() {

@@ -71,6 +71,7 @@ import CursorPager from '@/components/common/CursorPager.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
 import AdminRoleCard from '@/components/admin/roles/AdminRoleCard.vue'
 import AdminRolePreviewDialog from '@/components/admin/roles/AdminRolePreviewDialog.vue'
+import { textureAssetUrl as texturesUrl } from '@/components/textures/textureAssets'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import {
   getAdminProfiles,
@@ -96,12 +97,6 @@ const activeSearchQuery = ref('')
 const showPreview = ref(false)
 const selectedProfile = ref<Profile | null>(null)
 const previewName = ref('')
-
-function texturesUrl(hash: string | null | undefined) {
-  if (!hash) return ''
-  const base = import.meta.env.BASE_URL
-  return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
-}
 
 function buildSearchParams(extraParams: Record<string, unknown> = {}) {
   const params: Record<string, unknown> = { limit, ...extraParams }
