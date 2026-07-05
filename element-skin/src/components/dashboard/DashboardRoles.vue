@@ -39,7 +39,10 @@
     </div>
 
     <div class="min-h-[400px]" v-loading="loading" element-loading-background="transparent">
-      <div class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6" v-if="profiles.length > 0">
+      <div
+        class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6"
+        v-if="profiles.length > 0"
+      >
         <RoleCard
           v-for="(profile, index) in profiles"
           :key="profile.id"
@@ -123,6 +126,7 @@ import RolePreviewDialog from '@/components/dashboard/roles/RolePreviewDialog.vu
 import CreateRoleDialog from '@/components/dashboard/roles/CreateRoleDialog.vue'
 import MicrosoftImportDialog from '@/components/dashboard/roles/MicrosoftImportDialog.vue'
 import RemoteYggImportDialog from '@/components/dashboard/roles/RemoteYggImportDialog.vue'
+import { useRemoteYggProfileImport } from '@/components/dashboard/roles/useRemoteYggProfileImport'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { useAvatar } from '@/composables/useAvatar'
 import {
@@ -138,7 +142,6 @@ import {
   getMicrosoftProfile,
   importMicrosoftProfile as apiImportMicrosoftProfile,
 } from '@/api/microsoft'
-import { getRemoteYggProfiles, importRemoteYggProfiles } from '@/api/remote-ygg'
 import type { MicrosoftGameProfile, Profile } from '@/api/types'
 import { getErrorMessage } from '@/utils/error'
 
@@ -167,14 +170,24 @@ const importing = ref(false)
 const showPreviewDialog = ref(false)
 const selectedProfile = ref<Profile | null>(null)
 
-const showYggImportDialog = ref(false)
-const yggStep = ref<'input' | 'select'>('input')
-const yggApiUrl = ref('')
-const yggUsername = ref('')
-const yggPassword = ref('')
-const yggProfiles = ref<Array<{ id: string; name: string }>>([])
-const selectedYggProfiles = ref<string[]>([])
-const yggLoading = ref(false)
+const {
+  showYggImportDialog,
+  yggStep,
+  yggApiUrl,
+  yggUsername,
+  yggPassword,
+  yggProfiles,
+  selectedYggProfiles,
+  yggLoading,
+  getYggProfiles,
+  importYggProfile,
+  handleYggDialogClose,
+} = useRemoteYggProfileImport({
+  async onImported() {
+    await refreshFirstPage()
+    if (fetchMe) await fetchMe()
+  },
+})
 
 function openPreviewDialog(profile: Profile) {
   selectedProfile.value = profile
@@ -388,83 +401,6 @@ function cancelMicrosoftLogin() {
   microsoftProfile.value = null
   microsoftImportToken.value = null
   importing.value = false
-}
-
-// Yggdrasil 相关函数
-async function getYggProfiles() {
-  if (!yggApiUrl.value || !yggUsername.value || !yggPassword.value) {
-    return ElMessage.warning('请填写完整信息')
-  }
-  try {
-    yggLoading.value = true
-    const res = await getRemoteYggProfiles({
-      api_url: yggApiUrl.value,
-      username: yggUsername.value,
-      password: yggPassword.value,
-    })
-
-    yggProfiles.value = res.data.profiles
-    if (yggProfiles.value.length === 0) {
-      ElMessage.warning('该账户下没有角色')
-    } else {
-      yggStep.value = 'select'
-      selectedYggProfiles.value = yggProfiles.value.map((profile) => profile.id)
-    }
-  } catch (e: unknown) {
-    ElMessage.error('获取失败: ' + getErrorMessage(e, '获取失败'))
-  } finally {
-    yggLoading.value = false
-  }
-}
-
-async function importYggProfile() {
-  const selectedProfiles = yggProfiles.value.filter((profile) =>
-    selectedYggProfiles.value.includes(profile.id),
-  )
-  if (selectedProfiles.length === 0) return
-
-  try {
-    yggLoading.value = true
-    const res = await importRemoteYggProfiles({
-      api_url: yggApiUrl.value,
-      profiles: selectedProfiles.map((profile) => ({
-        profile_id: profile.id,
-        profile_name: profile.name,
-      })),
-    })
-
-    const successCount = res.data?.success_count ?? 0
-    const failureCount = res.data?.failure_count ?? 0
-    if (failureCount > 0) {
-      ElMessage.warning(`已导入 ${successCount} 个角色，${failureCount} 个失败`)
-    } else {
-      ElMessage.success(`成功导入 ${successCount} 个角色`)
-    }
-    showYggImportDialog.value = false
-    await refreshFirstPage()
-    if (fetchMe) fetchMe()
-    resetYggImport()
-  } catch (e: unknown) {
-    ElMessage.error('导入失败: ' + getErrorMessage(e, '导入失败'))
-  } finally {
-    yggLoading.value = false
-  }
-}
-
-function resetYggImport() {
-  yggStep.value = 'input'
-  yggApiUrl.value = ''
-  yggUsername.value = ''
-  yggPassword.value = ''
-  yggProfiles.value = []
-  selectedYggProfiles.value = []
-}
-
-function handleYggDialogClose(done?: () => void) {
-  if (yggLoading.value) return
-  resetYggImport()
-  showYggImportDialog.value = false
-  if (done && typeof done === 'function') done()
 }
 
 onMounted(async () => {
