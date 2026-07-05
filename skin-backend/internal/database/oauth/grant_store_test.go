@@ -1,0 +1,260 @@
+package oauth_test
+
+import (
+	"context"
+	"reflect"
+	"testing"
+
+	permissiondb "element-skin/backend/internal/database/permission"
+	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/testutil"
+)
+
+func TestGrantAuthorizationCodeAndTokenLifecycle(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "oauth-grant@test.com", "pw", "OAuthGrant", false)
+	clientPermissions := permissionIDs("profile.read.owned", "texture.read.owned", "notice.read.owned")
+	grantPermissions := permissionIDs("profile.read.owned", "notice.read.owned")
+	client := model.OAuthClient{
+		ID:          "client-grant",
+		OwnerUserID: user.ID,
+		Name:        "Grant client",
+		Description: "Grant test",
+		RedirectURI: "https://app.example/callback",
+		WebsiteURL:  "https://app.example",
+		ClientType:  "confidential",
+		SecretHash:  "secret-hash",
+		Status:      "active",
+		CreatedAt:   1000,
+		UpdatedAt:   1000,
+	}
+	if err := db.OAuth.CreateClient(ctx, client, clientPermissions); err != nil {
+		t.Fatal(err)
+	}
+
+	grant := model.OAuthGrant{
+		ID:        "grant-1",
+		UserID:    user.ID,
+		SubjectID: permissiondb.SubjectIDForUser(user.ID),
+		ClientID:  client.ID,
+		Status:    "active",
+		CreatedAt: 1100,
+	}
+	if err := db.OAuth.CreateGrant(ctx, grant, grantPermissions); err != nil {
+		t.Fatal(err)
+	}
+	grants, err := db.OAuth.ListGrantsByUser(ctx, user.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(grants, []model.OAuthGrant{grant}) {
+		t.Fatalf("grants mismatch:\n got=%#v\nwant=%#v", grants, []model.OAuthGrant{grant})
+	}
+	gotGrantPermissions, err := db.OAuth.GrantPermissionIDs(ctx, grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotGrantPermissions, grantPermissions) {
+		t.Fatalf("grant permissions=%v want=%v", gotGrantPermissions, grantPermissions)
+	}
+	missingGrantPermissions, err := db.OAuth.GrantPermissionIDs(ctx, "missing-grant")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missingGrantPermissions) != 0 {
+		t.Fatalf("missing grant permissions should be empty: %v", missingGrantPermissions)
+	}
+	emptyGrantList, err := db.OAuth.ListGrantsByUser(ctx, "missing-user", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(emptyGrantList) != 0 {
+		t.Fatalf("missing user grant list should be empty: %#v", emptyGrantList)
+	}
+
+	code := model.OAuthAuthorizationCode{
+		CodeHash:            "code-hash-1",
+		ClientID:            client.ID,
+		UserID:              user.ID,
+		GrantID:             grant.ID,
+		RedirectURI:         client.RedirectURI,
+		CodeChallenge:       "challenge",
+		CodeChallengeMethod: "S256",
+		ExpiresAt:           5000,
+		CreatedAt:           1200,
+	}
+	if err := db.OAuth.CreateAuthorizationCode(ctx, code, grantPermissions); err != nil {
+		t.Fatal(err)
+	}
+	consumedAt := int64(1300)
+	wantCode := code
+	wantCode.ConsumedAt = &consumedAt
+	gotCode, gotCodePermissions, err := db.OAuth.ConsumeAuthorizationCode(ctx, code.CodeHash, consumedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotCode, &wantCode) {
+		t.Fatalf("consumed code mismatch:\n got=%#v\nwant=%#v", gotCode, &wantCode)
+	}
+	if !reflect.DeepEqual(gotCodePermissions, grantPermissions) {
+		t.Fatalf("code permissions=%v want=%v", gotCodePermissions, grantPermissions)
+	}
+	gotCode, gotCodePermissions, err = db.OAuth.ConsumeAuthorizationCode(ctx, code.CodeHash, 1400)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotCode != nil || gotCodePermissions != nil {
+		t.Fatalf("authorization code replay should return nils: code=%#v permissions=%v", gotCode, gotCodePermissions)
+	}
+	expiredCode := code
+	expiredCode.CodeHash = "expired-code"
+	expiredCode.ExpiresAt = 1500
+	if err := db.OAuth.CreateAuthorizationCode(ctx, expiredCode, grantPermissions); err != nil {
+		t.Fatal(err)
+	}
+	gotCode, gotCodePermissions, err = db.OAuth.ConsumeAuthorizationCode(ctx, expiredCode.CodeHash, 1600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotCode != nil || gotCodePermissions != nil {
+		t.Fatalf("expired authorization code should return nils: code=%#v permissions=%v", gotCode, gotCodePermissions)
+	}
+
+	refresh := model.OAuthToken{TokenHash: "refresh-1", ClientID: client.ID, UserID: user.ID, GrantID: grant.ID, ExpiresAt: 19000, CreatedAt: 2000}
+	if err := db.OAuth.CreateRefreshToken(ctx, refresh); err != nil {
+		t.Fatal(err)
+	}
+	gotRefresh, err := db.OAuth.GetRefreshToken(ctx, refresh.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotRefresh, &refresh) {
+		t.Fatalf("refresh token mismatch:\n got=%#v\nwant=%#v", gotRefresh, &refresh)
+	}
+
+	newRefresh := model.OAuthToken{TokenHash: "refresh-2", ClientID: client.ID, UserID: user.ID, GrantID: grant.ID, ExpiresAt: 20000, CreatedAt: 3000}
+	rotated, err := db.OAuth.RotateRefreshToken(ctx, refresh.TokenHash, newRefresh, 3100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rotated {
+		t.Fatal("RotateRefreshToken should rotate active refresh token")
+	}
+	gotRefresh, err = db.OAuth.GetRefreshToken(ctx, refresh.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRefresh.RevokedAt == nil || *gotRefresh.RevokedAt != 3100 {
+		t.Fatalf("old refresh revoked_at mismatch: %#v", gotRefresh)
+	}
+	gotRefresh, err = db.OAuth.GetRefreshToken(ctx, newRefresh.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotRefresh, &newRefresh) {
+		t.Fatalf("new refresh token mismatch:\n got=%#v\nwant=%#v", gotRefresh, &newRefresh)
+	}
+	rotated, err = db.OAuth.RotateRefreshToken(ctx, refresh.TokenHash, model.OAuthToken{TokenHash: "refresh-3"}, 3200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotated {
+		t.Fatal("RotateRefreshToken should reject reused refresh token")
+	}
+	revoked, err := db.OAuth.RevokeRefreshToken(ctx, newRefresh.TokenHash, 3300)
+	if err != nil || !revoked {
+		t.Fatalf("RevokeRefreshToken should revoke active token: revoked=%v err=%v", revoked, err)
+	}
+	gotRefresh, err = db.OAuth.GetRefreshToken(ctx, newRefresh.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRefresh.RevokedAt == nil || *gotRefresh.RevokedAt != 3300 {
+		t.Fatalf("revoked refresh timestamp mismatch: %#v", gotRefresh)
+	}
+	revoked, err = db.OAuth.RevokeRefreshToken(ctx, newRefresh.TokenHash, 3400)
+	if err != nil || revoked {
+		t.Fatalf("RevokeRefreshToken should reject already revoked token: revoked=%v err=%v", revoked, err)
+	}
+	missingRefresh, err := db.OAuth.GetRefreshToken(ctx, "missing-refresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missingRefresh != nil {
+		t.Fatalf("missing refresh token should be nil: %#v", missingRefresh)
+	}
+	if revoked, err := db.OAuth.RevokeGrant(ctx, grant.ID, user.ID, 5000); err != nil || !revoked {
+		t.Fatalf("RevokeGrant should revoke active grant: revoked=%v err=%v", revoked, err)
+	} else if revoked, err = db.OAuth.RevokeGrant(ctx, grant.ID, user.ID, 5100); err != nil || revoked {
+		t.Fatalf("RevokeGrant should reject already revoked grant: revoked=%v err=%v", revoked, err)
+	}
+	otherGrant := grant
+	otherGrant.ID = "grant-owner-mismatch"
+	if err := db.OAuth.CreateGrant(ctx, otherGrant, grantPermissions[:1]); err != nil {
+		t.Fatal(err)
+	}
+	if revoked, err := db.OAuth.RevokeGrant(ctx, otherGrant.ID, "other-user", 5200); err != nil || revoked {
+		t.Fatalf("RevokeGrant should reject owner mismatch: revoked=%v err=%v", revoked, err)
+	}
+	storedGrantPermissions, err := db.OAuth.GrantPermissionIDs(ctx, otherGrant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(storedGrantPermissions, grantPermissions[:1]) {
+		t.Fatalf("owner mismatch revoke should preserve grant permissions: %v", storedGrantPermissions)
+	}
+}
+
+func TestActiveGrantPermissionIDsIntersectsActiveClientPermissionsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "oauth-active-grant@test.com", "pw", "OAuthActiveGrant", false)
+	clientPermissions := permissionIDs("profile.read.owned", "texture.read.owned")
+	grantPermissions := permissionIDs("profile.read.owned", "texture.read.owned", "notice.read.owned")
+	client := model.OAuthClient{
+		ID:          "client-active-grant",
+		OwnerUserID: user.ID,
+		Name:        "Active grant client",
+		RedirectURI: "https://active.example/callback",
+		WebsiteURL:  "https://active.example",
+		ClientType:  "public",
+		Status:      "active",
+		CreatedAt:   1000,
+		UpdatedAt:   1000,
+	}
+	if err := db.OAuth.CreateClient(ctx, client, clientPermissions); err != nil {
+		t.Fatal(err)
+	}
+	grant := model.OAuthGrant{
+		ID:        "grant-active-permissions",
+		UserID:    user.ID,
+		SubjectID: permissiondb.SubjectIDForUser(user.ID),
+		ClientID:  client.ID,
+		Status:    "active",
+		CreatedAt: 1100,
+	}
+	if err := db.OAuth.CreateGrant(ctx, grant, grantPermissions); err != nil {
+		t.Fatal(err)
+	}
+
+	activePermissions, err := db.OAuth.ActiveGrantPermissionIDs(ctx, grant.ID, user.ID, client.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(activePermissions, clientPermissions) {
+		t.Fatalf("active grant permissions=%v want client-approved intersection %v", activePermissions, clientPermissions)
+	}
+	if activePermissions, err = db.OAuth.ActiveGrantPermissionIDs(ctx, grant.ID, "other-user", client.ID); err != nil || len(activePermissions) != 0 {
+		t.Fatalf("active grant with wrong user should return empty: permissions=%v err=%v", activePermissions, err)
+	}
+	if activePermissions, err = db.OAuth.ActiveGrantPermissionIDs(ctx, grant.ID, user.ID, "other-client"); err != nil || len(activePermissions) != 0 {
+		t.Fatalf("active grant with wrong client should return empty: permissions=%v err=%v", activePermissions, err)
+	}
+	if revoked, err := db.OAuth.RevokeGrant(ctx, grant.ID, user.ID, 1200); err != nil || !revoked {
+		t.Fatalf("RevokeGrant before active permission check mismatch: revoked=%v err=%v", revoked, err)
+	}
+	if activePermissions, err = db.OAuth.ActiveGrantPermissionIDs(ctx, grant.ID, user.ID, client.ID); err != nil || len(activePermissions) != 0 {
+		t.Fatalf("revoked grant should return empty active permissions: permissions=%v err=%v", activePermissions, err)
+	}
+}
