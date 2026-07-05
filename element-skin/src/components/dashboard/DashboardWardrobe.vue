@@ -86,6 +86,10 @@ import TextureDetailDialog from '@/components/dashboard/wardrobe/TextureDetailDi
 import TextureUploadDialog from '@/components/dashboard/wardrobe/TextureUploadDialog.vue'
 import { createDefaultUploadForm } from '@/components/dashboard/wardrobe/uploadForm'
 import TextureCard from '@/components/textures/TextureCard.vue'
+import {
+  cacheSkinTextureWidths,
+  textureAssetUrl as texturesUrl,
+} from '@/components/textures/textureAssets'
 import UiButton from '@/components/ui/UiButton.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getProfiles } from '@/api/profiles'
@@ -130,12 +134,6 @@ const showUploadDialog = ref(false)
 const uploadForm = ref(createDefaultUploadForm())
 const uploadDialogRef = ref<InstanceType<typeof TextureUploadDialog> | null>(null)
 const applyForm = ref({ profile_id: '', texture_type: '', hash: '' })
-
-function texturesUrl(hash: string | null | undefined) {
-  if (!hash) return ''
-  const base = import.meta.env.BASE_URL
-  return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
-}
 
 async function openDetailDialog(tex: Texture) {
   selectedTexture.value = { ...tex, is_public: 2 }
@@ -212,11 +210,7 @@ async function fetchTextures() {
     const res = await getTextures(params)
     textures.value = res.data.items
     pagination.setPageData(res.data)
-    textures.value.forEach((tex) => {
-      if (tex.type === 'skin') {
-        loadTextureResolution(tex.hash)
-      }
-    })
+    void cacheSkinTextureWidths(textures.value, textureResolutions.value)
   } catch (e) {
     console.error(e)
   } finally {
@@ -231,11 +225,7 @@ async function handleNextPage() {
     textures.value = res.data.items
     return res.data
   })
-  textures.value.forEach((tex) => {
-    if (tex.type === 'skin') {
-      loadTextureResolution(tex.hash)
-    }
-  })
+  void cacheSkinTextureWidths(textures.value, textureResolutions.value)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -246,26 +236,13 @@ async function handlePrevPage() {
     textures.value = res.data.items
     return res.data
   })
-  textures.value.forEach((tex) => {
-    if (tex.type === 'skin') {
-      loadTextureResolution(tex.hash)
-    }
-  })
+  void cacheSkinTextureWidths(textures.value, textureResolutions.value)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function refreshFirstPage() {
   pagination.reset()
   await fetchTextures()
-}
-
-function loadTextureResolution(hash: string) {
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.onload = () => {
-    textureResolutions.value.set(hash, img.width)
-  }
-  img.src = texturesUrl(hash)
 }
 
 function handleFileChange(file: UploadFile) {

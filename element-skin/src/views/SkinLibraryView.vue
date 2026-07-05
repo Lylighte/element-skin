@@ -192,6 +192,10 @@ import CursorPager from '@/components/common/CursorPager.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
 import TextureCard from '@/components/textures/TextureCard.vue'
 import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
+import {
+  cacheSkinTextureWidths,
+  textureAssetUrl as texturesUrl,
+} from '@/components/textures/textureAssets'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
@@ -224,12 +228,6 @@ function openPreviewDialog(item: Texture) {
   showPreviewDialog.value = true
 }
 
-function texturesUrl(hash: string | null | undefined) {
-  if (!hash) return ''
-  const base = import.meta.env.BASE_URL
-  return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
-}
-
 function formatDate(ts: number | undefined) {
   if (!ts) return ''
   const date = new Date(ts)
@@ -250,12 +248,7 @@ async function fetchLibrary() {
     const res = await getPublicSkinLibrary(params)
     items.value = res.data.items
     pagination.setPageData(res.data)
-
-    items.value.forEach((item) => {
-      if (item.type === 'skin') {
-        loadTextureResolution(item.hash)
-      }
-    })
+    void cacheSkinTextureWidths(items.value, textureResolutions.value)
   } catch (e: unknown) {
     console.error('Fetch library error:', e)
     if (getErrorStatus(e) === 403) {
@@ -267,16 +260,6 @@ async function fetchLibrary() {
     loading.value = false
     pagination.isLoading.value = false
   }
-}
-
-function loadTextureResolution(hash: string) {
-  if (textureResolutions.value.has(hash)) return
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.onload = () => {
-    textureResolutions.value.set(hash, img.width)
-  }
-  img.src = texturesUrl(hash)
 }
 
 async function handleNextPage() {
@@ -292,11 +275,7 @@ async function handleNextPage() {
     items.value = res.data.items
     return res.data
   })
-  items.value.forEach((item) => {
-    if (item.type === 'skin') {
-      loadTextureResolution(item.hash)
-    }
-  })
+  void cacheSkinTextureWidths(items.value, textureResolutions.value)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -313,11 +292,7 @@ async function handlePrevPage() {
     items.value = res.data.items
     return res.data
   })
-  items.value.forEach((item) => {
-    if (item.type === 'skin') {
-      loadTextureResolution(item.hash)
-    }
-  })
+  void cacheSkinTextureWidths(items.value, textureResolutions.value)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
