@@ -15,13 +15,12 @@ import (
 
 type Handler struct {
 	cfg   config.Config
-	db    *database.DB
 	auth  shared.AuthFunc
 	oauth oauthsvc.Service
 }
 
 func New(cfg config.Config, db *database.DB, redis redisstore.Store, auth shared.AuthFunc) Handler {
-	return Handler{cfg: cfg, db: db, auth: auth, oauth: oauthsvc.Service{DB: db, Redis: redis}}
+	return Handler{cfg: cfg, auth: auth, oauth: oauthsvc.Service{DB: db, Redis: redis}}
 }
 
 func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {

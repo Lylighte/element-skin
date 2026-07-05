@@ -18,7 +18,6 @@ import (
 
 type Handler struct {
 	cfg      config.Config
-	db       *database.DB
 	redis    redisstore.Store
 	authSvc  authsvc.Service
 	accounts accountsvc.AccountService
@@ -50,7 +49,7 @@ func NewWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, au
 		CacheTTL: time.Duration(cfg.PublicCacheTTL) * time.Second,
 	}
 	uploads := texturesvc.UploadService{DB: db, TexturesDir: cfg.TexturesDir}
-	return Handler{cfg: cfg, db: db, redis: redis, authSvc: authService, accounts: accounts, profiles: profiles, textures: textures, public: public, uploads: uploads, settings: settings, auth: auth}
+	return Handler{cfg: cfg, redis: redis, authSvc: authService, accounts: accounts, profiles: profiles, textures: textures, public: public, uploads: uploads, settings: settings, auth: auth}
 }
 
 func (h Handler) Auth(next http.HandlerFunc) http.HandlerFunc {
