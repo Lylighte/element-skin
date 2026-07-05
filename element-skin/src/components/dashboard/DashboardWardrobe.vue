@@ -48,123 +48,22 @@
       />
     </div>
 
-    <UiDialog v-model="showDetailDialog" destroy-on-close variant="viewer">
-      <UiViewerLayout v-if="selectedTexture">
-        <template #stage>
-          <TexturePreviewStage :texture="selectedTexture" :textures-url="texturesUrl" />
-        </template>
-
-        <div v-loading="isDetailLoading" class="flex min-h-0 flex-1 flex-col">
-          <template v-if="selectedTexture">
-            <section class="border-b border-[var(--color-border)] py-3.5">
-              <div class="flex items-center gap-2 pr-12">
-                <el-button text circle class="title-action-button" @click="focusNoteInput">
-                  <el-icon><Edit /></el-icon>
-                </el-button>
-                <el-input
-                  ref="noteInputRef"
-                  v-model="editingNoteValue"
-                  placeholder="未命名纹理"
-                  class="title-input-field"
-                  @blur="updateNote"
-                  @keyup.enter="updateNote"
-                />
-              </div>
-            </section>
-
-            <section class="border-b border-[var(--color-border)] py-3.5">
-              <div class="flex items-center gap-2 pr-12">
-                <span
-                  class="inline-flex h-7 max-w-full items-center rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 text-xs whitespace-nowrap text-[var(--color-text)] transition"
-                  >{{ textureResolutions.get(selectedTexture.hash) || '--' }}px</span
-                >
-                <span
-                  class="inline-flex h-7 max-w-60 items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 font-mono text-xs text-[var(--color-text)] transition"
-                  >{{ selectedTexture.hash }}</span
-                >
-              </div>
-            </section>
-
-            <section
-              class="border-b border-[var(--color-border)] py-3.5"
-              v-if="selectedTexture.type === 'skin'"
-            >
-              <div
-                class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
-              >
-                模型选择
-              </div>
-              <UiSegmented v-model="selectedTexture.model" @change="updateModel">
-                <el-radio-button value="default">Default</el-radio-button>
-                <el-radio-button value="slim">Slim</el-radio-button>
-              </UiSegmented>
-            </section>
-
-            <section
-              class="border-b border-[var(--color-border)] py-3.5"
-              v-if="!isDetailLoading && selectedTexture.is_public !== 2"
-            >
-              <div
-                class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
-              >
-                公开状态
-              </div>
-              <div class="flex items-center gap-3">
-                <el-switch
-                  v-model="selectedTexture.is_public"
-                  :active-value="1"
-                  :inactive-value="0"
-                  @change="updateIsPublic"
-                />
-                <span class="text-[13px] text-[var(--el-text-color-secondary)]">
-                  {{
-                    selectedTexture.is_public === 1
-                      ? '公开（其他用户可在皮肤库看到）'
-                      : '私有（仅自己可见）'
-                  }}
-                </span>
-              </div>
-            </section>
-
-            <section class="border-b border-[var(--color-border)] py-3.5">
-              <div
-                class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
-              >
-                应用到角色
-              </div>
-              <div class="flex gap-2">
-                <el-select
-                  v-model="applyForm.profile_id"
-                  placeholder="选择目标"
-                  class="gallery-select"
-                >
-                  <el-option
-                    v-for="p in userProfiles || []"
-                    :key="p.id"
-                    :label="p.name"
-                    :value="p.id"
-                  />
-                </el-select>
-                <el-button
-                  type="primary"
-                  class="gallery-apply-btn"
-                  @click="doApply"
-                  :loading="isApplying"
-                >
-                  确定
-                </el-button>
-              </div>
-            </section>
-
-            <section class="mt-auto border-b-0 py-3.5 pb-0">
-              <el-button type="danger" plain class="w-full rounded-lg" @click="confirmDelete">
-                删除纹理
-              </el-button>
-            </section>
-          </template>
-        </div>
-      </UiViewerLayout>
-    </UiDialog>
+    <TextureDetailDialog
+      v-model="showDetailDialog"
+      v-model:texture="selectedTexture"
+      v-model:note="editingNoteValue"
+      v-model:profile-id="applyForm.profile_id"
+      :is-loading="isDetailLoading"
+      :is-applying="isApplying"
+      :profiles="userProfiles"
+      :resolution="selectedTexture ? textureResolutions.get(selectedTexture.hash) : undefined"
+      :textures-url="texturesUrl"
+      @update-note="updateNote"
+      @update-model="updateModel"
+      @update-public="updateIsPublic"
+      @apply="doApply"
+      @delete="confirmDelete"
+    />
 
     <TextureUploadDialog
       ref="uploadDialogRef"
@@ -181,16 +80,13 @@ import { ref, onMounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import type { Ref } from 'vue'
-import { Upload, Edit } from '@element-plus/icons-vue'
+import { Upload } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import TextureDetailDialog from '@/components/dashboard/wardrobe/TextureDetailDialog.vue'
 import TextureUploadDialog from '@/components/dashboard/wardrobe/TextureUploadDialog.vue'
 import { createDefaultUploadForm } from '@/components/dashboard/wardrobe/uploadForm'
 import TextureCard from '@/components/textures/TextureCard.vue'
-import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
 import UiButton from '@/components/ui/UiButton.vue'
-import UiDialog from '@/components/ui/UiDialog.vue'
-import UiSegmented from '@/components/ui/UiSegmented.vue'
-import UiViewerLayout from '@/components/ui/UiViewerLayout.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getProfiles } from '@/api/profiles'
 import {
@@ -229,7 +125,6 @@ const selectedTexture = ref<Texture | null>(null)
 const isDetailLoading = ref(false)
 const editingNoteValue = ref('')
 const isApplying = ref(false)
-const noteInputRef = ref<{ focus: () => void } | null>(null)
 
 const showUploadDialog = ref(false)
 const uploadForm = ref(createDefaultUploadForm())
@@ -264,10 +159,6 @@ async function openDetailDialog(tex: Texture) {
   }
 }
 
-function focusNoteInput() {
-  noteInputRef.value?.focus()
-}
-
 async function updateNote() {
   if (!selectedTexture.value || isDetailLoading.value) return
   const tex = selectedTexture.value
@@ -285,7 +176,7 @@ async function updateNote() {
   }
 }
 
-async function updateModel(val: string | number | boolean | undefined) {
+async function updateModel(val: string | number | boolean | null | undefined) {
   if (!selectedTexture.value || isDetailLoading.value) return
   const tex = selectedTexture.value
   try {
@@ -450,79 +341,3 @@ onMounted(() => {
   fetchUserProfiles()
 })
 </script>
-
-<style scoped>
-.title-section {
-  padding-top: 0;
-}
-
-.gallery-select {
-  flex: 1;
-}
-
-.gallery-select :deep(.el-input__wrapper) {
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  background: var(--color-background-soft);
-  box-shadow: none !important;
-}
-
-.gallery-apply-btn {
-  min-width: 90px;
-  border-radius: 8px;
-}
-
-.title-action-button {
-  width: 32px !important;
-  height: 32px !important;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50% !important;
-  background: transparent !important;
-  border: none !important;
-  transition: all 0.2s ease !important;
-  flex-shrink: 0;
-}
-
-.title-action-button:hover {
-  background: var(--color-background-soft) !important;
-  color: var(--el-color-primary) !important;
-  transform: scale(1.1);
-}
-
-.title-action-button .el-icon {
-  font-size: 18px;
-  color: var(--color-text-light);
-}
-
-.title-action-button:hover .el-icon {
-  color: var(--el-color-primary);
-}
-
-.title-input-field {
-  flex: 1;
-}
-
-.title-input-field :deep(.el-input__wrapper) {
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-  border: none !important;
-  transition: box-shadow 0.2s ease;
-}
-
-.title-input-field :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 2px 0 var(--el-color-primary) !important;
-  border-radius: 0 !important;
-}
-
-.title-input-field :deep(.el-input__inner) {
-  height: 48px;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--color-heading);
-  line-height: 48px;
-}
-</style>
