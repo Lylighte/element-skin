@@ -1,0 +1,110 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestLoadMissingFileWithoutCompleteEnvironmentFailsAndDoesNotWrite(t *testing.T) {
+	clearConfigEnv(t)
+	missingPath := filepath.Join(t.TempDir(), "missing.yaml")
+	cfg, err := Load(missingPath)
+	if err == nil || !strings.HasPrefix(err.Error(), "missing required config fields: ") {
+		t.Fatalf("missing config error=%v cfg=%#v; want missing required fields", err, cfg)
+	}
+	if !reflect.DeepEqual(cfg, Config{}) {
+		t.Fatalf("missing incomplete config should return zero config, got %#v", cfg)
+	}
+	if _, err := os.Stat(missingPath); !os.IsNotExist(err) {
+		t.Fatalf("incomplete env should not create config file, stat err=%v", err)
+	}
+}
+
+func TestLoadMalformedFileReturnsZeroConfigAndDoesNotRewrite(t *testing.T) {
+	clearConfigEnv(t)
+	malformedPath := filepath.Join(t.TempDir(), "malformed.yaml")
+	malformed := []byte("jwt:\n  secret: [unterminated")
+	if err := os.WriteFile(malformedPath, malformed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(malformedPath)
+	if err == nil || !reflect.DeepEqual(got, Config{}) {
+		t.Fatalf("malformed config result: cfg=%#v err=%v; want zero config plus YAML error", got, err)
+	}
+	after, readErr := os.ReadFile(malformedPath)
+	if readErr != nil || string(after) != string(malformed) {
+		t.Fatalf("malformed config should not be rewritten: readErr=%v after=%q", readErr, string(after))
+	}
+}
+
+func TestLoadRejectsInvalidConfigValuesWithoutRewrite(t *testing.T) {
+	clearConfigEnv(t)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	raw := `
+jwt:
+  secret: "file-secret-abcdefghijklmnopqrstuvwxyz"
+  expire_days: 7
+  access_expire_minutes: 30
+keys:
+  private_key: "private.pem"
+  public_key: "public.pem"
+database:
+  host: "localhost"
+  port: "5432"
+  user: "file-user"
+  password: "file-password"
+  name: "file-db"
+  sslmode: "disable"
+  max_connections: 0
+server:
+  site_url: "https://file.example"
+  api_url: "https://file.example/api"
+  host: "127.0.0.1"
+  port: 9000
+textures:
+  directory: "/file/textures"
+carousel:
+  directory: "/file/carousel"
+redis:
+  host: "redis"
+  port: "6379"
+  password: "file-redis-password"
+  db: 0
+  key_prefix: "file:"
+  public_cache_ttl_seconds: 60
+  auth_cache_ttl_seconds: 30
+cors:
+  allow_origins:
+    - "https://file.example"
+  allow_credentials: true
+`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err == nil || err.Error() != "invalid config database.max_connections" {
+		t.Fatalf("invalid config error=%v cfg=%#v; want exact database.max_connections error", err, cfg)
+	}
+	after, readErr := os.ReadFile(path)
+	if readErr != nil || string(after) != raw {
+		t.Fatalf("invalid config should not be rewritten: readErr=%v after=%q", readErr, string(after))
+	}
+}
+
+func TestLoadRejectsInvalidEnvironmentOverride(t *testing.T) {
+	clearConfigEnv(t)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(minimalConfigYAML()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SERVER_PORT", "not-a-port")
+
+	cfg, err := Load(path)
+	if err == nil || err.Error() != "invalid environment variable SERVER_PORT" {
+		t.Fatalf("invalid env error=%v cfg=%#v; want exact SERVER_PORT error", err, cfg)
+	}
+}
