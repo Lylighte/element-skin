@@ -126,6 +126,7 @@ import RolePreviewDialog from '@/components/dashboard/roles/RolePreviewDialog.vu
 import CreateRoleDialog from '@/components/dashboard/roles/CreateRoleDialog.vue'
 import MicrosoftImportDialog from '@/components/dashboard/roles/MicrosoftImportDialog.vue'
 import RemoteYggImportDialog from '@/components/dashboard/roles/RemoteYggImportDialog.vue'
+import { useMicrosoftProfileImport } from '@/components/dashboard/roles/useMicrosoftProfileImport'
 import { useRemoteYggProfileImport } from '@/components/dashboard/roles/useRemoteYggProfileImport'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { useAvatar } from '@/composables/useAvatar'
@@ -137,12 +138,7 @@ import {
   clearProfileSkin,
   clearProfileCape,
 } from '@/api/profiles'
-import {
-  getMicrosoftAuthUrl,
-  getMicrosoftProfile,
-  importMicrosoftProfile as apiImportMicrosoftProfile,
-} from '@/api/microsoft'
-import type { MicrosoftGameProfile, Profile } from '@/api/types'
+import type { Profile } from '@/api/types'
 import { getErrorMessage } from '@/utils/error'
 
 const { setAvatar } = useAvatar()
@@ -162,13 +158,27 @@ const pagination = useCursorPagination<Profile>(limit)
 
 const showCreateRoleDialog = ref(false)
 const newRoleName = ref('')
-const showMicrosoftLoginDialog = ref(false)
-const microsoftProfile = ref<MicrosoftGameProfile | null>(null)
-const microsoftImportToken = ref<string | null>(null)
-const importing = ref(false)
 
 const showPreviewDialog = ref(false)
 const selectedProfile = ref<Profile | null>(null)
+
+const {
+  showMicrosoftLoginDialog,
+  microsoftProfile,
+  importing,
+  startMicrosoftAuth,
+  handleMicrosoftCallback,
+  importMicrosoftProfile,
+  cancelMicrosoftLogin,
+} = useMicrosoftProfileImport({
+  async clearQuery() {
+    await router.replace({ query: {} })
+  },
+  async onImported() {
+    await fetchProfiles()
+    if (fetchMe) await fetchMe()
+  },
+})
 
 const {
   showYggImportDialog,
@@ -348,88 +358,9 @@ async function setAsAvatar(profile: Profile) {
   }
 }
 
-async function startMicrosoftAuth() {
-  try {
-    const response = await getMicrosoftAuthUrl()
-    const authUrl = response.data.auth_url
-    window.location.href = authUrl
-  } catch (error: unknown) {
-    ElMessage.error('启动微软登录失败: ' + getErrorMessage(error, '启动微软登录失败'))
-  }
-}
-
-async function importMicrosoftProfile() {
-  if (!microsoftProfile.value) return
-  if (!microsoftImportToken.value) {
-    ElMessage.error('导入凭证已失效，请重新授权')
-    return
-  }
-
-  try {
-    importing.value = true
-    // Do NOT switch step, just show loading on button
-
-    // 导入资料由服务端依据一次性 import_token 固化，前端只需回传该 token。
-    await apiImportMicrosoftProfile({ ms_token: microsoftImportToken.value })
-
-    ElMessage.success('正版角色导入成功！')
-
-    showMicrosoftLoginDialog.value = false
-    // Delay clearing the profile slightly to allow transition, or just leave it since dialog is destroying anyway
-    // But safely clearing it prevents state leak if reopened somehow without reload (unlikely but possible)
-    setTimeout(() => {
-      microsoftProfile.value = null
-      microsoftImportToken.value = null
-    }, 300)
-
-    // Refresh data in background
-    try {
-      fetchProfiles()
-      if (fetchMe) await fetchMe()
-    } catch (e) {
-      console.warn('Failed to refresh user profile:', e)
-    }
-  } catch (error: unknown) {
-    ElMessage.error('导入失败: ' + getErrorMessage(error, '导入失败'))
-  } finally {
-    importing.value = false
-  }
-}
-
-function cancelMicrosoftLogin() {
-  showMicrosoftLoginDialog.value = false
-  microsoftProfile.value = null
-  microsoftImportToken.value = null
-  importing.value = false
-}
-
 onMounted(async () => {
   await refreshFirstPage()
-  const urlParams = new URLSearchParams(window.location.search)
-  const msToken = urlParams.get('ms_token')
-  const error = urlParams.get('error')
-
-  if (error) {
-    ElMessage.error('微软登录失败: ' + error)
-    router.replace({ query: {} })
-  } else if (msToken) {
-    try {
-      const response = await getMicrosoftProfile({ ms_token: msToken })
-
-      microsoftProfile.value = {
-        ...response.data.profile,
-        has_game: response.data.has_game,
-      }
-      // 服务端换发的一次性导入凭证：确认导入时回传，导入资料以服务端固化为准。
-      microsoftImportToken.value = response.data.import_token
-      showMicrosoftLoginDialog.value = true
-
-      ElMessage.success('授权成功！')
-    } catch (e: unknown) {
-      ElMessage.error('获取角色信息失败: ' + getErrorMessage(e, '获取角色信息失败'))
-    }
-    router.replace({ query: {} })
-  }
+  await handleMicrosoftCallback(window.location.search)
 })
 </script>
 
