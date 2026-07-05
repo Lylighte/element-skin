@@ -1,8 +1,6 @@
 package homepage
 
 import (
-	"io"
-	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,59 +8,10 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-type MultipartSource interface {
-	MultipartReader() (*multipart.Reader, error)
-}
-
-type multipartUpload struct {
+type UploadInput struct {
 	Filename string
 	Data     []byte
 	Fields   map[string]string
-}
-
-func readMultipartUpload(source MultipartSource, maxBytes int64) (multipartUpload, error) {
-	reader, err := source.MultipartReader()
-	if err != nil {
-		return multipartUpload{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid multipart form"}
-	}
-	out := multipartUpload{Fields: map[string]string{}}
-	for {
-		part, err := reader.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return multipartUpload{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid multipart form"}
-		}
-		formName := part.FormName()
-		if formName == "" {
-			_ = part.Close()
-			continue
-		}
-		if formName == "file" {
-			out.Filename = part.FileName()
-			data, err := io.ReadAll(io.LimitReader(part, maxBytes+1))
-			_ = part.Close()
-			if err != nil {
-				return multipartUpload{}, err
-			}
-			if int64(len(data)) > maxBytes {
-				return multipartUpload{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "File too large"}
-			}
-			out.Data = data
-			continue
-		}
-		data, err := io.ReadAll(io.LimitReader(part, 4097))
-		_ = part.Close()
-		if err != nil {
-			return multipartUpload{}, err
-		}
-		out.Fields[formName] = string(data)
-	}
-	if out.Filename == "" {
-		return multipartUpload{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "file is required"}
-	}
-	return out, nil
 }
 
 func ParseMediaValues(fields map[string]string, typ string) (MediaValues, error) {

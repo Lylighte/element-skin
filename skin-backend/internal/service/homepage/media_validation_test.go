@@ -32,17 +32,11 @@ func TestHomepageServiceRejectsPermissionsAndInvalidInputsExactly(t *testing.T) 
 	if _, err := svc.UploadImage(ctx, actor, newFieldsOnlyMultipartSource(map[string]string{"title": "missing"})); !homepageHTTPError(err, http.StatusBadRequest, "file is required") {
 		t.Fatalf("missing image file mismatch: %#v", err)
 	}
-	if _, err := svc.UploadImage(ctx, actor, failingMultipartSource{}); !homepageHTTPError(err, http.StatusBadRequest, "invalid multipart form") {
-		t.Fatalf("invalid multipart image form mismatch: %#v", err)
-	}
 	if _, err := svc.UploadImage(ctx, actor, newMultipartSource("file", "huge.webp", bytes.Repeat([]byte("x"), homepagesvc.MaxImageBytes+1), nil)); !homepageHTTPError(err, http.StatusBadRequest, "File too large") {
 		t.Fatalf("oversized image mismatch: %#v", err)
 	}
 	if _, err := svc.UploadPanorama(ctx, actor, newMultipartSource("file", "sky.txt", []byte("zip"), nil)); !homepageHTTPError(err, http.StatusBadRequest, "Unsupported file format") {
 		t.Fatalf("unsupported panorama extension mismatch: %#v", err)
-	}
-	if _, err := svc.UploadPanorama(ctx, actor, failingMultipartSource{}); !homepageHTTPError(err, http.StatusBadRequest, "invalid multipart form") {
-		t.Fatalf("invalid multipart panorama form mismatch: %#v", err)
 	}
 	if _, err := svc.UploadPanorama(ctx, actor, newMultipartSource("file", "sky.zip", []byte("zip"), nil)); !homepageHTTPError(err, http.StatusBadRequest, "invalid panorama zip") {
 		t.Fatalf("invalid panorama zip mismatch: %#v", err)

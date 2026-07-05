@@ -296,3 +296,81 @@ func TestMultipartFileBytesReadsExactFieldAndRejectsTooLarge(t *testing.T) {
 		t.Fatalf("missing upload field should return exact contract: data=%q err=%v", data, err)
 	}
 }
+
+func TestReadMultipartUploadReadsFileAndFieldsExactly(t *testing.T) {
+	req := readMultipartUploadRequest(t, "file", "hero.png", []byte("abcde"), map[string]string{
+		"duration_ms":           "7000",
+		"overlay_opacity_light": "0.2",
+	})
+
+	upload, err := shared.ReadMultipartUpload(req, "file", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upload.Filename != "hero.png" || string(upload.Data) != "abcde" {
+		t.Fatalf("multipart upload file mismatch: %#v data=%q", upload, upload.Data)
+	}
+	wantFields := map[string]string{"duration_ms": "7000", "overlay_opacity_light": "0.2"}
+	if !reflect.DeepEqual(upload.Fields, wantFields) {
+		t.Fatalf("multipart upload fields=%#v want %#v", upload.Fields, wantFields)
+	}
+}
+
+func TestReadMultipartUploadRejectsExactMalformedInputs(t *testing.T) {
+	req := readMultipartUploadRequest(t, "file", "hero.png", []byte("abcdef"), nil)
+	upload, err := shared.ReadMultipartUpload(req, "file", 5)
+	if !reflect.DeepEqual(upload, shared.MultipartUpload{}) {
+		t.Fatalf("oversized upload should return zero upload, got %#v", upload)
+	}
+	assertSharedHTTPError(t, err, http.StatusBadRequest, "File too large")
+
+	req = readMultipartUploadRequest(t, "note", "ignored.txt", []byte("abcde"), map[string]string{"title": "missing"})
+	upload, err = shared.ReadMultipartUpload(req, "file", 5)
+	if !reflect.DeepEqual(upload, shared.MultipartUpload{}) {
+		t.Fatalf("missing file should return zero upload, got %#v", upload)
+	}
+	assertSharedHTTPError(t, err, http.StatusBadRequest, "file is required")
+
+	req = httptest.NewRequest(http.MethodPost, "/upload", bytes.NewBufferString("not multipart"))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=missing")
+	upload, err = shared.ReadMultipartUpload(req, "file", 5)
+	if !reflect.DeepEqual(upload, shared.MultipartUpload{}) {
+		t.Fatalf("malformed upload should return zero upload, got %#v", upload)
+	}
+	assertSharedHTTPError(t, err, http.StatusBadRequest, "invalid multipart form")
+}
+
+func readMultipartUploadRequest(t *testing.T, fileField, filename string, data []byte, fields map[string]string) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := writer.CreateFormFile(fileField, filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
+
+func assertSharedHTTPError(t *testing.T, err error, status int, detail string) {
+	t.Helper()
+	httpErr, ok := err.(util.HTTPError)
+	if !ok {
+		t.Fatalf("error type=%T detail=%v, want util.HTTPError{%d,%q}", err, err, status, detail)
+	}
+	if httpErr.Status != status || httpErr.Detail != detail {
+		t.Fatalf("HTTPError=%#v, want status=%d detail=%q", httpErr, status, detail)
+	}
+}

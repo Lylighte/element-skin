@@ -5,52 +5,35 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
-	"mime/multipart"
 	"strings"
 	"testing"
 
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
+	homepagesvc "element-skin/backend/internal/service/homepage"
 	"element-skin/backend/internal/util"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-type testMultipartSource struct {
-	body     []byte
-	boundary string
-}
-
-func (s testMultipartSource) MultipartReader() (*multipart.Reader, error) {
-	return multipart.NewReader(bytes.NewReader(s.body), s.boundary), nil
-}
-
-type failingMultipartSource struct{}
-
-func (failingMultipartSource) MultipartReader() (*multipart.Reader, error) {
-	return nil, errors.New("broken multipart")
-}
-
-func newMultipartSource(fieldName, filename string, content []byte, fields map[string]string) testMultipartSource {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	for key, value := range fields {
-		_ = writer.WriteField(key, value)
+func newMultipartSource(fieldName, filename string, content []byte, fields map[string]string) homepagesvc.UploadInput {
+	if fieldName != "file" {
+		filename = ""
+		content = nil
 	}
-	part, _ := writer.CreateFormFile(fieldName, filename)
-	_, _ = part.Write(content)
-	_ = writer.Close()
-	return testMultipartSource{body: body.Bytes(), boundary: writer.Boundary()}
+	return homepagesvc.UploadInput{Filename: filename, Data: content, Fields: cloneFields(fields)}
 }
 
-func newFieldsOnlyMultipartSource(fields map[string]string) testMultipartSource {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
+func newFieldsOnlyMultipartSource(fields map[string]string) homepagesvc.UploadInput {
+	return homepagesvc.UploadInput{Fields: cloneFields(fields)}
+}
+
+func cloneFields(fields map[string]string) map[string]string {
+	out := map[string]string{}
 	for key, value := range fields {
-		_ = writer.WriteField(key, value)
+		out[key] = value
 	}
-	_ = writer.Close()
-	return testMultipartSource{body: body.Bytes(), boundary: writer.Boundary()}
+	return out
 }
 
 func homepageActor(codes ...string) permission.Actor {

@@ -17,13 +17,15 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-func (s Service) UploadImage(ctx context.Context, actor permission.Actor, source MultipartSource) (model.HomepageMedia, error) {
+func (s Service) UploadImage(ctx context.Context, actor permission.Actor, upload UploadInput) (model.HomepageMedia, error) {
 	if err := requirePermission(actor, homepageMediaCreatePermission); err != nil {
 		return model.HomepageMedia{}, err
 	}
-	upload, err := readMultipartUpload(source, MaxImageBytes)
-	if err != nil {
-		return model.HomepageMedia{}, err
+	if upload.Filename == "" {
+		return model.HomepageMedia{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "file is required"}
+	}
+	if int64(len(upload.Data)) > MaxImageBytes {
+		return model.HomepageMedia{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "File too large"}
 	}
 	ext := strings.ToLower(filepath.Ext(upload.Filename))
 	switch ext {
@@ -43,13 +45,15 @@ func (s Service) UploadImage(ctx context.Context, actor permission.Actor, source
 	return s.createImage(ctx, upload.Filename, ext, upload.Data, values)
 }
 
-func (s Service) UploadPanorama(ctx context.Context, actor permission.Actor, source MultipartSource) (model.HomepageMedia, error) {
+func (s Service) UploadPanorama(ctx context.Context, actor permission.Actor, upload UploadInput) (model.HomepageMedia, error) {
 	if err := requirePermission(actor, homepageMediaCreatePermission); err != nil {
 		return model.HomepageMedia{}, err
 	}
-	upload, err := readMultipartUpload(source, MaxPanoramaBytes)
-	if err != nil {
-		return model.HomepageMedia{}, err
+	if upload.Filename == "" {
+		return model.HomepageMedia{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "file is required"}
+	}
+	if int64(len(upload.Data)) > MaxPanoramaBytes {
+		return model.HomepageMedia{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "File too large"}
 	}
 	if strings.ToLower(filepath.Ext(upload.Filename)) != ".zip" {
 		return model.HomepageMedia{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "Unsupported file format"}
