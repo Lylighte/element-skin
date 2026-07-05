@@ -7,18 +7,17 @@
           <p>管理并应用您的皮肤与披风纹理</p>
         </div>
       </div>
-      <UiButton
-        @click="showUploadDialog = true"
-        size="large"
-        variant="gradient-primary"
-      >
+      <UiButton @click="showUploadDialog = true" size="large" variant="gradient-primary">
         <el-icon><Upload /></el-icon>
         <span class="ml-2">上传纹理</span>
       </UiButton>
     </div>
 
     <div class="min-h-[400px]" v-loading="loading" element-loading-background="transparent">
-      <div class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6" v-if="textures.length > 0">
+      <div
+        class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6"
+        v-if="textures.length > 0"
+      >
         <TextureCard
           v-for="(tex, index) in textures"
           :key="tex.hash + tex.type"
@@ -95,10 +94,7 @@
               >
                 模型选择
               </div>
-              <UiSegmented
-                v-model="selectedTexture.model"
-                @change="updateModel"
-              >
+              <UiSegmented v-model="selectedTexture.model" @change="updateModel">
                 <el-radio-button value="default">Default</el-radio-button>
                 <el-radio-button value="slim">Slim</el-radio-button>
               </UiSegmented>
@@ -170,70 +166,25 @@
       </UiViewerLayout>
     </UiDialog>
 
-    <!-- 上传对话框 -->
-    <UiDialog
+    <TextureUploadDialog
+      ref="uploadDialogRef"
       v-model="showUploadDialog"
-      title="上传纹理"
-      class="texture-upload-panel"
-    >
-      <el-form label-width="100px" :model="uploadForm" class="upload-form">
-        <el-form-item label="选择文件" class="upload-form-item">
-          <el-upload
-            ref="uploadRef"
-            :auto-upload="false"
-            :limit="1"
-            accept=".png"
-            :on-change="handleFileChange"
-            drag
-            class="upload-wrapper"
-          >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">将 PNG 文件拖到此处，或<em>点击上传</em></div>
-            <template #tip>
-              <div class="el-upload__tip">仅支持 PNG 格式的皮肤文件</div>
-            </template>
-          </el-upload>
-        </el-form-item>
-        <el-form-item label="纹理类型">
-          <el-select v-model="uploadForm.texture_type" placeholder="选择类型" class="w-full">
-            <el-option label="皮肤 (Skin)" value="skin" />
-            <el-option label="披风 (Cape)" value="cape" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="皮肤模型" v-if="uploadForm.texture_type === 'skin'">
-          <el-select v-model="uploadForm.model" placeholder="选择模型" class="w-full">
-            <el-option label="普通 (4px 手臂)" value="default" />
-            <el-option label="纤细 (3px 手臂)" value="slim" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="uploadForm.note" placeholder="给这个纹理添加备注（可选）" />
-        </el-form-item>
-        <el-form-item label="是否公开">
-          <el-switch v-model="uploadForm.is_public" />
-          <el-text size="small" type="info" class="ml-3">
-            公开后其他用户可以在皮肤库中看到并使用
-          </el-text>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showUploadDialog = false">取消</el-button>
-        <el-button type="primary" @click="doUpload">
-          <el-icon><Upload /></el-icon>
-          确认上传
-        </el-button>
-      </template>
-    </UiDialog>
+      v-model:form="uploadForm"
+      @file-change="handleFileChange"
+      @submit="doUpload"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { UploadInstance, UploadFile } from 'element-plus'
+import type { UploadFile } from 'element-plus'
 import type { Ref } from 'vue'
-import { Upload, UploadFilled, Edit } from '@element-plus/icons-vue'
+import { Upload, Edit } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import TextureUploadDialog from '@/components/dashboard/wardrobe/TextureUploadDialog.vue'
+import { createDefaultUploadForm } from '@/components/dashboard/wardrobe/uploadForm'
 import TextureCard from '@/components/textures/TextureCard.vue'
 import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -281,14 +232,8 @@ const isApplying = ref(false)
 const noteInputRef = ref<{ focus: () => void } | null>(null)
 
 const showUploadDialog = ref(false)
-const uploadForm = ref<{
-  texture_type: string
-  model: string
-  note: string
-  is_public: boolean
-  file: File | null
-}>({ texture_type: 'skin', model: 'default', note: '', is_public: false, file: null })
-const uploadRef = ref<UploadInstance | null>(null)
+const uploadForm = ref(createDefaultUploadForm())
+const uploadDialogRef = ref<InstanceType<typeof TextureUploadDialog> | null>(null)
 const applyForm = ref({ profile_id: '', texture_type: '', hash: '' })
 
 function texturesUrl(hash: string | null | undefined) {
@@ -454,16 +399,8 @@ async function doUpload() {
     await uploadTexture(formData)
     ElMessage.success('上传成功')
     showUploadDialog.value = false
-    uploadForm.value = {
-      texture_type: 'skin',
-      model: 'default',
-      note: '',
-      is_public: false,
-      file: null,
-    }
-    if (uploadRef.value) {
-      uploadRef.value.clearFiles()
-    }
+    uploadForm.value = createDefaultUploadForm()
+    uploadDialogRef.value?.clearFiles()
     await refreshFirstPage()
   } catch (e: unknown) {
     ElMessage.error('上传失败: ' + getErrorMessage(e, '上传失败'))
@@ -533,14 +470,6 @@ onMounted(() => {
 .gallery-apply-btn {
   min-width: 90px;
   border-radius: 8px;
-}
-
-/* Upload Dialog Styles */
-.texture-upload-panel :deep(.el-upload-dragger) {
-  width: 100%;
-}
-.upload-wrapper {
-  width: 100%;
 }
 
 .title-action-button {
