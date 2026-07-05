@@ -85,6 +85,11 @@ import {
 import HomepageMediaCard from '@/components/admin/homepage/HomepageMediaCard.vue'
 import HomepageMediaDialog from '@/components/admin/homepage/HomepageMediaDialog.vue'
 import {
+  homepageMediaReorderKey,
+  moveHomepageMediaItem,
+  shouldReorderHomepageMedia,
+} from '@/components/admin/homepage/homepageMediaDrag'
+import {
   buildHomepageMediaPatch,
   changedHomepageMediaItems,
   cloneHomepageMediaItems,
@@ -343,20 +348,15 @@ function moveDraggedTo(targetId: string, event?: DragEvent | PointerEvent) {
     dragOverId.value = targetId
     return
   }
-  const copy = items.value.slice()
-  const from = copy.findIndex((item) => item.id === sourceId)
-  const to = copy.findIndex((item) => item.id === targetId)
-  if (from < 0 || to < 0 || from === to) return
-  if (!shouldReorder(from, to, targetId, event)) {
+  const move = moveHomepageMediaItem(items.value, sourceId, targetId)
+  if (!move) return
+  if (!shouldReorder(move.from, move.to, targetId, event)) {
     dragOverId.value = targetId
     return
   }
-  const [item] = copy.splice(from, 1)
-  if (!item) return
-  copy.splice(to, 0, item)
-  items.value = copy
+  items.value = move.items
   dragOverId.value = targetId
-  lastReorderKey = reorderKey(from, to, targetId)
+  lastReorderKey = homepageMediaReorderKey(move.from, move.to, targetId)
 }
 
 function endDrag() {
@@ -378,30 +378,18 @@ function shouldReorder(
   targetId: string,
   event?: DragEvent | PointerEvent,
 ) {
-  const key = reorderKey(from, to, targetId)
-  if (key === lastReorderKey) return false
-
   const target = event ? mediaCardElement(targetId, event.clientX, event.clientY) : null
-  if (!target) return true
-
   const source = draggingId.value ? mediaCardElement(draggingId.value) : null
-  const rect = target.getBoundingClientRect()
-  const sourceRect = source?.getBoundingClientRect()
-  const sameRow = sourceRect
-    ? Math.abs(sourceRect.top - rect.top) < Math.min(sourceRect.height, rect.height) / 2
-    : true
-
-  if (sameRow) {
-    const pointerX = event!.clientX - rect.left
-    return from < to ? pointerX > rect.width / 2 : pointerX < rect.width / 2
-  }
-
-  const pointerY = event!.clientY - rect.top
-  return from < to ? pointerY > rect.height / 2 : pointerY < rect.height / 2
-}
-
-function reorderKey(from: number, to: number, targetId: string) {
-  return `${targetId}:${from < to ? 'after' : 'before'}`
+  return shouldReorderHomepageMedia({
+    from,
+    to,
+    targetId,
+    lastReorderKey,
+    targetRect: target?.getBoundingClientRect(),
+    sourceRect: source?.getBoundingClientRect(),
+    clientX: event?.clientX,
+    clientY: event?.clientY,
+  })
 }
 
 function mediaCardElement(id: string, x?: number, y?: number) {
