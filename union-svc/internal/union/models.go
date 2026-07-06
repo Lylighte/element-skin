@@ -9,7 +9,10 @@ type Profile struct {
 
 // BlacklistEntry represents a Union blacklist record.
 type BlacklistEntry struct {
-	ID     string `json:"id,omitempty"`
-	Email  string `json:"email,omitempty"`
-	Reason string `json:"reason,omitempty"`
+	ID         string `json:"id,omitempty"`
+	Email      string `json:"email,omitempty"`
+	Source     string `json:"source,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	ValidUntil string `json:"valid_until,omitempty"`
 }

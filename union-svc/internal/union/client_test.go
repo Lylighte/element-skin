@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 type methodRecord struct {
 	method  string
 	path    string
+	query   string
 	body    string
 	headers http.Header
 }
@@ -27,6 +29,7 @@ func record(r *http.Request) methodRecord {
 	return methodRecord{
 		method:  r.Method,
 		path:    r.URL.Path,
+		query:   r.URL.RawQuery,
 		body:    string(body),
 		headers: r.Header.Clone(),
 	}
@@ -77,6 +80,17 @@ func assertHeader(t *testing.T, got methodRecord, key, want string) {
 	t.Helper()
 	if got.headers.Get(key) != want {
 		t.Fatalf("expected header %s=%q, got %q", key, want, got.headers.Get(key))
+	}
+}
+
+func assertQuery(t *testing.T, got methodRecord, key, want string) {
+	t.Helper()
+	values, err := url.ParseQuery(got.query)
+	if err != nil {
+		t.Fatalf("parse query %q: %v", got.query, err)
+	}
+	if values.Get(key) != want {
+		t.Fatalf("expected query %s=%q, got %q", key, want, values.Get(key))
 	}
 }
 
@@ -219,29 +233,39 @@ func TestGetSecurityLevel(t *testing.T) {
 	}
 }
 
-func TestQueryBlacklist(t *testing.T) {
+func TestSearchBlacklist(t *testing.T) {
 	entries := []BlacklistEntry{
-		{ID: "1", Email: "bad@example.com", Reason: "spam"},
+		{ID: "1", Email: "bad@example.com", Source: "manual", Reason: "spam", CreatedAt: "2024-01-01", ValidUntil: "2025-01-01"},
+		{ID: "2", Email: "worse@example.com", Source: "sync", Reason: "abuse", CreatedAt: "2024-02-01", ValidUntil: "2025-02-01"},
 	}
 
+	var got methodRecord
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/blacklist/query" {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": entries})
+		got = record(r)
+		_ = json.NewEncoder(w).Encode(entries)
 	}))
 	defer server.Close()
 
 	client := newTestClient(t, server.URL)
 	defer client.Close()
 
-	entry, err := client.QueryBlacklist(context.Background(), "bad@example.com")
+	gotEntries, err := client.SearchBlacklist(context.Background(), "bad")
 	if err != nil {
-		t.Fatalf("QueryBlacklist failed: %v", err)
+		t.Fatalf("SearchBlacklist failed: %v", err)
 	}
-	if entry.ID != "1" || entry.Email != "bad@example.com" {
-		t.Fatalf("unexpected entry: %+v", entry)
+
+	assertMethod(t, got, http.MethodGet, "/blacklist/query")
+	assertQuery(t, got, "q", "bad")
+	assertHeader(t, got, memberKeyHeader, "test-member-key")
+
+	if len(gotEntries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(gotEntries))
+	}
+	if gotEntries[0].ID != "1" || gotEntries[0].Email != "bad@example.com" {
+		t.Fatalf("unexpected first entry: %+v", gotEntries[0])
+	}
+	if gotEntries[1].ID != "2" || gotEntries[1].Email != "worse@example.com" {
+		t.Fatalf("unexpected second entry: %+v", gotEntries[1])
 	}
 }
 
@@ -269,31 +293,41 @@ func TestCreateBlacklist(t *testing.T) {
 }
 
 func TestDeleteBlacklist(t *testing.T) {
-	var deleted bool
+	var got methodRecord
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/blacklist/query":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"items": []BlacklistEntry{{ID: "42", Email: "bad@example.com"}},
-			})
-		case "/blacklist/restful/42":
-			deleted = true
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.Error(w, "not found", http.StatusNotFound)
-		}
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
 	client := newTestClient(t, server.URL)
 	defer client.Close()
 
-	if err := client.DeleteBlacklist(context.Background(), "bad@example.com"); err != nil {
+	if err := client.DeleteBlacklist(context.Background(), "42"); err != nil {
 		t.Fatalf("DeleteBlacklist failed: %v", err)
 	}
-	if !deleted {
-		t.Fatal("expected delete endpoint to be called")
+
+	assertMethod(t, got, http.MethodDelete, "/blacklist/restful/42")
+	assertHeader(t, got, memberKeyHeader, "test-member-key")
+}
+
+func TestInvalidateBlacklist(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	if err := client.InvalidateBlacklist(context.Background(), "42"); err != nil {
+		t.Fatalf("InvalidateBlacklist failed: %v", err)
 	}
+
+	assertMethod(t, got, http.MethodPut, "/blacklist/invalidate/42")
+	assertHeader(t, got, memberKeyHeader, "test-member-key")
 }
 
 func TestFetchServerList(t *testing.T) {
