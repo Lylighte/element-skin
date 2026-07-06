@@ -58,7 +58,7 @@ func TestBridgeListProfilesMapsUnionResponse(t *testing.T) {
 	}))
 	defer hub.Close()
 
-	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil)
+	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil, nil)
 	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), hub.Client())
 
 	items, err := b.ListProfiles(context.Background(), "Steve")
@@ -77,7 +77,7 @@ func TestBridgeListProfilesMapsUnionResponse(t *testing.T) {
 }
 
 func TestBridgeListProfilesReturnsNotConfiguredWhenUnionHubMissing(t *testing.T) {
-	uc := union.NewClientWithDeps("", "", 30, nil, nil)
+	uc := union.NewClientWithDeps("", "", 30, nil, nil, nil)
 	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), nil)
 
 	_, err := b.ListProfiles(context.Background(), "Steve")
@@ -106,7 +106,7 @@ func TestBridgeImportProfileCreatesProfileWithBearerToken(t *testing.T) {
 	}))
 	defer elementskin.Close()
 
-	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil)
+	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
 	b := New(elementskin.URL, uc, testOAuthManager(t, "access-token-123"), elementskin.Client())
 
 	profile, err := b.ImportProfile(context.Background(), ImportProfileRequest{Name: "Steve", Model: "default"})
@@ -132,7 +132,7 @@ func TestBridgeImportProfilePassesThroughConflictError(t *testing.T) {
 	}))
 	defer elementskin.Close()
 
-	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil)
+	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
 	b := New(elementskin.URL, uc, testOAuthManager(t, "token"), elementskin.Client())
 
 	_, err := b.ImportProfile(context.Background(), ImportProfileRequest{Name: "Steve", Model: "slim"})
@@ -216,7 +216,7 @@ func TestBridgeListProfilesReturnsEmptyListWhenHubReturnsEmpty(t *testing.T) {
 	}))
 	defer hub.Close()
 
-	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil)
+	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil, nil)
 	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), hub.Client())
 
 	items, err := b.ListProfiles(context.Background(), "Steve")
@@ -237,7 +237,7 @@ func TestBridgeListProfilesReturnsErrorWhenHubFails(t *testing.T) {
 	}))
 	defer hub.Close()
 
-	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil)
+	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil, nil)
 	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), hub.Client())
 
 	_, err := b.ListProfiles(context.Background(), "Steve")

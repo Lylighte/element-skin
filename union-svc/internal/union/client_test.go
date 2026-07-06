@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -44,9 +45,22 @@ func openTestNonceStore(t *testing.T) *NonceStore {
 	return s
 }
 
+func openTestSettingsStore(t *testing.T) *SettingsStore {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open memory sqlite: %v", err)
+	}
+	s, err := NewSettingsStore(db)
+	if err != nil {
+		t.Fatalf("create settings store: %v", err)
+	}
+	return s
+}
+
 func newTestClient(t *testing.T, hubURL string) *Client {
 	t.Helper()
-	return NewClientWithDeps(hubURL, "test-member-key", 5, nil, openTestNonceStore(t))
+	return NewClientWithDeps(hubURL, "test-member-key", 5, nil, openTestNonceStore(t), openTestSettingsStore(t))
 }
 
 func assertMethod(t *testing.T, got methodRecord, wantMethod, wantPath string) {
@@ -279,5 +293,114 @@ func TestDeleteBlacklist(t *testing.T) {
 	}
 	if !deleted {
 		t.Fatal("expected delete endpoint to be called")
+	}
+}
+
+func TestFetchServerList(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"servers":[{"name":"hub1"}],"version":3}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	servers, version, err := client.FetchServerList(context.Background())
+	if err != nil {
+		t.Fatalf("FetchServerList failed: %v", err)
+	}
+
+	assertMethod(t, got, http.MethodGet, "/serverlist")
+	assertHeader(t, got, memberKeyHeader, "test-member-key")
+	if version != 3 {
+		t.Fatalf("expected version 3, got %d", version)
+	}
+	wantServers := `[{"name":"hub1"}]`
+	if string(servers) != wantServers {
+		t.Fatalf("expected servers %q, got %q", wantServers, string(servers))
+	}
+}
+
+func TestFetchServerListReturnsHubError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"detail":"forbidden"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	_, _, err := client.FetchServerList(context.Background())
+	if err == nil {
+		t.Fatal("expected error for 403 response")
+	}
+	var hubErr *HubError
+	if !errors.As(err, &hubErr) {
+		t.Fatalf("expected *HubError, got %T", err)
+	}
+	if hubErr.Status != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d", hubErr.Status)
+	}
+}
+
+func TestFetchPrivateKey(t *testing.T) {
+	var got methodRecord
+	pemData := "-----BEGIN RSA PRIVATE KEY-----\nMIIBOg==\n-----END RSA PRIVATE KEY-----"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.Header().Set("Content-Type", "application/json")
+		resp, _ := json.Marshal(map[string]any{
+			"privateKey":        pemData,
+			"privateKeyVersion": 5,
+		})
+		_, _ = w.Write(resp)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	gotPEM, version, err := client.FetchPrivateKey(context.Background())
+	if err != nil {
+		t.Fatalf("FetchPrivateKey failed: %v", err)
+	}
+
+	assertMethod(t, got, http.MethodGet, "/privatekey")
+	assertHeader(t, got, memberKeyHeader, "test-member-key")
+	if version != 5 {
+		t.Fatalf("expected version 5, got %d", version)
+	}
+	if gotPEM != pemData {
+		t.Fatalf("expected PEM %q, got %q", pemData, gotPEM)
+	}
+}
+
+func TestDynamicMemberKeyFromSettings(t *testing.T) {
+	var gotKey string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get(memberKeyHeader)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"servers":[],"version":1}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	ctx := context.Background()
+	if err := client.settings.Set(ctx, "member_key", "runtime-key"); err != nil {
+		t.Fatalf("set runtime member_key: %v", err)
+	}
+
+	if _, _, err := client.FetchServerList(ctx); err != nil {
+		t.Fatalf("FetchServerList failed: %v", err)
+	}
+	if gotKey != "runtime-key" {
+		t.Fatalf("expected runtime member key %q, got %q", "runtime-key", gotKey)
 	}
 }

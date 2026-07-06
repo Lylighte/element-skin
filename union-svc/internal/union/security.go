@@ -17,7 +17,7 @@ func (c *Client) GetSecurityLevel(ctx context.Context, username string) (int, er
 		Code string `json:"code"`
 	}
 	if _, err := c.request(ctx, http.MethodPost, "/code", map[string]string{
-		"token": c.memberKey,
+		"token": c.currentMemberKey(ctx),
 	}, &codeResp); err != nil {
 		return 0, fmt.Errorf("exchange code: %w", err)
 	}

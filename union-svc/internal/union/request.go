@@ -34,7 +34,7 @@ func (c *Client) request(ctx context.Context, method, path string, body, out any
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 
-	SignOutbound(req, c.memberKey)
+	SignOutbound(req, c.currentMemberKey(ctx))
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
