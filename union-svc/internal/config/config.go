@@ -22,6 +22,11 @@ type Config struct {
 			ClientSecret string `yaml:"client_secret" env:"ELEMENTSKIN_OAUTH_CLIENT_SECRET"`
 			RedirectURI  string `yaml:"redirect_uri" env:"ELEMENTSKIN_OAUTH_REDIRECT_URI"`
 		} `yaml:"oauth"`
+		ServiceAccount struct {
+			ClientID     string `yaml:"client_id" env:"ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID"`
+			ClientSecret string `yaml:"client_secret" env:"ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET"`
+			Scope        string `yaml:"scope" env:"ELEMENTSKIN_SERVICE_ACCOUNT_SCOPE"`
+		} `yaml:"service_account"`
 	} `yaml:"elementskin"`
 	Storage struct {
 		Path string `yaml:"path" env:"STORAGE_PATH"`
@@ -43,6 +48,7 @@ func defaults() Config {
 	cfg.Server.Port = 8001
 	cfg.Elementskin.BaseURL = "http://127.0.0.1:8000"
 	cfg.Elementskin.OAuth.RedirectURI = "http://127.0.0.1:8001/oauth/callback"
+	cfg.Elementskin.ServiceAccount.Scope = "profile.read.any"
 	cfg.Storage.Path = "./union-svc.db"
 	cfg.Union.TimeoutSeconds = 30
 	cfg.Log.Level = "info"

@@ -11,6 +11,10 @@ elementskin:
     client_id: ""
     client_secret: ""
     redirect_uri: "http://127.0.0.1:8001/oauth/callback"
+  service_account:
+    client_id: ""
+    client_secret: ""
+    scope: "profile.read.any"
 
 storage:
   path: "./union-svc.db"

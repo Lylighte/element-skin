@@ -66,6 +66,18 @@ func (c *ElementSkinClient) Refresh(ctx context.Context, refreshToken string) (*
 	return c.postToken(ctx, form)
 }
 
+// ClientCredentials exchanges client credentials for an access token.
+func (c *ElementSkinClient) ClientCredentials(ctx context.Context, scope string) (*TokenResponse, error) {
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("client_id", c.clientID)
+	form.Set("client_secret", c.clientSecret)
+	if scope != "" {
+		form.Set("scope", scope)
+	}
+	return c.postToken(ctx, form)
+}
+
 func (c *ElementSkinClient) postToken(ctx context.Context, form url.Values) (*TokenResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/oauth/token", strings.NewReader(form.Encode()))
 	if err != nil {

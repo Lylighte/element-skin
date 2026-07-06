@@ -26,6 +26,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.Elementskin.OAuth.RedirectURI != "http://127.0.0.1:8001/oauth/callback" {
 		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want http://127.0.0.1:8001/oauth/callback", cfg.Elementskin.OAuth.RedirectURI)
 	}
+	if cfg.Elementskin.ServiceAccount.Scope != "profile.read.any" {
+		t.Errorf("Elementskin.ServiceAccount.Scope = %q, want profile.read.any", cfg.Elementskin.ServiceAccount.Scope)
+	}
 	if cfg.Storage.Path != "./union-svc.db" {
 		t.Errorf("Storage.Path = %q, want ./union-svc.db", cfg.Storage.Path)
 	}
@@ -111,6 +114,9 @@ server:
   port: 9999
 elementskin:
   base_url: "http://from-yaml:8000"
+  service_account:
+    client_id: "yaml-svc-id"
+    scope: "profile.read.owned"
 union:
   timeout_seconds: 10
 `
@@ -121,6 +127,9 @@ union:
 	// Set env vars that should override YAML values.
 	t.Setenv("UNION_SERVER_PORT", "1234")
 	t.Setenv("UNION_ELEMENTSKIN_BASE_URL", "http://from-env:9000")
+	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID", "env-svc-id")
+	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "env-svc-secret")
+	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_SCOPE", "profile.write.any")
 	t.Setenv("UNION_UNION_HUB_URL", "https://hub-from-env.example.com")
 	t.Setenv("UNION_LOG_LEVEL", "error")
 
@@ -135,6 +144,15 @@ union:
 	}
 	if cfg.Elementskin.BaseURL != "http://from-env:9000" {
 		t.Errorf("Elementskin.BaseURL = %q, want http://from-env:9000", cfg.Elementskin.BaseURL)
+	}
+	if cfg.Elementskin.ServiceAccount.ClientID != "env-svc-id" {
+		t.Errorf("Elementskin.ServiceAccount.ClientID = %q, want env-svc-id", cfg.Elementskin.ServiceAccount.ClientID)
+	}
+	if cfg.Elementskin.ServiceAccount.ClientSecret != "env-svc-secret" {
+		t.Errorf("Elementskin.ServiceAccount.ClientSecret = %q, want env-svc-secret", cfg.Elementskin.ServiceAccount.ClientSecret)
+	}
+	if cfg.Elementskin.ServiceAccount.Scope != "profile.write.any" {
+		t.Errorf("Elementskin.ServiceAccount.Scope = %q, want profile.write.any", cfg.Elementskin.ServiceAccount.Scope)
 	}
 	if cfg.Union.HubURL != "https://hub-from-env.example.com" {
 		t.Errorf("Union.HubURL = %q, want https://hub-from-env.example.com", cfg.Union.HubURL)
