@@ -2,6 +2,7 @@ package server
 
 import (
 	"embed"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
@@ -79,6 +80,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/oauth/callback", s.handleCallback)
 	s.mux.HandleFunc("/api/profiles", s.handleListProfiles)
 	s.mux.HandleFunc("/api/profiles/import", s.handleImportProfile)
+
+	s.mux.HandleFunc("GET /api/union/member/", s.handleUnionHello)
+	s.mux.HandleFunc("POST /api/union/member/updatelist", s.withUnionVerify(s.handleUpdateList))
+	s.mux.HandleFunc("POST /api/union/member/updateprivatekey", s.withUnionVerify(s.handleUpdatePrivateKey))
+	s.mux.HandleFunc("POST /api/union/member/updatebackendkey", s.withUnionVerify(s.handleUpdateBackendKey))
+	s.mux.HandleFunc("POST /api/union/member/sync", s.withUnionVerify(s.handleSync))
+	s.mux.HandleFunc("GET /api/union/member/queryemail", s.withUnionVerify(s.handleQueryEmail))
+	s.mux.HandleFunc("POST /api/union/member/diagnose", s.withUnionVerify(s.handleDiagnose))
+
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -87,6 +97,20 @@ func (s *Server) routes() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(indexHTML())
 	})
+}
+
+// withUnionVerify wraps an inbound Union handler with Hub signature
+// verification. On failure it returns HTTP 401 with a JSON detail body.
+func (s *Server) withUnionVerify(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := s.unionClient.VerifyInboundRequest(r.Context(), r); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"detail": err.Error()})
+			return
+		}
+		fn(w, r)
+	}
 }
 
 // Handler returns the server's http.Handler.
