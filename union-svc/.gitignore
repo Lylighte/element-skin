@@ -1,0 +1,16 @@
+# Build artifacts
+/union-svc
+*.exe
+*.exe~
+
+# Local SQLite storage
+*.db
+*.db-shm
+*.db-wal
+
+# Local config (do not commit credentials)
+config.yaml
+
+# Test coverage
+coverage.out
+cover*.out
