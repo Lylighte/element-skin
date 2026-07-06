@@ -183,3 +183,97 @@ func TestElementSkinClientCreateProfilePassesThroughPlainTextErrorBody(t *testin
 		t.Errorf("detail = %q, want bad request", apiErr.Detail)
 	}
 }
+
+func TestElementSkinClientCreateProfileReturns400JSONError(t *testing.T) {
+	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"detail": "invalid profile name"})
+	}))
+	defer elementskin.Close()
+
+	client := NewElementSkinClient(elementskin.URL, elementskin.Client())
+	_, err := client.CreateProfile(context.Background(), "token", "", "default")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.Status != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", apiErr.Status, http.StatusBadRequest)
+	}
+	if apiErr.Detail != "invalid profile name" {
+		t.Errorf("detail = %q, want 'invalid profile name'", apiErr.Detail)
+	}
+}
+
+func TestBridgeListProfilesReturnsEmptyListWhenHubReturnsEmpty(t *testing.T) {
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer hub.Close()
+
+	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil)
+	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), hub.Client())
+
+	items, err := b.ListProfiles(context.Background(), "Steve")
+	if err != nil {
+		t.Fatalf("list profiles with empty hub response: %v", err)
+	}
+	if items == nil {
+		t.Fatal("expected non-nil empty slice, got nil")
+	}
+	if len(items) != 0 {
+		t.Fatalf("len(items) = %d, want 0", len(items))
+	}
+}
+
+func TestBridgeListProfilesReturnsErrorWhenHubFails(t *testing.T) {
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer hub.Close()
+
+	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil)
+	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), hub.Client())
+
+	_, err := b.ListProfiles(context.Background(), "Steve")
+	if err == nil {
+		t.Fatal("expected error from hub failure")
+	}
+	var hubErr *union.HubError
+	if !errors.As(err, &hubErr) {
+		t.Fatalf("expected *union.HubError, got %T", err)
+	}
+	if hubErr.Status != http.StatusInternalServerError {
+		t.Errorf("hub error status = %d, want 500", hubErr.Status)
+	}
+}
+
+func TestElementSkinClientCreateProfileReturns409JSONError(t *testing.T) {
+	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{"detail": "name already exists"})
+	}))
+	defer elementskin.Close()
+
+	client := NewElementSkinClient(elementskin.URL, elementskin.Client())
+	_, err := client.CreateProfile(context.Background(), "token", "Steve", "default")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.Status != http.StatusConflict {
+		t.Errorf("status = %d, want %d", apiErr.Status, http.StatusConflict)
+	}
+	if apiErr.Detail != "name already exists" {
+		t.Errorf("detail = %q, want 'name already exists'", apiErr.Detail)
+	}
+}

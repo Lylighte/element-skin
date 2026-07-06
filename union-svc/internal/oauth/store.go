@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -34,8 +36,14 @@ func NewStore(db *sql.DB) (*Store, error) {
 	return s, nil
 }
 
-// OpenStore opens a SQLite database at path and ensures the schema exists.
+// OpenStore opens a SQLite database at path, creating parent directories if
+// needed, and ensures the schema exists.
 func OpenStore(path string) (*Store, error) {
+	if dir := filepath.Dir(path); dir != "." && dir != "/" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create storage directory %q: %w", dir, err)
+		}
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite db: %w", err)
