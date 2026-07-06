@@ -14,3 +14,5 @@ config.yaml
 # Test coverage
 coverage.out
 cover*.out
+
+*.cookie
