@@ -27,7 +27,7 @@ func testConfig(serverURL string) config.Config {
 	cfg.Elementskin.BaseURL = serverURL
 	cfg.Elementskin.OAuth.ClientID = "test-client-id"
 	cfg.Elementskin.OAuth.ClientSecret = "test-client-secret"
-	cfg.Elementskin.OAuth.RedirectURI = "http://127.0.0.1:8080/oauth/callback"
+	cfg.Elementskin.OAuth.RedirectURI = "http://127.0.0.1:8001/oauth/callback"
 	cfg.Storage.Path = ""
 	cfg.Log.Level = "info"
 	return cfg
@@ -76,7 +76,7 @@ func TestStateStoreSaveLoadAndDelete(t *testing.T) {
 	entry := State{
 		State:       "state-abc",
 		Verifier:    "verifier-xyz",
-		RedirectURI: "http://127.0.0.1:8080/oauth/callback",
+		RedirectURI: "http://127.0.0.1:8001/oauth/callback",
 		Scope:       "profile.read.owned",
 		ExpiresAtMS: time.Now().UTC().Add(10 * time.Minute).UnixMilli(),
 	}
@@ -113,7 +113,7 @@ func TestStateStoreRejectsExpiredState(t *testing.T) {
 	entry := State{
 		State:       "expired-state",
 		Verifier:    "verifier",
-		RedirectURI: "http://127.0.0.1:8080/oauth/callback",
+		RedirectURI: "http://127.0.0.1:8001/oauth/callback",
 		Scope:       "profile.read.owned",
 		ExpiresAtMS: time.Now().UTC().Add(-time.Second).UnixMilli(),
 	}
@@ -251,23 +251,28 @@ func TestCallbackExchangesCodeAndReturnsOK(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/oauth/callback?code=auth-code-123&state=" + state)
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Get(ts.URL + "/oauth/callback?code=auth-code-123&state=" + state)
 	if err != nil {
 		t.Fatalf("get callback: %v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusFound {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 200: %s", resp.StatusCode, string(body))
+		t.Fatalf("status = %d, want 302: %s", resp.StatusCode, string(body))
 	}
 
-	var got map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
+	loc, err := resp.Location()
+	if err != nil {
+		t.Fatalf("get Location header: %v", err)
 	}
-	if got["ok"] != true {
-		t.Errorf("ok = %v, want true", got["ok"])
+	if loc.Path != "/" || loc.RawQuery != "authorized=true" {
+		t.Errorf("Location = %q, want /?authorized=true", loc.String())
 	}
 
 	// Verify the token endpoint received the correct verifier.
@@ -405,8 +410,38 @@ func TestHealthAndRootEndpointsStillWork(t *testing.T) {
 	}
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if string(body) != "union-svc" {
-		t.Errorf("root body = %q, want union-svc", string(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("root status = %d, want 200", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct != "text/html; charset=utf-8" {
+		t.Errorf("root Content-Type = %q, want text/html; charset=utf-8", ct)
+	}
+	if !strings.Contains(string(body), "Union 角色导入") {
+		t.Errorf("root body = %q, want it to contain 'Union 角色导入'", string(body))
+	}
+}
+
+func TestRootReturns404ForNonRootPaths(t *testing.T) {
+	cfg := testConfig("http://127.0.0.1:1")
+	cfg.Storage.Path = filepath.Join(t.TempDir(), "store.db")
+
+	srv, err := New(cfg, testLogger())
+	if err != nil {
+		t.Fatalf("create server: %v", err)
+	}
+	defer srv.Close()
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/nonexistent")
+	if err != nil {
+		t.Fatalf("get /nonexistent: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
 	}
 }
 

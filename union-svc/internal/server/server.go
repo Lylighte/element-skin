@@ -1,6 +1,7 @@
 package server
 
 import (
+	"embed"
 	"log/slog"
 	"net/http"
 	"time"
@@ -10,6 +11,14 @@ import (
 	"element-skin/union-svc/internal/oauth"
 	"element-skin/union-svc/internal/union"
 )
+
+//go:embed static/index.html
+var staticFiles embed.FS
+
+func indexHTML() []byte {
+	b, _ := staticFiles.ReadFile("static/index.html")
+	return b
+}
 
 // Server is the union-svc HTTP server.
 type Server struct {
@@ -71,8 +80,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/profiles", s.handleListProfiles)
 	s.mux.HandleFunc("/api/profiles/import", s.handleImportProfile)
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		_, _ = w.Write([]byte("union-svc"))
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(indexHTML())
 	})
 }
 
