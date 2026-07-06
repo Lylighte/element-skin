@@ -105,6 +105,12 @@ func (c *Client) Close() error {
 	return firstErr
 }
 
+// SettingsStore returns the client's runtime settings store. Handlers use it
+// to read and write Union configuration such as member_key and list versions.
+func (c *Client) SettingsStore() *SettingsStore {
+	return c.settings
+}
+
 func (c *Client) configured() error {
 	if c.hubURL == "" {
 		return ErrUnionNotConfigured

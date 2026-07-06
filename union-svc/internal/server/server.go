@@ -123,6 +123,12 @@ func (s *Server) withUnionVerify(fn http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// settingsStore returns the Union runtime settings store used by inbound
+// handlers to persist member keys and version numbers.
+func (s *Server) settingsStore() *union.SettingsStore {
+	return s.unionClient.SettingsStore()
+}
+
 // Handler returns the server's http.Handler.
 func (s *Server) Handler() http.Handler {
 	return s.mux
