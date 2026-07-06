@@ -127,6 +127,189 @@ func TestInboundRoutesUnsignedRequestReturns401(t *testing.T) {
 	_ = privPEM
 }
 
+func signedGet(t *testing.T, url, privPEM string) *http.Response {
+	t.Helper()
+
+	sig, ts, nonce := signInboundRequestWithPEM(t, "", privPEM)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set(signatureHeader, sig)
+	req.Header.Set(timestampHeader, ts)
+	req.Header.Set(nonceHeader, nonce)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	return resp
+}
+
+func TestQueryEmailReturns200WhenProfileFound(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+			return
+		}
+		t.Errorf("unexpected hub path %s", r.URL.Path)
+	}))
+	defer hub.Close()
+
+	profiles := []map[string]any{
+		{"id": "uuid-1", "name": "Steve", "user_id": "u1", "owner_email": "steve@example.com"},
+	}
+	elementskin := elementskinAdminServer(t, profiles, http.StatusOK)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp := signedGet(t, testServer.URL+"/api/union/member/queryemail?username=Steve", privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("queryemail status = %d, want 200: %s", resp.StatusCode, string(body))
+	}
+
+	var got map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got["email"] != "steve@example.com" {
+		t.Errorf("email = %q, want steve@example.com", got["email"])
+	}
+}
+
+func TestQueryEmailReturns204WhenProfileNotFound(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+			return
+		}
+		t.Errorf("unexpected hub path %s", r.URL.Path)
+	}))
+	defer hub.Close()
+
+	elementskin := elementskinAdminServer(t, nil, http.StatusOK)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp := signedGet(t, testServer.URL+"/api/union/member/queryemail?username=Unknown", privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("queryemail status = %d, want 204: %s", resp.StatusCode, string(body))
+	}
+	if resp.ContentLength != 0 {
+		t.Errorf("response body length = %d, want 0", resp.ContentLength)
+	}
+}
+
+func TestQueryEmailReturns400WhenUsernameMissing(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+			return
+		}
+		t.Errorf("unexpected hub path %s", r.URL.Path)
+	}))
+	defer hub.Close()
+
+	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("elementskin should not be called when username is missing")
+	}))
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp := signedGet(t, testServer.URL+"/api/union/member/queryemail", privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("queryemail status = %d, want 400: %s", resp.StatusCode, string(body))
+	}
+
+	var got map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got["detail"] != "username is required" {
+		t.Errorf("detail = %q, want username is required", got["detail"])
+	}
+}
+
+func TestQueryEmailReturns500WhenAdminAPIFails(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+			return
+		}
+		t.Errorf("unexpected hub path %s", r.URL.Path)
+	}))
+	defer hub.Close()
+
+	elementskin := elementskinAdminServer(t, nil, http.StatusInternalServerError)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp := signedGet(t, testServer.URL+"/api/union/member/queryemail?username=Steve", privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("queryemail status = %d, want 500: %s", resp.StatusCode, string(body))
+	}
+
+	var got map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got["detail"] != "failed to query email" {
+		t.Errorf("detail = %q, want failed to query email", got["detail"])
+	}
+}
+
 func TestInboundRoutesSignedDiagnoseReturns200(t *testing.T) {
 	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
 	if err != nil {

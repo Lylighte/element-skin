@@ -182,9 +182,36 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleQueryEmail resolves a profile name to an email address for the Union Hub.
-// Stub: returns 204 No Content; implementation will be added in a later todo.
+// The username query parameter is the profile/player name, not the user account
+// name. Results are not cached.
 func (s *Server) handleQueryEmail(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNoContent)
+	ctx := r.Context()
+
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"detail": "username is required"})
+		return
+	}
+
+	email, err := s.bridge.GetUserEmailByProfileName(ctx, username)
+	if err != nil {
+		s.logger.Error("failed to query email by profile name", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"detail": "failed to query email"})
+		return
+	}
+
+	if email == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{"email": email})
 }
 
 // handleDiagnose answers a Hub diagnostic request with the echoed nonce and
