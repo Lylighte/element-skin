@@ -23,17 +23,19 @@ type ImportProfileRequest struct {
 
 // Bridge orchestrates Union profile discovery and Element-Skin profile import.
 type Bridge struct {
-	union       *union.Client
-	oauth       *oauth.Manager
-	elementskin *ElementSkinClient
+	union         *union.Client
+	oauth         *oauth.Manager
+	serviceTokens *oauth.ServiceTokenManager
+	elementskin   *ElementSkinClient
 }
 
 // New creates a Bridge from runtime dependencies.
-func New(elementskinBaseURL string, unionClient *union.Client, manager *oauth.Manager, httpClient *http.Client) *Bridge {
+func New(elementskinBaseURL string, unionClient *union.Client, manager *oauth.Manager, serviceTokens *oauth.ServiceTokenManager, httpClient *http.Client) *Bridge {
 	return &Bridge{
-		union:       unionClient,
-		oauth:       manager,
-		elementskin: NewElementSkinClient(elementskinBaseURL, httpClient),
+		union:         unionClient,
+		oauth:         manager,
+		serviceTokens: serviceTokens,
+		elementskin:   NewElementSkinClient(elementskinBaseURL, httpClient),
 	}
 }
 
@@ -61,4 +63,33 @@ func (b *Bridge) ImportProfile(ctx context.Context, req ImportProfileRequest) (*
 		return nil, fmt.Errorf("get access token: %w", err)
 	}
 	return b.elementskin.CreateProfile(ctx, token, req.Name, req.Model)
+}
+
+// ListAllProfilesForSync returns every local Element-Skin profile for the
+// Union sync handler, using the service account token.
+func (b *Bridge) ListAllProfilesForSync(ctx context.Context) ([]AdminProfile, error) {
+	token, err := b.serviceTokens.ServiceAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get service access token: %w", err)
+	}
+	return b.elementskin.ListAllProfiles(ctx, token, "")
+}
+
+// GetUserEmailByProfileName resolves a profile name to the profile owner's
+// email using a single admin profiles list call.
+func (b *Bridge) GetUserEmailByProfileName(ctx context.Context, name string) (string, error) {
+	token, err := b.serviceTokens.ServiceAccessToken(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get service access token: %w", err)
+	}
+	profiles, err := b.elementskin.ListAllProfiles(ctx, token, name)
+	if err != nil {
+		return "", fmt.Errorf("list admin profiles: %w", err)
+	}
+	for _, p := range profiles {
+		if p.Name == name {
+			return p.OwnerEmail, nil
+		}
+	}
+	return "", nil
 }

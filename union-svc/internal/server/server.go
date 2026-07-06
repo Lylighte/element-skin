@@ -23,14 +23,15 @@ func indexHTML() []byte {
 
 // Server is the union-svc HTTP server.
 type Server struct {
-	cfg         config.Config
-	manager     *oauth.Manager
-	unionClient *union.Client
-	bridge      *bridge.Bridge
-	stateStore  *StateStore
-	httpClient  *http.Client
-	logger      *slog.Logger
-	mux         *http.ServeMux
+	cfg           config.Config
+	manager       *oauth.Manager
+	serviceTokens *oauth.ServiceTokenManager
+	unionClient   *union.Client
+	bridge        *bridge.Bridge
+	stateStore    *StateStore
+	httpClient    *http.Client
+	logger        *slog.Logger
+	mux           *http.ServeMux
 }
 
 // New creates a Server from configuration, opening the token and state stores.
@@ -48,24 +49,33 @@ func New(cfg config.Config, logger *slog.Logger) (*Server, error) {
 		return nil, err
 	}
 
-	unionClient, err := union.NewClient(cfg, httpClient)
+	serviceTokens, err := oauth.NewServiceTokenManager(cfg, httpClient)
 	if err != nil {
 		_ = stateStore.Close()
 		_ = manager.Close()
 		return nil, err
 	}
 
-	b := bridge.New(cfg.Elementskin.BaseURL, unionClient, manager, httpClient)
+	unionClient, err := union.NewClient(cfg, httpClient)
+	if err != nil {
+		_ = serviceTokens.Close()
+		_ = stateStore.Close()
+		_ = manager.Close()
+		return nil, err
+	}
+
+	b := bridge.New(cfg.Elementskin.BaseURL, unionClient, manager, serviceTokens, httpClient)
 
 	s := &Server{
-		cfg:         cfg,
-		manager:     manager,
-		unionClient: unionClient,
-		bridge:      b,
-		stateStore:  stateStore,
-		httpClient:  httpClient,
-		logger:      logger,
-		mux:         http.NewServeMux(),
+		cfg:           cfg,
+		manager:       manager,
+		serviceTokens: serviceTokens,
+		unionClient:   unionClient,
+		bridge:        b,
+		stateStore:    stateStore,
+		httpClient:    httpClient,
+		logger:        logger,
+		mux:           http.NewServeMux(),
 	}
 	s.routes()
 	return s, nil
@@ -122,6 +132,9 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) Close() error {
 	var first error
 	if err := s.manager.Close(); err != nil {
+		first = err
+	}
+	if err := s.serviceTokens.Close(); err != nil && first == nil {
 		first = err
 	}
 	if err := s.unionClient.Close(); err != nil && first == nil {

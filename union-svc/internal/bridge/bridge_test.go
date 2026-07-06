@@ -42,6 +42,29 @@ func testOAuthManager(t *testing.T, accessToken string) *oauth.Manager {
 	return oauth.NewManagerWithDeps(config.Config{}, store, nil)
 }
 
+func testServiceTokenManager(t *testing.T, accessToken string) *oauth.ServiceTokenManager {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "service_oauth.db"))
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	store, err := oauth.NewServiceTokenStore(db)
+	if err != nil {
+		t.Fatalf("create service token store: %v", err)
+	}
+	if accessToken != "" {
+		row := oauth.ServiceTokenRow{
+			AccessToken: accessToken,
+			ExpiresAtMS: time.Now().Add(time.Hour).UnixMilli(),
+			Scope:       "profile.read.any",
+		}
+		if err := store.Save(context.Background(), row); err != nil {
+			t.Fatalf("save service token: %v", err)
+		}
+	}
+	return oauth.NewServiceTokenManagerWithDeps(config.Config{}, store, nil)
+}
+
 func TestBridgeListProfilesMapsUnionResponse(t *testing.T) {
 	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/profile/unmapped/byname/Steve" {
@@ -59,7 +82,7 @@ func TestBridgeListProfilesMapsUnionResponse(t *testing.T) {
 	defer hub.Close()
 
 	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil, nil)
-	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), hub.Client())
+	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), nil, hub.Client())
 
 	items, err := b.ListProfiles(context.Background(), "Steve")
 	if err != nil {
@@ -78,7 +101,7 @@ func TestBridgeListProfilesMapsUnionResponse(t *testing.T) {
 
 func TestBridgeListProfilesReturnsNotConfiguredWhenUnionHubMissing(t *testing.T) {
 	uc := union.NewClientWithDeps("", "", 30, nil, nil, nil)
-	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), nil)
+	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), nil, nil)
 
 	_, err := b.ListProfiles(context.Background(), "Steve")
 	if !errors.Is(err, union.ErrUnionNotConfigured) {
@@ -107,7 +130,7 @@ func TestBridgeImportProfileCreatesProfileWithBearerToken(t *testing.T) {
 	defer elementskin.Close()
 
 	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
-	b := New(elementskin.URL, uc, testOAuthManager(t, "access-token-123"), elementskin.Client())
+	b := New(elementskin.URL, uc, testOAuthManager(t, "access-token-123"), nil, elementskin.Client())
 
 	profile, err := b.ImportProfile(context.Background(), ImportProfileRequest{Name: "Steve", Model: "default"})
 	if err != nil {
@@ -133,7 +156,7 @@ func TestBridgeImportProfilePassesThroughConflictError(t *testing.T) {
 	defer elementskin.Close()
 
 	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
-	b := New(elementskin.URL, uc, testOAuthManager(t, "token"), elementskin.Client())
+	b := New(elementskin.URL, uc, testOAuthManager(t, "token"), nil, elementskin.Client())
 
 	_, err := b.ImportProfile(context.Background(), ImportProfileRequest{Name: "Steve", Model: "slim"})
 	if err == nil {
@@ -152,7 +175,7 @@ func TestBridgeImportProfilePassesThroughConflictError(t *testing.T) {
 }
 
 func TestBridgeImportProfileFailsWithoutToken(t *testing.T) {
-	b := New("http://127.0.0.1:1", nil, testOAuthManager(t, ""), nil)
+	b := New("http://127.0.0.1:1", nil, testOAuthManager(t, ""), nil, nil)
 
 	_, err := b.ImportProfile(context.Background(), ImportProfileRequest{Name: "Steve"})
 	if !errors.Is(err, oauth.ErrNoToken) {
@@ -217,7 +240,7 @@ func TestBridgeListProfilesReturnsEmptyListWhenHubReturnsEmpty(t *testing.T) {
 	defer hub.Close()
 
 	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil, nil)
-	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), hub.Client())
+	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), nil, hub.Client())
 
 	items, err := b.ListProfiles(context.Background(), "Steve")
 	if err != nil {
@@ -238,7 +261,7 @@ func TestBridgeListProfilesReturnsErrorWhenHubFails(t *testing.T) {
 	defer hub.Close()
 
 	uc := union.NewClientWithDeps(hub.URL, "member-key", 30, hub.Client(), nil, nil)
-	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), hub.Client())
+	b := New("http://127.0.0.1:1", uc, testOAuthManager(t, ""), nil, hub.Client())
 
 	_, err := b.ListProfiles(context.Background(), "Steve")
 	if err == nil {
@@ -275,5 +298,179 @@ func TestElementSkinClientCreateProfileReturns409JSONError(t *testing.T) {
 	}
 	if apiErr.Detail != "name already exists" {
 		t.Errorf("detail = %q, want 'name already exists'", apiErr.Detail)
+	}
+}
+
+func TestBridgeAdminListAllProfilesForSyncAggregatesPaginatedProfiles(t *testing.T) {
+	callCount := 0
+	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if r.URL.Path != "/v1/admin/profiles" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer service-token" {
+			t.Errorf("authorization = %q, want Bearer service-token", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "100" {
+			t.Errorf("limit = %q, want 100", got)
+		}
+		if q := r.URL.Query().Get("q"); q != "" {
+			t.Errorf("q = %q, want empty", q)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("next_cursor") == "" {
+			_ = json.NewEncoder(w).Encode(adminProfilesResponse{
+				Items: []AdminProfile{
+					{ID: "uuid-1", Name: "Steve", UserID: "u1", OwnerEmail: "steve@example.com"},
+				},
+				HasNext:    true,
+				NextCursor: "cursor-2",
+				PageSize:   100,
+			})
+			return
+		}
+		if r.URL.Query().Get("next_cursor") != "cursor-2" {
+			t.Errorf("next_cursor = %q, want cursor-2", r.URL.Query().Get("next_cursor"))
+		}
+		_ = json.NewEncoder(w).Encode(adminProfilesResponse{
+			Items: []AdminProfile{
+				{ID: "uuid-2", Name: "Alex", UserID: "u2", OwnerEmail: "alex@example.com"},
+			},
+			HasNext:  false,
+			PageSize: 100,
+		})
+	}))
+	defer elementskin.Close()
+
+	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
+	b := New(elementskin.URL, uc, testOAuthManager(t, ""), testServiceTokenManager(t, "service-token"), elementskin.Client())
+
+	profiles, err := b.ListAllProfilesForSync(context.Background())
+	if err != nil {
+		t.Fatalf("list all profiles for sync: %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("admin API calls = %d, want 2", callCount)
+	}
+	if len(profiles) != 2 {
+		t.Fatalf("len(profiles) = %d, want 2", len(profiles))
+	}
+	if profiles[0].ID != "uuid-1" || profiles[0].OwnerEmail != "steve@example.com" {
+		t.Errorf("profiles[0] = %+v", profiles[0])
+	}
+	if profiles[1].ID != "uuid-2" || profiles[1].OwnerEmail != "alex@example.com" {
+		t.Errorf("profiles[1] = %+v", profiles[1])
+	}
+}
+
+func TestBridgeGetUserEmailByProfileNameUsesSingleAdminCall(t *testing.T) {
+	callCount := 0
+	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if r.URL.Path != "/v1/admin/profiles" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer service-token" {
+			t.Errorf("authorization = %q, want Bearer service-token", got)
+		}
+		if got := r.URL.Query().Get("q"); got != "Steve" {
+			t.Errorf("q = %q, want Steve", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(adminProfilesResponse{
+			Items: []AdminProfile{
+				{ID: "uuid-1", Name: "Steve", UserID: "u1", OwnerEmail: "steve@example.com"},
+				{ID: "uuid-2", Name: "Steveee", UserID: "u2", OwnerEmail: "steveee@example.com"},
+			},
+			HasNext:  false,
+			PageSize: 100,
+		})
+	}))
+	defer elementskin.Close()
+
+	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
+	b := New(elementskin.URL, uc, testOAuthManager(t, ""), testServiceTokenManager(t, "service-token"), elementskin.Client())
+
+	email, err := b.GetUserEmailByProfileName(context.Background(), "Steve")
+	if err != nil {
+		t.Fatalf("get user email by profile name: %v", err)
+	}
+	if callCount != 1 {
+		t.Errorf("admin API calls = %d, want 1", callCount)
+	}
+	if email != "steve@example.com" {
+		t.Errorf("email = %q, want steve@example.com", email)
+	}
+}
+
+func TestBridgeAdminGetUserEmailByProfileNameReturnsEmptyWhenNotFound(t *testing.T) {
+	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("q"); got != "Unknown" {
+			t.Errorf("q = %q, want Unknown", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(adminProfilesResponse{
+			Items:    []AdminProfile{},
+			HasNext:  false,
+			PageSize: 100,
+		})
+	}))
+	defer elementskin.Close()
+
+	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
+	b := New(elementskin.URL, uc, testOAuthManager(t, ""), testServiceTokenManager(t, "service-token"), elementskin.Client())
+
+	email, err := b.GetUserEmailByProfileName(context.Background(), "Unknown")
+	if err != nil {
+		t.Fatalf("get user email by profile name: %v", err)
+	}
+	if email != "" {
+		t.Errorf("email = %q, want empty", email)
+	}
+}
+
+func TestBridgeGetUserEmailByProfileNamePropagatesAdminError(t *testing.T) {
+	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]any{"detail": "insufficient permissions"})
+	}))
+	defer elementskin.Close()
+
+	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
+	b := New(elementskin.URL, uc, testOAuthManager(t, ""), testServiceTokenManager(t, "service-token"), elementskin.Client())
+
+	_, err := b.GetUserEmailByProfileName(context.Background(), "Steve")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.Status != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", apiErr.Status, http.StatusForbidden)
+	}
+}
+
+func TestElementSkinClientAdminListAllProfilesOmitsQWhenQueryEmpty(t *testing.T) {
+	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("q") {
+			t.Errorf("q should be omitted when query is empty")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(adminProfilesResponse{
+			Items:    []AdminProfile{},
+			HasNext:  false,
+			PageSize: 100,
+		})
+	}))
+	defer elementskin.Close()
+
+	client := NewElementSkinClient(elementskin.URL, elementskin.Client())
+	_, err := client.ListAllProfiles(context.Background(), "token", "")
+	if err != nil {
+		t.Fatalf("list all profiles: %v", err)
 	}
 }
