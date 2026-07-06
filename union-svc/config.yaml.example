@@ -3,14 +3,14 @@
 
 server:
   addr: ""
-  port: 8080
+  port: 8001
 
 elementskin:
   base_url: "http://127.0.0.1:8000"
   oauth:
     client_id: ""
     client_secret: ""
-    redirect_uri: "http://127.0.0.1:8080/oauth/callback"
+    redirect_uri: "http://127.0.0.1:8001/oauth/callback"
 
 storage:
   path: "./union-svc.db"

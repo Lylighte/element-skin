@@ -17,14 +17,14 @@ func TestDefaults(t *testing.T) {
 	if cfg.Server.Addr != "" {
 		t.Errorf("Server.Addr = %q, want empty", cfg.Server.Addr)
 	}
-	if cfg.Server.Port != 8080 {
-		t.Errorf("Server.Port = %d, want 8080", cfg.Server.Port)
+	if cfg.Server.Port != 8001 {
+		t.Errorf("Server.Port = %d, want 8001", cfg.Server.Port)
 	}
 	if cfg.Elementskin.BaseURL != "http://127.0.0.1:8000" {
 		t.Errorf("Elementskin.BaseURL = %q, want http://127.0.0.1:8000", cfg.Elementskin.BaseURL)
 	}
-	if cfg.Elementskin.OAuth.RedirectURI != "http://127.0.0.1:8080/oauth/callback" {
-		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want http://127.0.0.1:8080/oauth/callback", cfg.Elementskin.OAuth.RedirectURI)
+	if cfg.Elementskin.OAuth.RedirectURI != "http://127.0.0.1:8001/oauth/callback" {
+		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want http://127.0.0.1:8001/oauth/callback", cfg.Elementskin.OAuth.RedirectURI)
 	}
 	if cfg.Storage.Path != "./union-svc.db" {
 		t.Errorf("Storage.Path = %q, want ./union-svc.db", cfg.Storage.Path)
@@ -152,7 +152,7 @@ union:
 	if cfg.Server.Addr != "" {
 		t.Errorf("Server.Addr = %q, want empty (default)", cfg.Server.Addr)
 	}
-	if cfg.Elementskin.OAuth.RedirectURI != "http://127.0.0.1:8080/oauth/callback" {
+	if cfg.Elementskin.OAuth.RedirectURI != "http://127.0.0.1:8001/oauth/callback" {
 		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want default", cfg.Elementskin.OAuth.RedirectURI)
 	}
 	if cfg.Storage.Path != "./union-svc.db" {
@@ -168,10 +168,10 @@ func TestListenAddr(t *testing.T) {
 		port int
 		want string
 	}{
-		{"empty addr uses loopback", "", 8080, "127.0.0.1:8080"},
+		{"empty addr uses loopback", "", 8001, "127.0.0.1:8001"},
 		{"specific addr", "0.0.0.0", 3000, "0.0.0.0:3000"},
 		{"non-standard port", "192.168.1.1", 9000, "192.168.1.1:9000"},
-		{"ipv6 localhost", "::1", 8080, "::1:8080"},
+		{"ipv6 localhost", "::1", 8001, "::1:8001"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

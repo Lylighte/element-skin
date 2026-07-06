@@ -19,7 +19,7 @@ func testConfig(serverURL string) config.Config {
 	cfg.Elementskin.BaseURL = serverURL
 	cfg.Elementskin.OAuth.ClientID = "test-client-id"
 	cfg.Elementskin.OAuth.ClientSecret = "test-client-secret"
-	cfg.Elementskin.OAuth.RedirectURI = "http://127.0.0.1:8080/oauth/callback"
+	cfg.Elementskin.OAuth.RedirectURI = "http://127.0.0.1:8001/oauth/callback"
 	cfg.Storage.Path = ""
 	return cfg
 }
@@ -81,7 +81,7 @@ func TestManagerExchangeCodeSendsExactFieldsAndStoresToken(t *testing.T) {
 	want := url.Values{
 		"grant_type":    []string{"authorization_code"},
 		"code":          []string{"auth-code-123"},
-		"redirect_uri":  []string{"http://127.0.0.1:8080/oauth/callback"},
+		"redirect_uri":  []string{"http://127.0.0.1:8001/oauth/callback"},
 		"client_id":     []string{"test-client-id"},
 		"client_secret": []string{"test-client-secret"},
 		"code_verifier": []string{"verifier-xyz"},

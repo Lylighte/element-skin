@@ -40,9 +40,9 @@ type Config struct {
 func defaults() Config {
 	var cfg Config
 	cfg.Server.Addr = ""
-	cfg.Server.Port = 8080
+	cfg.Server.Port = 8001
 	cfg.Elementskin.BaseURL = "http://127.0.0.1:8000"
-	cfg.Elementskin.OAuth.RedirectURI = "http://127.0.0.1:8080/oauth/callback"
+	cfg.Elementskin.OAuth.RedirectURI = "http://127.0.0.1:8001/oauth/callback"
 	cfg.Storage.Path = "./union-svc.db"
 	cfg.Union.TimeoutSeconds = 30
 	cfg.Log.Level = "info"
