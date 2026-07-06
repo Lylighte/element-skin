@@ -1,0 +1,24 @@
+# union-svc example configuration.
+# Copy to config.yaml and adjust for your environment.
+
+server:
+  addr: ""
+  port: 8080
+
+elementskin:
+  base_url: "http://127.0.0.1:8000"
+  oauth:
+    client_id: ""
+    client_secret: ""
+    redirect_uri: "http://127.0.0.1:8080/oauth/callback"
+
+storage:
+  path: "./union-svc.db"
+
+union:
+  hub_url: ""
+  member_key: ""
+  timeout_seconds: 30
+
+log:
+  level: "info"
