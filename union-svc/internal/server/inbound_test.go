@@ -631,3 +631,364 @@ func TestUpdatePrivateKeyPassesThroughHubError(t *testing.T) {
 	}
 }
 
+// newTestServerWithBackends creates a Server that talks to the supplied mock
+// Hub and Element-Skin servers. The Element-Skin server must handle the
+// service-account token endpoint and any admin API routes used by the test.
+func newTestServerWithBackends(t *testing.T, hub, elementskin *httptest.Server) *Server {
+	t.Helper()
+
+	cfg := testConfig(elementskin.URL)
+	cfg.Storage.Path = filepath.Join(t.TempDir(), "store.db")
+	cfg.Union.HubURL = hub.URL
+	cfg.Union.MemberKey = "test-member-key"
+	cfg.Elementskin.ServiceAccount.ClientID = "svc-client-id"
+	cfg.Elementskin.ServiceAccount.ClientSecret = "svc-client-secret"
+
+	srv, err := New(cfg, testLogger())
+	if err != nil {
+		t.Fatalf("create server: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+
+	return srv
+}
+
+// elementskinAdminServer returns a mock Element-Skin server that serves a
+// client_credentials token endpoint and a paginated admin profiles list.
+func elementskinAdminServer(t *testing.T, profiles []map[string]any, status int) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			if r.Method != http.MethodPost {
+				t.Errorf("token method = %s, want POST", r.Method)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "service-token",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+				"scope":        "profile.read.any",
+			})
+		case "/v1/admin/profiles":
+			if r.Method != http.MethodGet {
+				t.Errorf("profiles method = %s, want GET", r.Method)
+			}
+			if got := r.Header.Get("Authorization"); got != "Bearer service-token" {
+				t.Errorf("authorization = %q, want Bearer service-token", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if status != http.StatusOK {
+				w.WriteHeader(status)
+				_ = json.NewEncoder(w).Encode(map[string]any{"detail": "admin api error"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items":      profiles,
+				"has_next":   false,
+				"page_size":  100,
+			})
+		default:
+			t.Errorf("unexpected elementskin path %s", r.URL.Path)
+		}
+	}))
+}
+
+func TestSyncReportsLocalProfilesToHub(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	profiles := []map[string]any{
+		{"id": "uuid-1", "name": "Steve", "user_id": "u1", "owner_email": "steve@example.com"},
+	}
+
+	var gotHubBody map[string]any
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+		case "/sync":
+			if r.Method != http.MethodPost {
+				t.Errorf("sync method = %s, want POST", r.Method)
+			}
+			if got := r.Header.Get("X-Union-Member-Key"); got != "test-member-key" {
+				t.Errorf("member key = %q, want test-member-key", got)
+			}
+			if err := json.NewDecoder(r.Body).Decode(&gotHubBody); err != nil {
+				t.Errorf("decode hub sync body: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected hub path %s", r.URL.Path)
+		}
+	}))
+	defer hub.Close()
+
+	elementskin := elementskinAdminServer(t, profiles, http.StatusOK)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	body := `{"profileList":{"Steve":"ignored-uuid"}}`
+	resp := signedPost(t, testServer.URL+"/api/union/member/sync", body, privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("sync status = %d, want 200: %s", resp.StatusCode, string(respBody))
+	}
+
+	profileList, ok := gotHubBody["profileList"].(map[string]any)
+	if !ok {
+		t.Fatalf("profileList = %v, want map", gotHubBody["profileList"])
+	}
+	if len(profileList) != 1 || profileList["Steve"] != "uuid-1" {
+		t.Errorf("hub profileList = %v, want Steve=uuid-1", profileList)
+	}
+}
+
+func TestSyncIgnoresHubProfileListHint(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	profiles := []map[string]any{
+		{"id": "uuid-1", "name": "Steve", "user_id": "u1", "owner_email": "steve@example.com"},
+	}
+
+	var gotHubBody map[string]any
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+		case "/sync":
+			if err := json.NewDecoder(r.Body).Decode(&gotHubBody); err != nil {
+				t.Errorf("decode hub sync body: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected hub path %s", r.URL.Path)
+		}
+	}))
+	defer hub.Close()
+
+	elementskin := elementskinAdminServer(t, profiles, http.StatusOK)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	body := `{"profileList":{"Steve":"ignored","Alex":"also-ignored"}}`
+	resp := signedPost(t, testServer.URL+"/api/union/member/sync", body, privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("sync status = %d, want 200: %s", resp.StatusCode, string(respBody))
+	}
+
+	profileList, ok := gotHubBody["profileList"].(map[string]any)
+	if !ok {
+		t.Fatalf("profileList = %v, want map", gotHubBody["profileList"])
+	}
+	if len(profileList) != 1 || profileList["Steve"] != "uuid-1" {
+		t.Errorf("hub profileList = %v, want only Steve=uuid-1", profileList)
+	}
+}
+
+func TestSyncEmptyBodyUsesLocalProfiles(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	profiles := []map[string]any{
+		{"id": "uuid-1", "name": "Steve", "user_id": "u1", "owner_email": "steve@example.com"},
+		{"id": "uuid-2", "name": "Alex", "user_id": "u2", "owner_email": "alex@example.com"},
+	}
+
+	var gotHubBody map[string]any
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+		case "/sync":
+			if err := json.NewDecoder(r.Body).Decode(&gotHubBody); err != nil {
+				t.Errorf("decode hub sync body: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected hub path %s", r.URL.Path)
+		}
+	}))
+	defer hub.Close()
+
+	elementskin := elementskinAdminServer(t, profiles, http.StatusOK)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp := signedPost(t, testServer.URL+"/api/union/member/sync", `{}`, privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("sync status = %d, want 200: %s", resp.StatusCode, string(respBody))
+	}
+
+	profileList, ok := gotHubBody["profileList"].(map[string]any)
+	if !ok {
+		t.Fatalf("profileList = %v, want map", gotHubBody["profileList"])
+	}
+	if len(profileList) != 2 || profileList["Steve"] != "uuid-1" || profileList["Alex"] != "uuid-2" {
+		t.Errorf("hub profileList = %v, want Steve=uuid-1 Alex=uuid-2", profileList)
+	}
+}
+
+func TestSyncEmptyLocalProfilesSendsEmptyMap(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	var gotHubBody map[string]any
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+		case "/sync":
+			if err := json.NewDecoder(r.Body).Decode(&gotHubBody); err != nil {
+				t.Errorf("decode hub sync body: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected hub path %s", r.URL.Path)
+		}
+	}))
+	defer hub.Close()
+
+	elementskin := elementskinAdminServer(t, nil, http.StatusOK)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp := signedPost(t, testServer.URL+"/api/union/member/sync", `{}`, privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("sync status = %d, want 200: %s", resp.StatusCode, string(respBody))
+	}
+
+	profileList, ok := gotHubBody["profileList"].(map[string]any)
+	if !ok {
+		t.Fatalf("profileList = %v, want map", gotHubBody["profileList"])
+	}
+	if len(profileList) != 0 {
+		t.Errorf("hub profileList = %v, want empty", profileList)
+	}
+}
+
+func TestSyncReturns500WhenAdminAPIFails(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+		case "/sync":
+			t.Errorf("hub /sync should not be called when admin API fails")
+		default:
+			t.Errorf("unexpected hub path %s", r.URL.Path)
+		}
+	}))
+	defer hub.Close()
+
+	elementskin := elementskinAdminServer(t, nil, http.StatusForbidden)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp := signedPost(t, testServer.URL+"/api/union/member/sync", `{}`, privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("sync status = %d, want 500: %s", resp.StatusCode, string(respBody))
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["detail"] != "failed to query local profiles" {
+		t.Errorf("detail = %q, want failed to query local profiles", body["detail"])
+	}
+}
+
+func TestSyncPassesThroughHubError(t *testing.T) {
+	privPEM, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	profiles := []map[string]any{
+		{"id": "uuid-1", "name": "Steve", "user_id": "u1", "owner_email": "steve@example.com"},
+	}
+
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"union_host_signature_public_key": pubPEM,
+			})
+		case "/sync":
+			w.WriteHeader(http.StatusBadGateway)
+		default:
+			t.Errorf("unexpected hub path %s", r.URL.Path)
+		}
+	}))
+	defer hub.Close()
+
+	elementskin := elementskinAdminServer(t, profiles, http.StatusOK)
+	defer elementskin.Close()
+
+	srv := newTestServerWithBackends(t, hub, elementskin)
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp := signedPost(t, testServer.URL+"/api/union/member/sync", `{}`, privPEM)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("sync status = %d, want 502: %s", resp.StatusCode, string(respBody))
+	}
+}
+

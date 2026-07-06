@@ -180,3 +180,14 @@ func (c *Client) FetchPrivateKey(ctx context.Context) (string, int, error) {
 
 	return resp.PrivateKey, resp.PrivateKeyVersion, nil
 }
+
+// SyncProfiles reports the local profile name-to-UUID mapping to the Union Hub.
+func (c *Client) SyncProfiles(ctx context.Context, profileList map[string]string) error {
+	_, err := c.request(ctx, http.MethodPost, "/sync", map[string]any{
+		"profileList": profileList,
+	}, nil)
+	if err != nil {
+		return fmt.Errorf("sync profiles: %w", err)
+	}
+	return nil
+}

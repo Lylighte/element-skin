@@ -136,9 +136,48 @@ func (s *Server) handleUpdateBackendKey(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleSync triggers a profile synchronization with the Union Hub.
-// Stub: returns 200; implementation will be added in a later todo.
+// handleSync triggers a profile synchronization with the Union Hub. The Hub
+// may supply a profileList hint in the request body, but it is ignored: the
+// member reports its actual local profiles queried via the admin API.
 func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		ProfileList map[string]string `json:"profileList"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"detail": "invalid request body"})
+		return
+	}
+
+	profiles, err := s.bridge.ListAllProfilesForSync(ctx)
+	if err != nil {
+		s.logger.Error("failed to query local profiles for sync", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"detail": "failed to query local profiles"})
+		return
+	}
+
+	profileList := make(map[string]string, len(profiles))
+	for _, p := range profiles {
+		profileList[p.Name] = p.ID
+	}
+
+	if err := s.unionClient.SyncProfiles(ctx, profileList); err != nil {
+		if hubErr := passThroughHubError(err); hubErr != nil {
+			w.WriteHeader(hubErr.Status)
+			return
+		}
+		s.logger.Error("failed to sync profiles with hub", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"detail": "failed to sync profiles with hub"})
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 

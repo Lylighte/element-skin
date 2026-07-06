@@ -178,6 +178,64 @@ func TestSyncProfileDelete(t *testing.T) {
 	assertMethod(t, got, http.MethodDelete, "/profile/uuid-3")
 }
 
+func TestSyncProfiles(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	profileList := map[string]string{
+		"Steve": "uuid-1",
+		"Alex":  "uuid-2",
+	}
+	if err := client.SyncProfiles(context.Background(), profileList); err != nil {
+		t.Fatalf("SyncProfiles failed: %v", err)
+	}
+
+	assertMethod(t, got, http.MethodPost, "/sync")
+	assertHeader(t, got, memberKeyHeader, "test-member-key")
+
+	var body struct {
+		ProfileList map[string]string `json:"profileList"`
+	}
+	if err := json.Unmarshal([]byte(got.body), &body); err != nil {
+		t.Fatalf("decode sync body: %v", err)
+	}
+	if len(body.ProfileList) != 2 {
+		t.Fatalf("profileList length = %d, want 2", len(body.ProfileList))
+	}
+	if body.ProfileList["Steve"] != "uuid-1" || body.ProfileList["Alex"] != "uuid-2" {
+		t.Errorf("profileList = %v, want Steve=uuid-1 Alex=uuid-2", body.ProfileList)
+	}
+}
+
+func TestSyncProfilesPassesThroughHubError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	err := client.SyncProfiles(context.Background(), map[string]string{"Steve": "uuid-1"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var hubErr *HubError
+	if !errors.As(err, &hubErr) {
+		t.Fatalf("expected *HubError, got %T", err)
+	}
+	if hubErr.Status != http.StatusInternalServerError {
+		t.Errorf("hub error status = %d, want 500", hubErr.Status)
+	}
+}
+
 func TestGetProfiles(t *testing.T) {
 	profiles := []Profile{
 		{UUID: "uuid-a", Name: "Steve", InternalID: "internal-a"},
