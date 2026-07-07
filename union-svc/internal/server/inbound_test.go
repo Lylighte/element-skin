@@ -868,9 +868,9 @@ func elementskinAdminServer(t *testing.T, profiles []map[string]any, status int)
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"items":      profiles,
-				"has_next":   false,
-				"page_size":  100,
+				"items":     profiles,
+				"has_next":  false,
+				"page_size": 100,
 			})
 		default:
 			t.Errorf("unexpected elementskin path %s", r.URL.Path)
@@ -1174,4 +1174,3 @@ func TestSyncPassesThroughHubError(t *testing.T) {
 		t.Fatalf("sync status = %d, want 502: %s", resp.StatusCode, string(respBody))
 	}
 }
-
