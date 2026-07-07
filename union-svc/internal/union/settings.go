@@ -20,7 +20,9 @@ type SettingsStore struct {
 // OpenSettingsStore opens the SQLite database at path and ensures the
 // union_settings schema exists.
 func OpenSettingsStore(path string) (*SettingsStore, error) {
-	if dir := filepath.Dir(path); dir != "." && dir != "/" {
+	// Path comes from admin configuration; clean to guard against
+	// malformed or relative paths that could resolve to "." or "/".
+	if dir := filepath.Clean(filepath.Dir(path)); dir != "." && dir != "/" {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("create storage directory %q: %w", dir, err)
 		}

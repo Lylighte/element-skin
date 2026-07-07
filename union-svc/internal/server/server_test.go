@@ -51,7 +51,10 @@ func openTestStateStore(t *testing.T) *StateStore {
 }
 
 func TestPKCEChallengeMatchesVerifier(t *testing.T) {
-	verifier := generateVerifier()
+	verifier, err := generateVerifier()
+	if err != nil {
+		t.Fatalf("generate verifier: %v", err)
+	}
 	if len(verifier) != verifierLength {
 		t.Fatalf("verifier length = %d, want %d", len(verifier), verifierLength)
 	}
@@ -442,6 +445,38 @@ func TestRootReturns404ForNonRootPaths(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestOpenStateStoreSetsMaxOpenConnsToOne(t *testing.T) {
+	store, err := OpenStateStore(filepath.Join(t.TempDir(), "states.db"))
+	if err != nil {
+		t.Fatalf("OpenStateStore: %v", err)
+	}
+	defer store.Close()
+
+	if got := store.db.Stats().MaxOpenConnections; got != 1 {
+		t.Errorf("MaxOpenConnections = %d, want 1", got)
+	}
+}
+
+func TestStateStoreCloseOnNilDbIsSafe(t *testing.T) {
+	s := &StateStore{}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close on nil db: %v", err)
+	}
+}
+
+func TestStateStoreCloseOnClosedStoreIsSafe(t *testing.T) {
+	store, err := OpenStateStore(filepath.Join(t.TempDir(), "states.db"))
+	if err != nil {
+		t.Fatalf("OpenStateStore: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("second Close on closed store: %v", err)
 	}
 }
 

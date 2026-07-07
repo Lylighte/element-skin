@@ -45,6 +45,7 @@ func OpenStateStore(path string) (*StateStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
+	db.SetMaxOpenConns(1)
 	s, err := NewStateStore(db)
 	if err != nil {
 		_ = db.Close()
@@ -72,7 +73,10 @@ func (s *StateStore) ensureSchema(ctx context.Context) error {
 			expires_at_ms INTEGER NOT NULL
 		)
 	`)
-	return err
+	if err != nil {
+		return fmt.Errorf("create oauth_states table: %w", err)
+	}
+	return nil
 }
 
 // ErrStateNotFound is returned when a state does not exist or has expired.
@@ -126,28 +130,31 @@ func (s *StateStore) Delete(ctx context.Context, state string) error {
 
 // Close closes the underlying database connection.
 func (s *StateStore) Close() error {
+	if s.db == nil {
+		return nil
+	}
 	return s.db.Close()
 }
 
 // generateState returns a URL-safe random state string.
-func generateState() string {
+func generateState() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("generate state: %v", err))
+		return "", fmt.Errorf("generate state: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(b)
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // generateVerifier returns a random PKCE code verifier.
-func generateVerifier() string {
+func generateVerifier() (string, error) {
 	b := make([]byte, verifierLength)
 	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("generate verifier: %v", err))
+		return "", fmt.Errorf("generate verifier: %w", err)
 	}
 	for i := range b {
 		b[i] = verifierChars[int(b[i])%len(verifierChars)]
 	}
-	return string(b)
+	return string(b), nil
 }
 
 // challengeS256 returns the S256 code challenge for a verifier.

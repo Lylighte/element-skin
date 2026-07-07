@@ -22,8 +22,18 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state := generateState()
-	verifier := generateVerifier()
+	state, err := generateState()
+	if err != nil {
+		s.logger.Error("failed to generate state", "error", err)
+		http.Error(w, "failed to initiate authorization", http.StatusInternalServerError)
+		return
+	}
+	verifier, err := generateVerifier()
+	if err != nil {
+		s.logger.Error("failed to generate verifier", "error", err)
+		http.Error(w, "failed to initiate authorization", http.StatusInternalServerError)
+		return
+	}
 	challenge := challengeS256(verifier)
 
 	redirectURI := s.cfg.Elementskin.OAuth.RedirectURI

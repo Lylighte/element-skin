@@ -22,6 +22,7 @@ func OpenNonceStore(path string) (*NonceStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
+	db.SetMaxOpenConns(1)
 	s, err := NewNonceStore(db)
 	if err != nil {
 		_ = db.Close()

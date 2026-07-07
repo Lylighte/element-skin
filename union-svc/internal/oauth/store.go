@@ -39,7 +39,9 @@ func NewStore(db *sql.DB) (*Store, error) {
 // OpenStore opens a SQLite database at path, creating parent directories if
 // needed, and ensures the schema exists.
 func OpenStore(path string) (*Store, error) {
-	if dir := filepath.Dir(path); dir != "." && dir != "/" {
+	// Path comes from admin configuration; clean to guard against
+	// malformed or relative paths that could resolve to "." or "/".
+	if dir := filepath.Clean(filepath.Dir(path)); dir != "." && dir != "/" {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("create storage directory %q: %w", dir, err)
 		}
@@ -69,7 +71,10 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 			created_at_ms INTEGER NOT NULL
 		)
 	`)
-	return err
+	if err != nil {
+		return fmt.Errorf("create oauth_tokens table: %w", err)
+	}
+	return nil
 }
 
 // Save persists row as the single active token record, overwriting any
@@ -120,5 +125,8 @@ func (s *Store) Load(ctx context.Context) (TokenRow, error) {
 
 // Close closes the underlying database connection.
 func (s *Store) Close() error {
+	if s.db == nil {
+		return nil
+	}
 	return s.db.Close()
 }

@@ -147,6 +147,32 @@ func TestStoreOpenCreatesDirectory(t *testing.T) {
 
 // TestStoreSaveSetsDefaultCreatedAtMS verifies that Save fills CreatedAtMS
 // when it is zero.
+func TestStoreOpenSetsMaxOpenConnsToOne(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "tokens.db"))
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer store.Close()
+
+	if got := store.db.Stats().MaxOpenConnections; got != 1 {
+		t.Errorf("MaxOpenConnections = %d, want 1", got)
+	}
+}
+
+func TestStoreCloseOnNilDbIsSafe(t *testing.T) {
+	s := &Store{}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close on nil db: %v", err)
+	}
+}
+
+func TestServiceTokenStoreCloseOnNilDbIsSafe(t *testing.T) {
+	s := &ServiceTokenStore{}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close on nil db: %v", err)
+	}
+}
+
 func TestStoreSaveSetsDefaultCreatedAtMS(t *testing.T) {
 	s := openStore(t)
 	defer s.Close()
