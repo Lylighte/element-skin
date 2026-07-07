@@ -25,6 +25,15 @@ union:
   member_key: ""
   cors_allow_origin: ""
   timeout_seconds: 30
+  # Admin API key used to authenticate internal/administrative endpoints.
+  admin_api_key: ""
+  # Webhook secret used to verify signatures on incoming webhooks.
+  webhook_secret: ""
+  # Enable OAuth2 token issuance and verification for Union peers.
+  enable_oauth2: true
+  # Paths to the OAuth2 signing key pair. Files are created automatically if absent.
+  oauth2_sig_private_key_path: "./oauth2_sig_private.pem"
+  oauth2_sig_public_key_path: "./oauth2_sig_public.pem"
 
 tls:
   insecure_skip_verify: false

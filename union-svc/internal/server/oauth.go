@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"element-skin/union-svc/internal/config"
+	"element-skin/union-svc/internal/session"
 )
 
 const (
 	// defaultScope is the scope requested when the authorize endpoint is called
 	// without an explicit scope parameter.
 	defaultScope = "profile.read.owned profile.create.owned texture.create.owned"
+
+	sessionTTL = 1 * time.Hour
 )
 
 func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +112,18 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("token exchange failed", "error", err)
 		http.Error(w, "token exchange failed", http.StatusBadRequest)
 		return
+	}
+
+	accessToken, err := s.manager.AccessToken(r.Context())
+	if err != nil {
+		s.logger.Error("failed to retrieve access token after exchange", "error", err)
+	} else {
+		sessionID, err := s.sessionStore.Create(r.Context(), accessToken, sessionTTL)
+		if err != nil {
+			s.logger.Error("failed to create session", "error", err)
+		} else {
+			session.SetSessionCookie(w, sessionID, sessionTTL)
+		}
 	}
 
 	http.Redirect(w, r, "/?authorized=true", http.StatusFound)

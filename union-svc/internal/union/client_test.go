@@ -514,3 +514,282 @@ func TestDynamicMemberKeyFromSettings(t *testing.T) {
 		t.Fatalf("expected runtime member key %q, got %q", "runtime-key", gotKey)
 	}
 }
+
+func TestProxyToHubHitsCorrectPathAndMethod(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`ok`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	body, status, err := client.ProxyToHub(context.Background(), http.MethodPatch, "/custom/path", nil)
+	if err != nil {
+		t.Fatalf("ProxyToHub failed: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", status)
+	}
+	if string(body) != "ok" {
+		t.Fatalf("expected body %q, got %q", "ok", string(body))
+	}
+
+	assertMethod(t, got, http.MethodPatch, "/custom/path")
+}
+
+func TestProxyToHubSetsMemberKeyHeader(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	if _, _, err := client.ProxyToHub(context.Background(), http.MethodGet, "/ping", nil); err != nil {
+		t.Fatalf("ProxyToHub failed: %v", err)
+	}
+
+	assertHeader(t, got, memberKeyHeader, "test-member-key")
+}
+
+func TestProxyToHubReturnsRawBodyAndStatusOn200And500(t *testing.T) {
+	cases := []struct {
+		name       string
+		status     int
+		wantBody   string
+		wantStatus int
+	}{
+		{"success", http.StatusOK, `{"ok":true}`, http.StatusOK},
+		{"server error", http.StatusInternalServerError, `{"detail":"boom"}`, http.StatusInternalServerError},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.wantBody))
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server.URL)
+			defer client.Close()
+
+			body, status, err := client.ProxyToHub(context.Background(), http.MethodGet, "/", nil)
+			if err != nil {
+				t.Fatalf("ProxyToHub failed: %v", err)
+			}
+			if status != tc.wantStatus {
+				t.Fatalf("expected status %d, got %d", tc.wantStatus, status)
+			}
+			if string(body) != tc.wantBody {
+				t.Fatalf("expected body %q, got %q", tc.wantBody, string(body))
+			}
+
+			var hubErr *HubError
+			if errors.As(err, &hubErr) {
+				t.Fatal("ProxyToHub must not wrap HTTP errors as HubError")
+			}
+		})
+	}
+}
+
+func TestProxyToHubReturnsTransportError(t *testing.T) {
+	client := newTestClient(t, "http://localhost:1")
+	defer client.Close()
+
+	client.http = &http.Client{
+		Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			return nil, errors.New("boom")
+		}),
+	}
+
+	body, status, err := client.ProxyToHub(context.Background(), http.MethodGet, "/", nil)
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	if body != nil {
+		t.Fatalf("expected nil body, got %q", string(body))
+	}
+	if status != 0 {
+		t.Fatalf("expected status 0, got %d", status)
+	}
+}
+
+func TestProxyToHubSendsRawBytes(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	raw := []byte(`{"binary":"data"}`)
+	if _, _, err := client.ProxyToHub(context.Background(), http.MethodPost, "/raw", raw); err != nil {
+		t.Fatalf("ProxyToHub failed: %v", err)
+	}
+
+	if got.body != string(raw) {
+		t.Fatalf("expected raw body %q, got %q", string(raw), got.body)
+	}
+	if got.headers.Get("Content-Type") != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", got.headers.Get("Content-Type"))
+	}
+}
+
+func TestGetOAuth2BackendPublicKey(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/oauth2/backend" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"publicKey":"-----BEGIN PUBLIC KEY-----\nABC\n-----END PUBLIC KEY-----"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	key, err := client.GetOAuth2BackendPublicKey(context.Background())
+	if err != nil {
+		t.Fatalf("GetOAuth2BackendPublicKey failed: %v", err)
+	}
+	if key == "" {
+		t.Fatal("expected non-empty public key")
+	}
+	if calls != 1 {
+		t.Fatalf("expected 1 hub call, got %d", calls)
+	}
+
+	key2, err := client.GetOAuth2BackendPublicKey(context.Background())
+	if err != nil {
+		t.Fatalf("GetOAuth2BackendPublicKey failed: %v", err)
+	}
+	if key2 != key {
+		t.Fatalf("expected cached key %q, got %q", key, key2)
+	}
+	if calls != 1 {
+		t.Fatalf("expected cached call, got %d hub calls", calls)
+	}
+}
+
+func TestGetOAuth2BackendPublicKeyUsesSeparateCache(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_, _ = w.Write([]byte(`{"union_host_signature_public_key":"sig-key"}`))
+		case "/oauth2/backend":
+			_, _ = w.Write([]byte(`{"publicKey":"oauth2-key"}`))
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	sigKey, err := client.fetchHubPublicKey(context.Background())
+	if err != nil {
+		t.Fatalf("fetchHubPublicKey failed: %v", err)
+	}
+	if sigKey != "sig-key" {
+		t.Fatalf("expected sig key %q, got %q", "sig-key", sigKey)
+	}
+
+	oauth2Key, err := client.GetOAuth2BackendPublicKey(context.Background())
+	if err != nil {
+		t.Fatalf("GetOAuth2BackendPublicKey failed: %v", err)
+	}
+	if oauth2Key != "oauth2-key" {
+		t.Fatalf("expected oauth2 key %q, got %q", "oauth2-key", oauth2Key)
+	}
+
+	if client.oauth2PubKey == client.pubKey {
+		t.Fatal("oauth2 and signature public key caches must be separate")
+	}
+}
+
+func TestProfileBind(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"bound":true}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	body, status, err := client.ProfileBind(context.Background(), "uuid-bind")
+	if err != nil {
+		t.Fatalf("ProfileBind failed: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", status)
+	}
+	if string(body) != `{"bound":true}` {
+		t.Fatalf("expected raw body, got %q", string(body))
+	}
+
+	assertMethod(t, got, http.MethodPost, "/profile/bind")
+	assertJSONField(t, got.body, "uuid", "uuid-bind")
+}
+
+func TestProfileUnbind(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	if _, _, err := client.ProfileUnbind(context.Background(), "uuid-unbind"); err != nil {
+		t.Fatalf("ProfileUnbind failed: %v", err)
+	}
+
+	assertMethod(t, got, http.MethodPost, "/profile/unbind")
+	assertJSONField(t, got.body, "uuid", "uuid-unbind")
+}
+
+func TestProfileBindTo(t *testing.T) {
+	var got methodRecord
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = record(r)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	defer client.Close()
+
+	if _, _, err := client.ProfileBindTo(context.Background(), "uuid-bindto", "target-token"); err != nil {
+		t.Fatalf("ProfileBindTo failed: %v", err)
+	}
+
+	assertMethod(t, got, http.MethodPost, "/profile/bindto")
+	assertJSONField(t, got.body, "uuid", "uuid-bindto")
+	assertJSONField(t, got.body, "token", "target-token")
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}

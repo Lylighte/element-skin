@@ -10,6 +10,7 @@ import (
 	"element-skin/union-svc/internal/bridge"
 	"element-skin/union-svc/internal/config"
 	"element-skin/union-svc/internal/oauth"
+	"element-skin/union-svc/internal/session"
 	"element-skin/union-svc/internal/union"
 )
 
@@ -32,6 +33,7 @@ type Server struct {
 	unionClient   *union.Client
 	bridge        *bridge.Bridge
 	stateStore    *StateStore
+	sessionStore  *session.Store
 	httpClient    *http.Client
 	logger        *slog.Logger
 	mux           *http.ServeMux
@@ -48,6 +50,13 @@ func New(cfg config.Config, logger *slog.Logger) (*Server, error) {
 
 	stateStore, err := OpenStateStore(cfg.Storage.Path)
 	if err != nil {
+		_ = manager.Close()
+		return nil, err
+	}
+
+	sessionStore, err := session.OpenStore(cfg.Storage.Path)
+	if err != nil {
+		_ = stateStore.Close()
 		_ = manager.Close()
 		return nil, err
 	}
@@ -76,6 +85,7 @@ func New(cfg config.Config, logger *slog.Logger) (*Server, error) {
 		unionClient:   unionClient,
 		bridge:        b,
 		stateStore:    stateStore,
+		sessionStore:  sessionStore,
 		httpClient:    httpClient,
 		logger:        logger,
 		mux:           http.NewServeMux(),
@@ -101,6 +111,21 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/union/member/sync", s.withUnionVerify(s.handleSync))
 	s.mux.HandleFunc("GET /api/union/member/queryemail", s.withUnionVerify(s.handleQueryEmail))
 	s.mux.HandleFunc("POST /api/union/member/diagnose", s.withUnionVerify(s.handleDiagnose))
+
+	s.mux.HandleFunc("GET /api/union/member/oauth2/", s.handleOAuth2GetSigPublicKey)
+	s.mux.HandleFunc("GET /api/union/member/oauth2/grant", s.handleOAuth2Grant)
+
+	s.mux.HandleFunc("GET /api/union/admin/blacklist", s.withAdminAPIKey(s.handleBlacklistList))
+	s.mux.HandleFunc("POST /api/union/admin/blacklist", s.withAdminAPIKey(s.handleBlacklistCreate))
+	s.mux.HandleFunc("PUT /api/union/admin/blacklist/invalidate/{id}", s.withAdminAPIKey(s.handleBlacklistInvalidate))
+	s.mux.HandleFunc("DELETE /api/union/admin/blacklist/{id}", s.withAdminAPIKey(s.handleBlacklistDelete))
+
+	s.mux.HandleFunc("POST /api/union/profile/bind", s.withBearerToken(s.handleProfileBind))
+	s.mux.HandleFunc("POST /api/union/profile/unbind", s.withBearerToken(s.handleProfileUnbind))
+	s.mux.HandleFunc("POST /api/union/profile/bindto", s.withBearerToken(s.handleProfileBindTo))
+	s.mux.HandleFunc("GET /api/union/security/level", s.withBearerToken(s.handleSecurityLevel))
+
+	s.mux.HandleFunc("POST /api/union/webhook/profile-sync", s.withWebhookSecret(s.handleProfileSyncWebhook))
 
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -147,6 +172,9 @@ func (s *Server) Close() error {
 		first = err
 	}
 	if err := s.unionClient.Close(); err != nil && first == nil {
+		first = err
+	}
+	if err := s.sessionStore.Close(); err != nil && first == nil {
 		first = err
 	}
 	if err := s.stateStore.Close(); err != nil && first == nil {

@@ -33,10 +33,15 @@ type Config struct {
 		Path string `yaml:"path" env:"STORAGE_PATH"`
 	} `yaml:"storage"`
 	Union struct {
-		HubURL          string `yaml:"hub_url" env:"HUB_URL"`
-		MemberKey       string `yaml:"member_key" env:"MEMBER_KEY"`
-		CORSAllowOrigin string `yaml:"cors_allow_origin" env:"CORS_ALLOW_ORIGIN"`
-		TimeoutSeconds  int    `yaml:"timeout_seconds" env:"TIMEOUT_SECONDS"`
+		HubURL                  string `yaml:"hub_url" env:"HUB_URL"`
+		MemberKey               string `yaml:"member_key" env:"MEMBER_KEY"`
+		CORSAllowOrigin         string `yaml:"cors_allow_origin" env:"CORS_ALLOW_ORIGIN"`
+		TimeoutSeconds          int    `yaml:"timeout_seconds" env:"TIMEOUT_SECONDS"`
+		AdminAPIKey             string `yaml:"admin_api_key" env:"ADMIN_API_KEY"`
+		WebhookSecret           string `yaml:"webhook_secret" env:"WEBHOOK_SECRET"`
+		EnableOAuth2            bool   `yaml:"enable_oauth2" env:"ENABLE_OAUTH2"`
+		OAuth2SigPrivateKeyPath string `yaml:"oauth2_sig_private_key_path" env:"OAUTH2_SIG_PRIVATE_KEY_PATH"`
+		OAuth2SigPublicKeyPath  string `yaml:"oauth2_sig_public_key_path" env:"OAUTH2_SIG_PUBLIC_KEY_PATH"`
 	} `yaml:"union" env:"UNION"`
 	// TLS holds optional TLS configuration for outbound connections.
 	// TODO: wire this into HTTP clients for Element-Skin and Union Hub.
@@ -61,6 +66,9 @@ func defaults() Config {
 	cfg.Elementskin.ServiceAccount.Scope = "profile.read.any"
 	cfg.Storage.Path = "./union-svc.db"
 	cfg.Union.TimeoutSeconds = 30
+	cfg.Union.EnableOAuth2 = true
+	cfg.Union.OAuth2SigPrivateKeyPath = "./oauth2_sig_private.pem"
+	cfg.Union.OAuth2SigPublicKeyPath = "./oauth2_sig_public.pem"
 	cfg.Log.Level = "info"
 	return cfg
 }
@@ -122,6 +130,12 @@ func validateRequiredConfig(cfg Config) error {
 	}
 	if cfg.Union.MemberKey == "" {
 		missing = append(missing, "union.member_key")
+	}
+	if cfg.Union.AdminAPIKey == "" {
+		missing = append(missing, "union.admin_api_key")
+	}
+	if cfg.Union.WebhookSecret == "" {
+		missing = append(missing, "union.webhook_secret")
 	}
 	if cfg.Storage.Path == "" {
 		missing = append(missing, "storage.path")

@@ -18,6 +18,8 @@ func TestDefaults(t *testing.T) {
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "svc-secret")
 	t.Setenv("UNION_UNION_HUB_URL", "https://hub.example.com")
 	t.Setenv("UNION_UNION_MEMBER_KEY", "member-key")
+	t.Setenv("UNION_UNION_ADMIN_API_KEY", "admin-key")
+	t.Setenv("UNION_UNION_WEBHOOK_SECRET", "webhook-secret")
 	t.Setenv("UNION_STORAGE_PATH", "/data/union.db")
 
 	cfg, err := Load("")
@@ -46,6 +48,15 @@ func TestDefaults(t *testing.T) {
 	if cfg.Union.TimeoutSeconds != 30 {
 		t.Errorf("Union.TimeoutSeconds = %d, want 30", cfg.Union.TimeoutSeconds)
 	}
+	if cfg.Union.EnableOAuth2 != true {
+		t.Errorf("Union.EnableOAuth2 = %v, want true", cfg.Union.EnableOAuth2)
+	}
+	if cfg.Union.OAuth2SigPrivateKeyPath != "./oauth2_sig_private.pem" {
+		t.Errorf("Union.OAuth2SigPrivateKeyPath = %q, want ./oauth2_sig_private.pem", cfg.Union.OAuth2SigPrivateKeyPath)
+	}
+	if cfg.Union.OAuth2SigPublicKeyPath != "./oauth2_sig_public.pem" {
+		t.Errorf("Union.OAuth2SigPublicKeyPath = %q, want ./oauth2_sig_public.pem", cfg.Union.OAuth2SigPublicKeyPath)
+	}
 	if cfg.Log.Level != "info" {
 		t.Errorf("Log.Level = %q, want info", cfg.Log.Level)
 	}
@@ -69,6 +80,8 @@ func TestLoadEmptyDefaultsFailsValidation(t *testing.T) {
 		"elementskin.service_account.client_secret",
 		"union.hub_url",
 		"union.member_key",
+		"union.admin_api_key",
+		"union.webhook_secret",
 	} {
 		if !strings.Contains(msg, field) {
 			t.Errorf("validation error missing %q: %s", field, msg)
@@ -102,6 +115,8 @@ storage:
 union:
   hub_url: "https://hub.example.com"
   member_key: "yaml-key"
+  admin_api_key: "yaml-admin-key"
+  webhook_secret: "yaml-webhook-secret"
   timeout_seconds: 60
 log:
   level: "debug"
@@ -179,6 +194,8 @@ union:
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_SCOPE", "profile.write.any")
 	t.Setenv("UNION_UNION_HUB_URL", "https://hub-from-env.example.com")
 	t.Setenv("UNION_UNION_MEMBER_KEY", "env-member-key")
+	t.Setenv("UNION_UNION_ADMIN_API_KEY", "env-admin-key")
+	t.Setenv("UNION_UNION_WEBHOOK_SECRET", "env-webhook-secret")
 	t.Setenv("UNION_STORAGE_PATH", "/env/storage.db")
 	t.Setenv("UNION_LOG_LEVEL", "error")
 
@@ -214,6 +231,12 @@ union:
 	}
 	if cfg.Union.MemberKey != "env-member-key" {
 		t.Errorf("Union.MemberKey = %q, want env-member-key", cfg.Union.MemberKey)
+	}
+	if cfg.Union.AdminAPIKey != "env-admin-key" {
+		t.Errorf("Union.AdminAPIKey = %q, want env-admin-key", cfg.Union.AdminAPIKey)
+	}
+	if cfg.Union.WebhookSecret != "env-webhook-secret" {
+		t.Errorf("Union.WebhookSecret = %q, want env-webhook-secret", cfg.Union.WebhookSecret)
 	}
 	if cfg.Storage.Path != "/env/storage.db" {
 		t.Errorf("Storage.Path = %q, want /env/storage.db", cfg.Storage.Path)
@@ -260,6 +283,8 @@ storage:
 union:
   hub_url: "https://hub.example.com"
   member_key: "member-key"
+  admin_api_key: "admin-key"
+  webhook_secret: "webhook-secret"
   cors_allow_origin: "https://skin.example.com"
   timeout_seconds: 30
 log:
@@ -280,6 +305,21 @@ tls:
 	if cfg.Elementskin.BaseURL != "https://skin.example.com" {
 		t.Errorf("BaseURL = %q, want https://skin.example.com", cfg.Elementskin.BaseURL)
 	}
+	if cfg.Union.AdminAPIKey != "admin-key" {
+		t.Errorf("Union.AdminAPIKey = %q, want admin-key", cfg.Union.AdminAPIKey)
+	}
+	if cfg.Union.WebhookSecret != "webhook-secret" {
+		t.Errorf("Union.WebhookSecret = %q, want webhook-secret", cfg.Union.WebhookSecret)
+	}
+	if cfg.Union.EnableOAuth2 != true {
+		t.Errorf("Union.EnableOAuth2 = %v, want true", cfg.Union.EnableOAuth2)
+	}
+	if cfg.Union.OAuth2SigPrivateKeyPath != "./oauth2_sig_private.pem" {
+		t.Errorf("Union.OAuth2SigPrivateKeyPath = %q, want ./oauth2_sig_private.pem", cfg.Union.OAuth2SigPrivateKeyPath)
+	}
+	if cfg.Union.OAuth2SigPublicKeyPath != "./oauth2_sig_public.pem" {
+		t.Errorf("Union.OAuth2SigPublicKeyPath = %q, want ./oauth2_sig_public.pem", cfg.Union.OAuth2SigPublicKeyPath)
+	}
 	if cfg.Union.CORSAllowOrigin != "https://skin.example.com" {
 		t.Errorf("CORSAllowOrigin = %q, want https://skin.example.com", cfg.Union.CORSAllowOrigin)
 	}
@@ -291,6 +331,121 @@ tls:
 	}
 	if cfg.TLS.InsecureSkipVerify != false {
 		t.Errorf("TLS.InsecureSkipVerify = %v, want false", cfg.TLS.InsecureSkipVerify)
+	}
+}
+
+func TestNewUnionConfig(t *testing.T) {
+	baseYAML := `
+server:
+  port: 8001
+elementskin:
+  base_url: "https://skin.example.com"
+  oauth:
+    client_id: "client-id"
+    client_secret: "client-secret"
+    redirect_uri: "https://union.example.com/oauth/callback"
+  service_account:
+    client_id: "svc-client-id"
+    client_secret: "svc-client-secret"
+    scope: "profile.read.any"
+storage:
+  path: "/data/union.db"
+union:
+  hub_url: "https://hub.example.com"
+  member_key: "member-key"
+`
+
+	tests := []struct {
+		name           string
+		yamlExtra      string
+		wantErr        bool
+		wantErrContain string
+		assertFn       func(t *testing.T, cfg Config)
+	}{
+		{
+			name:      "all fields set loads OK",
+			yamlExtra: "  admin_api_key: \"admin-key\"\n  webhook_secret: \"webhook-secret\"\n  enable_oauth2: true\n  oauth2_sig_private_key_path: \"/keys/private.pem\"\n  oauth2_sig_public_key_path: \"/keys/public.pem\"\n",
+			wantErr:   false,
+			assertFn: func(t *testing.T, cfg Config) {
+				if cfg.Union.AdminAPIKey != "admin-key" {
+					t.Errorf("AdminAPIKey = %q, want admin-key", cfg.Union.AdminAPIKey)
+				}
+				if cfg.Union.WebhookSecret != "webhook-secret" {
+					t.Errorf("WebhookSecret = %q, want webhook-secret", cfg.Union.WebhookSecret)
+				}
+				if cfg.Union.EnableOAuth2 != true {
+					t.Errorf("EnableOAuth2 = %v, want true", cfg.Union.EnableOAuth2)
+				}
+				if cfg.Union.OAuth2SigPrivateKeyPath != "/keys/private.pem" {
+					t.Errorf("OAuth2SigPrivateKeyPath = %q, want /keys/private.pem", cfg.Union.OAuth2SigPrivateKeyPath)
+				}
+				if cfg.Union.OAuth2SigPublicKeyPath != "/keys/public.pem" {
+					t.Errorf("OAuth2SigPublicKeyPath = %q, want /keys/public.pem", cfg.Union.OAuth2SigPublicKeyPath)
+				}
+			},
+		},
+		{
+			name:           "missing admin_api_key errors",
+			yamlExtra:      "  webhook_secret: \"webhook-secret\"\n",
+			wantErr:        true,
+			wantErrContain: "union.admin_api_key",
+		},
+		{
+			name:           "missing webhook_secret errors",
+			yamlExtra:      "  admin_api_key: \"admin-key\"\n",
+			wantErr:        true,
+			wantErrContain: "union.webhook_secret",
+		},
+		{
+			name:      "enable_oauth2 defaults true when omitted",
+			yamlExtra: "  admin_api_key: \"admin-key\"\n  webhook_secret: \"webhook-secret\"\n",
+			wantErr:   false,
+			assertFn: func(t *testing.T, cfg Config) {
+				if cfg.Union.EnableOAuth2 != true {
+					t.Errorf("EnableOAuth2 = %v, want true (default)", cfg.Union.EnableOAuth2)
+				}
+			},
+		},
+		{
+			name:      "sig key paths default when omitted",
+			yamlExtra: "  admin_api_key: \"admin-key\"\n  webhook_secret: \"webhook-secret\"\n  enable_oauth2: false\n",
+			wantErr:   false,
+			assertFn: func(t *testing.T, cfg Config) {
+				if cfg.Union.OAuth2SigPrivateKeyPath != "./oauth2_sig_private.pem" {
+					t.Errorf("OAuth2SigPrivateKeyPath = %q, want ./oauth2_sig_private.pem", cfg.Union.OAuth2SigPrivateKeyPath)
+				}
+				if cfg.Union.OAuth2SigPublicKeyPath != "./oauth2_sig_public.pem" {
+					t.Errorf("OAuth2SigPublicKeyPath = %q, want ./oauth2_sig_public.pem", cfg.Union.OAuth2SigPublicKeyPath)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			yamlPath := filepath.Join(dir, "config.yaml")
+			if err := os.WriteFile(yamlPath, []byte(baseYAML+tt.yamlExtra), 0644); err != nil {
+				t.Fatalf("write config file: %v", err)
+			}
+
+			cfg, err := Load(yamlPath)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContain) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.wantErrContain)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if tt.assertFn != nil {
+				tt.assertFn(t, cfg)
+			}
+		})
 	}
 }
 
@@ -331,6 +486,8 @@ func TestNonExistentFileDoesNotError(t *testing.T) {
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "svc-secret")
 	t.Setenv("UNION_UNION_HUB_URL", "https://hub.example.com")
 	t.Setenv("UNION_UNION_MEMBER_KEY", "member-key")
+	t.Setenv("UNION_UNION_ADMIN_API_KEY", "admin-key")
+	t.Setenv("UNION_UNION_WEBHOOK_SECRET", "webhook-secret")
 	t.Setenv("UNION_STORAGE_PATH", "/data/union.db")
 
 	_, err := Load("/nonexistent/path/config.yaml")

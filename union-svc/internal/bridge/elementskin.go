@@ -24,6 +24,20 @@ type CreatedProfile struct {
 	Model string `json:"model,omitempty"`
 }
 
+// UserInfo mirrors the Element-Skin GET /v1/users/me response body.
+type UserInfo struct {
+	ID           string   `json:"id"`
+	DisplayName  string   `json:"display_name"`
+	Email        string   `json:"email"`
+	Lang         string   `json:"lang"`
+	BannedUntil  *int64   `json:"banned_until"`
+	AvatarHash   string   `json:"avatar_hash"`
+	Permissions  []string `json:"permissions"`
+	Protected    bool     `json:"protected"`
+	ProfileCount int      `json:"profile_count"`
+	TextureCount int      `json:"texture_count"`
+}
+
 // AdminProfile mirrors the Element-Skin GET /v1/admin/profiles item shape.
 type AdminProfile struct {
 	ID         string `json:"id"`
@@ -185,6 +199,41 @@ func (c *ElementSkinClient) ListAllProfiles(ctx context.Context, token, query st
 		cursor = page.NextCursor
 	}
 	return all, nil
+}
+
+// GetUserInfo returns the current user from Element-Skin using a bearer token.
+func (c *ElementSkinClient) GetUserInfo(ctx context.Context, bearerToken string) (*UserInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/users/me", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build get user info request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute get user info request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read get user info response: %w", err)
+	}
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		detail := extractDetail(respBody)
+		if detail == "" {
+			detail = string(respBody)
+		}
+		return nil, &APIError{Status: resp.StatusCode, Detail: detail}
+	}
+
+	var ui UserInfo
+	if err := json.Unmarshal(respBody, &ui); err != nil {
+		return nil, fmt.Errorf("decode get user info response: %w", err)
+	}
+	return &ui, nil
 }
 
 // SearchProfilesByName queries the admin profiles API and returns only
