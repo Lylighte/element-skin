@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,7 +217,9 @@ func TestSyncProfiles(t *testing.T) {
 
 func TestSyncProfilesPassesThroughHubError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"detail":"hub error"}`))
 	}))
 	defer server.Close()
 
@@ -233,6 +236,15 @@ func TestSyncProfilesPassesThroughHubError(t *testing.T) {
 	}
 	if hubErr.Status != http.StatusInternalServerError {
 		t.Errorf("hub error status = %d, want 500", hubErr.Status)
+	}
+	if hubErr.Detail == "" {
+		t.Errorf("hub error detail is empty, should contain body snippet")
+	}
+	if !strings.Contains(hubErr.Detail, `{"detail":"hub error"}`) {
+		t.Errorf("hub error detail = %q, want it to contain response body", hubErr.Detail)
+	}
+	if !strings.Contains(hubErr.Detail, "HTTP 500") {
+		t.Errorf("hub error detail = %q, want it to contain HTTP status", hubErr.Detail)
 	}
 }
 
@@ -437,6 +449,12 @@ func TestFetchServerListReturnsHubError(t *testing.T) {
 	}
 	if hubErr.Status != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", hubErr.Status)
+	}
+	if !strings.Contains(hubErr.Detail, `{"detail":"forbidden"}`) {
+		t.Errorf("hub error detail = %q, want it to contain response body", hubErr.Detail)
+	}
+	if !strings.Contains(hubErr.Detail, "HTTP 403") {
+		t.Errorf("hub error detail = %q, want it to contain HTTP 403", hubErr.Detail)
 	}
 }
 

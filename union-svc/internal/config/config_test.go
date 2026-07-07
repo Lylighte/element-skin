@@ -3,12 +3,22 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// TestDefaults verifies that Load without any file or env uses the expected
-// default values.
+// TestDefaults verifies that Load with all required fields set uses the
+// expected default values for optional fields.
 func TestDefaults(t *testing.T) {
+	t.Setenv("UNION_ELEMENTSKIN_BASE_URL", "https://skin.example.com")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_ID", "cid")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_SECRET", "secret")
+	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID", "svc-cid")
+	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "svc-secret")
+	t.Setenv("UNION_UNION_HUB_URL", "https://hub.example.com")
+	t.Setenv("UNION_UNION_MEMBER_KEY", "member-key")
+	t.Setenv("UNION_STORAGE_PATH", "/data/union.db")
+
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("Load empty path: %v", err)
@@ -20,23 +30,51 @@ func TestDefaults(t *testing.T) {
 	if cfg.Server.Port != 8001 {
 		t.Errorf("Server.Port = %d, want 8001", cfg.Server.Port)
 	}
-	if cfg.Elementskin.BaseURL != "http://127.0.0.1:8000" {
-		t.Errorf("Elementskin.BaseURL = %q, want http://127.0.0.1:8000", cfg.Elementskin.BaseURL)
+	if cfg.Elementskin.BaseURL != "https://skin.example.com" {
+		t.Errorf("Elementskin.BaseURL = %q, want https://skin.example.com", cfg.Elementskin.BaseURL)
 	}
-	if cfg.Elementskin.OAuth.RedirectURI != "http://127.0.0.1:8001/oauth/callback" {
-		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want http://127.0.0.1:8001/oauth/callback", cfg.Elementskin.OAuth.RedirectURI)
+	if cfg.Elementskin.OAuth.RedirectURI != "" {
+		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want empty", cfg.Elementskin.OAuth.RedirectURI)
 	}
 	if cfg.Elementskin.ServiceAccount.Scope != "profile.read.any" {
 		t.Errorf("Elementskin.ServiceAccount.Scope = %q, want profile.read.any", cfg.Elementskin.ServiceAccount.Scope)
 	}
-	if cfg.Storage.Path != "./union-svc.db" {
-		t.Errorf("Storage.Path = %q, want ./union-svc.db", cfg.Storage.Path)
+	if cfg.Storage.Path != "/data/union.db" {
+		t.Errorf("Storage.Path = %q, want /data/union.db", cfg.Storage.Path)
 	}
 	if cfg.Union.TimeoutSeconds != 30 {
 		t.Errorf("Union.TimeoutSeconds = %d, want 30", cfg.Union.TimeoutSeconds)
 	}
 	if cfg.Log.Level != "info" {
 		t.Errorf("Log.Level = %q, want info", cfg.Log.Level)
+	}
+}
+
+// TestLoadEmptyDefaultsFailsValidation verifies that Load without any config
+// file or environment variables returns a validation error listing all missing
+// required fields.
+func TestLoadEmptyDefaultsFailsValidation(t *testing.T) {
+	_, err := Load("")
+	if err == nil {
+		t.Fatal("expected validation error for empty config")
+	}
+	msg := err.Error()
+	for _, field := range []string{
+		"elementskin.base_url",
+		"elementskin.oauth.client_id",
+		"elementskin.oauth.client_secret",
+		"elementskin.service_account.client_id",
+		"elementskin.service_account.client_secret",
+		"union.hub_url",
+		"union.member_key",
+	} {
+		if !strings.Contains(msg, field) {
+			t.Errorf("validation error missing %q: %s", field, msg)
+		}
+	}
+	// Storage.Path has a default so it is not expected in the error.
+	if strings.Contains(msg, "storage.path") {
+		t.Errorf("validation error should not include storage.path (has default): %s", msg)
 	}
 }
 
@@ -53,6 +91,9 @@ elementskin:
   oauth:
     client_id: "yaml-client"
     client_secret: "yaml-secret"
+  service_account:
+    client_id: "yaml-svc-id"
+    client_secret: "yaml-svc-secret"
 storage:
   path: "/data/custom.db"
 union:
@@ -127,10 +168,14 @@ union:
 	// Set env vars that should override YAML values.
 	t.Setenv("UNION_SERVER_PORT", "1234")
 	t.Setenv("UNION_ELEMENTSKIN_BASE_URL", "http://from-env:9000")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_ID", "env-oauth-cid")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_SECRET", "env-oauth-secret")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID", "env-svc-id")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "env-svc-secret")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_SCOPE", "profile.write.any")
 	t.Setenv("UNION_UNION_HUB_URL", "https://hub-from-env.example.com")
+	t.Setenv("UNION_UNION_MEMBER_KEY", "env-member-key")
+	t.Setenv("UNION_STORAGE_PATH", "/env/storage.db")
 	t.Setenv("UNION_LOG_LEVEL", "error")
 
 	cfg, err := Load(yamlPath)
@@ -145,6 +190,12 @@ union:
 	if cfg.Elementskin.BaseURL != "http://from-env:9000" {
 		t.Errorf("Elementskin.BaseURL = %q, want http://from-env:9000", cfg.Elementskin.BaseURL)
 	}
+	if cfg.Elementskin.OAuth.ClientID != "env-oauth-cid" {
+		t.Errorf("Elementskin.OAuth.ClientID = %q, want env-oauth-cid", cfg.Elementskin.OAuth.ClientID)
+	}
+	if cfg.Elementskin.OAuth.ClientSecret != "env-oauth-secret" {
+		t.Errorf("Elementskin.OAuth.ClientSecret = %q, want env-oauth-secret", cfg.Elementskin.OAuth.ClientSecret)
+	}
 	if cfg.Elementskin.ServiceAccount.ClientID != "env-svc-id" {
 		t.Errorf("Elementskin.ServiceAccount.ClientID = %q, want env-svc-id", cfg.Elementskin.ServiceAccount.ClientID)
 	}
@@ -156,6 +207,12 @@ union:
 	}
 	if cfg.Union.HubURL != "https://hub-from-env.example.com" {
 		t.Errorf("Union.HubURL = %q, want https://hub-from-env.example.com", cfg.Union.HubURL)
+	}
+	if cfg.Union.MemberKey != "env-member-key" {
+		t.Errorf("Union.MemberKey = %q, want env-member-key", cfg.Union.MemberKey)
+	}
+	if cfg.Storage.Path != "/env/storage.db" {
+		t.Errorf("Storage.Path = %q, want /env/storage.db", cfg.Storage.Path)
 	}
 	if cfg.Log.Level != "error" {
 		t.Errorf("Log.Level = %q, want error", cfg.Log.Level)
@@ -170,11 +227,60 @@ union:
 	if cfg.Server.Addr != "" {
 		t.Errorf("Server.Addr = %q, want empty (default)", cfg.Server.Addr)
 	}
-	if cfg.Elementskin.OAuth.RedirectURI != "http://127.0.0.1:8001/oauth/callback" {
-		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want default", cfg.Elementskin.OAuth.RedirectURI)
+	if cfg.Elementskin.OAuth.RedirectURI != "" {
+		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want empty (default)", cfg.Elementskin.OAuth.RedirectURI)
 	}
-	if cfg.Storage.Path != "./union-svc.db" {
-		t.Errorf("Storage.Path = %q, want default", cfg.Storage.Path)
+}
+
+// TestLoadFullyPopulatedYAMLPassesValidation verifies that a YAML file with
+// all required fields passes validation.
+func TestLoadFullyPopulatedYAMLPassesValidation(t *testing.T) {
+	dir := t.TempDir()
+	yamlPath := filepath.Join(dir, "config.yaml")
+	yamlContent := `
+server:
+  addr: "0.0.0.0"
+  port: 8001
+elementskin:
+  base_url: "https://skin.example.com"
+  oauth:
+    client_id: "client-id"
+    client_secret: "client-secret"
+    redirect_uri: "https://union.example.com/oauth/callback"
+  service_account:
+    client_id: "svc-client-id"
+    client_secret: "svc-client-secret"
+    scope: "profile.read.any"
+storage:
+  path: "/data/union.db"
+union:
+  hub_url: "https://hub.example.com"
+  member_key: "member-key"
+  cors_allow_origin: "https://skin.example.com"
+  timeout_seconds: 30
+log:
+  level: "info"
+tls:
+  insecure_skip_verify: false
+  ca_file: "/etc/ssl/certs/ca.crt"
+`
+	if err := os.WriteFile(yamlPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	cfg, err := Load(yamlPath)
+	if err != nil {
+		t.Fatalf("Load fully populated config: %v", err)
+	}
+
+	if cfg.Elementskin.BaseURL != "https://skin.example.com" {
+		t.Errorf("BaseURL = %q, want https://skin.example.com", cfg.Elementskin.BaseURL)
+	}
+	if cfg.Union.CORSAllowOrigin != "https://skin.example.com" {
+		t.Errorf("CORSAllowOrigin = %q, want https://skin.example.com", cfg.Union.CORSAllowOrigin)
+	}
+	if cfg.Union.HubURL != "https://hub.example.com" {
+		t.Errorf("HubURL = %q, want https://hub.example.com", cfg.Union.HubURL)
 	}
 }
 
@@ -205,7 +311,17 @@ func TestListenAddr(t *testing.T) {
 
 // TestNonExistentFileDoesNotError verifies that Load does not fail when the
 // config file path does not exist — it falls through to defaults + env.
+// Required fields must be provided via env so that validation passes.
 func TestNonExistentFileDoesNotError(t *testing.T) {
+	t.Setenv("UNION_ELEMENTSKIN_BASE_URL", "https://skin.example.com")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_ID", "cid")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_SECRET", "secret")
+	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID", "svc-cid")
+	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "svc-secret")
+	t.Setenv("UNION_UNION_HUB_URL", "https://hub.example.com")
+	t.Setenv("UNION_UNION_MEMBER_KEY", "member-key")
+	t.Setenv("UNION_STORAGE_PATH", "/data/union.db")
+
 	_, err := Load("/nonexistent/path/config.yaml")
 	if err != nil {
 		t.Fatalf("Load with nonexistent file should not error, got: %v", err)

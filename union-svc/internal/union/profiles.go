@@ -53,6 +53,21 @@ func (c *Client) GetProfiles(ctx context.Context, username string) ([]Profile, e
 	return decodeProfiles(body)
 }
 
+// decodeProfiles attempts to unmarshal a JSON response into a []Profile,
+// supporting three shapes for backward compatibility with different Hub
+// response versions:
+//
+//  1. A bare JSON array of Profile objects:
+//     [{"id":"...", "name":"...", ...}]
+//
+//  2. A wrapped object with a "data" key containing the array:
+//     {"data": [{"id":"...", "name":"...", ...}]}
+//
+//  3. A single Profile object (legacy shape for queries that return exactly
+//     one result):
+//     {"id":"...", "name":"...", ...}
+//
+// Fallback ordering means shape 1 is the most efficient and preferred.
 func decodeProfiles(body []byte) ([]Profile, error) {
 	var err error
 

@@ -36,7 +36,9 @@ func (s *Server) handleUnionHello(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if s.cfg.Union.CORSAllowOrigin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", s.cfg.Union.CORSAllowOrigin)
+	}
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"yggdrasilApiVersion": "union-svc/1.0",

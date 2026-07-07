@@ -500,8 +500,8 @@ func TestHelloReturnsVersionAndFeatures(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("hello status = %d, want 200: %s", resp.StatusCode, string(body))
 	}
-	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
-		t.Errorf("Access-Control-Allow-Origin = %q, want *", got)
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want empty (no CORS configured)", got)
 	}
 
 	var body map[string]any
@@ -520,6 +520,28 @@ func TestHelloReturnsVersionAndFeatures(t *testing.T) {
 	features, ok := body["enabledFeatures"].([]any)
 	if !ok || len(features) != 1 || features[0] != "unionBlacklist" {
 		t.Errorf("enabledFeatures = %v, want [unionBlacklist]", body["enabledFeatures"])
+	}
+}
+
+func TestHelloEmitsCORSWhenConfigured(t *testing.T) {
+	_, pubPEM, err := union.GenerateRSAKeyPair()
+	if err != nil {
+		t.Fatalf("generate key pair: %v", err)
+	}
+
+	srv, _ := setupInboundTestServer(t, pubPEM)
+	srv.cfg.Union.CORSAllowOrigin = "https://example.com"
+	testServer := httptest.NewServer(srv.Handler())
+	defer testServer.Close()
+
+	resp, err := http.Get(testServer.URL + "/api/union/member/")
+	if err != nil {
+		t.Fatalf("get hello: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "https://example.com" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want https://example.com", got)
 	}
 }
 

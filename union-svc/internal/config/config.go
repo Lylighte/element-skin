@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -32,10 +33,17 @@ type Config struct {
 		Path string `yaml:"path" env:"STORAGE_PATH"`
 	} `yaml:"storage"`
 	Union struct {
-		HubURL         string `yaml:"hub_url" env:"HUB_URL"`
-		MemberKey      string `yaml:"member_key" env:"MEMBER_KEY"`
-		TimeoutSeconds int    `yaml:"timeout_seconds" env:"TIMEOUT_SECONDS"`
+		HubURL          string `yaml:"hub_url" env:"HUB_URL"`
+		MemberKey       string `yaml:"member_key" env:"MEMBER_KEY"`
+		CORSAllowOrigin string `yaml:"cors_allow_origin" env:"CORS_ALLOW_ORIGIN"`
+		TimeoutSeconds  int    `yaml:"timeout_seconds" env:"TIMEOUT_SECONDS"`
 	} `yaml:"union" env:"UNION"`
+	// TLS holds optional TLS configuration for outbound connections.
+	// TODO: wire this into HTTP clients for Element-Skin and Union Hub.
+	TLS struct {
+		InsecureSkipVerify bool   `yaml:"insecure_skip_verify" env:"TLS_INSECURE_SKIP_VERIFY"`
+		CAFile             string `yaml:"ca_file" env:"TLS_CA_FILE"`
+	} `yaml:"tls" env:"TLS"`
 	Log struct {
 		Level string `yaml:"level" env:"LOG_LEVEL"`
 	} `yaml:"log"`
@@ -46,8 +54,10 @@ func defaults() Config {
 	var cfg Config
 	cfg.Server.Addr = ""
 	cfg.Server.Port = 8001
-	cfg.Elementskin.BaseURL = "http://127.0.0.1:8000"
-	cfg.Elementskin.OAuth.RedirectURI = "http://127.0.0.1:8001/oauth/callback"
+	// Network-address defaults are intentionally empty — they must be
+	// provided explicitly via config file or environment variable in production.
+	cfg.Elementskin.BaseURL = ""
+	cfg.Elementskin.OAuth.RedirectURI = ""
 	cfg.Elementskin.ServiceAccount.Scope = "profile.read.any"
 	cfg.Storage.Path = "./union-svc.db"
 	cfg.Union.TimeoutSeconds = 30
@@ -76,7 +86,48 @@ func Load(path string) (Config, error) {
 		return cfg, fmt.Errorf("apply env vars: %w", err)
 	}
 
+	if err := validateRequiredConfig(cfg); err != nil {
+		return cfg, err
+	}
+
 	return cfg, nil
+}
+
+// validateRequiredConfig returns an error when production-critical
+// configuration values are empty. Defaults alone are insufficient; every
+// deployment must explicitly supply these values.
+func validateRequiredConfig(cfg Config) error {
+	var missing []string
+
+	if cfg.Elementskin.BaseURL == "" {
+		missing = append(missing, "elementskin.base_url")
+	}
+	if cfg.Elementskin.OAuth.ClientID == "" {
+		missing = append(missing, "elementskin.oauth.client_id")
+	}
+	if cfg.Elementskin.OAuth.ClientSecret == "" {
+		missing = append(missing, "elementskin.oauth.client_secret")
+	}
+	if cfg.Elementskin.ServiceAccount.ClientID == "" {
+		missing = append(missing, "elementskin.service_account.client_id")
+	}
+	if cfg.Elementskin.ServiceAccount.ClientSecret == "" {
+		missing = append(missing, "elementskin.service_account.client_secret")
+	}
+	if cfg.Union.HubURL == "" {
+		missing = append(missing, "union.hub_url")
+	}
+	if cfg.Union.MemberKey == "" {
+		missing = append(missing, "union.member_key")
+	}
+	if cfg.Storage.Path == "" {
+		missing = append(missing, "storage.path")
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required config: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 // applyEnv walks v recursively and, for each struct field that carries an

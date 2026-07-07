@@ -57,7 +57,8 @@ func (c *Client) request(ctx context.Context, method, path string, body, out any
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, &HubError{Status: resp.StatusCode, Detail: "union hub request failed"}
+		detail := fmt.Sprintf("union hub returned HTTP %d: %s", resp.StatusCode, truncateBody(respBody, 512))
+		return nil, &HubError{Status: resp.StatusCode, Detail: detail}
 	}
 
 	if out != nil && len(respBody) > 0 {
@@ -67,4 +68,13 @@ func (c *Client) request(ctx context.Context, method, path string, body, out any
 	}
 
 	return respBody, nil
+}
+
+// truncateBody returns the first maxLen bytes of body as a string, appending
+// "..." when the body exceeds maxLen.
+func truncateBody(body []byte, maxLen int) string {
+	if len(body) <= maxLen {
+		return string(body)
+	}
+	return string(body[:maxLen]) + "..."
 }
