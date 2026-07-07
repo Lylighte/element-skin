@@ -44,7 +44,7 @@ func main() {
 		Addr:         cfg.ListenAddr(),
 		Handler:      app.Handler(),
 		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: 35 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 

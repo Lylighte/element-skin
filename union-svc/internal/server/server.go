@@ -16,8 +16,11 @@ import (
 //go:embed static/index.html
 var staticFiles embed.FS
 
-func indexHTML() []byte {
-	b, _ := staticFiles.ReadFile("static/index.html")
+func indexHTML(logger *slog.Logger) []byte {
+	b, err := staticFiles.ReadFile("static/index.html")
+	if err != nil {
+		logger.Error("failed to read embedded static/index.html", "error", err)
+	}
 	return b
 }
 
@@ -105,7 +108,7 @@ func (s *Server) routes() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(indexHTML())
+		_, _ = w.Write(indexHTML(s.logger))
 	})
 }
 

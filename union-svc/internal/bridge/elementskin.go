@@ -4,12 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+// maxAdminProfilePages caps the pagination loop in ListAllProfiles.
+// With a page size of 100, this limits the result set to 10 000 profiles.
+const maxAdminProfilePages = 100
 
 // CreatedProfile mirrors the Element-Skin POST /v1/profiles success body.
 type CreatedProfile struct {
@@ -50,9 +56,10 @@ type ElementSkinClient struct {
 }
 
 // NewElementSkinClient creates a client for the upstream Element-Skin API.
+// When httpClient is nil, a default client with a 30-second timeout is used.
 func NewElementSkinClient(baseURL string, httpClient *http.Client) *ElementSkinClient {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	return &ElementSkinClient{
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -120,7 +127,12 @@ func extractDetail(body []byte) string {
 func (c *ElementSkinClient) ListAllProfiles(ctx context.Context, token, query string) ([]AdminProfile, error) {
 	var all []AdminProfile
 	cursor := ""
+	pages := 0
 	for {
+		pages++
+		if pages > maxAdminProfilePages {
+			return nil, errors.New("admin profiles pagination exceeded maximum pages")
+		}
 		u, err := url.Parse(c.baseURL + "/v1/admin/profiles")
 		if err != nil {
 			return nil, fmt.Errorf("build admin profiles URL: %w", err)
