@@ -1,16 +1,17 @@
 # union-svc example configuration.
 # Copy to config.yaml and adjust for your environment.
+# All fields shown as empty ("") are REQUIRED and must be provided.
 
 server:
   addr: ""
   port: 8001
 
 elementskin:
-  base_url: "http://127.0.0.1:8000"
+  base_url: ""
   oauth:
     client_id: ""
     client_secret: ""
-    redirect_uri: "http://127.0.0.1:8001/oauth/callback"
+    redirect_uri: ""
   service_account:
     client_id: ""
     client_secret: ""
@@ -22,7 +23,12 @@ storage:
 union:
   hub_url: ""
   member_key: ""
+  cors_allow_origin: ""
   timeout_seconds: 30
+
+tls:
+  insecure_skip_verify: false
+  ca_file: ""
 
 log:
   level: "info"

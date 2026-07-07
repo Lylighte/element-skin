@@ -13,6 +13,7 @@ func TestDefaults(t *testing.T) {
 	t.Setenv("UNION_ELEMENTSKIN_BASE_URL", "https://skin.example.com")
 	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_ID", "cid")
 	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_SECRET", "secret")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_REDIRECT_URI", "https://skin.example.com/oauth/callback")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID", "svc-cid")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "svc-secret")
 	t.Setenv("UNION_UNION_HUB_URL", "https://hub.example.com")
@@ -33,8 +34,8 @@ func TestDefaults(t *testing.T) {
 	if cfg.Elementskin.BaseURL != "https://skin.example.com" {
 		t.Errorf("Elementskin.BaseURL = %q, want https://skin.example.com", cfg.Elementskin.BaseURL)
 	}
-	if cfg.Elementskin.OAuth.RedirectURI != "" {
-		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want empty", cfg.Elementskin.OAuth.RedirectURI)
+	if cfg.Elementskin.OAuth.RedirectURI != "https://skin.example.com/oauth/callback" {
+		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want https://skin.example.com/oauth/callback", cfg.Elementskin.OAuth.RedirectURI)
 	}
 	if cfg.Elementskin.ServiceAccount.Scope != "profile.read.any" {
 		t.Errorf("Elementskin.ServiceAccount.Scope = %q, want profile.read.any", cfg.Elementskin.ServiceAccount.Scope)
@@ -63,6 +64,7 @@ func TestLoadEmptyDefaultsFailsValidation(t *testing.T) {
 		"elementskin.base_url",
 		"elementskin.oauth.client_id",
 		"elementskin.oauth.client_secret",
+		"elementskin.oauth.redirect_uri",
 		"elementskin.service_account.client_id",
 		"elementskin.service_account.client_secret",
 		"union.hub_url",
@@ -91,6 +93,7 @@ elementskin:
   oauth:
     client_id: "yaml-client"
     client_secret: "yaml-secret"
+    redirect_uri: "https://elementskin.example.com/oauth/callback"
   service_account:
     client_id: "yaml-svc-id"
     client_secret: "yaml-svc-secret"
@@ -170,6 +173,7 @@ union:
 	t.Setenv("UNION_ELEMENTSKIN_BASE_URL", "http://from-env:9000")
 	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_ID", "env-oauth-cid")
 	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_SECRET", "env-oauth-secret")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_REDIRECT_URI", "https://from-env.example.com/oauth/callback")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID", "env-svc-id")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "env-svc-secret")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_SCOPE", "profile.write.any")
@@ -227,8 +231,8 @@ union:
 	if cfg.Server.Addr != "" {
 		t.Errorf("Server.Addr = %q, want empty (default)", cfg.Server.Addr)
 	}
-	if cfg.Elementskin.OAuth.RedirectURI != "" {
-		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want empty (default)", cfg.Elementskin.OAuth.RedirectURI)
+	if cfg.Elementskin.OAuth.RedirectURI != "https://from-env.example.com/oauth/callback" {
+		t.Errorf("Elementskin.OAuth.RedirectURI = %q, want https://from-env.example.com/oauth/callback", cfg.Elementskin.OAuth.RedirectURI)
 	}
 }
 
@@ -282,6 +286,12 @@ tls:
 	if cfg.Union.HubURL != "https://hub.example.com" {
 		t.Errorf("HubURL = %q, want https://hub.example.com", cfg.Union.HubURL)
 	}
+	if cfg.TLS.CAFile != "/etc/ssl/certs/ca.crt" {
+		t.Errorf("TLS.CAFile = %q, want /etc/ssl/certs/ca.crt", cfg.TLS.CAFile)
+	}
+	if cfg.TLS.InsecureSkipVerify != false {
+		t.Errorf("TLS.InsecureSkipVerify = %v, want false", cfg.TLS.InsecureSkipVerify)
+	}
 }
 
 // TestListenAddr verifies ListenAddr produces the expected host:port string.
@@ -316,6 +326,7 @@ func TestNonExistentFileDoesNotError(t *testing.T) {
 	t.Setenv("UNION_ELEMENTSKIN_BASE_URL", "https://skin.example.com")
 	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_ID", "cid")
 	t.Setenv("UNION_ELEMENTSKIN_OAUTH_CLIENT_SECRET", "secret")
+	t.Setenv("UNION_ELEMENTSKIN_OAUTH_REDIRECT_URI", "https://skin.example.com/oauth/callback")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID", "svc-cid")
 	t.Setenv("UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET", "svc-secret")
 	t.Setenv("UNION_UNION_HUB_URL", "https://hub.example.com")

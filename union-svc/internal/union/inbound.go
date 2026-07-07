@@ -75,7 +75,10 @@ func (c *Client) VerifyInboundRequest(ctx context.Context, r *http.Request) erro
 // helper and is not used for production traffic.
 func SignInboundRequest(body string, key *rsa.PrivateKey) (signatureB64, timestamp, nonce string, err error) {
 	timestamp = strconv.FormatInt(time.Now().Unix(), 10)
-	nonce = randomNonce()
+	nonce, err = randomNonce()
+	if err != nil {
+		return "", "", "", fmt.Errorf("generate nonce: %w", err)
+	}
 
 	signedData := []byte(body + timestamp + nonce)
 	digest := sha256.Sum256(signedData)
@@ -147,12 +150,12 @@ func (c *Client) fetchHubPublicKey(ctx context.Context) (string, error) {
 	return c.pubKey, nil
 }
 
-func randomNonce() string {
+func randomNonce() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("generate nonce: %v", err))
+		return "", fmt.Errorf("generate nonce: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(b)
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 const publicKeyCacheTTL = 60 * time.Second

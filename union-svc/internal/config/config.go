@@ -41,8 +41,8 @@ type Config struct {
 	// TLS holds optional TLS configuration for outbound connections.
 	// TODO: wire this into HTTP clients for Element-Skin and Union Hub.
 	TLS struct {
-		InsecureSkipVerify bool   `yaml:"insecure_skip_verify" env:"TLS_INSECURE_SKIP_VERIFY"`
-		CAFile             string `yaml:"ca_file" env:"TLS_CA_FILE"`
+		InsecureSkipVerify bool   `yaml:"insecure_skip_verify" env:"INSECURE_SKIP_VERIFY"`
+		CAFile             string `yaml:"ca_file" env:"CA_FILE"`
 	} `yaml:"tls" env:"TLS"`
 	Log struct {
 		Level string `yaml:"level" env:"LOG_LEVEL"`
@@ -107,6 +107,9 @@ func validateRequiredConfig(cfg Config) error {
 	}
 	if cfg.Elementskin.OAuth.ClientSecret == "" {
 		missing = append(missing, "elementskin.oauth.client_secret")
+	}
+	if cfg.Elementskin.OAuth.RedirectURI == "" {
+		missing = append(missing, "elementskin.oauth.redirect_uri")
 	}
 	if cfg.Elementskin.ServiceAccount.ClientID == "" {
 		missing = append(missing, "elementskin.service_account.client_id")

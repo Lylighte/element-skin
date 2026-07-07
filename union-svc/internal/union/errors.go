@@ -2,7 +2,6 @@ package union
 
 import (
 	"errors"
-	"fmt"
 )
 
 // HubError describes a non-success HTTP response from the Union Hub.
@@ -12,7 +11,7 @@ type HubError struct {
 }
 
 func (e *HubError) Error() string {
-	return fmt.Sprintf("union hub returned HTTP %d: %s", e.Status, e.Detail)
+	return e.Detail
 }
 
 // Sentinel errors for the Union client.
