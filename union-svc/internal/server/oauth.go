@@ -14,7 +14,7 @@ import (
 const (
 	// defaultScope is the scope requested when the authorize endpoint is called
 	// without an explicit scope parameter.
-	defaultScope = "profile.read.owned profile.create.owned texture.create.owned"
+	defaultScope = "account.read.self"
 
 	sessionTTL = 1 * time.Hour
 )
@@ -58,7 +58,7 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authURL, err := buildAuthorizeURL(s.cfg.Elementskin.BaseURL, s.cfg.Elementskin.OAuth.ClientID, redirectURI, scope, state, challenge)
+	authURL, err := buildAuthorizeURL(oAuthAuthorizeBase(s.cfg), s.cfg.Elementskin.OAuth.ClientID, redirectURI, scope, state, challenge)
 	if err != nil {
 		s.logger.Error("failed to build authorize url", "error", err)
 		http.Error(w, "failed to initiate authorization", http.StatusInternalServerError)
@@ -66,6 +66,13 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+func oAuthAuthorizeBase(cfg config.Config) string {
+	if cfg.Elementskin.SiteURL != "" {
+		return cfg.Elementskin.SiteURL
+	}
+	return cfg.Elementskin.BaseURL
 }
 
 func buildAuthorizeURL(baseURL, clientID, redirectURI, scope, state, challenge string) (string, error) {
@@ -132,5 +139,5 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 // authorizeURLForConfig is a test helper that returns the redirect URL a
 // browser would be sent to for the given configuration and state values.
 func authorizeURLForConfig(cfg config.Config, scope, state, challenge string) (string, error) {
-	return buildAuthorizeURL(cfg.Elementskin.BaseURL, cfg.Elementskin.OAuth.ClientID, cfg.Elementskin.OAuth.RedirectURI, scope, state, challenge)
+	return buildAuthorizeURL(oAuthAuthorizeBase(cfg), cfg.Elementskin.OAuth.ClientID, cfg.Elementskin.OAuth.RedirectURI, scope, state, challenge)
 }

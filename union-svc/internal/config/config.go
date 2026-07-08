@@ -18,6 +18,7 @@ type Config struct {
 	} `yaml:"server"`
 	Elementskin struct {
 		BaseURL string `yaml:"base_url" env:"ELEMENTSKIN_BASE_URL"`
+		SiteURL string `yaml:"site_url" env:"ELEMENTSKIN_SITE_URL"`
 		OAuth   struct {
 			ClientID     string `yaml:"client_id" env:"ELEMENTSKIN_OAUTH_CLIENT_ID"`
 			ClientSecret string `yaml:"client_secret" env:"ELEMENTSKIN_OAUTH_CLIENT_SECRET"`

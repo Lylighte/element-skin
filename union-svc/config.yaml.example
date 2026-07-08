@@ -8,6 +8,7 @@ server:
 
 elementskin:
   base_url: ""
+  site_url: ""
   oauth:
     client_id: ""
     client_secret: ""

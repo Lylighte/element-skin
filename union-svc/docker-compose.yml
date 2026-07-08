@@ -6,4 +6,4 @@ services:
       - "8001:8001"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
-      - ./data:/app
+      - ./data:/app/data

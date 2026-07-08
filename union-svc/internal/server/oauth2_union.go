@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	oauth2AuthorizeScope = "openid"
+	oauth2AuthorizeScope = "account.read.self"
 	userInfoTokenTTL     = 600 * time.Second
 )
 
@@ -179,7 +179,7 @@ func (s *Server) handleOAuth2Grant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) redirectToOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
-	u := s.cfg.Elementskin.BaseURL + "/oauth/authorize?scope=" + oauth2AuthorizeScope +
+	u := oAuthAuthorizeBase(s.cfg) + "/oauth/authorize?scope=" + oauth2AuthorizeScope +
 		"&redirect_uri=" + url.QueryEscape(s.cfg.Elementskin.OAuth.RedirectURI)
 	http.Redirect(w, r, u, http.StatusFound)
 }
