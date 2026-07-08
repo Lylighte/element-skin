@@ -30,11 +30,12 @@ go build ./cmd/union-svc
 
 | 环境变量 | 说明 |
 |---|---|
-| `UNION_ELEMENTSKIN_BASE_URL` | Element-Skin 站点地址 |
-| `UNION_ELEMENTSKIN_OAUTH_CLIENT_ID` | OAuth 客户端 ID |
+| `UNION_ELEMENTSKIN_BASE_URL` | Element-Skin API 地址 |
+| `UNION_ELEMENTSKIN_SITE_URL` | Element-Skin 前端地址，用于 OAuth 授权页面跳转 |
+| `UNION_ELEMENTSKIN_OAUTH_CLIENT_ID` | OAuth 客户端 ID（需在 Element-Skin 创建 Confidential 应用，申请 `account.read.self` 权限） |
 | `UNION_ELEMENTSKIN_OAUTH_CLIENT_SECRET` | OAuth 客户端密钥 |
 | `UNION_ELEMENTSKIN_OAUTH_REDIRECT_URI` | OAuth 回调地址 |
-| `UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID` | 服务账号客户端 ID |
+| `UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_ID` | 服务账号客户端 ID（需在 Element-Skin 创建 Confidential 应用，申请 `profile.read.any` 权限） |
 | `UNION_ELEMENTSKIN_SERVICE_ACCOUNT_CLIENT_SECRET` | 服务账号客户端密钥 |
 | `UNION_ELEMENTSKIN_SERVICE_ACCOUNT_SCOPE` | 服务账号 scope，默认 `profile.read.any` |
 
@@ -44,16 +45,16 @@ go build ./cmd/union-svc
 |---|---|---|
 | `UNION_STORAGE_PATH` | `./union-svc.db` | SQLite 数据库路径 |
 
-### Union 网络（HubURL 和 MemberKey 必填）
+### Union 网络（全部必填）
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
 | `UNION_UNION_HUB_URL` | - | Union Hub 地址 |
 | `UNION_UNION_MEMBER_KEY` | - | 成员密钥 |
+| `UNION_UNION_ADMIN_API_KEY` | - | 管理接口认证密钥（自选随机字符串） |
+| `UNION_UNION_WEBHOOK_SECRET` | - | Webhook 认证密钥（自选随机字符串） |
 | `UNION_UNION_CORS_ALLOW_ORIGIN` | - | CORS 允许来源，为空时不发送 CORS 头 |
 | `UNION_UNION_TIMEOUT_SECONDS` | `30` | 与 Hub 通信的超时秒数 |
-| `UNION_UNION_ADMIN_API_KEY` | - | **必填**，管理接口认证密钥 |
-| `UNION_UNION_WEBHOOK_SECRET` | - | **必填**，Webhook 认证密钥 |
 | `UNION_UNION_ENABLE_OAUTH2` | `true` | 是否启用 Union OAuth2 协议端点 |
 | `UNION_UNION_OAUTH2_SIG_PRIVATE_KEY_PATH` | `./oauth2_sig_private.pem` | OAuth2 签名私钥文件路径 |
 | `UNION_UNION_OAUTH2_SIG_PUBLIC_KEY_PATH` | `./oauth2_sig_public.pem` | OAuth2 签名公钥文件路径 |
