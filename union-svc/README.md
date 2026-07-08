@@ -51,8 +51,8 @@ go build ./cmd/union-svc
 |---|---|---|
 | `UNION_UNION_HUB_URL` | - | Union Hub 地址 |
 | `UNION_UNION_MEMBER_KEY` | - | 成员密钥 |
-| `UNION_UNION_ADMIN_API_KEY` | - | 管理接口认证密钥（自选随机字符串） |
-| `UNION_UNION_WEBHOOK_SECRET` | - | Webhook 认证密钥（自选随机字符串） |
+| `UNION_UNION_ADMIN_API_KEY` | - | 管理接口认证密钥（通过 `openssl rand -hex 32` 生成） |
+| `UNION_UNION_WEBHOOK_SECRET` | - | Webhook 认证密钥（通过 `openssl rand -hex 32` 生成，需与 Element-Skin 调用方一致） |
 | `UNION_UNION_CORS_ALLOW_ORIGIN` | - | CORS 允许来源，为空时不发送 CORS 头 |
 | `UNION_UNION_TIMEOUT_SECONDS` | `30` | 与 Hub 通信的超时秒数 |
 | `UNION_UNION_ENABLE_OAUTH2` | `true` | 是否启用 Union OAuth2 协议端点 |
