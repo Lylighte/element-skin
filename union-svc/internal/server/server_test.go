@@ -420,8 +420,8 @@ func TestHealthAndRootEndpointsStillWork(t *testing.T) {
 	if ct != "text/html; charset=utf-8" {
 		t.Errorf("root Content-Type = %q, want text/html; charset=utf-8", ct)
 	}
-	if !strings.Contains(string(body), "Union 角色导入") {
-		t.Errorf("root body = %q, want it to contain 'Union 角色导入'", string(body))
+	if !strings.Contains(string(body), "Union 角色查询") {
+		t.Errorf("root body = %q, want it to contain 'Union 角色查询'", string(body))
 	}
 }
 

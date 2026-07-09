@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -120,42 +119,5 @@ func TestListProfilesEndpointReturns503WhenUnionNotConfigured(t *testing.T) {
 	}
 	if body["detail"] != "union hub is not configured" {
 		t.Errorf("detail = %q, want 'union hub is not configured'", body["detail"])
-	}
-}
-
-// TestImportProfileEndpointReturns401WithoutToken verifies that
-// /api/profiles/import returns 401 when no OAuth token has been persisted.
-func TestImportProfileEndpointReturns401WithoutToken(t *testing.T) {
-	cfg := testConfig("http://127.0.0.1:1")
-	cfg.Storage.Path = filepath.Join(t.TempDir(), "store.db")
-	// No OAuth token seeded.
-
-	srv, err := New(cfg, testLogger())
-	if err != nil {
-		t.Fatalf("create server: %v", err)
-	}
-	defer srv.Close()
-
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-
-	reqBody := `{"name":"Steve"}`
-	resp, err := http.Post(ts.URL+"/api/profiles/import", "application/json", strings.NewReader(reqBody))
-	if err != nil {
-		t.Fatalf("post import: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 401: %s", resp.StatusCode, string(body))
-	}
-
-	var body map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["detail"] != "no stored oauth token; authorize first" {
-		t.Errorf("detail = %q, want 'no stored oauth token; authorize first'", body["detail"])
 	}
 }

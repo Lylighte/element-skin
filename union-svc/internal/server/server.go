@@ -102,8 +102,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/oauth/authorize", s.handleAuthorize)
 	s.mux.HandleFunc("/oauth/callback", s.handleCallback)
 	s.mux.HandleFunc("/api/profiles", s.handleListProfiles)
-	s.mux.HandleFunc("/api/profiles/import", s.handleImportProfile)
-
 	s.mux.HandleFunc("GET /api/union/member/", s.handleUnionHello)
 	s.mux.HandleFunc("POST /api/union/member/updatelist", s.withUnionVerify(s.handleUpdateList))
 	s.mux.HandleFunc("POST /api/union/member/updateprivatekey", s.withUnionVerify(s.handleUpdatePrivateKey))
