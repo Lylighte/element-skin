@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Union 角色导入</title>
+<title>Union 角色查询</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }
@@ -24,8 +24,6 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .profile-list { list-style: none; margin-top: .75rem; }
 .profile-list li { padding: .5rem .75rem; border: 1px solid #ebeef5; border-radius: 4px; margin-bottom: .5rem; cursor: pointer; transition: background .15s; }
 .profile-list li:hover { background: #f5f7fa; }
-.profile-list li.selected { border-color: #409eff; background: #ecf5ff; }
-.profile-list li label { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
 .msg-info { padding: .75rem 1rem; border-radius: 4px; margin-top: .75rem; }
 .msg-success { background: #f0f9eb; border: 1px solid #e1f3d8; color: #67c23a; }
 .msg-error { background: #fef0f0; border: 1px solid #fde2e2; color: #f56c6c; }
@@ -36,9 +34,9 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 </head>
 <body>
 <div class="container">
-  <h1>Union 角色导入</h1>
+  <h1>Union 角色查询</h1>
 
-  <div id="authorized-msg" class="hidden msg-authorized">授权完成，现在可以查询并导入角色。</div>
+  <div id="authorized-msg" class="hidden msg-authorized">授权完成，现在可以查询角色。</div>
 
   <div class="card">
     <h2><span class="step-badge">1</span> 授权</h2>
@@ -56,13 +54,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     <ul id="profile-list" class="profile-list hidden"></ul>
   </div>
 
-  <div class="card">
-    <h2><span class="step-badge">3</span> 导入</h2>
-    <p id="selected-profile" style="color:#909399;margin-bottom:.75rem;">请先查询并选择一个角色</p>
-    <button id="import-btn" class="btn-primary" disabled>导入选中角色</button>
-    <div id="import-status" class="hidden" style="margin-top:.75rem;"></div>
   </div>
-</div>
 
 <script>
 (function() {
@@ -70,12 +62,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   const queryBtn = document.getElementById('query-btn');
   const queryStatus = document.getElementById('query-status');
   const profileList = document.getElementById('profile-list');
-  const selectedProfile = document.getElementById('selected-profile');
-  const importBtn = document.getElementById('import-btn');
-  const importStatus = document.getElementById('import-status');
 
   let profiles = [];
-  let selectedUuid = null;
 
   // Show authorized message if ?authorized=true
   if (new URLSearchParams(location.search).get('authorized') === 'true') {
@@ -96,8 +84,6 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     queryBtn.textContent = '加载中...';
     showQueryStatus('info', '正在查询...');
     profileList.classList.add('hidden');
-    selectedUuid = null;
-    updateImportState();
 
     fetch('/api/profiles?username=' + encodeURIComponent(username))
       .then(function(r) {
@@ -122,75 +108,14 @@ button:disabled { opacity: .5; cursor: not-allowed; }
       });
   });
 
-  // Import profile
-  importBtn.addEventListener('click', function() {
-    if (!selectedUuid) return;
-
-    importBtn.disabled = true;
-    importBtn.textContent = '加载中...';
-    showImportStatus('info', '正在导入...');
-
-    const profile = profiles.find(function(p) { return p.uuid === selectedUuid; });
-
-    fetch('/api/profiles/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: profile.name })
-    })
-      .then(function(r) {
-        if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || '导入失败'); });
-        return r.json();
-      })
-      .then(function() {
-        showImportStatus('success', '导入成功');
-        selectedUuid = null;
-        updateImportState();
-        renderProfiles(profiles);
-      })
-      .catch(function(err) {
-        showImportStatus('error', err.message || '导入失败，请稍后重试');
-      })
-      .finally(function() {
-        importBtn.disabled = false;
-        importBtn.textContent = '导入选中角色';
-      });
-  });
-
   function renderProfiles(items) {
     profileList.innerHTML = '';
     items.forEach(function(p) {
       var li = document.createElement('li');
-      if (p.uuid === selectedUuid) li.classList.add('selected');
-      var label = document.createElement('label');
-      var radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'profile';
-      radio.value = p.uuid;
-      if (p.uuid === selectedUuid) radio.checked = true;
-      radio.addEventListener('change', function() {
-        selectedUuid = p.uuid;
-        updateImportState();
-        // update visual selection
-        profileList.querySelectorAll('li').forEach(function(el) { el.classList.remove('selected'); });
-        li.classList.add('selected');
-      });
-      label.appendChild(radio);
-      label.appendChild(document.createTextNode(p.name + ' (' + p.uuid + ')'));
-      li.appendChild(label);
+      li.textContent = p.name + ' (' + p.uuid + ')';
       profileList.appendChild(li);
     });
     profileList.classList.remove('hidden');
-  }
-
-  function updateImportState() {
-    if (selectedUuid) {
-      var profile = profiles.find(function(p) { return p.uuid === selectedUuid; });
-      selectedProfile.textContent = '已选择: ' + (profile ? profile.name : '') + ' (' + selectedUuid + ')';
-      importBtn.disabled = false;
-    } else {
-      selectedProfile.textContent = '请先查询并选择一个角色';
-      importBtn.disabled = true;
-    }
   }
 
   function showQueryStatus(type, msg) {
@@ -202,17 +127,6 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     else cls += 'info';
     queryStatus.className = 'msg-info ' + cls;
     queryStatus.textContent = msg;
-  }
-
-  function showImportStatus(type, msg) {
-    importStatus.className = '';
-    importStatus.classList.remove('hidden');
-    var cls = 'msg-';
-    if (type === 'error') cls += 'error';
-    else if (type === 'success') cls += 'success';
-    else cls += 'info';
-    importStatus.className = 'msg-info ' + cls;
-    importStatus.textContent = msg;
   }
 })();
 </script>
