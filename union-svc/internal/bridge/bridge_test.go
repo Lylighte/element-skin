@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -109,129 +108,6 @@ func TestBridgeListProfilesReturnsNotConfiguredWhenUnionHubMissing(t *testing.T)
 	}
 }
 
-func TestBridgeImportProfileCreatesProfileWithBearerToken(t *testing.T) {
-	var gotAuth string
-	var gotBody map[string]string
-	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/profiles" {
-			t.Errorf("unexpected path %s", r.URL.Path)
-		}
-		gotAuth = r.Header.Get("Authorization")
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
-			t.Errorf("decode body: %v", err)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":    "profile-id",
-			"name":  "Steve",
-			"model": "default",
-		})
-	}))
-	defer elementskin.Close()
-
-	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
-	b := New(elementskin.URL, uc, testOAuthManager(t, "access-token-123"), nil, elementskin.Client())
-
-	profile, err := b.ImportProfile(context.Background(), ImportProfileRequest{Name: "Steve", Model: "default"})
-	if err != nil {
-		t.Fatalf("import profile: %v", err)
-	}
-	if profile.ID != "profile-id" || profile.Name != "Steve" {
-		t.Errorf("profile = %+v, want profile-id/Steve", profile)
-	}
-	if gotAuth != "Bearer access-token-123" {
-		t.Errorf("authorization = %q, want Bearer access-token-123", gotAuth)
-	}
-	if gotBody["name"] != "Steve" || gotBody["model"] != "default" {
-		t.Errorf("body = %+v", gotBody)
-	}
-}
-
-func TestBridgeImportProfilePassesThroughConflictError(t *testing.T) {
-	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		_ = json.NewEncoder(w).Encode(map[string]any{"detail": "profile name already exists"})
-	}))
-	defer elementskin.Close()
-
-	uc := union.NewClientWithDeps("http://127.0.0.1:1", "key", 30, nil, nil, nil)
-	b := New(elementskin.URL, uc, testOAuthManager(t, "token"), nil, elementskin.Client())
-
-	_, err := b.ImportProfile(context.Background(), ImportProfileRequest{Name: "Steve", Model: "slim"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("expected *APIError, got %T", err)
-	}
-	if apiErr.Status != http.StatusConflict {
-		t.Errorf("status = %d, want %d", apiErr.Status, http.StatusConflict)
-	}
-	if apiErr.Detail != "profile name already exists" {
-		t.Errorf("detail = %q, want profile name already exists", apiErr.Detail)
-	}
-}
-
-func TestBridgeImportProfileFailsWithoutToken(t *testing.T) {
-	b := New("http://127.0.0.1:1", nil, testOAuthManager(t, ""), nil, nil)
-
-	_, err := b.ImportProfile(context.Background(), ImportProfileRequest{Name: "Steve"})
-	if !errors.Is(err, oauth.ErrNoToken) {
-		t.Fatalf("expected ErrNoToken, got %v", err)
-	}
-}
-
-func TestElementSkinClientCreateProfilePassesThroughPlainTextErrorBody(t *testing.T) {
-	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = io.WriteString(w, "bad request")
-	}))
-	defer elementskin.Close()
-
-	client := NewElementSkinClient(elementskin.URL, elementskin.Client())
-	_, err := client.CreateProfile(context.Background(), "token", "Steve", "default")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("expected *APIError, got %T", err)
-	}
-	if apiErr.Status != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", apiErr.Status, http.StatusBadRequest)
-	}
-	if apiErr.Detail != "bad request" {
-		t.Errorf("detail = %q, want bad request", apiErr.Detail)
-	}
-}
-
-func TestElementSkinClientCreateProfileReturns400JSONError(t *testing.T) {
-	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]any{"detail": "invalid profile name"})
-	}))
-	defer elementskin.Close()
-
-	client := NewElementSkinClient(elementskin.URL, elementskin.Client())
-	_, err := client.CreateProfile(context.Background(), "token", "", "default")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("expected *APIError, got %T", err)
-	}
-	if apiErr.Status != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", apiErr.Status, http.StatusBadRequest)
-	}
-	if apiErr.Detail != "invalid profile name" {
-		t.Errorf("detail = %q, want 'invalid profile name'", apiErr.Detail)
-	}
-}
-
 func TestBridgeListProfilesReturnsEmptyListWhenHubReturnsEmpty(t *testing.T) {
 	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -273,31 +149,6 @@ func TestBridgeListProfilesReturnsErrorWhenHubFails(t *testing.T) {
 	}
 	if hubErr.Status != http.StatusInternalServerError {
 		t.Errorf("hub error status = %d, want 500", hubErr.Status)
-	}
-}
-
-func TestElementSkinClientCreateProfileReturns409JSONError(t *testing.T) {
-	elementskin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		_ = json.NewEncoder(w).Encode(map[string]any{"detail": "name already exists"})
-	}))
-	defer elementskin.Close()
-
-	client := NewElementSkinClient(elementskin.URL, elementskin.Client())
-	_, err := client.CreateProfile(context.Background(), "token", "Steve", "default")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("expected *APIError, got %T", err)
-	}
-	if apiErr.Status != http.StatusConflict {
-		t.Errorf("status = %d, want %d", apiErr.Status, http.StatusConflict)
-	}
-	if apiErr.Detail != "name already exists" {
-		t.Errorf("detail = %q, want 'name already exists'", apiErr.Detail)
 	}
 }
 

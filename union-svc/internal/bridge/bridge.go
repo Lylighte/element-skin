@@ -15,12 +15,6 @@ type ListProfileItem struct {
 	Name string `json:"name"`
 }
 
-// ImportProfileRequest is the payload for importing a profile.
-type ImportProfileRequest struct {
-	Name  string `json:"name"`
-	Model string `json:"model"`
-}
-
 // Bridge orchestrates Union profile discovery and Element-Skin profile import.
 type Bridge struct {
 	union         *union.Client
@@ -54,15 +48,6 @@ func (b *Bridge) ListProfiles(ctx context.Context, username string) ([]ListProfi
 		}
 	}
 	return items, nil
-}
-
-// ImportProfile creates a profile on Element-Skin using the stored OAuth token.
-func (b *Bridge) ImportProfile(ctx context.Context, req ImportProfileRequest) (*CreatedProfile, error) {
-	token, err := b.oauth.AccessToken(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get access token: %w", err)
-	}
-	return b.elementskin.CreateProfile(ctx, token, req.Name, req.Model)
 }
 
 // ListAllProfilesForSync returns every local Element-Skin profile for the
