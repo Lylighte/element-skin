@@ -75,8 +75,8 @@
                   <span
                     class="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs leading-none"
                   >
+                    <span aria-hidden="true" class="text-[15px] leading-none">♡</span>
                     <span class="tabular-nums">{{ texture.usage_count || 0 }}</span>
-                    <el-icon class="text-[13px]"><TrendCharts /></el-icon>
                   </span>
                 </el-tooltip>
               </div>
@@ -192,7 +192,7 @@
 <script setup lang="ts">
 import { ref, onMounted, inject, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, TrendCharts, User } from '@element-plus/icons-vue'
+import { Plus, User } from '@element-plus/icons-vue'
 import ActionBar from '@/components/common/ActionBar.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
