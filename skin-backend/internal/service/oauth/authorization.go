@@ -13,9 +13,20 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-const RevokedGrantRetention = 30 * 24 * time.Hour
+const (
+	GrantIssuanceGrace    = authorizationCodeTTL
+	RevokedGrantRetention = 30 * 24 * time.Hour
+)
 
-var oauthGrantDeleteSystemPermission = permission.MustDefinitionByCode("oauth_grant.delete.system")
+type GrantCleanupResult struct {
+	Revoked int64
+	Deleted int64
+}
+
+var (
+	oauthGrantRevokeSystemPermission = permission.MustDefinitionByCode("oauth_grant.revoke.system")
+	oauthGrantDeleteSystemPermission = permission.MustDefinitionByCode("oauth_grant.delete.system")
+)
 
 func (s Service) ListGrants(ctx context.Context, actor permission.Actor, limit int) ([]map[string]any, error) {
 	if err := actor.Require(permission.MustDefinitionByCode("oauth_grant.read.owned")); err != nil {
@@ -50,12 +61,24 @@ func (s Service) RevokeGrant(ctx context.Context, actor permission.Actor, grantI
 	return nil
 }
 
-func (s Service) DeleteExpiredRevokedGrants(ctx context.Context, actor permission.Actor, now int64) (int64, error) {
+func (s Service) CleanupGrants(ctx context.Context, actor permission.Actor, now int64) (GrantCleanupResult, error) {
+	if err := actor.Require(oauthGrantRevokeSystemPermission); err != nil {
+		return GrantCleanupResult{}, forbidden()
+	}
 	if err := actor.Require(oauthGrantDeleteSystemPermission); err != nil {
-		return 0, forbidden()
+		return GrantCleanupResult{}, forbidden()
+	}
+	createdBefore := now - int64(GrantIssuanceGrace/time.Millisecond)
+	revoked, err := s.DB.OAuth.RevokeInactiveGrants(ctx, now, createdBefore)
+	if err != nil {
+		return GrantCleanupResult{}, err
 	}
 	cutoff := now - int64(RevokedGrantRetention/time.Millisecond)
-	return s.DB.OAuth.DeleteRevokedGrants(ctx, cutoff)
+	deleted, err := s.DB.OAuth.DeleteRevokedGrants(ctx, cutoff)
+	if err != nil {
+		return GrantCleanupResult{Revoked: revoked}, err
+	}
+	return GrantCleanupResult{Revoked: revoked, Deleted: deleted}, nil
 }
 
 func (s Service) AuthorizationDetails(ctx context.Context, actor permission.Actor, req AuthorizationRequest) (AuthorizationDetails, error) {

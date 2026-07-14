@@ -34,7 +34,7 @@ type noticeCleaner interface {
 }
 
 type oauthGrantCleaner interface {
-	DeleteExpiredRevokedGrants(ctx context.Context, actor permission.Actor, now int64) (int64, error)
+	CleanupGrants(ctx context.Context, actor permission.Actor, now int64) (oauthsvc.GrantCleanupResult, error)
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -54,7 +54,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 	oauthCleaner := oauthsvc.Service{DB: db}
-	if _, err := oauthCleaner.DeleteExpiredRevokedGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS()); err != nil {
+	if _, err := oauthCleaner.CleanupGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS()); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func oauthGrantCleanupTask(cleaner oauthGrantCleaner, interval time.Duration) Sc
 		Name:     "oauth_grant_cleanup",
 		Interval: fixedInterval(interval),
 		Run: func(ctx context.Context) error {
-			_, err := cleaner.DeleteExpiredRevokedGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
+			_, err := cleaner.CleanupGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
 			return err
 		},
 	}

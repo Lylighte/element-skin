@@ -426,8 +426,11 @@ CREATE INDEX IF NOT EXISTS idx_subject_permission_overrides_permission ON subjec
 CREATE INDEX IF NOT EXISTS idx_session_permission_policies_permission ON session_permission_policies (permission_id, session_kind, entrypoint);
 CREATE INDEX IF NOT EXISTS idx_delegated_clients_owner ON delegated_clients (owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_delegated_permission_grants_user_client ON delegated_permission_grants (user_id, client_id, status);
+CREATE INDEX IF NOT EXISTS idx_delegated_permission_grants_active_created ON delegated_permission_grants (created_at, id) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_oauth_authorization_codes_client_user ON oauth_authorization_codes (client_id, user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_oauth_authorization_codes_grant_expiry ON oauth_authorization_codes (grant_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_user_client ON oauth_refresh_tokens (user_id, client_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_grant_active_expiry ON oauth_refresh_tokens (grant_id, expires_at) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_oauth_device_codes_client_status ON oauth_device_codes (client_id, status, expires_at);
 
 INSERT INTO settings (key, value) VALUES

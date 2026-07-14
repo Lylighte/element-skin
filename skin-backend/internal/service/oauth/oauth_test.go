@@ -122,6 +122,10 @@ func TestServiceOAuthClosedDatabasePropagatesExactDependencyErrors(t *testing.T)
 			_, err := svc.ListGrants(ctx, actor, 10)
 			return err
 		}},
+		{name: "cleanup grants", call: func() error {
+			_, err := svc.CleanupGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
+			return err
+		}},
 		{name: "authorization details", call: func() error {
 			_, err := svc.AuthorizationDetails(ctx, actor, oauth.AuthorizationRequest{
 				ResponseType:        "code",

@@ -11,6 +11,7 @@ import (
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
+	oauthsvc "element-skin/backend/internal/service/oauth"
 	"element-skin/backend/internal/testutil"
 )
 
@@ -208,13 +209,15 @@ type recordingOAuthGrantCleaner struct {
 	invalidCall atomic.Bool
 }
 
-func (r *recordingOAuthGrantCleaner) DeleteExpiredRevokedGrants(_ context.Context, actor permission.Actor, now int64) (int64, error) {
+func (r *recordingOAuthGrantCleaner) CleanupGrants(_ context.Context, actor permission.Actor, now int64) (oauthsvc.GrantCleanupResult, error) {
 	r.calls.Add(1)
 	r.actor.Store(actor)
-	if now <= 0 || !actor.Has(permission.MustDefinitionByCode("oauth_grant.delete.system")) {
+	if now <= 0 ||
+		!actor.Has(permission.MustDefinitionByCode("oauth_grant.revoke.system")) ||
+		!actor.Has(permission.MustDefinitionByCode("oauth_grant.delete.system")) {
 		r.invalidCall.Store(true)
 	}
-	return 0, errors.New("oauth grant boom")
+	return oauthsvc.GrantCleanupResult{}, errors.New("oauth grant boom")
 }
 
 func TestSchedulerOAuthGrantCleanupTaskUsesSystemMaintenanceActorAndSurvivesCleanupError(t *testing.T) {
@@ -224,7 +227,7 @@ func TestSchedulerOAuthGrantCleanupTaskUsesSystemMaintenanceActorAndSurvivesClea
 		Name:     "oauth_grant_cleanup_test",
 		Interval: fixedTestInterval(10 * time.Millisecond),
 		Run: func(ctx context.Context) error {
-			_, err := cleaner.DeleteExpiredRevokedGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
+			_, err := cleaner.CleanupGrants(ctx, permission.SystemMaintenanceActor(), database.NowMS())
 			return err
 		},
 	})[0]

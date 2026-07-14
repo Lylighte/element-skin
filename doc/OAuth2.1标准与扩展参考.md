@@ -262,6 +262,8 @@ Public client 不应持久依赖 client secret。
 - 对应权限缓存失效。
 - grant 记录保留 30 天用于用户可见历史和排错审计；30 天后由系统维护任务删除 grant 及其授权码、refresh token、权限关联记录。
 
+Element Skin 将 grant 的可用生命周期绑定到长期凭证：超过 token 签发保护期后，如果 grant 已不存在未撤销且未过期的 refresh token，也不存在仍在有效期内的 authorization code，系统维护任务会自动撤销 grant。refresh token 过期且未轮换时，应用必须重新发起用户授权，不允许在授权管理中长期留下 active 的无凭证 grant。
+
 ## 9. Token 模型
 
 Authorization Code 需要：

@@ -108,6 +108,14 @@ func TestStoreClosedPoolReturnsExactDependencyErrorsForEveryOAuthTable(t *testin
 			_, err := db.OAuth.RevokeGrant(ctx, grant.ID, grant.UserID, 2000)
 			return err
 		}},
+		{name: "revoke inactive grants", call: func() error {
+			_, err := db.OAuth.RevokeInactiveGrants(ctx, 2000, 1000)
+			return err
+		}},
+		{name: "delete revoked grants", call: func() error {
+			_, err := db.OAuth.DeleteRevokedGrants(ctx, 2000)
+			return err
+		}},
 		{name: "list grants", call: func() error {
 			_, err := db.OAuth.ListGrantsByUser(ctx, grant.UserID, 10)
 			return err

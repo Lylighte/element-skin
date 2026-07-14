@@ -3019,12 +3019,15 @@ oauth_grant.revoke.owned
 
 撤销授权不会立即物理删除 grant。服务端将授权标记为 `revoked` 并写入 `revoked_at`，已签发 token 在后续校验中必须失效。已撤销授权保留 30 天，前端应向用户显示 30 天后自动清除；系统维护任务到期后删除 grant 及其授权码、refresh token、权限关联记录。
 
+系统维护任务每小时检查 active grant。grant 超过 10 分钟签发保护期后，如果不存在 `revoked_at IS NULL AND expires_at > now` 的 refresh token，同时不存在 `expires_at > now` 的 authorization code，服务端必须使用 `oauth_grant.revoke.system` 将其标记为 `revoked` 并写入当前 `revoked_at`。因此，refresh token 过期且未及时轮换后，用户必须重新授权应用；失去有效凭证的 grant 不得长期保留为 active。自动撤销的 grant 同样保留 30 天，再由 `oauth_grant.delete.system` 物理删除。
+
 ### 27.2.1 OAuth 授权与应用生命周期
 
 OAuth 授权和应用状态不是永久事实。以下业务事件必须触发服务端同步校正：
 
 - 用户权限覆盖项变更后，如果授权用户不再拥有某个已授权权限，服务端将对应 active grant 标记为 `revoked` 并写入 `revoked_at`。
 - 用户角色变更后，如果授权用户不再拥有某个已授权权限，服务端同样撤销对应 grant。
+- refresh token 全部过期或被撤销，且没有仍在有效期内的 authorization code 后，系统维护任务自动撤销对应 grant。
 - 应用创建者权限覆盖项或角色变更后，如果应用申请的非 `server` 权限不再是创建者当前有效权限的子集，服务端将该应用状态改为 `disabled`。
 - 仍然满足权限条件的 grant 和应用必须保持原状态，不得因为同一用户的其他 grant 或应用失效而被误伤。
 - 管理员删除用户或用户自助注销时，服务端必须清理该用户授予的 OAuth grant、该用户尚未消费的设备码、该用户提交的 OAuth 应用，以及这些应用对应的 `client:{client_id}` 权限主体。

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/permission"
+	oauthsvc "element-skin/backend/internal/service/oauth"
 )
 
 type taskRefreshCleaner struct {
@@ -35,10 +36,10 @@ type taskOAuthGrantCleaner struct {
 	err   error
 }
 
-func (c *taskOAuthGrantCleaner) DeleteExpiredRevokedGrants(_ context.Context, actor permission.Actor, now int64) (int64, error) {
+func (c *taskOAuthGrantCleaner) CleanupGrants(_ context.Context, actor permission.Actor, now int64) (oauthsvc.GrantCleanupResult, error) {
 	c.actor = actor
 	c.now = now
-	return 7, c.err
+	return oauthsvc.GrantCleanupResult{Revoked: 3, Deleted: 7}, c.err
 }
 
 func TestCleanupTaskConstructorsRunExactCleaners(t *testing.T) {
@@ -72,6 +73,7 @@ func TestCleanupTaskConstructorsRunExactCleaners(t *testing.T) {
 		oauth.actor.SubjectID != "system:maintenance" ||
 		oauth.actor.SessionKind != permission.SessionKindSystem ||
 		oauth.actor.Entrypoint != permission.EntrypointMaintenance ||
+		!oauth.actor.Has(permission.MustDefinitionByCode("oauth_grant.revoke.system")) ||
 		!oauth.actor.Has(permission.MustDefinitionByCode("oauth_grant.delete.system")) {
 		t.Fatalf("oauth cleanup run mismatch: now=%d actor=%#v err=%v", oauth.now, oauth.actor, err)
 	}
