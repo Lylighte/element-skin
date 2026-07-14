@@ -4,6 +4,7 @@ import AdminView from '../views/AdminView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import LoginView from '../views/LoginView.vue'
 import ResetPassword from '../views/ResetPassword.vue'
+import ResetEmail from '../views/ResetEmail.vue'
 import UserDashboard from '../views/UserDashboard.vue'
 import SkinLibraryView from '../views/SkinLibraryView.vue'
 import NotificationsView from '../views/NotificationsView.vue'
@@ -60,6 +61,11 @@ const router = createRouter({
       path: '/reset-password',
       name: 'reset-password',
       component: ResetPassword,
+    },
+    {
+      path: '/reset-email',
+      name: 'reset-email',
+      component: ResetEmail,
     },
     {
       path: '/admin',

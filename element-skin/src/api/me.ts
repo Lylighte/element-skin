@@ -6,12 +6,24 @@ export function getMe(): Promise<{ data: User }> {
 }
 
 export function patchMe(data: {
-  email?: string
   display_name?: string
   preferred_language?: string
   avatar_hash?: string | null
 }): Promise<{ data: { ok: boolean } }> {
   return client.patch('/v1/users/me', data)
+}
+
+export function sendEmailChangeCode(data: {
+  email: string
+}): Promise<{ data: { ok: boolean; ttl: number } }> {
+  return client.post('/v1/users/me/email/verification-code', data)
+}
+
+export function changeEmail(data: {
+  email: string
+  code: string
+}): Promise<{ data: { ok: boolean } }> {
+  return client.put('/v1/users/me/email', data)
 }
 
 export function deleteMe(): Promise<{ data: { ok: boolean } }> {

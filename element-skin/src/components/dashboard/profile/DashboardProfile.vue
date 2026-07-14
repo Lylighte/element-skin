@@ -50,7 +50,13 @@
 
       <el-form label-width="120px" :model="form" label-position="left">
         <el-form-item label="邮箱">
-          <el-input v-model="form.email" placeholder="请输入邮箱" />
+          <div class="flex w-full gap-3">
+            <el-input :model-value="user?.email || ''" disabled />
+            <el-button v-if="canUpdateOwnAccount" @click="router.push('/reset-email')">
+              <el-icon><Message /></el-icon>
+              重设邮箱
+            </el-button>
+          </div>
         </el-form-item>
         <el-form-item label="用户名">
           <el-input v-model="form.display_name" placeholder="请输入用户名" />
@@ -143,7 +149,7 @@
 import { ref, computed, watch, inject, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Clock, Check, Delete } from '@element-plus/icons-vue'
+import { Clock, Check, Delete, Message } from '@element-plus/icons-vue'
 import { useAvatar } from '@/composables/useAvatar'
 import { changePassword, patchMe, deleteMe } from '@/api/me'
 import { isEasterEggDisabled, setEasterEggDisabled } from '@/easter-eggs'
@@ -160,7 +166,6 @@ const fetchMe = inject<() => Promise<void>>('fetchMe')
 
 const router = useRouter()
 const form = ref({
-  email: '',
   display_name: '',
   old_password: '',
   new_password: '',
@@ -177,12 +182,14 @@ const emailInitial = computed(() => {
 const canDeleteOwnAccount = computed(
   () => !(user.value?.permissions || []).includes('account.delete.any'),
 )
+const canUpdateOwnAccount = computed(() =>
+  (user.value?.permissions || []).includes('account.update.self'),
+)
 
 watch(
   () => user.value,
   (newUser) => {
     if (newUser) {
-      form.value.email = newUser.email
       form.value.display_name = newUser.display_name || ''
     }
   },
@@ -248,7 +255,6 @@ async function updateProfile() {
     }
 
     const payload = {
-      email: form.value.email,
       display_name: form.value.display_name,
     }
     await patchMe(payload)

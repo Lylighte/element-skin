@@ -16,7 +16,14 @@ function isNoRefreshPath(url: string | undefined): boolean {
 
 // 需要登录的路由前缀。是否跳登录取决于**用户当前所在页面**，而非哪个接口 401——
 // /v1/users/me 这类探针在公共页（首页等）也会调用并 401，按接口判断会误伤公共页访客。
-const PROTECTED_PREFIXES = ['/dashboard', '/admin', '/skin-library', '/notifications', '/oauth']
+const PROTECTED_PREFIXES = [
+  '/dashboard',
+  '/admin',
+  '/skin-library',
+  '/notifications',
+  '/oauth',
+  '/reset-email',
+]
 
 function stripBase(pathname: string): string {
   // 去掉部署 base（如生产子目录 /skin/），使前缀判断在 dev 与 prod 一致。
