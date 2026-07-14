@@ -23,7 +23,7 @@ describe('site page permission access', () => {
     expect(firstAccessibleSitePath(permissions)).toBe('/dashboard/home')
     expect(canAccessSitePath('/dashboard/home', permissions)).toBe(true)
     expect(canAccessSitePath('/dashboard/profile', permissions)).toBe(true)
-    expect(canAccessSitePath('/reset-email', permissions)).toBe(true)
+    expect(canAccessSitePath('/reset-email', permissions)).toBe(false)
   })
 
   it('matches nested paths without matching similar prefixes exactly', () => {
@@ -37,7 +37,7 @@ describe('site page permission access', () => {
     expect(isProtectedSitePath('/dashboard/home')).toBe(true)
     expect(isProtectedSitePath('/skin-library')).toBe(true)
     expect(isProtectedSitePath('/notifications/notice-1')).toBe(true)
-    expect(isProtectedSitePath('/reset-email')).toBe(true)
+    expect(isProtectedSitePath('/reset-email')).toBe(false)
     expect(isProtectedSitePath('/')).toBe(false)
     expect(isProtectedSitePath('/admin/users')).toBe(false)
   })

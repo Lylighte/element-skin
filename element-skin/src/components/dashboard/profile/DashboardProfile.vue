@@ -52,7 +52,7 @@
         <el-form-item label="邮箱">
           <div class="flex w-full gap-3">
             <el-input :model-value="user?.email || ''" disabled />
-            <el-button v-if="canUpdateOwnAccount" @click="router.push('/reset-email')">
+            <el-button v-if="canUpdateOwnAccount" @click="showEmailChangeDialog = true">
               <el-icon><Message /></el-icon>
               重设邮箱
             </el-button>
@@ -117,6 +117,12 @@
       </el-form>
     </UiCard>
 
+    <EmailChangeDialog
+      v-if="canUpdateOwnAccount"
+      v-model="showEmailChangeDialog"
+      @changed="handleEmailChanged"
+    />
+
     <!-- 注销账号确认对话框 -->
     <UiDialog v-model="showDeleteDialog" title="确认注销账号" :close-on-click-modal="false">
       <el-alert
@@ -156,6 +162,7 @@ import { isEasterEggDisabled, setEasterEggDisabled } from '@/easter-eggs'
 import type { User } from '@/api/types'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
+import EmailChangeDialog from './EmailChangeDialog.vue'
 import { getErrorMessage } from '@/utils/error'
 
 const { currentAvatarImg: customAvatar } = useAvatar()
@@ -172,6 +179,7 @@ const form = ref({
   confirm_password: '',
 })
 const showDeleteDialog = ref(false)
+const showEmailChangeDialog = ref(false)
 const deleteConfirmText = ref('')
 const disableEasterEgg = ref(isEasterEggDisabled())
 
@@ -263,6 +271,10 @@ async function updateProfile() {
   } catch (e: unknown) {
     ElMessage.error('保存失败: ' + getErrorMessage(e, '保存失败'))
   }
+}
+
+async function handleEmailChanged() {
+  await fetchMe?.()
 }
 
 async function confirmDeleteAccount() {
