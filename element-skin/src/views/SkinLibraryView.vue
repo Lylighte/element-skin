@@ -44,7 +44,10 @@
         v-loading="loading"
         element-loading-background="transparent"
       >
-        <div class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6" v-if="items.length > 0">
+        <div
+          class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6"
+          v-if="items.length > 0"
+        >
           <TextureCard
             v-for="(item, index) in items"
             :key="item.hash"
@@ -68,7 +71,14 @@
                   {{ formatDate(texture.created_at) }}
                 </span>
                 <span class="meta-separator">·</span>
-                <span class="texture-usage">{{ texture.usage_count || 0 }} 次使用</span>
+                <el-tooltip content="使用次数" placement="top">
+                  <span
+                    class="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs leading-none"
+                  >
+                    <span class="tabular-nums">{{ texture.usage_count || 0 }}</span>
+                    <el-icon class="text-[13px]"><TrendCharts /></el-icon>
+                  </span>
+                </el-tooltip>
               </div>
             </template>
             <template #actions="{ texture }">
@@ -87,11 +97,7 @@
         <el-empty v-else-if="!loading" description="库中暂无公开材质" />
 
         <!-- 预览对话框 -->
-        <UiDialog
-          v-model="showPreviewDialog"
-          destroy-on-close
-          variant="viewer"
-        >
+        <UiDialog v-model="showPreviewDialog" destroy-on-close variant="viewer">
           <UiViewerLayout v-if="selectedItem">
             <template #stage>
               <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
@@ -186,7 +192,7 @@
 <script setup lang="ts">
 import { ref, onMounted, inject, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, User } from '@element-plus/icons-vue'
+import { Plus, TrendCharts, User } from '@element-plus/icons-vue'
 import ActionBar from '@/components/common/ActionBar.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
