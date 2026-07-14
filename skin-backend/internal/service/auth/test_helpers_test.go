@@ -9,7 +9,9 @@ import (
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/redisstore"
 	authsvc "element-skin/backend/internal/service/auth"
+	mailsvc "element-skin/backend/internal/service/mail"
 	settingssvc "element-skin/backend/internal/service/settings"
+	verificationsvc "element-skin/backend/internal/service/verification"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 
@@ -18,8 +20,22 @@ import (
 
 func newAuthService(db *database.DB, cfg config.Config) authsvc.Service {
 	redis := testutil.NewMemoryRedis()
-	return authsvc.Service{DB: db, Cfg: cfg, Redis: redis, Settings: settingssvc.Settings{DB: db, Redis: redis}}
+	return newAuthServiceWithRedis(db, cfg, redis)
 }
+
+func newAuthServiceWithRedis(db *database.DB, cfg config.Config, redis redisstore.Store) authsvc.Service {
+	settings := settingssvc.Settings{DB: db, Redis: redis}
+	verification := verificationsvc.Service{DB: db, Redis: redis, Settings: settings, Sender: testMailSender{}}
+	return authsvc.Service{DB: db, Cfg: cfg, Redis: redis, Settings: settings, Verification: verification}
+}
+
+type testMailSender struct{}
+
+func (testMailSender) SendVerificationCode(context.Context, string, string, string) error {
+	return nil
+}
+
+var _ mailsvc.Sender = testMailSender{}
 
 func httpError(err error, status int, detail string) bool {
 	var httpErr util.HTTPError

@@ -15,6 +15,7 @@ import (
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	mailsvc "element-skin/backend/internal/service/mail"
 	"element-skin/backend/internal/util"
 
 	"github.com/jackc/pgx/v5"
@@ -114,12 +115,20 @@ func newTestAppTB(t testing.TB, configure func(*config.Config)) (*database.DB, h
 	} else {
 		redis = NewMemoryRedis()
 	}
-	application, err := app.NewWithDBAndRedis(cfg, db, redis)
+	application, err := app.NewWithDBAndRedis(cfg, db, redis, testMailSender{})
 	if err != nil {
 		t.Fatalf("build test app: %v", err)
 	}
 	return db, application.Handler(), redis
 }
+
+type testMailSender struct{}
+
+func (testMailSender) SendVerificationCode(context.Context, string, string, string) error {
+	return nil
+}
+
+var _ mailsvc.Sender = testMailSender{}
 
 func NewRedisStoreTB(t testing.TB, prefix string) redisstore.Store {
 	t.Helper()

@@ -16,10 +16,19 @@ import (
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	mailsvc "element-skin/backend/internal/service/mail"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 )
+
+type httpapiTestMailSender struct{}
+
+func (httpapiTestMailSender) SendVerificationCode(context.Context, string, string, string) error {
+	return nil
+}
+
+var _ mailsvc.Sender = httpapiTestMailSender{}
 
 func TestAuthRejectsMissingInvalidAndNonAdminExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
@@ -212,6 +221,98 @@ func TestAuthAcceptsDelegatedBearerAndNarrowsPermissionsExactly(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
 		t.Fatalf("delegated bearer update denial mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEmailChangeAcceptsCookieAndDelegatedBearerThroughSamePermissionPath(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	cache := redisstore.NewMemoryStore()
+	if err := db.Settings.Set(t.Context(), "email_verify_enabled", "true"); err != nil {
+		t.Fatal(err)
+	}
+	router := httpapi.NewRouterWithRedis(cfg, db, cache, yggsvc.Yggdrasil{DB: db, Cfg: cfg}, httpapiTestMailSender{})
+	updatePermission := permission.MustDefinitionByCode("account.update.self")
+
+	cookieUser := testutil.CreateUser(t, db, "email-cookie-old@test.com", "Password123", "EmailCookie", false)
+	loginReq := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"email-cookie-old@test.com","password":"Password123"}`))
+	loginRec := httptest.NewRecorder()
+	router.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("cookie login status=%d body=%q", loginRec.Code, loginRec.Body.String())
+	}
+	var accessCookie *http.Cookie
+	for _, cookie := range loginRec.Result().Cookies() {
+		if cookie.Name == "access_token" {
+			accessCookie = cookie
+		}
+	}
+	if accessCookie == nil {
+		t.Fatal("cookie login did not return access_token")
+	}
+	cookieSend := httptest.NewRequest(http.MethodPost, "/v1/users/me/email/verification-code", strings.NewReader(`{"email":"email-cookie-new@test.com"}`))
+	cookieSend.AddCookie(accessCookie)
+	cookieSendRec := httptest.NewRecorder()
+	router.ServeHTTP(cookieSendRec, cookieSend)
+	if cookieSendRec.Code != http.StatusOK || !strings.Contains(cookieSendRec.Body.String(), `"ttl":300`) {
+		t.Fatalf("cookie send status=%d body=%q", cookieSendRec.Code, cookieSendRec.Body.String())
+	}
+	cookieCode, err := cache.GetVerificationCode(t.Context(), "email-cookie-new@test.com", "email_change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookieChange := httptest.NewRequest(http.MethodPut, "/v1/users/me/email", strings.NewReader(`{"email":"email-cookie-new@test.com","code":"`+cookieCode+`"}`))
+	cookieChange.AddCookie(accessCookie)
+	cookieChangeRec := httptest.NewRecorder()
+	router.ServeHTTP(cookieChangeRec, cookieChange)
+	if cookieChangeRec.Code != http.StatusOK || cookieChangeRec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("cookie change status=%d body=%q", cookieChangeRec.Code, cookieChangeRec.Body.String())
+	}
+
+	bearerUser := testutil.CreateUser(t, db, "email-bearer-old@test.com", "Password123", "EmailBearer", false)
+	clientID := createActiveOAuthClientForAuthTest(t, db, bearerUser.ID, "email-bearer-client", []int64{int64(updatePermission.ID)})
+	grantID := "grant-email-bearer"
+	if err := db.OAuth.CreateGrant(t.Context(), model.OAuthGrant{
+		ID: grantID, UserID: bearerUser.ID, SubjectID: permissiondb.SubjectIDForUser(bearerUser.ID),
+		ClientID: clientID, Status: "active", CreatedAt: database.NowMS(),
+	}, []int64{int64(updatePermission.ID)}); err != nil {
+		t.Fatal(err)
+	}
+	rawToken := "email-change-bearer-token"
+	now := database.NowMS()
+	if err := cache.SetOAuthAccessToken(t.Context(), redisstore.OAuthAccessToken{
+		TokenHash: util.HashRefreshToken(rawToken), ClientID: clientID, UserID: bearerUser.ID, GrantID: grantID,
+		PermissionIDs: []int64{int64(updatePermission.ID)}, ExpiresAt: now + int64(time.Hour/time.Millisecond), CreatedAt: now,
+	}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	bearerSend := httptest.NewRequest(http.MethodPost, "/v1/users/me/email/verification-code", strings.NewReader(`{"email":"email-bearer-new@test.com"}`))
+	bearerSend.Header.Set("Authorization", "Bearer "+rawToken)
+	bearerSendRec := httptest.NewRecorder()
+	router.ServeHTTP(bearerSendRec, bearerSend)
+	if bearerSendRec.Code != http.StatusOK || !strings.Contains(bearerSendRec.Body.String(), `"ttl":300`) {
+		t.Fatalf("bearer send status=%d body=%q", bearerSendRec.Code, bearerSendRec.Body.String())
+	}
+	bearerCode, err := cache.GetVerificationCode(t.Context(), "email-bearer-new@test.com", "email_change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bearerChange := httptest.NewRequest(http.MethodPut, "/v1/users/me/email", strings.NewReader(`{"email":"email-bearer-new@test.com","code":"`+bearerCode+`"}`))
+	bearerChange.Header.Set("Authorization", "Bearer "+rawToken)
+	bearerChangeRec := httptest.NewRecorder()
+	router.ServeHTTP(bearerChangeRec, bearerChange)
+	if bearerChangeRec.Code != http.StatusOK || bearerChangeRec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("bearer change status=%d body=%q", bearerChangeRec.Code, bearerChangeRec.Body.String())
+	}
+
+	for _, expected := range []struct {
+		id    string
+		email string
+	}{{cookieUser.ID, "email-cookie-new@test.com"}, {bearerUser.ID, "email-bearer-new@test.com"}} {
+		updated, err := db.Users.GetByID(t.Context(), expected.id)
+		if err != nil || updated == nil || updated.Email != expected.email {
+			t.Fatalf("updated user id=%s user=%#v err=%v", expected.id, updated, err)
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ package account_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
@@ -10,10 +11,11 @@ import (
 	"element-skin/backend/internal/testutil"
 )
 
-func TestConcurrentEmailUpdatesReturnExactBusinessConflict(t *testing.T) {
+func TestConcurrentEmailChangesConsumeOneCodeExactlyOnce(t *testing.T) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
-	svc := accountsvc.AccountService{DB: db, Redis: redisstore.NewMemoryStore()}
+	cache := redisstore.NewMemoryStore()
+	svc := accountServiceWithVerification(db, cache)
 	first := testutil.CreateUser(t, db, "email-race-first@test.com", "Password123", "EmailRaceFirst", false)
 	second := testutil.CreateUser(t, db, "email-race-second@test.com", "Password123", "EmailRaceSecond", false)
 	if _, err := db.Pool.Exec(ctx, `
@@ -31,13 +33,17 @@ func TestConcurrentEmailUpdatesReturnExactBusinessConflict(t *testing.T) {
 	}
 
 	const targetEmail = "email-race-target@test.com"
+	const code = "EMAIL123"
+	if err := cache.SetVerificationCode(ctx, targetEmail, "email_change", code, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	results := runConcurrentSelfUpdates([]permission.Actor{
 		accountActor(t, db, first.ID),
 		accountActor(t, db, second.ID),
 	}, func(actor permission.Actor) error {
-		return svc.UpdateSelf(context.Background(), actor, map[string]any{"email": targetEmail})
+		return svc.ChangeEmailSelf(context.Background(), actor, targetEmail, code)
 	})
-	assertOneSelfUpdateConflict(t, results, "Email already in use")
+	assertOneSelfUpdateConflict(t, results, "Invalid or expired verification code")
 	var targetCount, originalCount int
 	if err := db.Pool.QueryRow(ctx, `
 		SELECT

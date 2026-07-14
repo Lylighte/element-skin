@@ -10,8 +10,6 @@ import (
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/redisstore"
-	authsvc "element-skin/backend/internal/service/auth"
-	settingssvc "element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
 	"element-skin/backend/internal/util"
 
@@ -129,7 +127,7 @@ func TestVerificationPropagatesRedisErrorsExactly(t *testing.T) {
 	}
 
 	setFail := &verificationCodeFailStore{Store: testutil.NewMemoryRedis(), failSet: true}
-	svc := authsvc.Service{DB: db, Cfg: testutil.TestConfig(), Redis: setFail, Settings: settingssvc.Settings{DB: db, Redis: setFail}}
+	svc := newAuthServiceWithRedis(db, testutil.TestConfig(), setFail)
 	if _, err := svc.SendVerificationCode(ctx, "verify-default-type@test.com", ""); err == nil || err.Error() != "set verification failed" {
 		t.Fatalf("SendVerificationCode Redis set error=%v; want exact set failure", err)
 	}
@@ -138,7 +136,7 @@ func TestVerificationPropagatesRedisErrorsExactly(t *testing.T) {
 	}
 
 	getFail := &verificationCodeFailStore{Store: testutil.NewMemoryRedis(), failGet: true}
-	svc = authsvc.Service{DB: db, Cfg: testutil.TestConfig(), Redis: getFail, Settings: settingssvc.Settings{DB: db, Redis: getFail}}
+	svc = newAuthServiceWithRedis(db, testutil.TestConfig(), getFail)
 	ok, err := svc.VerifyCode(ctx, user.Email, "RESETERR", "reset")
 	if ok || err == nil || err.Error() != "get verification failed" {
 		t.Fatalf("VerifyCode Redis get error mismatch: ok=%v err=%v", ok, err)
@@ -148,7 +146,7 @@ func TestVerificationPropagatesRedisErrorsExactly(t *testing.T) {
 	}
 
 	consumeFail := &verificationCodeFailStore{Store: testutil.NewMemoryRedis(), failConsume: true}
-	svc = authsvc.Service{DB: db, Cfg: testutil.TestConfig(), Redis: consumeFail, Settings: settingssvc.Settings{DB: db, Redis: consumeFail}}
+	svc = newAuthServiceWithRedis(db, testutil.TestConfig(), consumeFail)
 	if err := consumeFail.Store.SetVerificationCode(ctx, user.Email, "reset", "RESETERR", time.Hour); err != nil {
 		t.Fatal(err)
 	}
@@ -236,12 +234,7 @@ func TestResetPasswordPreservesCredentialsRefreshAndCodeWhenYggRevocationFails(t
 	const code = "RESETYGG"
 	const refreshHash = "reset_ygg_fail_refresh"
 	cache := &deleteYggFailStore{Store: testutil.NewMemoryRedis()}
-	svc := authsvc.Service{
-		DB:       db,
-		Cfg:      testutil.TestConfig(),
-		Redis:    cache,
-		Settings: settingssvc.Settings{DB: db, Redis: cache},
-	}
+	svc := newAuthServiceWithRedis(db, testutil.TestConfig(), cache)
 	if err := cache.SetVerificationCode(ctx, user.Email, "reset", code, time.Hour); err != nil {
 		t.Fatal(err)
 	}

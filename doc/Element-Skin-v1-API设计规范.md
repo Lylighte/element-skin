@@ -613,14 +613,13 @@ account.update.self
 
 ```json
 {
-  "email": "new@example.com",
   "display_name": "New Name",
   "preferred_language": "zh-CN",
   "avatar_hash": null
 }
 ```
 
-所有字段均可选。`avatar_hash` 为 `null` 或空字符串时清空头像；非空时必须是当前用户材质库中存在的 `skin` 材质 hash。
+所有字段均可选。此接口不接受 `email`；邮箱只能通过 10.3 的验证码流程重设。`avatar_hash` 为 `null` 或空字符串时清空头像；非空时必须是当前用户材质库中存在的 `skin` 材质 hash。
 
 响应：
 
@@ -640,7 +639,77 @@ account.update.self
 PATCH /me
 ```
 
-### 10.3 注销当前账号
+### 10.3 重设当前用户邮箱
+
+第一步向新邮箱发送验证码：
+
+```http
+POST /v1/users/me/email/verification-code
+```
+
+权限：
+
+```text
+account.update.self
+```
+
+请求：
+
+```json
+{
+  "email": "new@example.com"
+}
+```
+
+响应：
+
+```json
+{
+  "ok": true,
+  "ttl": 300
+}
+```
+
+第二步提交新邮箱和该邮箱收到的一次性验证码：
+
+```http
+PUT /v1/users/me/email
+```
+
+权限：
+
+```text
+account.update.self
+```
+
+请求：
+
+```json
+{
+  "email": "new@example.com",
+  "code": "EMAIL123"
+}
+```
+
+响应：
+
+```json
+{
+  "ok": true
+}
+```
+
+约束与副作用：
+
+- 新邮箱必须格式有效、尚未被其他账号使用，并且不能与当前邮箱相同。
+- 验证码发送到新邮箱，仅用于 `email_change`，不能用于注册或密码重置。
+- 验证码有效期读取站点 `email_verify_ttl` 设置，成功重设后立即失效。
+- SMTP 投递失败时不会保留不可用验证码；邮箱写入失败时验证码会恢复以允许重试。
+- 成功重设后当前用户认证缓存失效。
+- Cookie 会话与 OAuth 用户委托 bearer token 使用同一接口和权限检查。
+- Client Credentials token 不代表当前用户，不能调用本接口。
+
+### 10.4 注销当前账号
 
 ```http
 DELETE /v1/users/me
@@ -670,7 +739,7 @@ account.delete.self
 DELETE /me
 ```
 
-### 10.4 修改当前用户密码
+### 10.5 修改当前用户密码
 
 ```http
 POST /v1/users/me/password
@@ -3543,6 +3612,8 @@ GET /v1/permissions/catalog
 | `POST /me/refresh-token` | `POST /v1/auth/session/refresh` |
 | `GET /me` | `GET /v1/users/me` |
 | `PATCH /me` | `PATCH /v1/users/me` |
+| 无 | `POST /v1/users/me/email/verification-code` |
+| 无 | `PUT /v1/users/me/email` |
 | `DELETE /me` | `DELETE /v1/users/me` |
 | `POST /me/password` | `POST /v1/users/me/password` |
 | `GET /me/profiles` | `GET /v1/users/me/profiles` |

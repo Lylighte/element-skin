@@ -7,6 +7,7 @@ import (
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/redisstore"
+	mailsvc "element-skin/backend/internal/service/mail"
 	settingssvc "element-skin/backend/internal/service/settings"
 	yggpkg "element-skin/backend/internal/service/yggdrasil"
 )
@@ -18,6 +19,7 @@ type Router struct {
 	settings settingssvc.Settings
 	ygg      yggpkg.Yggdrasil
 	mux      *http.ServeMux
+	mail     mailsvc.Sender
 }
 
 func NewRouter(cfg config.Config, db *database.DB, ygg yggpkg.Yggdrasil) http.Handler {
@@ -25,11 +27,15 @@ func NewRouter(cfg config.Config, db *database.DB, ygg yggpkg.Yggdrasil) http.Ha
 	return NewRouterWithRedis(cfg, db, redis, ygg)
 }
 
-func NewRouterWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, ygg yggpkg.Yggdrasil) http.Handler {
+func NewRouterWithRedis(cfg config.Config, db *database.DB, redis redisstore.Store, ygg yggpkg.Yggdrasil, senders ...mailsvc.Sender) http.Handler {
 	settings := settingssvc.Settings{DB: db, Redis: redis}
+	var sender mailsvc.Sender = mailsvc.SMTP{Settings: settings}
+	if len(senders) > 0 && senders[0] != nil {
+		sender = senders[0]
+	}
 	ygg.Redis = redis
 	ygg.Settings = settings
-	r := &Router{cfg: cfg, db: db, redis: redis, settings: settings, ygg: ygg, mux: http.NewServeMux()}
+	r := &Router{cfg: cfg, db: db, redis: redis, settings: settings, ygg: ygg, mux: http.NewServeMux(), mail: sender}
 	r.routes()
 	return r
 }

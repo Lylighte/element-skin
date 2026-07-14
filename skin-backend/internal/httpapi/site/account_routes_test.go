@@ -147,8 +147,8 @@ func TestAccountRoutesRejectConflictsAndWrongOldPasswordExactly(t *testing.T) {
 	req = withUserActor(req, user.ID)
 	rec := httptest.NewRecorder()
 	h.UpdateMe(rec, req)
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"Email already in use"`) {
-		t.Fatalf("email conflict update mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Email must be changed through the verification flow\"}\n" {
+		t.Fatalf("direct email update mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	unchanged, err := db.Users.GetByID(req.Context(), user.ID)
 	if err != nil || unchanged == nil || unchanged.Email != user.Email {
@@ -234,6 +234,12 @@ func TestAccountRoutesRejectMissingPermissionsExactly(t *testing.T) {
 		{name: "change password", permission: "account_password.update.self", makeReq: func() *http.Request {
 			return httptest.NewRequest(http.MethodPost, "/v1/users/me/password", strings.NewReader(`{"old_password":"Password123","new_password":"NewPassword123"}`))
 		}, call: h.ChangePassword},
+		{name: "send email change code", permission: "account.update.self", makeReq: func() *http.Request {
+			return httptest.NewRequest(http.MethodPost, "/v1/users/me/email/verification-code", strings.NewReader(`{"email":"blocked-new@test.com"}`))
+		}, call: h.SendEmailChangeCode},
+		{name: "change email", permission: "account.update.self", makeReq: func() *http.Request {
+			return httptest.NewRequest(http.MethodPut, "/v1/users/me/email", strings.NewReader(`{"email":"blocked-new@test.com","code":"BLOCKED1"}`))
+		}, call: h.ChangeEmail},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

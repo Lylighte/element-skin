@@ -31,7 +31,6 @@ func TestAccountServiceMeReturnsCountsAndUpdateSelfPersistsExactFields(t *testin
 	}
 
 	if err := svc.UpdateSelf(ctx, actor, map[string]any{
-		"email":              "updated-account@test.com",
 		"display_name":       "UpdatedAccount",
 		"preferred_language": "en_US",
 		"avatar_hash":        "avatar_hash",
@@ -47,7 +46,7 @@ func TestAccountServiceMeReturnsCountsAndUpdateSelfPersistsExactFields(t *testin
 	}
 	permissions := me["permissions"].([]string)
 	if me["id"] != user.ID ||
-		me["email"] != "updated-account@test.com" ||
+		me["email"] != user.Email ||
 		me["display_name"] != "UpdatedAccount" ||
 		me["lang"] != "en_US" ||
 		me["avatar_hash"].(*string) == nil ||
@@ -99,7 +98,7 @@ func TestAccountServiceRejectsInvalidSelfUpdatesAndWrongPasswordExactly(t *testi
 		body map[string]any
 		want string
 	}{
-		{"invalid email", map[string]any{"email": "not-an-email"}, "Invalid email format"},
+		{"direct email change", map[string]any{"email": "new-account@test.com"}, "Email must be changed through the verification flow"},
 		{"duplicate display name", map[string]any{"display_name": other.DisplayName}, "Username already exists"},
 		{"blank display name", map[string]any{"display_name": "   "}, "Username cannot be empty"},
 		{"missing avatar", map[string]any{"avatar_hash": "missing_avatar_hash"}, "Avatar texture not found"},

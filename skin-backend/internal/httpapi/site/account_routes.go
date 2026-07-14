@@ -49,3 +49,38 @@ func (h Handler) ChangePassword(w http.ResponseWriter, req *http.Request) {
 	}
 	util.JSON(w, 200, map[string]any{"ok": true, "message": "密码修改成功"})
 }
+
+func (h Handler) SendEmailChangeCode(w http.ResponseWriter, req *http.Request) {
+	if !h.checkAuthRateLimit(w, req, "email-change") {
+		return
+	}
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := shared.DecodeJSON(req, &body); err != nil {
+		util.Error(w, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid json"})
+		return
+	}
+	result, err := h.accounts.SendEmailChangeCode(req.Context(), shared.CurrentActor(req), body.Email)
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, http.StatusOK, result)
+}
+
+func (h Handler) ChangeEmail(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Email string `json:"email"`
+		Code  string `json:"code"`
+	}
+	if err := shared.DecodeJSON(req, &body); err != nil {
+		util.Error(w, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid json"})
+		return
+	}
+	if err := h.accounts.ChangeEmailSelf(req.Context(), shared.CurrentActor(req), body.Email, body.Code); err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, http.StatusOK, map[string]any{"ok": true})
+}

@@ -8,6 +8,7 @@ import (
 
 	userstore "element-skin/backend/internal/database/user"
 	"element-skin/backend/internal/permission"
+	verificationsvc "element-skin/backend/internal/service/verification"
 	"element-skin/backend/internal/util"
 
 	"github.com/jackc/pgx/v5"
@@ -74,6 +75,48 @@ func (s AccountService) UpdateSelf(ctx context.Context, actor permission.Actor, 
 		}
 		if errors.Is(err, userstore.ErrDisplayNameConflict) {
 			return util.HTTPError{Status: http.StatusBadRequest, Detail: "Username already exists"}
+		}
+		return err
+	}
+	return s.Redis.InvalidateAuthUser(ctx, actor.UserID)
+}
+
+func (s AccountService) SendEmailChangeCode(ctx context.Context, actor permission.Actor, email string) (map[string]any, error) {
+	if err := actor.Require(accountUpdateSelfPermission); err != nil {
+		return nil, permissionDenied()
+	}
+	email, err := s.validateEmailChangeTarget(ctx, actor.UserID, email)
+	if err != nil {
+		return nil, err
+	}
+	return s.Verification.SendEmailChange(ctx, email)
+}
+
+func (s AccountService) ChangeEmailSelf(ctx context.Context, actor permission.Actor, email, code string) error {
+	if err := actor.Require(accountUpdateSelfPermission); err != nil {
+		return permissionDenied()
+	}
+	email, err := s.validateEmailChangeTarget(ctx, actor.UserID, email)
+	if err != nil {
+		return err
+	}
+	consumed, err := s.Verification.Consume(ctx, email, code, verificationsvc.PurposeEmailChange)
+	if err != nil {
+		return err
+	}
+	if !consumed {
+		return util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid or expired verification code"}
+	}
+	restoreCode := func() {
+		_ = s.Verification.Restore(ctx, email, code, verificationsvc.PurposeEmailChange)
+	}
+	if err := s.DB.Users.Update(ctx, actor.UserID, map[string]any{"email": email}); err != nil {
+		restoreCode()
+		if errors.Is(err, pgx.ErrNoRows) {
+			return util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
+		}
+		if userstore.IsEmailConflict(err) {
+			return util.HTTPError{Status: http.StatusBadRequest, Detail: "Email already in use"}
 		}
 		return err
 	}
@@ -147,19 +190,8 @@ func (s AccountService) DeleteSelf(ctx context.Context, actor permission.Actor) 
 
 func (s AccountService) normalizedSelfUpdateFields(ctx context.Context, userID string, body map[string]any) (map[string]any, error) {
 	fields := map[string]any{}
-	if v, ok := body["email"].(string); ok && v != "" {
-		v = strings.TrimSpace(v)
-		if !util.ValidEmail(v) {
-			return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid email format"}
-		}
-		existing, err := s.DB.Users.GetByEmail(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-		if existing != nil && existing.ID != userID {
-			return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Email already in use"}
-		}
-		fields["email"] = v
+	if _, ok := body["email"]; ok {
+		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Email must be changed through the verification flow"}
 	}
 	if v, ok := body["display_name"].(string); ok && v != "" {
 		v = strings.TrimSpace(v)
@@ -199,4 +231,29 @@ func (s AccountService) normalizedSelfUpdateFields(ctx context.Context, userID s
 		}
 	}
 	return fields, nil
+}
+
+func (s AccountService) validateEmailChangeTarget(ctx context.Context, userID, email string) (string, error) {
+	user, err := s.DB.Users.GetByID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if user == nil {
+		return "", util.HTTPError{Status: http.StatusNotFound, Detail: "user not found"}
+	}
+	email = strings.TrimSpace(email)
+	if !util.ValidEmail(email) {
+		return "", util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid email format"}
+	}
+	if strings.EqualFold(user.Email, email) {
+		return "", util.HTTPError{Status: http.StatusBadRequest, Detail: "New email must be different from current email"}
+	}
+	existing, err := s.DB.Users.GetByEmail(ctx, email)
+	if err != nil {
+		return "", err
+	}
+	if existing != nil {
+		return "", util.HTTPError{Status: http.StatusBadRequest, Detail: "Email already in use"}
+	}
+	return email, nil
 }

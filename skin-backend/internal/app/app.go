@@ -11,6 +11,7 @@ import (
 	"element-skin/backend/internal/httpapi"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	mailsvc "element-skin/backend/internal/service/mail"
 	oauthsvc "element-skin/backend/internal/service/oauth"
 	probesvc "element-skin/backend/internal/service/probe"
 	settingssvc "element-skin/backend/internal/service/settings"
@@ -97,7 +98,7 @@ func NewWithDB(cfg config.Config, db *database.DB) (*App, error) {
 	return NewWithDBAndRedis(cfg, db, redis)
 }
 
-func NewWithDBAndRedis(cfg config.Config, db *database.DB, redis redisstore.Store) (*App, error) {
+func NewWithDBAndRedis(cfg config.Config, db *database.DB, redis redisstore.Store, senders ...mailsvc.Sender) (*App, error) {
 	if db != nil {
 		db.Permissions.Cache = &permissiondb.RedisPermCache{Store: redis}
 	}
@@ -107,7 +108,7 @@ func NewWithDBAndRedis(cfg config.Config, db *database.DB, redis redisstore.Stor
 		_ = redis.Close()
 		return nil, err
 	}
-	return &App{db: db, redis: redis, handler: httpapi.NewRouterWithRedis(cfg, db, redis, ygg)}, nil
+	return &App{db: db, redis: redis, handler: httpapi.NewRouterWithRedis(cfg, db, redis, ygg, senders...)}, nil
 }
 
 func (a *App) Handler() http.Handler {

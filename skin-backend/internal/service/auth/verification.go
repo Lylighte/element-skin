@@ -2,73 +2,17 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"strings"
-	"time"
 
-	"element-skin/backend/internal/redisstore"
+	verificationsvc "element-skin/backend/internal/service/verification"
 	"element-skin/backend/internal/util"
 )
 
 func (s Service) SendVerificationCode(ctx context.Context, email, typ string) (map[string]any, error) {
-	email = strings.TrimSpace(email)
-	if typ == "" {
-		typ = "register"
-	}
-	settings := s.settings()
-	enabled, err := settings.Get(ctx, "email_verify_enabled", "false")
-	if err != nil {
-		return nil, err
-	}
-	if enabled != "true" {
-		return nil, util.HTTPError{Status: 400, Detail: "Email verification is disabled"}
-	}
-	if !validEmail(email) {
-		return nil, util.HTTPError{Status: 400, Detail: "Invalid email format"}
-	}
-	switch typ {
-	case "register":
-		existing, err := s.DB.Users.GetByEmail(ctx, email)
-		if err != nil {
-			return nil, err
-		}
-		if existing != nil {
-			return nil, util.HTTPError{Status: 400, Detail: "Email already registered"}
-		}
-	case "reset":
-		existing, err := s.DB.Users.GetByEmail(ctx, email)
-		if err != nil {
-			return nil, err
-		}
-		if existing == nil {
-			return map[string]any{"ok": true, "ttl": 0}, nil
-		}
-	default:
-		return nil, util.HTTPError{Status: 400, Detail: "invalid verification type"}
-	}
-	ttl, err := settings.Int(ctx, "email_verify_ttl", 300)
-	if err != nil {
-		return nil, err
-	}
-	code, err := randomVerificationCode(8)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.Redis.SetVerificationCode(ctx, email, typ, code, time.Duration(ttl)*time.Second); err != nil {
-		return nil, err
-	}
-	return map[string]any{"ok": true, "ttl": ttl}, nil
+	return s.verification().SendPublic(ctx, email, typ)
 }
 
 func (s Service) VerifyCode(ctx context.Context, email, code, typ string) (bool, error) {
-	stored, err := s.Redis.GetVerificationCode(ctx, email, typ)
-	if errors.Is(err, redisstore.ErrCacheMiss) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return strings.EqualFold(stored, code), nil
+	return s.verification().Verify(ctx, email, code, typ)
 }
 
 func (s Service) ResetPassword(ctx context.Context, email, newPassword, code string) error {
@@ -107,11 +51,8 @@ func (s Service) ResetPassword(ctx context.Context, email, newPassword, code str
 	if err != nil {
 		return err
 	}
-	ttl, err := settings.Int(ctx, "email_verify_ttl", 300)
-	if err != nil {
-		return err
-	}
-	consumed, err := s.Redis.ConsumeVerificationCode(ctx, email, "reset", code)
+	verification := s.verification()
+	consumed, err := verification.Consume(ctx, email, code, verificationsvc.PurposeReset)
 	if err != nil {
 		return err
 	}
@@ -119,13 +60,7 @@ func (s Service) ResetPassword(ctx context.Context, email, newPassword, code str
 		return util.HTTPError{Status: 400, Detail: "Invalid or expired verification code"}
 	}
 	restoreCode := func() {
-		_, _ = s.Redis.SetVerificationCodeIfAbsent(
-			ctx,
-			email,
-			"reset",
-			code,
-			time.Duration(ttl)*time.Second,
-		)
+		_ = verification.Restore(ctx, email, code, verificationsvc.PurposeReset)
 	}
 	if err := s.Redis.DeleteYggTokensByUser(ctx, user.ID); err != nil {
 		restoreCode()
@@ -141,4 +76,18 @@ func (s Service) ResetPassword(ctx context.Context, email, newPassword, code str
 		return util.HTTPError{Status: 404, Detail: "User not found"}
 	}
 	return nil
+}
+
+func (s Service) verification() verificationsvc.Service {
+	verification := s.Verification
+	if verification.DB == nil {
+		verification.DB = s.DB
+	}
+	if verification.Redis == nil {
+		verification.Redis = s.Redis
+	}
+	if verification.Settings.DB == nil {
+		verification.Settings = s.Settings
+	}
+	return verification
 }

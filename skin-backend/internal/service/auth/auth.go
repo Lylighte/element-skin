@@ -14,14 +14,16 @@ import (
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/redisstore"
 	settingssvc "element-skin/backend/internal/service/settings"
+	verificationsvc "element-skin/backend/internal/service/verification"
 	"element-skin/backend/internal/util"
 )
 
 type Service struct {
-	DB       *database.DB
-	Cfg      config.Config
-	Redis    redisstore.Store
-	Settings settingssvc.Settings
+	DB           *database.DB
+	Cfg          config.Config
+	Redis        redisstore.Store
+	Settings     settingssvc.Settings
+	Verification verificationsvc.Service
 }
 
 func (s Service) settings() settingssvc.Settings {

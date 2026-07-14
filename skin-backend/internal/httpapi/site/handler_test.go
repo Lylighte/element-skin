@@ -1,6 +1,7 @@
 package site_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,12 @@ import (
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/testutil"
 )
+
+type siteTestMailSender struct{}
+
+func (siteTestMailSender) SendVerificationCode(context.Context, string, string, string) error {
+	return nil
+}
 
 func TestHandlerAuthRequestsUserAccess(t *testing.T) {
 	h := site.New(testutil.TestConfig(), nil, func(next http.HandlerFunc, definitions ...permission.Definition) http.HandlerFunc {

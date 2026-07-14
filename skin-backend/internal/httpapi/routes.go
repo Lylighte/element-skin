@@ -13,7 +13,7 @@ import (
 )
 
 func (r *Router) routes() {
-	siteRoutes := site.NewWithRedis(r.cfg, r.db, r.redis, r.auth)
+	siteRoutes := site.NewWithRedis(r.cfg, r.db, r.redis, r.auth, r.mail)
 	yggRoutes := yggdrasil.New(r.cfg, r.db, r.redis, r.settings, r.ygg)
 	microsoftRoutes := microsoft.New(r.cfg, r.db, r.settings, r.auth, r.redis)
 	noticeRoutes := notice.New(r.db, r.auth)
@@ -37,6 +37,8 @@ func (r *Router) routes() {
 	r.handle("PATCH /v1/users/me", siteRoutes.Auth(siteRoutes.UpdateMe))
 	r.handle("DELETE /v1/users/me", siteRoutes.Auth(siteRoutes.DeleteMe))
 	r.handle("POST /v1/users/me/password", siteRoutes.Auth(siteRoutes.ChangePassword))
+	r.handle("POST /v1/users/me/email/verification-code", siteRoutes.Auth(siteRoutes.SendEmailChangeCode))
+	r.handle("PUT /v1/users/me/email", siteRoutes.Auth(siteRoutes.ChangeEmail))
 	r.handle("GET /v1/users/me/profiles", siteRoutes.Auth(siteRoutes.ListMyProfiles))
 	r.handle("POST /v1/users/me/profiles", siteRoutes.Auth(siteRoutes.CreateProfile))
 	r.handle("PATCH /v1/users/me/profiles/{profile_id}", siteRoutes.Auth(siteRoutes.UpdateProfile))

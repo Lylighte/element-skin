@@ -11,7 +11,25 @@ import (
 	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	accountsvc "element-skin/backend/internal/service/account"
+	mailsvc "element-skin/backend/internal/service/mail"
+	settingssvc "element-skin/backend/internal/service/settings"
+	verificationsvc "element-skin/backend/internal/service/verification"
 )
+
+func accountServiceWithVerification(db *database.DB, redis redisstore.Store) accountsvc.AccountService {
+	settings := settingssvc.Settings{DB: db, Redis: redis}
+	verification := verificationsvc.Service{DB: db, Redis: redis, Settings: settings, Sender: accountTestMailSender{}}
+	return accountsvc.AccountService{DB: db, Redis: redis, Verification: verification}
+}
+
+type accountTestMailSender struct{}
+
+func (accountTestMailSender) SendVerificationCode(context.Context, string, string, string) error {
+	return nil
+}
+
+var _ mailsvc.Sender = accountTestMailSender{}
 
 func accountActor(t testing.TB, db *database.DB, userID string) permission.Actor {
 	t.Helper()

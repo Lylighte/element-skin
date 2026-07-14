@@ -4,6 +4,7 @@ import (
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	verificationsvc "element-skin/backend/internal/service/verification"
 )
 
 var (
@@ -19,8 +20,9 @@ var (
 )
 
 type AccountService struct {
-	DB    *database.DB
-	Redis redisstore.Store
+	DB           *database.DB
+	Redis        redisstore.Store
+	Verification verificationsvc.Service
 }
 
 type BanUserInput struct {

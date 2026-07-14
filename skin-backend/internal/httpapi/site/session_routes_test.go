@@ -42,7 +42,7 @@ func TestSessionRoutesAuthRateLimitIsScopedByForwardedClientIP(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil, siteTestMailSender{})
 	testutil.CreateUser(t, db, "site-rate-limit@test.com", "Password123", "SiteRateLimit", false)
 	if err := db.Settings.Set(t.Context(), "rate_limit_auth_attempts", "1"); err != nil {
 		t.Fatal(err)
@@ -184,7 +184,7 @@ func TestSessionRoutesRegisterCreatesFirstAdminAndProfileExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil, siteTestMailSender{})
 	if err := db.Settings.Set(t.Context(), "profile_uuid_mode", "offline"); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestSessionRoutesVerificationAndResetPasswordExactFlow(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	redis := testutil.NewMemoryRedis()
-	h := site.NewWithRedis(cfg, db, redis, nil)
+	h := site.NewWithRedis(cfg, db, redis, nil, siteTestMailSender{})
 	user := testutil.CreateUser(t, db, "reset-flow@test.com", "Password123", "ResetFlow", false)
 
 	req := httptest.NewRequest(http.MethodPost, "/verification-code", strings.NewReader(`{"email":"reset-flow@test.com","type":"reset"}`))
@@ -315,7 +315,7 @@ func TestSessionRoutesFailClosedOnRateLimitConfigurationAndStoreErrors(t *testin
 		t.Fatal(err)
 	}
 	cache := redisstore.NewMemoryStore()
-	h := site.NewWithRedis(cfg, db, cache, nil)
+	h := site.NewWithRedis(cfg, db, cache, nil, siteTestMailSender{})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"rate-limit-failure@test.com","password":"Password123"}`))
 	rec := httptest.NewRecorder()
 	h.Login(rec, req)
@@ -331,7 +331,7 @@ func TestSessionRoutesFailClosedOnRateLimitConfigurationAndStoreErrors(t *testin
 	}
 	failedUser := testutil.CreateUser(t, db, "rate-limit-store-failure@test.com", "Password123", "RateLimitStoreFailure", false)
 	failingCache := &rateLimitFailRedis{Store: cache}
-	h = site.NewWithRedis(cfg, db, failingCache, nil)
+	h = site.NewWithRedis(cfg, db, failingCache, nil, siteTestMailSender{})
 	req = httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"rate-limit-store-failure@test.com","password":"Password123"}`))
 	rec = httptest.NewRecorder()
 	h.Login(rec, req)
