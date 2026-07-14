@@ -32,14 +32,18 @@ def test_http_close_does_not_close_external_client(response_json) -> None:
     assert recorder.requests[0].path == "/v1/ping"
 
 
-def test_http_delete_helper_and_empty_success_body(response_json) -> None:
-    recorder = RequestRecorder(lambda request: httpx.Response(204))
+def test_http_put_and_delete_helpers_use_exact_methods(response_json) -> None:
+    responses = [response_json({"ok": True}), httpx.Response(204)]
+    recorder = RequestRecorder(lambda request: responses.pop(0))
     client = HTTPClient("https://skin.example.test", transport=recorder.transport())
 
+    assert client.put("/v1/resource", json={"value": "new"}) == {"ok": True}
     assert client.delete("/v1/resource") is None
 
-    assert recorder.requests[0].method == "DELETE"
-    assert recorder.requests[0].path == "/v1/resource"
+    assert [(request.method, request.path, request.json_body) for request in recorder.requests] == [
+        ("PUT", "/v1/resource", {"value": "new"}),
+        ("DELETE", "/v1/resource", None),
+    ]
 
 
 @pytest.mark.parametrize(

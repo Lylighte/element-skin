@@ -48,6 +48,10 @@ api = ElementSkinAPI("https://skin.example.com", token=tokens)
 profiles = api.list_profiles()
 current_user = UserInfo.from_mapping(api.me())
 print(current_user.protected)
+
+# 重设邮箱需要 account.update.self，并由新邮箱接收验证码。
+api.request_email_change_code("new@example.com")
+api.change_email("new@example.com", "EMAIL123")
 ```
 
 ## 文档

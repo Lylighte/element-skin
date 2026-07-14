@@ -38,6 +38,7 @@ yggdrasil.db-wal
 *.log
 .pytest_cache/
 coverage/
+.coverage
 coverage.out
 cover*.out
 

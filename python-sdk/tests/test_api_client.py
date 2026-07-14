@@ -59,6 +59,50 @@ def test_local_permission_check_blocks_request_before_transport(response_json) -
     assert recorder.requests == []
 
 
+def test_email_change_uses_exact_permission_paths_and_bodies(response_json) -> None:
+    responses = [
+        {"ok": True, "ttl": 300},
+        {"ok": True},
+    ]
+    recorder = RequestRecorder(lambda request: response_json(responses.pop(0)))
+    api = ElementSkinAPI(
+        "https://skin.example.test",
+        access_token="access-token-1",
+        permissions=(AccountScopes.UPDATE_SELF,),
+        transport=recorder.transport(),
+    )
+
+    sent = api.request_email_change_code("new@example.com")
+    changed = api.change_email("new@example.com", "EMAIL123")
+
+    assert sent == {"ok": True, "ttl": 300}
+    assert changed == {"ok": True}
+    assert [(request.method, request.path, request.json_body) for request in recorder.requests] == [
+        ("POST", "/v1/users/me/email/verification-code", {"email": "new@example.com"}),
+        ("PUT", "/v1/users/me/email", {"email": "new@example.com", "code": "EMAIL123"}),
+    ]
+
+
+def test_email_change_permission_check_blocks_both_requests(response_json) -> None:
+    recorder = RequestRecorder(lambda request: response_json({"ok": True}))
+    api = ElementSkinAPI(
+        "https://skin.example.test",
+        access_token="access-token-1",
+        permissions=(AccountScopes.READ_SELF,),
+        transport=recorder.transport(),
+    )
+
+    for call in (
+        lambda: api.request_email_change_code("new@example.com"),
+        lambda: api.change_email("new@example.com", "EMAIL123"),
+    ):
+        with pytest.raises(PermissionDenied) as exc:
+            call()
+        assert exc.value.status_code == 403
+        assert exc.value.detail == "missing required permission: account.update.self"
+    assert recorder.requests == []
+
+
 def test_list_profiles_uses_exact_cursor_params(response_json) -> None:
     recorder = RequestRecorder(lambda request: response_json(PROFILE_PAGE_RESPONSE))
     api = ElementSkinAPI(

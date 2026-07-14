@@ -58,6 +58,32 @@ GET /v1/users/me
 account.read.self
 ```
 
+### 重设邮箱
+
+邮箱不能通过普通账号资料更新直接修改。应用必须先向新邮箱发送验证码，再提交新邮箱和验证码：
+
+```python
+sent = api.request_email_change_code("new@example.com")
+print(sent["ttl"])
+
+api.change_email("new@example.com", "EMAIL123")
+```
+
+接口：
+
+```text
+POST /v1/users/me/email/verification-code
+PUT  /v1/users/me/email
+```
+
+两个接口都需要：
+
+```text
+account.update.self
+```
+
+Authorization Code 或 Device Code 获取的用户委托 token 可以调用这两个接口；应用自身的 Client Credentials token 没有当前用户，不能调用。
+
 ## 角色
 
 ```python

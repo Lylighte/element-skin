@@ -40,6 +40,8 @@ element_skin_sdk
 当前同步客户端覆盖常用用户 API 和 Minecraft 能力 API：
 
 - `GET /v1/users/me`
+- `POST /v1/users/me/email/verification-code`
+- `PUT /v1/users/me/email`
 - `GET/POST/PATCH/DELETE /v1/users/me/profiles`
 - `GET/PATCH/DELETE /v1/users/me/textures/{hash}/{texture_type}`
 - `POST /v1/users/me/textures/{hash}/wardrobe`

@@ -47,6 +47,20 @@ class ElementSkinAPI:
         self._require(AccountScopes.READ_SELF)
         return self._http.get("/v1/users/me")
 
+    def request_email_change_code(self, email: str) -> dict[str, Any]:
+        self._require(AccountScopes.UPDATE_SELF)
+        return self._http.post(
+            "/v1/users/me/email/verification-code",
+            json={"email": email},
+        )
+
+    def change_email(self, email: str, code: str) -> dict[str, Any]:
+        self._require(AccountScopes.UPDATE_SELF)
+        return self._http.put(
+            "/v1/users/me/email",
+            json={"email": email, "code": code},
+        )
+
     def list_profiles(self, *, cursor: str | None = None, page_size: int | None = None) -> dict[str, Any]:
         self._require(ProfileScopes.READ_OWNED)
         return self._http.get(
