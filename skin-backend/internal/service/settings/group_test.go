@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
@@ -320,6 +321,34 @@ func TestSettingsReadUpdateGroupPermissionsAndCacheInvalidationExactly(t *testin
 	}
 	if err := svc.UpdateGroup(ctx, updateActor, "missing", map[string]any{"site_name": "Denied"}); !settingsHTTPError(err, http.StatusBadRequest, "invalid settings group") {
 		t.Fatalf("UpdateGroup invalid group mismatch: %#v", err)
+	}
+}
+
+func TestSettingsFallbackUpdateInvalidatesPublicKeyCacheExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	redis := testutil.NewMemoryRedis()
+	svc := settings.Settings{DB: db, Redis: redis}
+	keys := model.YggdrasilPublicKeys{
+		ProfilePropertyKeys:   []model.YggdrasilPublicKey{{PublicKey: "old-profile"}},
+		PlayerCertificateKeys: []model.YggdrasilPublicKey{{PublicKey: "old-certificate"}},
+	}
+	if err := redis.SetFallbackPublicKeys(ctx, "old-source", keys, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UpdateGroup(ctx, settingsActor("site_settings.update.any"), "fallback", map[string]any{
+		"fallbacks": []any{map[string]any{
+			"priority":     1,
+			"session_url":  "https://new.example/session",
+			"account_url":  "https://new.example/account",
+			"services_url": "https://new.example/services",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := redis.GetFallbackPublicKeys(ctx, []string{"old-source"})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("fallback update cache result=%#v err=%v, want empty cache", got, err)
 	}
 }
 

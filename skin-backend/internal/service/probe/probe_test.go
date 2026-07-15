@@ -94,12 +94,12 @@ func TestProbeRunMarksUpFor200And404AndDownOtherwise(t *testing.T) {
 		t.Fatalf("checked_at should use injected clock: first=%d second=%d expected=%d", first.CheckedAt, second.CheckedAt, expectedCheckedAt)
 	}
 
-	// Each server should have been hit exactly three times (once per API).
-	if got := atomic.LoadInt32(&server1.calls); got != 3 {
-		t.Fatalf("first server should be probed once per API: got %d", got)
+	// Each server receives three unchanged health requests plus discovery and public-key fallback attempts.
+	if got := atomic.LoadInt32(&server1.calls); got != 5 {
+		t.Fatalf("first server request count=%d, want three health and two key requests", got)
 	}
-	if got := atomic.LoadInt32(&server2.calls); got != 3 {
-		t.Fatalf("second server should be probed once per API: got %d", got)
+	if got := atomic.LoadInt32(&server2.calls); got != 5 {
+		t.Fatalf("second server request count=%d, want three health and two key requests", got)
 	}
 }
 

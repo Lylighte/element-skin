@@ -80,6 +80,9 @@ type Store interface {
 	AppendProbeSamples(context.Context, []ProbeSample, time.Duration) error
 	GetProbeHistory(context.Context, time.Time) ([]ProbeSample, error)
 	InvalidateProbeHistory(context.Context) error
+	SetFallbackPublicKeys(context.Context, string, model.YggdrasilPublicKeys, time.Duration) error
+	GetFallbackPublicKeys(context.Context, []string) (map[string]model.YggdrasilPublicKeys, error)
+	InvalidateFallbackPublicKeys(context.Context) error
 	DeleteByPrefix(context.Context, string) error
 	GetPermissionCache(ctx context.Context, subjectID string) (string, bool, error)
 	SetPermissionCache(ctx context.Context, subjectID string, encoded string, ttl time.Duration) error

@@ -52,7 +52,10 @@ func (s *Service) Run(ctx context.Context) error {
 		}(i, ep)
 	}
 	wg.Wait()
-	return s.Redis.AppendProbeSamples(ctx, samples, s.retention())
+	if err := s.Redis.AppendProbeSamples(ctx, samples, s.retention()); err != nil {
+		return err
+	}
+	return s.refreshFallbackPublicKeys(ctx, endpoints)
 }
 
 func (s *Service) probeEndpoint(ctx context.Context, ep map[string]any) redisstore.ProbeSample {

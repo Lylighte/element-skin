@@ -144,6 +144,11 @@ func (s Settings) SaveGroupAndInvalidate(ctx context.Context, group string, body
 			return err
 		}
 	}
+	if group == "fallback" {
+		if err := s.Redis.InvalidateFallbackPublicKeys(ctx); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
