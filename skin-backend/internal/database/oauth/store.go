@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"context"
-	"errors"
 
 	"element-skin/backend/internal/model"
 
@@ -106,37 +105,4 @@ func scanInt64Rows(rows pgx.Rows) ([]int64, error) {
 		values = append(values, value)
 	}
 	return values, rows.Err()
-}
-
-func insertOAuthToken(ctx context.Context, q queryer, table string, token model.OAuthToken) error {
-	_, err := q.Exec(ctx, `
-		INSERT INTO `+table+` (token_hash, client_id, user_id, grant_id, expires_at, created_at, revoked_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-	`, token.TokenHash, token.ClientID, token.UserID, token.GrantID, token.ExpiresAt, token.CreatedAt, token.RevokedAt)
-	return err
-}
-
-func (s Store) getToken(ctx context.Context, table, tokenHash string) (*model.OAuthToken, error) {
-	row := s.Pool.QueryRow(ctx, `
-		SELECT token_hash, client_id, user_id, grant_id, expires_at, created_at, revoked_at
-		FROM `+table+`
-		WHERE token_hash=$1
-	`, tokenHash)
-	token, err := scanOAuthToken(row)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	return token, err
-}
-
-func (s Store) revokeToken(ctx context.Context, table, tokenHash string, revokedAt int64) (bool, error) {
-	tag, err := s.Pool.Exec(ctx, `
-		UPDATE `+table+`
-		SET revoked_at=$2
-		WHERE token_hash=$1 AND revoked_at IS NULL
-	`, tokenHash, revokedAt)
-	if err != nil {
-		return false, err
-	}
-	return tag.RowsAffected() > 0, nil
 }

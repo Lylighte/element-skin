@@ -69,23 +69,37 @@ func (s Store) ConsumeAuthorizationCode(ctx context.Context, codeHash string, co
 }
 
 func (s Store) CreateRefreshToken(ctx context.Context, refresh model.OAuthToken) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	if err := insertOAuthToken(ctx, tx, "oauth_refresh_tokens", refresh); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	_, err := s.Pool.Exec(ctx, `
+		INSERT INTO oauth_refresh_tokens
+			(token_hash, client_id, user_id, grant_id, expires_at, created_at, revoked_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+	`, refresh.TokenHash, refresh.ClientID, refresh.UserID, refresh.GrantID, refresh.ExpiresAt, refresh.CreatedAt, refresh.RevokedAt)
+	return err
 }
 
 func (s Store) GetRefreshToken(ctx context.Context, tokenHash string) (*model.OAuthToken, error) {
-	return s.getToken(ctx, "oauth_refresh_tokens", tokenHash)
+	row := s.Pool.QueryRow(ctx, `
+		SELECT token_hash, client_id, user_id, grant_id, expires_at, created_at, revoked_at
+		FROM oauth_refresh_tokens
+		WHERE token_hash=$1
+	`, tokenHash)
+	token, err := scanOAuthToken(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return token, err
 }
 
 func (s Store) RevokeRefreshToken(ctx context.Context, tokenHash string, revokedAt int64) (bool, error) {
-	return s.revokeToken(ctx, "oauth_refresh_tokens", tokenHash, revokedAt)
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE oauth_refresh_tokens
+		SET revoked_at=$2
+		WHERE token_hash=$1 AND revoked_at IS NULL
+	`, tokenHash, revokedAt)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (s Store) RotateRefreshToken(ctx context.Context, oldRefreshHash string, newRefresh model.OAuthToken, revokedAt int64) (bool, error) {
@@ -102,7 +116,11 @@ func (s Store) RotateRefreshToken(ctx context.Context, oldRefreshHash string, ne
 	if err != nil || tag.RowsAffected() == 0 {
 		return false, err
 	}
-	if err := insertOAuthToken(ctx, tx, "oauth_refresh_tokens", newRefresh); err != nil {
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO oauth_refresh_tokens
+			(token_hash, client_id, user_id, grant_id, expires_at, created_at, revoked_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+	`, newRefresh.TokenHash, newRefresh.ClientID, newRefresh.UserID, newRefresh.GrantID, newRefresh.ExpiresAt, newRefresh.CreatedAt, newRefresh.RevokedAt); err != nil {
 		return false, err
 	}
 	return true, tx.Commit(ctx)
