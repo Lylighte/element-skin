@@ -173,3 +173,38 @@ func TestLoadRejectsCredentialedWildcardCORSExactly(t *testing.T) {
 		t.Fatalf("invalid CORS config must not be rewritten: readErr=%v after=%q", readErr, string(after))
 	}
 }
+
+func TestLoadRejectsMalformedPublicURLsAndCORSOriginsExactly(t *testing.T) {
+	tests := []struct {
+		name      string
+		oldValue  string
+		newValue  string
+		wantError string
+	}{
+		{name: "site URL without host", oldValue: `site_url: "https://file.example"`, newValue: `site_url: "https:///missing-host"`, wantError: "invalid config server.site_url"},
+		{name: "site URL with credentials", oldValue: `site_url: "https://file.example"`, newValue: `site_url: "https://user:secret@file.example"`, wantError: "invalid config server.site_url"},
+		{name: "API URL with query", oldValue: `api_url: "https://file.example/api"`, newValue: `api_url: "https://file.example/api?tenant=one"`, wantError: "invalid config server.api_url"},
+		{name: "API URL with fragment", oldValue: `api_url: "https://file.example/api"`, newValue: `api_url: "https://file.example/api#fragment"`, wantError: "invalid config server.api_url"},
+		{name: "CORS origin with path", oldValue: `    - "https://file.example"`, newValue: `    - "https://file.example/app"`, wantError: "invalid config cors.allow_origins"},
+		{name: "CORS origin with credentials", oldValue: `    - "https://file.example"`, newValue: `    - "https://user@file.example"`, wantError: "invalid config cors.allow_origins"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			clearConfigEnv(t)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			raw := strings.Replace(minimalConfigYAML(), tc.oldValue, tc.newValue, 1)
+			if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, err := Load(path)
+			if err == nil || err.Error() != tc.wantError || !reflect.DeepEqual(cfg, Config{}) {
+				t.Fatalf("invalid URL result: cfg=%#v err=%v; want zero config and %q", cfg, err, tc.wantError)
+			}
+			after, readErr := os.ReadFile(path)
+			if readErr != nil || string(after) != raw {
+				t.Fatalf("invalid URL config must not be rewritten: readErr=%v after=%q", readErr, string(after))
+			}
+		})
+	}
+}

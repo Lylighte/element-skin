@@ -49,6 +49,17 @@ func validateRequiredConfig(cfg Config, raw rawConfig) error {
 	if cfg.CORSCredentials && containsString(cfg.CORSOrigins, "*") {
 		return fmt.Errorf("invalid config cors.allow_origins: wildcard is not allowed when credentials are enabled")
 	}
+	if !validHTTPBaseURL(cfg.SiteURL) {
+		return fmt.Errorf("invalid config server.site_url")
+	}
+	if !validHTTPBaseURL(cfg.APIURL) {
+		return fmt.Errorf("invalid config server.api_url")
+	}
+	for _, origin := range cfg.CORSOrigins {
+		if origin != "*" && !validCORSOrigin(origin) {
+			return fmt.Errorf("invalid config cors.allow_origins")
+		}
+	}
 	for _, check := range []struct {
 		field string
 		ok    bool
@@ -83,6 +94,28 @@ func validateRequiredConfig(cfg Config, raw rawConfig) error {
 		}
 	}
 	return nil
+}
+
+func validHTTPBaseURL(raw string) bool {
+	if raw == "" || strings.TrimSpace(raw) != raw {
+		return false
+	}
+	u, err := url.Parse(raw)
+	return err == nil &&
+		(u.Scheme == "http" || u.Scheme == "https") &&
+		u.Host != "" &&
+		u.User == nil &&
+		u.RawQuery == "" &&
+		!u.ForceQuery &&
+		u.Fragment == ""
+}
+
+func validCORSOrigin(raw string) bool {
+	if !validHTTPBaseURL(raw) {
+		return false
+	}
+	u, _ := url.Parse(raw)
+	return u.Path == "" && u.RawPath == ""
 }
 
 func containsString(values []string, want string) bool {

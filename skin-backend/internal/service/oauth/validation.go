@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"net/url"
+	"strings"
 )
 
 func validPKCE(verifier, challenge string) bool {
@@ -15,7 +16,12 @@ func validPKCE(verifier, challenge string) bool {
 
 func validHTTPURL(raw string) bool {
 	u, err := url.Parse(raw)
-	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
+	return err == nil &&
+		strings.TrimSpace(raw) == raw &&
+		(u.Scheme == "https" || u.Scheme == "http") &&
+		u.Host != "" &&
+		u.User == nil &&
+		u.Fragment == ""
 }
 
 func validClientStatus(status string) bool {

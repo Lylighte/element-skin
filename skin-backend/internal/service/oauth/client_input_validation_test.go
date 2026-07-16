@@ -27,7 +27,10 @@ func TestServicePublicClientSecretAndInputValidationPathsExactly(t *testing.T) {
 	}{
 		{name: "empty name", input: oauth.ClientInput{Name: "", RedirectURI: "https://app.example/callback", PermissionCodes: []string{"account.read.self"}}, status: 400, detail: "invalid name"},
 		{name: "bad redirect", input: oauth.ClientInput{Name: "Bad redirect", RedirectURI: "ftp://app.example/callback", PermissionCodes: []string{"account.read.self"}}, status: 400, detail: "invalid redirect_uri"},
+		{name: "redirect with fragment", input: oauth.ClientInput{Name: "Fragment redirect", RedirectURI: "https://app.example/callback#token", PermissionCodes: []string{"account.read.self"}}, status: 400, detail: "invalid redirect_uri"},
+		{name: "redirect with credentials", input: oauth.ClientInput{Name: "Credential redirect", RedirectURI: "https://user@app.example/callback", PermissionCodes: []string{"account.read.self"}}, status: 400, detail: "invalid redirect_uri"},
 		{name: "bad website", input: oauth.ClientInput{Name: "Bad website", RedirectURI: "https://app.example/callback", WebsiteURL: "://bad", PermissionCodes: []string{"account.read.self"}}, status: 400, detail: "invalid website_url"},
+		{name: "website with fragment", input: oauth.ClientInput{Name: "Fragment website", RedirectURI: "https://app.example/callback", WebsiteURL: "https://app.example/#section", PermissionCodes: []string{"account.read.self"}}, status: 400, detail: "invalid website_url"},
 		{name: "bad type", input: oauth.ClientInput{Name: "Bad type", RedirectURI: "https://app.example/callback", ClientType: "native", PermissionCodes: []string{"account.read.self"}}, status: 400, detail: "invalid client_type"},
 		{name: "bad scope", input: oauth.ClientInput{Name: "Bad scope", RedirectURI: "https://app.example/callback", PermissionCodes: []string{"permission.catalog.system"}}, status: 400, detail: "invalid scope"},
 		{name: "missing actor scope", input: oauth.ClientInput{Name: "Missing actor scope", RedirectURI: "https://app.example/callback", PermissionCodes: []string{"account.ban.any"}}, status: 403, detail: "permission denied"},
