@@ -3,9 +3,15 @@ package yggdrasil
 import (
 	"context"
 	"strings"
+
+	"element-skin/backend/internal/permission"
+	fallbacksvc "element-skin/backend/internal/service/fallback"
 )
 
-func (y Yggdrasil) Metadata(ctx context.Context) (map[string]any, error) {
+func (y Yggdrasil) Metadata(ctx context.Context, actor permission.Actor) (map[string]any, error) {
+	if err := requirePublicPermission(actor); err != nil {
+		return nil, err
+	}
 	signer, err := y.signer()
 	if err != nil {
 		return nil, err
@@ -24,14 +30,27 @@ func (y Yggdrasil) Metadata(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	domains = appendUniqueDomain(domains, host)
+	publicKeys, err := y.PublicKeys(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	signaturePublicKeys := make([]string, 0, len(publicKeys.ProfilePropertyKeys))
+	for _, key := range publicKeys.ProfilePropertyKeys {
+		encoded, err := fallbacksvc.PublicKeyPEM(key.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		signaturePublicKeys = append(signaturePublicKeys, encoded)
+	}
 	return map[string]any{
 		"meta": map[string]any{
 			"serverName": name, "implementationName": "element-skin", "implementationVersion": "go",
 			"links":                   map[string]any{"homepage": site + "/", "register": site + "/register/"},
 			"feature.non_email_login": true,
 		},
-		"skinDomains":        domains,
-		"signaturePublickey": signer.PublicKeyPEM(),
+		"skinDomains":         domains,
+		"signaturePublickey":  signer.PublicKeyPEM(),
+		"signaturePublickeys": signaturePublicKeys,
 	}, nil
 }
 

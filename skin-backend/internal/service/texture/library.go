@@ -8,6 +8,7 @@ import (
 
 var (
 	textureReadOwnedPermission             = permission.MustDefinitionByCode("texture.read.owned")
+	textureReadPublicPermission            = permission.MustDefinitionByCode("texture.read.public")
 	textureUpdateMetadataOwnedPermission   = permission.MustDefinitionByCode("texture.update_metadata.owned")
 	textureUpdateVisibilityOwnedPermission = permission.MustDefinitionByCode("texture.update_visibility.owned")
 	textureDeleteOwnedPermission           = permission.MustDefinitionByCode("texture.delete.owned")

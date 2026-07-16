@@ -99,3 +99,28 @@ func TestSystemMaintenanceActorExactly(t *testing.T) {
 		t.Fatal("system maintenance actor must not include non-system notice create permission")
 	}
 }
+
+func TestGuestActorContainsExactlyPublicPermissions(t *testing.T) {
+	actor := permission.GuestActor()
+	if actor.SubjectID != "guest:public" || actor.UserID != "" || actor.SessionKind != permission.SessionKindGuest || actor.Entrypoint != permission.EntrypointPublic {
+		t.Fatalf("guest actor identity mismatch: %#v", actor)
+	}
+	want := make([]string, 0)
+	for _, def := range permission.Definitions {
+		if def.Scope.ID == permission.ScopePublic {
+			want = append(want, def.Code)
+		}
+	}
+	got := actor.PermissionCodes()
+	if len(got) != len(want) {
+		t.Fatalf("guest permissions=%#v; want %#v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("guest permission[%d]=%q; want %q", index, got[index], want[index])
+		}
+	}
+	if actor.Has(permission.MustDefinitionByCode("account.read.self")) || actor.Has(permission.MustDefinitionByCode("site_settings.read.any")) {
+		t.Fatalf("guest actor includes non-public permission: %#v", got)
+	}
+}

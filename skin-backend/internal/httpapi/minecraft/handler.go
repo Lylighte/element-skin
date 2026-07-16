@@ -32,7 +32,7 @@ func (h Handler) Auth(next http.HandlerFunc, required ...permission.Definition) 
 }
 
 func (h Handler) ProfileByName(w http.ResponseWriter, req *http.Request) {
-	res, err := h.minecraft.ProfileByName(req.Context(), req.PathValue("name"))
+	res, err := h.minecraft.ProfileByName(req.Context(), shared.CurrentActor(req), req.PathValue("name"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -66,7 +66,7 @@ func (h Handler) ProfilesByNames(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid json"})
 		return
 	}
-	res, err := h.minecraft.ProfilesByNames(req.Context(), body.Names)
+	res, err := h.minecraft.ProfilesByNames(req.Context(), shared.CurrentActor(req), body.Names)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -75,7 +75,7 @@ func (h Handler) ProfilesByNames(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ProfileByID(w http.ResponseWriter, req *http.Request) {
-	res, err := h.minecraft.ProfileByID(req.Context(), req.PathValue("profile_id"))
+	res, err := h.minecraft.ProfileByID(req.Context(), shared.CurrentActor(req), req.PathValue("profile_id"))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -84,7 +84,7 @@ func (h Handler) ProfileByID(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) TexturesProperty(w http.ResponseWriter, req *http.Request) {
-	res, err := h.minecraft.TexturesProperty(req.Context(), req.PathValue("profile_id"))
+	res, err := h.minecraft.TexturesProperty(req.Context(), shared.CurrentActor(req), req.PathValue("profile_id"))
 	if err != nil {
 		util.Error(w, err)
 		return

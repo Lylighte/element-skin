@@ -49,3 +49,16 @@ func SystemMaintenanceActor() Actor {
 		Permissions: bits,
 	}
 }
+
+func GuestActor() Actor {
+	bits := NewBitSet(len(Definitions))
+	for _, def := range publicDefinitions() {
+		bits.Set(def.BitIndex)
+	}
+	return Actor{
+		SubjectID:   "guest:public",
+		SessionKind: SessionKindGuest,
+		Entrypoint:  EntrypointPublic,
+		Permissions: bits,
+	}
+}

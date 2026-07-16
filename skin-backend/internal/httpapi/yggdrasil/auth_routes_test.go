@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/yggdrasil"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
@@ -27,6 +28,7 @@ func TestAuthRoutesValidateMissingTokenAndMetadataExactly(t *testing.T) {
 	h := yggdrasil.New(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req = req.WithContext(shared.WithActor(req.Context(), permission.GuestActor()))
 	rec := httptest.NewRecorder()
 	h.Metadata(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"implementationName"`) || !strings.Contains(rec.Body.String(), `"skinDomains"`) {

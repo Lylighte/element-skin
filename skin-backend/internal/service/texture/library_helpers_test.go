@@ -16,9 +16,13 @@ func ptrString(s string) *string {
 	return &s
 }
 
+func texturePublicActor() permission.Actor {
+	return permission.GuestActor()
+}
+
 func assertServicePublicUsage(t *testing.T, svc texturesvc.LibraryService, hash string, want int64) {
 	t.Helper()
-	public, err := svc.PublicLibrary(context.Background(), "", 10, "skin", hash, "most_used")
+	public, err := svc.PublicLibrary(context.Background(), texturePublicActor(), "", 10, "skin", hash, "most_used")
 	if err != nil {
 		t.Fatalf("PublicLibrary(%s): %v", hash, err)
 	}

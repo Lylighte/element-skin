@@ -10,7 +10,10 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-func (s LibraryService) PublicLibrary(ctx context.Context, cursor string, limit int, typ, q, sort string) (map[string]any, error) {
+func (s LibraryService) PublicLibrary(ctx context.Context, actor permission.Actor, cursor string, limit int, typ, q, sort string) (map[string]any, error) {
+	if err := requireActorPermission(actor, textureReadPublicPermission); err != nil {
+		return nil, err
+	}
 	enabled, err := s.Settings.Get(ctx, "enable_skin_library", "true")
 	if err != nil {
 		return nil, err

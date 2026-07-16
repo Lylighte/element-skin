@@ -30,7 +30,7 @@ func TestMinecraftProfilesReturnExactPublicFields(t *testing.T) {
 	profile.TextureModel = "slim"
 	svc := minecraftService(db)
 
-	byName, err := svc.ProfileByName(ctx, profile.Name)
+	byName, err := svc.ProfileByName(ctx, permission.GuestActor(), profile.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestMinecraftProfilesReturnExactPublicFields(t *testing.T) {
 		t.Fatalf("profile by name mismatch:\n got=%#v\nwant=%#v", byName, wantByName)
 	}
 
-	byID, err := svc.ProfileByID(ctx, profile.ID)
+	byID, err := svc.ProfileByID(ctx, permission.GuestActor(), profile.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestMinecraftProfilesReturnExactPublicFields(t *testing.T) {
 		t.Fatalf("profile by id mismatch:\n got=%#v\nwant=%#v", byID, wantByID)
 	}
 
-	bulk, err := svc.ProfilesByNames(ctx, []string{profile.Name, "MissingMinecraft"})
+	bulk, err := svc.ProfilesByNames(ctx, permission.GuestActor(), []string{profile.Name, "MissingMinecraft"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestMinecraftTexturesPropertyUsesSiteTextureURLAndSignedPayload(t *testing.
 	}
 	svc := minecraftService(db)
 
-	body, err := svc.TexturesProperty(ctx, profile.ID)
+	body, err := svc.TexturesProperty(ctx, permission.GuestActor(), profile.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,19 +149,23 @@ func TestMinecraftServiceRejectsInvalidInputsExactly(t *testing.T) {
 	user := testutil.CreateUser(t, db, "minecraft-errors@test.com", "pw", "MinecraftErrors", false)
 	profile := testutil.CreateProfile(t, db, user.ID, "minecraft_errors_profile", "MinecraftErrors")
 	svc := minecraftService(db)
+	_, err := svc.ProfileByName(ctx, permission.Actor{}, profile.Name)
+	assertHTTPError(t, err, 403, "permission denied")
+	_, err = svc.TexturesProperty(ctx, permission.Actor{}, profile.ID)
+	assertHTTPError(t, err, 403, "permission denied")
 
-	_, err := svc.ProfileByName(ctx, "missing-name")
+	_, err = svc.ProfileByName(ctx, permission.GuestActor(), "missing-name")
 	assertHTTPError(t, err, 404, "minecraft profile not found")
-	_, err = svc.ProfileByID(ctx, "missing-id")
+	_, err = svc.ProfileByID(ctx, permission.GuestActor(), "missing-id")
 	assertHTTPError(t, err, 404, "minecraft profile not found")
-	_, err = svc.TexturesProperty(ctx, "missing-id")
+	_, err = svc.TexturesProperty(ctx, permission.GuestActor(), "missing-id")
 	assertHTTPError(t, err, 404, "minecraft profile not found")
 
 	names := make([]string, 101)
 	for i := range names {
 		names[i] = "Player"
 	}
-	_, err = svc.ProfilesByNames(ctx, names)
+	_, err = svc.ProfilesByNames(ctx, permission.GuestActor(), names)
 	assertHTTPError(t, err, 400, "too many names")
 
 	_, err = svc.HasJoined(ctx, clientActorWith("minecraft_session.hasjoined.server"), minecraftsvc.HasJoinedRequest{Username: profile.Name})

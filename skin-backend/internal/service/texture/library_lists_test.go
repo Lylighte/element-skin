@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	settingssvc "element-skin/backend/internal/service/settings"
 	texturesvc "element-skin/backend/internal/service/texture"
@@ -16,6 +17,9 @@ func TestTextureLibraryCursorsAndDisabledPublicLibraryExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
 	svc := newLibraryService(db)
+	if _, err := svc.PublicLibrary(ctx, permission.Actor{}, "", 10, "skin", "", "latest"); !httpErrorIs(err, 403, "permission denied") {
+		t.Fatalf("PublicLibrary without public permission mismatch: %#v", err)
+	}
 	user := testutil.CreateUser(t, db, "site-profile-cursor@test.com", "Password123", "ProfileCursor", false)
 	if err := db.Textures.AddToLibrary(ctx, user.ID, "profile_cursor_skin", "skin", "Profile Cursor Skin", true, "default"); err != nil {
 		t.Fatal(err)
@@ -24,7 +28,7 @@ func TestTextureLibraryCursorsAndDisabledPublicLibraryExactly(t *testing.T) {
 	if _, err := svc.ListMyTextures(ctx, textureUserActor(user.ID), "not-base64", 10, "skin"); !httpErrorIs(err, 400, "Invalid cursor") {
 		t.Fatalf("invalid texture cursor should reject exactly, got %#v", err)
 	}
-	if _, err := svc.PublicLibrary(ctx, "not-base64", 10, "skin", "", "latest"); !httpErrorIs(err, 400, "Invalid cursor") {
+	if _, err := svc.PublicLibrary(ctx, texturePublicActor(), "not-base64", 10, "skin", "", "latest"); !httpErrorIs(err, 400, "Invalid cursor") {
 		t.Fatalf("invalid public library cursor should reject exactly, got %#v", err)
 	}
 
@@ -34,7 +38,7 @@ func TestTextureLibraryCursorsAndDisabledPublicLibraryExactly(t *testing.T) {
 	if err := svc.Settings.InvalidateCache(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.PublicLibrary(ctx, "", 10, "skin", "", "latest"); !httpErrorIs(err, 403, "Skin library is disabled by administrator") {
+	if _, err := svc.PublicLibrary(ctx, texturePublicActor(), "", 10, "skin", "", "latest"); !httpErrorIs(err, 403, "Skin library is disabled by administrator") {
 		t.Fatalf("disabled public library should reject exactly, got %#v", err)
 	}
 }
@@ -46,7 +50,7 @@ func TestPublicLibraryPropagatesSettingsCacheErrorExactly(t *testing.T) {
 	cache.Err = errors.New("settings cache unavailable")
 	svc := texturesvc.LibraryService{DB: db, Settings: settingssvc.Settings{DB: db, Redis: cache}}
 
-	result, err := svc.PublicLibrary(ctx, "", 10, "skin", "", "latest")
+	result, err := svc.PublicLibrary(ctx, texturePublicActor(), "", 10, "skin", "", "latest")
 	if result != nil || !errors.Is(err, cache.Err) {
 		t.Fatalf("PublicLibrary settings dependency error result=%#v err=%v want nil %v", result, err, cache.Err)
 	}
@@ -90,7 +94,7 @@ func TestTextureListsAndPublicLibraryCursorsAdvanceExactly(t *testing.T) {
 		t.Fatalf("ListMyTextures cursor should advance to next item: first=%#v second=%#v", firstPage, secondPage)
 	}
 
-	public, err := svc.PublicLibrary(ctx, "", 1, "skin", "Profile Cursor", "most_used")
+	public, err := svc.PublicLibrary(ctx, texturePublicActor(), "", 1, "skin", "Profile Cursor", "most_used")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +103,7 @@ func TestTextureListsAndPublicLibraryCursorsAdvanceExactly(t *testing.T) {
 	if len(publicItems) != 1 || publicCursor == "" || publicItems[0]["usage_count"] != int64(2) {
 		t.Fatalf("most_used public library first page mismatch: %#v", public)
 	}
-	nextPublic, err := svc.PublicLibrary(ctx, publicCursor, 10, "skin", "Profile Cursor", "most_used")
+	nextPublic, err := svc.PublicLibrary(ctx, texturePublicActor(), publicCursor, 10, "skin", "Profile Cursor", "most_used")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +165,7 @@ func TestPublicLibraryRejectsIncompleteAndCrossSortCursors(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := svc.PublicLibrary(ctx, tc.cursor, 10, "skin", "", tc.sort)
+			result, err := svc.PublicLibrary(ctx, texturePublicActor(), tc.cursor, 10, "skin", "", tc.sort)
 			if result != nil || !httpErrorIs(err, 400, "Invalid cursor") {
 				t.Fatalf("PublicLibrary result=%#v err=%#v; want nil and exact invalid cursor", result, err)
 			}

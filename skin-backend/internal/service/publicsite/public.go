@@ -3,12 +3,15 @@ package publicsite
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	settingssvc "element-skin/backend/internal/service/settings"
+	"element-skin/backend/internal/util"
 )
 
 type Service struct {
@@ -20,7 +23,12 @@ type Service struct {
 	CacheTTL time.Duration
 }
 
-func (s Service) PublicSettings(ctx context.Context) (map[string]any, error) {
+var sitePublicReadPermission = permission.MustDefinitionByCode("site_public.read.public")
+
+func (s Service) PublicSettings(ctx context.Context, actor permission.Actor) (map[string]any, error) {
+	if err := requirePublicPermission(actor); err != nil {
+		return nil, err
+	}
 	if cached, err := s.Redis.GetPublicSettings(ctx); err == nil {
 		if currentPublicSettingsCache(cached) {
 			return cached, nil
@@ -46,7 +54,10 @@ func currentPublicSettingsCache(cached map[string]any) bool {
 	return ok
 }
 
-func (s Service) HomepageMedia(ctx context.Context) ([]model.HomepageMedia, error) {
+func (s Service) HomepageMedia(ctx context.Context, actor permission.Actor) ([]model.HomepageMedia, error) {
+	if err := requirePublicPermission(actor); err != nil {
+		return nil, err
+	}
 	if cached, err := s.Redis.GetPublicHomepageMedia(ctx); err == nil {
 		return cached, nil
 	} else if !errors.Is(err, redisstore.ErrCacheMiss) {
@@ -65,7 +76,10 @@ func (s Service) HomepageMedia(ctx context.Context) ([]model.HomepageMedia, erro
 	return items, nil
 }
 
-func (s Service) FallbackStatus(ctx context.Context, now time.Time) (map[string]any, error) {
+func (s Service) FallbackStatus(ctx context.Context, actor permission.Actor, now time.Time) (map[string]any, error) {
+	if err := requirePublicPermission(actor); err != nil {
+		return nil, err
+	}
 	endpoints, err := s.DB.Fallbacks.ListEndpoints(ctx)
 	if err != nil {
 		return nil, err
@@ -76,6 +90,13 @@ func (s Service) FallbackStatus(ctx context.Context, now time.Time) (map[string]
 		return nil, err
 	}
 	return buildFallbackStatus(endpoints, history, now), nil
+}
+
+func requirePublicPermission(actor permission.Actor) error {
+	if err := actor.Require(sitePublicReadPermission); err != nil {
+		return util.HTTPError{Status: http.StatusForbidden, Detail: "permission denied"}
+	}
+	return nil
 }
 
 type fallbackStatusEntry struct {

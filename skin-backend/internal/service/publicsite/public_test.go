@@ -4,16 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
 	"element-skin/backend/internal/database"
 	dbfallback "element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	publicsitesvc "element-skin/backend/internal/service/publicsite"
 	settingssvc "element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
 )
 
 func TestPublicSettingsUsesCacheAndFallbackPrimaryEndpointExactly(t *testing.T) {
@@ -43,7 +46,7 @@ func TestPublicSettingsUsesCacheAndFallbackPrimaryEndpointExactly(t *testing.T) 
 		CacheTTL: time.Minute,
 	}
 
-	first, err := svc.PublicSettings(ctx)
+	first, err := svc.PublicSettings(ctx, permission.GuestActor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +61,7 @@ func TestPublicSettingsUsesCacheAndFallbackPrimaryEndpointExactly(t *testing.T) 
 	if err := db.Settings.Set(ctx, "site_name", "Changed Site"); err != nil {
 		t.Fatal(err)
 	}
-	cached, err := svc.PublicSettings(ctx)
+	cached, err := svc.PublicSettings(ctx, permission.GuestActor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +74,7 @@ func TestPublicSettingsUsesCacheAndFallbackPrimaryEndpointExactly(t *testing.T) 
 	if err := redis.InvalidateSettings(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refreshed, err := svc.PublicSettings(ctx)
+	refreshed, err := svc.PublicSettings(ctx, permission.GuestActor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +110,7 @@ func TestPublicSettingsRefreshesLegacyCacheWithoutRequireInviteExactly(t *testin
 		CacheTTL: time.Minute,
 	}
 
-	got, err := svc.PublicSettings(ctx)
+	got, err := svc.PublicSettings(ctx, permission.GuestActor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +140,7 @@ func TestHomepageMediaUsesCacheAndEnabledOnlyExactly(t *testing.T) {
 	}
 	svc := publicsitesvc.Service{DB: db, Redis: redis, CacheTTL: time.Minute}
 
-	first, err := svc.HomepageMedia(ctx)
+	first, err := svc.HomepageMedia(ctx, permission.GuestActor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +152,7 @@ func TestHomepageMediaUsesCacheAndEnabledOnlyExactly(t *testing.T) {
 	if err := db.HomepageMedia.Create(ctx, later); err != nil {
 		t.Fatal(err)
 	}
-	cached, err := svc.HomepageMedia(ctx)
+	cached, err := svc.HomepageMedia(ctx, permission.GuestActor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +162,7 @@ func TestHomepageMediaUsesCacheAndEnabledOnlyExactly(t *testing.T) {
 	if err := redis.InvalidatePublicHomepageMedia(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refreshed, err := svc.HomepageMedia(ctx)
+	refreshed, err := svc.HomepageMedia(ctx, permission.GuestActor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +194,7 @@ func TestFallbackStatusBuildsEndpointHistoryAndLatestExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status, err := (publicsitesvc.Service{DB: db, Redis: redis}).FallbackStatus(ctx, now)
+	status, err := (publicsitesvc.Service{DB: db, Redis: redis}).FallbackStatus(ctx, permission.GuestActor(), now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,15 +230,35 @@ func TestPublicSitePropagatesRedisErrorsExactly(t *testing.T) {
 	memory.Err = boom
 	svc := publicsitesvc.Service{DB: db, Redis: redis, Settings: settingssvc.Settings{DB: db, Redis: redis}, CacheTTL: time.Minute}
 
-	if got, err := svc.PublicSettings(ctx); !errors.Is(err, boom) || got != nil {
+	if got, err := svc.PublicSettings(ctx, permission.GuestActor()); !errors.Is(err, boom) || got != nil {
 		t.Fatalf("PublicSettings redis error mismatch: settings=%#v err=%v", got, err)
 	}
-	if got, err := svc.HomepageMedia(ctx); !errors.Is(err, boom) || got != nil {
+	if got, err := svc.HomepageMedia(ctx, permission.GuestActor()); !errors.Is(err, boom) || got != nil {
 		t.Fatalf("HomepageMedia redis error mismatch: media=%#v err=%v", got, err)
 	}
-	if got, err := svc.FallbackStatus(ctx, time.Unix(1, 0)); !errors.Is(err, boom) || got != nil {
+	if got, err := svc.FallbackStatus(ctx, permission.GuestActor(), time.Unix(1, 0)); !errors.Is(err, boom) || got != nil {
 		t.Fatalf("FallbackStatus redis error mismatch: status=%#v err=%v", got, err)
 	}
+}
+
+func TestPublicSiteServiceRequiresPublicPermissionExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	redis := testutil.NewMemoryRedis()
+	svc := publicsitesvc.Service{DB: db, Redis: redis, Settings: settingssvc.Settings{DB: db, Redis: redis}}
+	if got, err := svc.PublicSettings(t.Context(), permission.Actor{}); got != nil || !publicSiteHTTPError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("PublicSettings result=%#v err=%#v", got, err)
+	}
+	if got, err := svc.HomepageMedia(t.Context(), permission.Actor{}); got != nil || !publicSiteHTTPError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("HomepageMedia result=%#v err=%#v", got, err)
+	}
+	if got, err := svc.FallbackStatus(t.Context(), permission.Actor{}, time.Unix(1, 0)); got != nil || !publicSiteHTTPError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("FallbackStatus result=%#v err=%#v", got, err)
+	}
+}
+
+func publicSiteHTTPError(err error, status int, detail string) bool {
+	var httpErr util.HTTPError
+	return errors.As(err, &httpErr) && httpErr.Status == status && httpErr.Detail == detail
 }
 
 type fallbackStatusForTest struct {

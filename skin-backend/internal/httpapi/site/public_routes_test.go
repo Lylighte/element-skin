@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,8 +12,10 @@ import (
 	"time"
 
 	"element-skin/backend/internal/database"
+	"element-skin/backend/internal/httpapi/shared"
 	"element-skin/backend/internal/httpapi/site"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/testutil"
@@ -33,7 +36,7 @@ func TestPublicRoutesHomepageMediaListsEnabledItemsFromDBExactly(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/v1/public/homepage-media", nil)
+	req := publicRouteRequest(http.MethodGet, "/v1/public/homepage-media", nil)
 	rec := httptest.NewRecorder()
 	h.PublicHomepageMedia(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"hero"`) || strings.Contains(rec.Body.String(), `"id":"disabled"`) {
@@ -49,13 +52,13 @@ func TestPublicRoutesRedisErrorDoesNotFallback(t *testing.T) {
 	h := site.NewWithRedis(cfg, db, cache, nil)
 
 	rec := httptest.NewRecorder()
-	h.PublicSettings(rec, httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil))
+	h.PublicSettings(rec, publicRouteRequest(http.MethodGet, "/v1/public/settings", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("public settings redis error should fail, got %d body=%q", rec.Code, rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
-	h.PublicHomepageMedia(rec, httptest.NewRequest(http.MethodGet, "/v1/public/homepage-media", nil))
+	h.PublicHomepageMedia(rec, publicRouteRequest(http.MethodGet, "/v1/public/homepage-media", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("public homepage media redis error should fail, got %d body=%q", rec.Code, rec.Body.String())
 	}
@@ -70,14 +73,14 @@ func TestPublicRoutesSettingsAndLibraryExactResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil)
+	req := publicRouteRequest(http.MethodGet, "/v1/public/settings", nil)
 	rec := httptest.NewRecorder()
 	h.PublicSettings(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"site_name"`) || !strings.Contains(rec.Body.String(), `"enable_skin_library"`) || !strings.Contains(rec.Body.String(), `"easter_eggs"`) {
 		t.Fatalf("public settings response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/v1/public/skin-library?texture_type=skin&q=Public%20Route", nil)
+	req = publicRouteRequest(http.MethodGet, "/v1/public/skin-library?texture_type=skin&q=Public%20Route", nil)
 	rec = httptest.NewRecorder()
 	h.PublicLibrary(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"hash":"public_route_hash"`) || !strings.Contains(rec.Body.String(), `"name":"Public Route Texture"`) {
@@ -104,7 +107,7 @@ func TestPublicRoutesUseRedisCachedSettingsAndHomepageMediaExactly(t *testing.T)
 	h := site.NewWithRedis(cfg, db, cache, nil)
 
 	rec := httptest.NewRecorder()
-	h.PublicSettings(rec, httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil))
+	h.PublicSettings(rec, publicRouteRequest(http.MethodGet, "/v1/public/settings", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"site_name":"Cached Site"`) ||
 		!strings.Contains(rec.Body.String(), `"require_invite":false`) ||
 		!strings.Contains(rec.Body.String(), `"cached_only_marker":true`) {
@@ -112,7 +115,7 @@ func TestPublicRoutesUseRedisCachedSettingsAndHomepageMediaExactly(t *testing.T)
 	}
 
 	rec = httptest.NewRecorder()
-	h.PublicHomepageMedia(rec, httptest.NewRequest(http.MethodGet, "/v1/public/homepage-media", nil))
+	h.PublicHomepageMedia(rec, publicRouteRequest(http.MethodGet, "/v1/public/homepage-media", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"cached"`) || !strings.Contains(rec.Body.String(), `"storage_path":"cached.webp"`) {
 		t.Fatalf("public homepage media should return cached payload instead of DB: status=%d body=%q", rec.Code, rec.Body.String())
 	}
@@ -125,7 +128,7 @@ func TestPublicRoutesHomepageMediaEmptyDBCachesEmptyList(t *testing.T) {
 	h := site.NewWithRedis(cfg, db, cache, nil)
 
 	rec := httptest.NewRecorder()
-	h.PublicHomepageMedia(rec, httptest.NewRequest(http.MethodGet, "/v1/public/homepage-media", nil))
+	h.PublicHomepageMedia(rec, publicRouteRequest(http.MethodGet, "/v1/public/homepage-media", nil))
 	if rec.Code != http.StatusOK || rec.Body.String() != "[]\n" {
 		t.Fatalf("empty homepage media table should return empty list: status=%d body=%q", rec.Code, rec.Body.String())
 	}
@@ -142,7 +145,7 @@ func TestPublicRoutesFailWhenRedisCannotStorePublicCaches(t *testing.T) {
 	h := site.NewWithRedis(cfg, db, &writeFailRedis{Store: settingsCache}, nil)
 
 	rec := httptest.NewRecorder()
-	h.PublicSettings(rec, httptest.NewRequest(http.MethodGet, "/v1/public/settings", nil))
+	h.PublicSettings(rec, publicRouteRequest(http.MethodGet, "/v1/public/settings", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("public settings should fail when redis cache write fails: status=%d body=%q", rec.Code, rec.Body.String())
 	}
@@ -150,7 +153,7 @@ func TestPublicRoutesFailWhenRedisCannotStorePublicCaches(t *testing.T) {
 	homepageCache := redisstore.NewMemoryStore()
 	h = site.NewWithRedis(cfg, db, &writeFailRedis{Store: homepageCache}, nil)
 	rec = httptest.NewRecorder()
-	h.PublicHomepageMedia(rec, httptest.NewRequest(http.MethodGet, "/v1/public/homepage-media", nil))
+	h.PublicHomepageMedia(rec, publicRouteRequest(http.MethodGet, "/v1/public/homepage-media", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("public homepage media should fail when redis cache write fails: status=%d body=%q", rec.Code, rec.Body.String())
 	}
@@ -203,7 +206,7 @@ func TestPublicFallbackStatusReturnsEndpointHistoryAndCurrent(t *testing.T) {
 
 	h := site.NewWithRedis(cfg, db, cache, nil)
 	rec := httptest.NewRecorder()
-	h.PublicFallbackStatus(rec, httptest.NewRequest(http.MethodGet, "/v1/public/fallback-status", nil))
+	h.PublicFallbackStatus(rec, publicRouteRequest(http.MethodGet, "/v1/public/fallback-status", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -254,7 +257,7 @@ func TestPublicFallbackStatusReturnsEmptyWhenNoConfig(t *testing.T) {
 	cache := redisstore.NewMemoryStore()
 	h := site.NewWithRedis(cfg, db, cache, nil)
 	rec := httptest.NewRecorder()
-	h.PublicFallbackStatus(rec, httptest.NewRequest(http.MethodGet, "/v1/public/fallback-status", nil))
+	h.PublicFallbackStatus(rec, publicRouteRequest(http.MethodGet, "/v1/public/fallback-status", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"endpoints":[]`) {
 		t.Fatalf("expected empty endpoints array: status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -267,8 +270,13 @@ func TestPublicFallbackStatusFailsWhenRedisErrors(t *testing.T) {
 	cache.Err = errors.New("redis down")
 	h := site.NewWithRedis(cfg, db, cache, nil)
 	rec := httptest.NewRecorder()
-	h.PublicFallbackStatus(rec, httptest.NewRequest(http.MethodGet, "/v1/public/fallback-status", nil))
+	h.PublicFallbackStatus(rec, publicRouteRequest(http.MethodGet, "/v1/public/fallback-status", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("redis error should yield 500, got %d body=%s", rec.Code, rec.Body.String())
 	}
+}
+
+func publicRouteRequest(method, target string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+	return req.WithContext(shared.WithActor(req.Context(), permission.GuestActor()))
 }

@@ -59,7 +59,7 @@ func TestNonUploaderDeleteOnlyDecrementsUsageCount(t *testing.T) {
 	if err := svc.DeleteTexture(ctx, textureUserActor(other.ID), "texture_service_count_skin", "skin"); err != nil {
 		t.Fatal(err)
 	}
-	public, err := svc.PublicLibrary(ctx, "", 10, "skin", "Texture Count", "most_used")
+	public, err := svc.PublicLibrary(ctx, texturePublicActor(), "", 10, "skin", "Texture Count", "most_used")
 	if err != nil {
 		t.Fatal(err)
 	}

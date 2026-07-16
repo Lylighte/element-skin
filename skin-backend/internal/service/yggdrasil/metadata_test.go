@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	dbfallback "element-skin/backend/internal/database/fallback"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/service/settings"
 	"element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
@@ -27,7 +28,7 @@ func TestYggdrasilMetadataUsesSiteSettingsAndSigningKey(t *testing.T) {
 	}
 	ygg := yggdrasil.Yggdrasil{DB: db, Cfg: cfg, Settings: settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}}
 
-	meta, err := ygg.Metadata(ctx)
+	meta, err := ygg.Metadata(ctx, permission.GuestActor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,5 +41,9 @@ func TestYggdrasilMetadataUsesSiteSettingsAndSigningKey(t *testing.T) {
 	}
 	if publicKey := meta["signaturePublickey"].(string); !strings.Contains(publicKey, "BEGIN PUBLIC KEY") {
 		t.Fatalf("metadata should expose PEM public key, got %q", publicKey)
+	}
+	publicKeys := meta["signaturePublickeys"].([]string)
+	if len(publicKeys) != 1 || publicKeys[0] != meta["signaturePublickey"] {
+		t.Fatalf("metadata plural keys=%#v, want own singular key only without cached fallbacks", publicKeys)
 	}
 }

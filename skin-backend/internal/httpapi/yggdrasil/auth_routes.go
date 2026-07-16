@@ -8,12 +8,21 @@ import (
 )
 
 func (h Handler) Metadata(w http.ResponseWriter, req *http.Request) {
-	res, err := h.ygg.Metadata(req.Context())
+	res, err := h.ygg.Metadata(req.Context(), shared.CurrentActor(req))
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
 	util.JSON(w, 200, res)
+}
+
+func (h Handler) PublicKeys(w http.ResponseWriter, req *http.Request) {
+	res, err := h.ygg.PublicKeys(req.Context(), shared.CurrentActor(req))
+	if err != nil {
+		util.Error(w, err)
+		return
+	}
+	util.JSON(w, http.StatusOK, res)
 }
 
 func (h Handler) Authenticate(w http.ResponseWriter, req *http.Request) {

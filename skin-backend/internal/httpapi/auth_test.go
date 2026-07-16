@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
+	fallbacksvc "element-skin/backend/internal/service/fallback"
 	mailsvc "element-skin/backend/internal/service/mail"
 	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/testutil"
@@ -60,6 +62,70 @@ func TestAuthRejectsMissingInvalidAndNonAdminExactly(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "permission denied") {
 		t.Fatalf("non-admin auth mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPublicAuthUsesGuestAndRejectsInvalidOrDeniedAuthenticatedActorsExactly(t *testing.T) {
+	db, router := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/publickeys/", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Authlib-Injector-API-Location") != cfg.APIURL {
+		t.Fatalf("guest public keys response mismatch: status=%d header=%q body=%q", rec.Code, rec.Header().Get("X-Authlib-Injector-API-Location"), rec.Body.String())
+	}
+	var publicKeys model.YggdrasilPublicKeys
+	if err := json.Unmarshal(rec.Body.Bytes(), &publicKeys); err != nil {
+		t.Fatal(err)
+	}
+	publicKeyPEM, err := os.ReadFile(cfg.PublicKeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKeys, err := fallbacksvc.NormalizePEMPublicKeys([]string{string(publicKeyPEM)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(publicKeys.ProfilePropertyKeys) != 1 || len(publicKeys.PlayerCertificateKeys) != 1 || publicKeys.ProfilePropertyKeys[0] != wantKeys[0] || publicKeys.PlayerCertificateKeys[0] != wantKeys[0] {
+		t.Fatalf("guest public keys body mismatch: %#v", publicKeys)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer invalid-public-token")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized || rec.Body.String() != "{\"detail\":\"not authenticated\"}\n" {
+		t.Fatalf("invalid public bearer mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	user := testutil.CreateUser(t, db, "public-denied@test.com", "Password123", "PublicDenied", false)
+	if err := db.Permissions.SetSubjectPermissionOverride(t.Context(), user.ID, permission.MustDefinitionByCode("site_public.read.public"), "deny", ""); err != nil {
+		t.Fatal(err)
+	}
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+		t.Fatalf("denied authenticated public actor mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("guest root after denied user mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &metadata); err != nil {
+		t.Fatal(err)
+	}
+	plural, ok := metadata["signaturePublickeys"].([]any)
+	if !ok || len(plural) != 1 || plural[0] != metadata["signaturePublickey"] {
+		t.Fatalf("root signature keys mismatch: %#v", metadata)
 	}
 }
 

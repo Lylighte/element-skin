@@ -14,7 +14,11 @@ import (
 
 const maxBulkNames = 100
 
-var hasJoinedPermission = permission.MustDefinitionByCode("minecraft_session.hasjoined.server")
+var (
+	hasJoinedPermission             = permission.MustDefinitionByCode("minecraft_session.hasjoined.server")
+	minecraftProfileReadPermission  = permission.MustDefinitionByCode("minecraft_profile.read.public")
+	minecraftTexturesReadPermission = permission.MustDefinitionByCode("minecraft_texture_property.read.public")
+)
 
 type Service struct {
 	DB  *database.DB
@@ -27,7 +31,10 @@ type HasJoinedRequest struct {
 	IP       string
 }
 
-func (s Service) ProfileByName(ctx context.Context, name string) (map[string]any, error) {
+func (s Service) ProfileByName(ctx context.Context, actor permission.Actor, name string) (map[string]any, error) {
+	if err := requirePermission(actor, minecraftProfileReadPermission); err != nil {
+		return nil, err
+	}
 	profile, err := s.DB.Profiles.GetByName(ctx, strings.TrimSpace(name))
 	if err != nil {
 		return nil, err
@@ -38,7 +45,10 @@ func (s Service) ProfileByName(ctx context.Context, name string) (map[string]any
 	return publicProfile(*profile, true), nil
 }
 
-func (s Service) ProfilesByNames(ctx context.Context, names []string) (map[string]any, error) {
+func (s Service) ProfilesByNames(ctx context.Context, actor permission.Actor, names []string) (map[string]any, error) {
+	if err := requirePermission(actor, minecraftProfileReadPermission); err != nil {
+		return nil, err
+	}
 	if len(names) > maxBulkNames {
 		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "too many names"}
 	}
@@ -53,7 +63,10 @@ func (s Service) ProfilesByNames(ctx context.Context, names []string) (map[strin
 	return map[string]any{"items": items}, nil
 }
 
-func (s Service) ProfileByID(ctx context.Context, profileID string) (map[string]any, error) {
+func (s Service) ProfileByID(ctx context.Context, actor permission.Actor, profileID string) (map[string]any, error) {
+	if err := requirePermission(actor, minecraftProfileReadPermission); err != nil {
+		return nil, err
+	}
 	profile, err := s.DB.Profiles.GetByID(ctx, util.StripUUIDDashes(profileID))
 	if err != nil {
 		return nil, err
@@ -64,7 +77,10 @@ func (s Service) ProfileByID(ctx context.Context, profileID string) (map[string]
 	return publicProfile(*profile, false), nil
 }
 
-func (s Service) TexturesProperty(ctx context.Context, profileID string) (map[string]any, error) {
+func (s Service) TexturesProperty(ctx context.Context, actor permission.Actor, profileID string) (map[string]any, error) {
+	if err := requirePermission(actor, minecraftTexturesReadPermission); err != nil {
+		return nil, err
+	}
 	profile, err := s.DB.Profiles.GetByID(ctx, util.StripUUIDDashes(profileID))
 	if err != nil {
 		return nil, err
@@ -151,6 +167,13 @@ func firstTexturesProperty(body map[string]any) map[string]any {
 
 func forbidden() error {
 	return util.HTTPError{Status: http.StatusForbidden, Detail: "permission denied"}
+}
+
+func requirePermission(actor permission.Actor, def permission.Definition) error {
+	if err := actor.Require(def); err != nil {
+		return forbidden()
+	}
+	return nil
 }
 
 func notFound(detail string) error {

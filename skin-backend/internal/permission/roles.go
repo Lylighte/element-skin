@@ -20,11 +20,13 @@ const (
 	SessionKindSystem     = "system"
 	SessionKindDelegated  = "delegated"
 	SessionKindClient     = "client_credentials"
+	SessionKindGuest      = "guest"
 	EntrypointDashboard   = "dashboard"
 	EntrypointAdmin       = "admin"
 	EntrypointYggdrasil   = "yggdrasil"
 	EntrypointMaintenance = "maintenance"
 	EntrypointAPI         = "api"
+	EntrypointPublic      = "public"
 )
 
 var Roles = []Role{
@@ -233,6 +235,16 @@ func systemDefinitions() []Definition {
 	out := make([]Definition, 0, len(Definitions))
 	for _, def := range Definitions {
 		if def.Scope.ID == ScopeSystem {
+			out = append(out, def)
+		}
+	}
+	return out
+}
+
+func publicDefinitions() []Definition {
+	out := make([]Definition, 0, len(Definitions))
+	for _, def := range Definitions {
+		if def.Scope.ID == ScopePublic {
 			out = append(out, def)
 		}
 	}

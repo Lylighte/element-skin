@@ -98,7 +98,7 @@ func ParseDiscoveryPublicKeys(body []byte) (model.YggdrasilPublicKeys, error) {
 		encoded = append(encoded, metadata.SignaturePublicKey)
 	}
 	encoded = append(encoded, metadata.SignaturePublicKeys...)
-	keys, err := normalizePEMPublicKeys(encoded)
+	keys, err := NormalizePEMPublicKeys(encoded)
 	if err != nil {
 		return model.YggdrasilPublicKeys{}, err
 	}
@@ -204,7 +204,7 @@ func splitPath(value string) []string {
 	return strings.Split(trimmed, "/")
 }
 
-func normalizePEMPublicKeys(values []string) ([]model.YggdrasilPublicKey, error) {
+func NormalizePEMPublicKeys(values []string) ([]model.YggdrasilPublicKey, error) {
 	if len(values) > maxPublicKeysPerGroup {
 		return nil, fmt.Errorf("signaturePublickeys contains more than %d keys", maxPublicKeysPerGroup)
 	}
