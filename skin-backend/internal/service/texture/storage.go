@@ -27,11 +27,6 @@ func NewTextureStorage(dir string) (*TextureStorage, error) {
 	return &TextureStorage{Dir: dir}, nil
 }
 
-func (s *TextureStorage) ProcessAndSave(data []byte, textureType string) (string, error) {
-	hash, _, err := s.ProcessAndSaveTracked(data, textureType)
-	return hash, err
-}
-
 func (s *TextureStorage) ProcessAndSaveTracked(data []byte, textureType string) (string, bool, error) {
 	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {

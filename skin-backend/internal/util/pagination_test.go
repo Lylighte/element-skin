@@ -102,16 +102,4 @@ func TestProfileNameHelpers(t *testing.T) {
 		}
 	}
 
-	got, err := GenerateUniqueProfileName("Steve", func(string) bool { return false }, 5)
-	if err != nil || got != "Steve" {
-		t.Fatalf("available base got=%q err=%v", got, err)
-	}
-	taken := map[string]bool{"Steve": true, "Steve_1": true, "Steve_2": true}
-	got, err = GenerateUniqueProfileName("Steve", func(n string) bool { return taken[n] }, 5)
-	if err != nil || got != "Steve_3" {
-		t.Fatalf("suffix got=%q err=%v", got, err)
-	}
-	if _, err := GenerateUniqueProfileName("Steve", func(string) bool { return true }, 5); err == nil {
-		t.Fatal("expected exhaustion error")
-	}
 }

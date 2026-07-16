@@ -21,9 +21,6 @@ func TestTextureServiceClosedDatabaseReturnsExactDependencyErrors(t *testing.T) 
 		{name: "apply texture", call: func() error {
 			return svc.ApplyTextureToProfile(ctx, actor, "closed-profile", "closed-hash", "skin")
 		}},
-		{name: "apply texture with model", call: func() error {
-			return svc.ApplyTextureToProfileWithModel(ctx, actor, "closed-profile", "closed-hash", "skin", "slim")
-		}},
 		{name: "texture detail", call: func() error {
 			result, err := svc.TextureDetail(ctx, actor, "closed-hash", "skin")
 			if result != nil {

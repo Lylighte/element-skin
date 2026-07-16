@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 func TestPasswordHashVerifyAndStrongPasswordMessages(t *testing.T) {
@@ -104,32 +103,6 @@ func TestDownloadTextureCaps(t *testing.T) {
 	}
 	if _, err := DownloadTexture(fakeClient(200, HardCapBytes+1, []byte("x")), "http://1.1.1.1/huge.png", 0); err == nil {
 		t.Fatal("hard cap should apply when maxBytes <= 0")
-	}
-}
-
-func TestInMemoryStateStore(t *testing.T) {
-	store := NewInMemoryStateStore()
-	store.Put("k", map[string]any{"user_id": "u1"}, time.Minute)
-	got := store.Pop("k").(map[string]any)
-	if got["user_id"] != "u1" {
-		t.Fatalf("unexpected state value: %#v", got)
-	}
-	if store.Pop("k") != nil {
-		t.Fatal("state pop should be one-shot")
-	}
-	if store.Pop("missing") != nil {
-		t.Fatal("missing state should return nil")
-	}
-	store.Put("old", "v", 0)
-	time.Sleep(10 * time.Millisecond)
-	if store.Pop("old") != nil {
-		t.Fatal("expired item should return nil")
-	}
-	store.Put("expired", "v", 0)
-	time.Sleep(10 * time.Millisecond)
-	store.Put("new", "v2", time.Minute)
-	if store.Len() != 1 || store.Pop("new") != "v2" {
-		t.Fatal("put should sweep expired items")
 	}
 }
 

@@ -25,14 +25,6 @@ func (s LibraryService) AddTextureToWardrobe(ctx context.Context, actor permissi
 }
 
 func (s LibraryService) ApplyTextureToProfile(ctx context.Context, actor permission.Actor, profileID, hash, textureType string) error {
-	return s.applyTextureToProfile(ctx, actor, profileID, hash, textureType, nil)
-}
-
-func (s LibraryService) ApplyTextureToProfileWithModel(ctx context.Context, actor permission.Actor, profileID, hash, textureType, skinModel string) error {
-	return s.applyTextureToProfile(ctx, actor, profileID, hash, textureType, &skinModel)
-}
-
-func (s LibraryService) applyTextureToProfile(ctx context.Context, actor permission.Actor, profileID, hash, textureType string, skinModel *string) error {
 	if err := requireOwnedOrBoundProfilePermission(actor, profileID, textureApplyOwnedPermission, textureApplyBoundPermission); err != nil {
 		return err
 	}
@@ -61,9 +53,6 @@ func (s LibraryService) applyTextureToProfile(ctx context.Context, actor permiss
 	switch strings.ToLower(textureType) {
 	case "skin":
 		modelName, _ := info["model"].(string)
-		if skinModel != nil {
-			modelName = *skinModel
-		}
 		return profileUpdateError(s.DB.Profiles.UpdateSkinAndModel(ctx, profileID, &hash, profilestore.NormalizeModel(modelName)))
 	case "cape":
 		return s.setProfileTexture(ctx, profileID, "cape", &hash)

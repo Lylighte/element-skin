@@ -26,13 +26,6 @@ func Summary(p model.Profile) map[string]any {
 	return map[string]any{"id": p.ID, "name": p.Name, "model": p.TextureModel, "skin_hash": p.SkinHash, "cape_hash": p.CapeHash}
 }
 
-func ModelKey(item map[string]any) map[string]any {
-	if v, ok := item["texture_model"]; ok {
-		item["model"] = v
-	}
-	return item
-}
-
 func IsNameConflict(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) &&

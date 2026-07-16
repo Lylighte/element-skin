@@ -37,19 +37,6 @@ func ValidProfileName(name string) bool {
 	return true
 }
 
-func GenerateUniqueProfileName(base string, exists func(string) bool, maxAttempts int) (string, error) {
-	if maxAttempts <= 0 {
-		maxAttempts = 100
-	}
-	for i := 0; i < maxAttempts; i++ {
-		candidate := ProfileNameCandidate(base, i)
-		if !exists(candidate) {
-			return candidate, nil
-		}
-	}
-	return "", HTTPError{Status: 500, Detail: "无法生成唯一角色名"}
-}
-
 func ProfileNameCandidate(base string, attempt int) string {
 	suffix := ""
 	if attempt > 0 {

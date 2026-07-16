@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/permission"
-	"element-skin/backend/internal/util"
 )
 
 type AuthFunc func(http.HandlerFunc, ...permission.Definition) http.HandlerFunc
@@ -37,15 +36,4 @@ func WithActorPermissions(ctx context.Context, userID string, definitions ...per
 func CurrentActor(req *http.Request) permission.Actor {
 	actor, _ := req.Context().Value(actorKey).(permission.Actor)
 	return actor
-}
-
-func CurrentUserID(req *http.Request) string {
-	return CurrentActor(req).UserID
-}
-
-func RequirePermission(req *http.Request, def permission.Definition) error {
-	if CurrentActor(req).Has(def) {
-		return nil
-	}
-	return util.HTTPError{Status: http.StatusForbidden, Detail: "permission denied"}
 }

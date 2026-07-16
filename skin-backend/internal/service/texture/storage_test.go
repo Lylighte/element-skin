@@ -37,7 +37,7 @@ func TestTextureStorageCreatesDirectoryAndSaves(t *testing.T) {
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("texture directory should exist: %v", err)
 	}
-	hash, err := storage.ProcessAndSave(pngBytes(t, 64, 64, color.RGBA{255, 0, 0, 255}), "skin")
+	hash, _, err := storage.ProcessAndSaveTracked(pngBytes(t, 64, 64, color.RGBA{255, 0, 0, 255}), "skin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,29 +63,29 @@ func TestTextureStorageHashStabilityAndAlphaZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h1, err := storage.ProcessAndSave(pngBytes(t, 64, 64, color.RGBA{10, 20, 30, 255}), "skin")
+	h1, _, err := storage.ProcessAndSaveTracked(pngBytes(t, 64, 64, color.RGBA{10, 20, 30, 255}), "skin")
 	if err != nil {
 		t.Fatal(err)
 	}
-	h2, err := storage.ProcessAndSave(pngBytes(t, 64, 64, color.RGBA{10, 20, 30, 255}), "skin")
+	h2, _, err := storage.ProcessAndSaveTracked(pngBytes(t, 64, 64, color.RGBA{10, 20, 30, 255}), "skin")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if h1 != h2 {
 		t.Fatal("same pixels should hash identically")
 	}
-	h3, err := storage.ProcessAndSave(pngBytes(t, 64, 64, color.RGBA{200, 100, 50, 255}), "skin")
+	h3, _, err := storage.ProcessAndSaveTracked(pngBytes(t, 64, 64, color.RGBA{200, 100, 50, 255}), "skin")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if h3 == h1 {
 		t.Fatal("different pixels should produce different hash")
 	}
-	transparentA, err := storage.ProcessAndSave(pngBytes(t, 64, 64, color.RGBA{10, 20, 30, 0}), "skin")
+	transparentA, _, err := storage.ProcessAndSaveTracked(pngBytes(t, 64, 64, color.RGBA{10, 20, 30, 0}), "skin")
 	if err != nil {
 		t.Fatal(err)
 	}
-	transparentB, err := storage.ProcessAndSave(pngBytes(t, 64, 64, color.RGBA{200, 100, 50, 0}), "skin")
+	transparentB, _, err := storage.ProcessAndSaveTracked(pngBytes(t, 64, 64, color.RGBA{200, 100, 50, 0}), "skin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestTextureStorageValidCapeAndInvalidInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storage.ProcessAndSave(pngBytes(t, 64, 32, color.RGBA{1, 2, 3, 255}), "cape"); err != nil {
+	if _, _, err := storage.ProcessAndSaveTracked(pngBytes(t, 64, 32, color.RGBA{1, 2, 3, 255}), "cape"); err != nil {
 		t.Fatalf("valid cape rejected: %v", err)
 	}
 	for _, tc := range []struct {
@@ -129,7 +129,7 @@ func TestTextureStorageValidCapeAndInvalidInputs(t *testing.T) {
 		{"not png", []byte("this is definitely not a png")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := storage.ProcessAndSave(tc.data, "skin"); err == nil {
+			if _, _, err := storage.ProcessAndSaveTracked(tc.data, "skin"); err == nil {
 				t.Fatal("expected invalid texture to be rejected")
 			}
 		})
@@ -138,7 +138,7 @@ func TestTextureStorageValidCapeAndInvalidInputs(t *testing.T) {
 	if err := jpeg.Encode(&jpg, image.NewRGBA(image.Rect(0, 0, 64, 64)), nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storage.ProcessAndSave(jpg.Bytes(), "skin"); err == nil || !strings.Contains(err.Error(), "PNG") {
+	if _, _, err := storage.ProcessAndSaveTracked(jpg.Bytes(), "skin"); err == nil || !strings.Contains(err.Error(), "PNG") {
 		t.Fatalf("jpeg should be rejected as non-png: %v", err)
 	}
 }

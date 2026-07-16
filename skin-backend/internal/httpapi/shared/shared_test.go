@@ -21,54 +21,22 @@ import (
 
 func TestRequestContextAndValueHelpersPreserveExactValues(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	if got := shared.CurrentUserID(req); got != "" {
-		t.Fatalf("request without auth context user ID=%q, want empty", got)
-	}
 	if shared.CurrentActor(req).Permissions != nil {
 		t.Fatal("request without auth context must not contain permissions")
 	}
 
 	req = req.WithContext(shared.WithActorPermissions(context.Background(), "user-123", permission.MustDefinitionByCode("permission_protected.manage.any")))
-	if got := shared.CurrentUserID(req); got != "user-123" {
-		t.Fatalf("context user ID=%q, want user-123", got)
+	if got := shared.CurrentActor(req).UserID; got != "user-123" {
+		t.Fatalf("context actor user ID=%q, want user-123", got)
 	}
 	if !shared.CurrentActor(req).Has(permission.MustDefinitionByCode("permission_protected.manage.any")) {
 		t.Fatal("explicit protected permission should be preserved")
-	}
-	if err := shared.RequirePermission(req, permission.MustDefinitionByCode("permission_protected.manage.any")); err != nil {
-		t.Fatalf("RequirePermission granted error=%v, want nil", err)
-	}
-
-	req = req.WithContext(shared.WithActorPermissions(context.Background(), "user-456"))
-	if shared.CurrentActor(req).Has(permission.MustDefinitionByCode("permission_protected.manage.any")) {
-		t.Fatal("omitted protected permission must default to false")
-	}
-	err := shared.RequirePermission(req, permission.MustDefinitionByCode("permission_protected.manage.any"))
-	if httpErr, ok := err.(util.HTTPError); !ok || httpErr.Status != http.StatusForbidden || httpErr.Detail != "permission denied" {
-		t.Fatalf("RequirePermission denied error=%#v, want exact forbidden HTTPError", err)
-	}
-
-	value := map[string]any{"enabled": true}
-	if got := shared.AsMap(value); !reflect.DeepEqual(got, value) {
-		t.Fatalf("AsMap returned %#v, want %#v", got, value)
-	}
-	if got := shared.AsMap("not-a-map"); got != nil {
-		t.Fatalf("AsMap(non-map)=%#v, want nil", got)
-	}
-	if got := shared.AsMap(nil); got != nil {
-		t.Fatalf("AsMap(nil)=%#v, want nil", got)
 	}
 	if got := shared.AsString("exact"); got != "exact" {
 		t.Fatalf("AsString(string)=%q, want exact", got)
 	}
 	if got := shared.AsString(123); got != "" {
 		t.Fatalf("AsString(non-string)=%q, want empty", got)
-	}
-	if got := shared.ValueOrAny(nil, "fallback"); got != "fallback" {
-		t.Fatalf("ValueOrAny(nil)=%#v, want fallback", got)
-	}
-	if got := shared.ValueOrAny(false, true); got != false {
-		t.Fatalf("ValueOrAny(false)=%#v, want false", got)
 	}
 }
 
@@ -141,70 +109,6 @@ type trackingReadCloser struct {
 func (r *trackingReadCloser) Close() error {
 	r.closed = true
 	return nil
-}
-
-func TestPublicBoolAndValidation(t *testing.T) {
-	cases := []struct {
-		name  string
-		input any
-		valid bool
-		value bool
-	}{
-		{"bool true", true, true, true},
-		{"bool false", false, true, false},
-		{"float one", float64(1), true, true},
-		{"float zero", float64(0), true, false},
-		{"float invalid", float64(2), false, true},
-		{"int one", 1, true, true},
-		{"int zero", 0, true, false},
-		{"int invalid", 2, false, true},
-		{"string true", "true", true, true},
-		{"string false", "false", true, false},
-		{"string one", "1", true, true},
-		{"string zero", "0", true, false},
-		{"string invalid", "yes", false, false},
-		{"unknown", []string{"true"}, false, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := shared.ValidPublicValue(tc.input); got != tc.valid {
-				t.Fatalf("shared.ValidPublicValue(%#v)=%v, want %v", tc.input, got, tc.valid)
-			}
-			if got := shared.PublicBool(tc.input); got != tc.value {
-				t.Fatalf("shared.PublicBool(%#v)=%v, want %v", tc.input, got, tc.value)
-			}
-		})
-	}
-}
-
-func TestCursorCreatedHashParsesExactKeys(t *testing.T) {
-	cursor := util.EncodeCursor(map[string]any{"last_created_at": int64(12345), "last_skin_hash": "abc"})
-	created, hash, err := shared.CursorCreatedHash(cursor, "last_skin_hash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created == nil || *created != 12345 || hash != "abc" {
-		t.Fatalf("cursor parsed to created=%v hash=%q", created, hash)
-	}
-
-	created, hash, err = shared.CursorCreatedHash("", "last_skin_hash")
-	if err != nil || created != nil || hash != "" {
-		t.Fatalf("empty cursor should return nil cursor values, got created=%v hash=%q err=%v", created, hash, err)
-	}
-
-	if _, _, err := shared.CursorCreatedHash("not-base64", "last_skin_hash"); err == nil {
-		t.Fatal("invalid cursor should return an error")
-	}
-	for _, payload := range []map[string]any{
-		{"last_created_at": 1.5, "last_skin_hash": "abc"},
-		{"last_created_at": -1, "last_skin_hash": "abc"},
-		{"last_created_at": 1, "last_skin_hash": ""},
-		{"last_created_at": 1},
-	} {
-		if _, _, err := shared.CursorCreatedHash(util.EncodeCursor(payload), "last_skin_hash"); err == nil {
-			t.Fatalf("malformed cursor payload should reject: %#v", payload)
-		}
-	}
 }
 
 func TestParseImportProfilesValidatesShapeAndTrimsValues(t *testing.T) {

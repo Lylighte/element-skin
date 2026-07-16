@@ -26,10 +26,6 @@ func TestStoreCRUDHelpersSearchAndCascade(t *testing.T) {
 	if profile.NormalizeModel("wide") != "default" || profile.NormalizeModel("slim") != "slim" {
 		t.Fatal("NormalizeModel should whitelist slim only")
 	}
-	item := profile.ModelKey(map[string]any{"texture_model": "slim"})
-	if item["model"] != "slim" {
-		t.Fatalf("ModelKey should expose texture_model as model: %#v", item)
-	}
 	summary := profile.Summary(p)
 	if summary["id"] != p.ID || summary["model"] != "slim" || summary["skin_hash"] == nil {
 		t.Fatalf("summary mismatch: %#v", summary)
