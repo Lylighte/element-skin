@@ -7,34 +7,6 @@ import (
 	"element-skin/backend/internal/util"
 )
 
-func TestValidateFallbackServicesNormalizesExactValues(t *testing.T) {
-	services, err := ValidateFallbackServices([]map[string]any{{
-		"session_url":      " https://session.example ",
-		"account_url":      "https://account.example",
-		"services_url":     "https://services.example",
-		"cache_ttl":        "30",
-		"skin_domains":     []any{"skins.example", " cdn.example ", ""},
-		"enable_profile":   "1",
-		"enable_whitelist": 0,
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(services) != 1 {
-		t.Fatalf("expected one service, got %#v", services)
-	}
-	got := services[0]
-	if got["session_url"] != "https://session.example" ||
-		got["account_url"] != "https://account.example" ||
-		got["services_url"] != "https://services.example" ||
-		got["cache_ttl"] != 30 ||
-		got["skin_domains"] != "skins.example,cdn.example" ||
-		got["enable_profile"] != true ||
-		got["enable_whitelist"] != false {
-		t.Fatalf("unexpected normalized fallback service: %#v", got)
-	}
-}
-
 func TestValidateFallbackEndpointsRejectsMissingURLs(t *testing.T) {
 	_, err := ValidateFallbackEndpoints([]any{map[string]any{
 		"session_url":  "https://session.example",
@@ -97,37 +69,9 @@ func TestValidateFallbackInputsRejectInvalidShapesExactly(t *testing.T) {
 			detail: "invalid fallback entry",
 		},
 		{
-			name: "services must be list",
-			call: func() error {
-				_, err := ValidateFallbackServices("not-a-list")
-				return err
-			},
-			detail: "fallback_services must be a list",
-		},
-		{
-			name: "service must be object",
-			call: func() error {
-				_, err := ValidateFallbackServices([]any{7})
-				return err
-			},
-			detail: "fallback service must be an object",
-		},
-		{
-			name: "service requires all URLs",
-			call: func() error {
-				_, err := ValidateFallbackServices([]any{map[string]any{
-					"session_url":  "https://session.example",
-					"account_url":  "https://account.example",
-					"services_url": "",
-				}})
-				return err
-			},
-			detail: "fallback[1] urls are required",
-		},
-		{
 			name: "negative cache TTL",
 			call: func() error {
-				_, err := ValidateFallbackServices([]any{map[string]any{
+				_, err := ValidateFallbackEndpoints([]any{map[string]any{
 					"session_url":  "https://session.example",
 					"account_url":  "https://account.example",
 					"services_url": "https://services.example",

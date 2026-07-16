@@ -15,12 +15,6 @@ func settingValue(key, raw string) any {
 			n, _ = strconv.Atoi(SettingDefaults[key])
 		}
 		return n
-	case "fallback_services":
-		var out []map[string]any
-		if err := json.Unmarshal([]byte(raw), &out); err != nil {
-			return []map[string]any{}
-		}
-		return out
 	case "easter_eggs_enabled":
 		var out []string
 		if err := json.Unmarshal([]byte(raw), &out); err != nil {

@@ -77,17 +77,6 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 		if key == "smtp_password" && fmt.Sprint(value) == "" {
 			continue
 		}
-		if key == "fallback_services" {
-			normalized, err := ValidateFallbackServices(value)
-			if err != nil {
-				return err
-			}
-			b, err := json.Marshal(normalized)
-			if err != nil {
-				return err
-			}
-			value = string(b)
-		}
 		if key == "fallback_probe_interval" {
 			n, err := strconv.Atoi(fmt.Sprint(value))
 			if err != nil || n < 60 || n > 86400 {

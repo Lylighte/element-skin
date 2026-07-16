@@ -40,33 +40,6 @@ func ValidateFallbackEndpoints(value any) ([]fallback.Endpoint, error) {
 	return out, nil
 }
 
-func ValidateFallbackServices(value any) ([]map[string]any, error) {
-	raw, ok := value.([]any)
-	if !ok {
-		if typed, ok := value.([]map[string]any); ok {
-			raw = make([]any, 0, len(typed))
-			for _, item := range typed {
-				raw = append(raw, item)
-			}
-		} else {
-			return nil, util.HTTPError{Status: 400, Detail: "fallback_services must be a list"}
-		}
-	}
-	out := make([]map[string]any, 0, len(raw))
-	for i, item := range raw {
-		m, ok := item.(map[string]any)
-		if !ok {
-			return nil, util.HTTPError{Status: 400, Detail: "fallback service must be an object"}
-		}
-		normalized, err := normalizeFallbackMap(i+1, m)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, normalized)
-	}
-	return out, nil
-}
-
 func normalizeFallbackMap(idx int, m map[string]any) (map[string]any, error) {
 	session := strings.TrimSpace(fmt.Sprint(m["session_url"]))
 	account := strings.TrimSpace(fmt.Sprint(m["account_url"]))

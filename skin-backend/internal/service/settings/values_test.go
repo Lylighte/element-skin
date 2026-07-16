@@ -22,17 +22,6 @@ func TestSettingValueCoercesExactTypes(t *testing.T) {
 	}
 }
 
-func TestSettingValueFallbackServicesJSON(t *testing.T) {
-	got := settingValue("fallback_services", `[{"session_url":"https://session","cache_ttl":30}]`)
-	services := got.([]map[string]any)
-	if len(services) != 1 || services[0]["session_url"] != "https://session" || services[0]["cache_ttl"].(float64) != 30 {
-		t.Fatalf("fallback_services JSON did not decode exactly: %#v", got)
-	}
-	if got := settingValue("fallback_services", `{bad json}`); len(got.([]map[string]any)) != 0 {
-		t.Fatalf("invalid fallback_services JSON should return empty list, got %#v", got)
-	}
-}
-
 func TestSettingValueEasterEggsJSON(t *testing.T) {
 	got := settingValue("easter_eggs_enabled", `["christmas","dragon-boat"]`)
 	enabled := got.([]string)
