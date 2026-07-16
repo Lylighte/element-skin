@@ -12,11 +12,7 @@ import (
 func newTestRedisStore(t *testing.T) (*RedisStore, *miniredis.Miniredis) {
 	t.Helper()
 	server := miniredis.RunT(t)
-	cfg := config.Defaults()
-	cfg.RedisAddr = server.Addr()
-	cfg.RedisPassword = ""
-	cfg.RedisDB = 0
-	cfg.RedisKeyPrefix = "redisstore:test:"
+	cfg := redisTestConfig(server.Addr())
 	store, err := Open(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -27,4 +23,12 @@ func newTestRedisStore(t *testing.T) (*RedisStore, *miniredis.Miniredis) {
 		}
 	})
 	return store, server
+}
+
+func redisTestConfig(address string) config.Config {
+	return config.Config{
+		RedisAddr:      address,
+		RedisDB:        0,
+		RedisKeyPrefix: "redisstore:test:",
+	}
 }

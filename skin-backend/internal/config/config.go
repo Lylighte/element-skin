@@ -78,40 +78,6 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-func Defaults() Config {
-	cfg := Config{
-		DatabaseHost:     "localhost",
-		DatabasePort:     "5432",
-		DatabaseUser:     "elementskin",
-		DatabasePassword: "password",
-		DatabaseName:     "elementskin",
-		DatabaseSSLMode:  "disable",
-		MaxConnections:   10,
-		JWTSecret:        "dev-secret-please-change-to-a-very-long-string-in-production",
-		JWTExpireDays:    7,
-		AccessMinutes:    30,
-		SiteURL:          "http://localhost",
-		APIURL:           "",
-		ServerHost:       "0.0.0.0",
-		ServerPort:       "8000",
-		TexturesDir:      "textures",
-		CarouselDir:      "carousel",
-		RedisHost:        "127.0.0.1",
-		RedisPort:        "6379",
-		RedisPassword:    "",
-		RedisDB:          0,
-		RedisKeyPrefix:   "elementskin:",
-		PublicCacheTTL:   60,
-		AuthCacheTTL:     30,
-		PrivateKeyPath:   "private.pem",
-		PublicKeyPath:    "public.pem",
-		CORSOrigins:      []string{"*"},
-		CORSCredentials:  true,
-	}
-	cfg.deriveConnectionStrings()
-	return cfg
-}
-
 func (c *Config) apply(raw rawConfig) {
 	c.DatabaseHost = getString(raw, "database.host", c.DatabaseHost)
 	c.DatabasePort = getString(raw, "database.port", c.DatabasePort)

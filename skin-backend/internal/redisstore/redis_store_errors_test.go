@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"element-skin/backend/internal/config"
 )
 
 func TestRedisStoreRejectsCorruptAndUnencodableJSON(t *testing.T) {
@@ -29,10 +27,7 @@ func TestRedisStoreRejectsCorruptAndUnencodableJSON(t *testing.T) {
 }
 
 func TestRedisStoreOpenReturnsExactConnectionError(t *testing.T) {
-	cfg := config.Defaults()
-	cfg.RedisAddr = "127.0.0.1:1"
-	cfg.RedisPassword = ""
-	cfg.RedisDB = 0
+	cfg := redisTestConfig("127.0.0.1:1")
 	cfg.RedisKeyPrefix = "redisstore:open-fail:"
 	store, err := Open(context.Background(), cfg)
 	if store != nil {

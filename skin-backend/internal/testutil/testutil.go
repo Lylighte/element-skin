@@ -26,14 +26,37 @@ const testDBName = "elementskin_go_test"
 var dbCounter uint64
 
 func TestConfig() config.Config {
-	cfg := config.Defaults()
+	cfg := config.Config{
+		DatabaseHost:     "localhost",
+		DatabasePort:     "5432",
+		DatabaseUser:     "postgres",
+		DatabasePassword: "12345678",
+		DatabaseName:     testDBName,
+		DatabaseSSLMode:  "disable",
+		MaxConnections:   10,
+		JWTSecret:        "abcdefghijklmnopqrstuvwxyz123456",
+		JWTExpireDays:    7,
+		AccessMinutes:    30,
+		SiteURL:          "http://test",
+		APIURL:           "http://localhost:8000",
+		ServerHost:       "127.0.0.1",
+		ServerPort:       "8000",
+		TexturesDir:      "textures",
+		CarouselDir:      "carousel",
+		RedisHost:        "127.0.0.1",
+		RedisPort:        "6379",
+		RedisAddr:        "127.0.0.1:6379",
+		RedisDB:          0,
+		RedisKeyPrefix:   "elementskin:test:",
+		PublicCacheTTL:   60,
+		AuthCacheTTL:     30,
+		CORSOrigins:      []string{"http://test"},
+		CORSCredentials:  true,
+	}
 	cfg.DatabaseDSN = os.Getenv("TEST_DATABASE_DSN")
 	if cfg.DatabaseDSN == "" {
 		cfg.DatabaseDSN = "postgresql://postgres:12345678@localhost:5432/" + testDBName + "?sslmode=disable"
 	}
-	cfg.JWTSecret = "abcdefghijklmnopqrstuvwxyz123456"
-	cfg.SiteURL = "http://test"
-	cfg.APIURL = "http://localhost:8000"
 	cfg.PrivateKeyPath = filepath.Join(repoRoot(), "private.pem")
 	cfg.PublicKeyPath = filepath.Join(repoRoot(), "public.pem")
 	cfg.RedisAddr = os.Getenv("REDIS_TEST_ADDR")

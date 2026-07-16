@@ -10,9 +10,7 @@ import (
 
 func TestNewHTTPServerUsesConfiguredAddressHandlerAndTimeout(t *testing.T) {
 	handler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
-	cfg := config.Defaults()
-	cfg.ServerHost = "127.0.0.1"
-	cfg.ServerPort = "18080"
+	cfg := config.Config{ServerHost: "127.0.0.1", ServerPort: "18080"}
 
 	server := newHTTPServer(cfg, handler)
 
