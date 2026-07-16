@@ -9,9 +9,20 @@ import (
 )
 
 func (h Handler) setSessionCookies(w http.ResponseWriter, access, refresh string, refreshMaxAgeSeconds int) {
-	secure := strings.HasPrefix(h.cfg.SiteURL, "https://")
-	http.SetCookie(w, &http.Cookie{Name: "access_token", Value: access, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: h.cfg.AccessMinutes * 60})
-	http.SetCookie(w, &http.Cookie{Name: "refresh_token", Value: refresh, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: refreshMaxAgeSeconds})
+	http.SetCookie(w, h.sessionCookie("access_token", access, h.cfg.AccessMinutes*60))
+	http.SetCookie(w, h.sessionCookie("refresh_token", refresh, refreshMaxAgeSeconds))
+}
+
+func (h Handler) sessionCookie(name, value string, maxAge int) *http.Cookie {
+	return &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   strings.HasPrefix(strings.ToLower(h.cfg.SiteURL), "https://"),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   maxAge,
+	}
 }
 
 func (h Handler) Login(w http.ResponseWriter, req *http.Request) {
@@ -39,8 +50,8 @@ func (h Handler) Logout(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: "access_token", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "refresh_token", Path: "/", MaxAge: -1})
+	http.SetCookie(w, h.sessionCookie("access_token", "", -1))
+	http.SetCookie(w, h.sessionCookie("refresh_token", "", -1))
 	util.JSON(w, 200, map[string]any{"ok": true})
 }
 

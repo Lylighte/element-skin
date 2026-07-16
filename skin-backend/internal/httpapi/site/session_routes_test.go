@@ -19,6 +19,7 @@ import (
 func TestSessionRoutesLoginSetsExactCookies(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
+	cfg.SiteURL = "https://test.example"
 	h := site.New(cfg, db, nil)
 	user := testutil.CreateUser(t, db, "site-login@test.com", "Password123", "SiteLogin", false)
 	if err := db.Settings.Set(t.Context(), "jwt_expire_days", 2); err != nil {
@@ -33,6 +34,7 @@ func TestSessionRoutesLoginSetsExactCookies(t *testing.T) {
 	}
 	cookies := rec.Result().Cookies()
 	if len(cookies) != 2 || cookies[0].Name != "access_token" || cookies[1].Name != "refresh_token" || !cookies[0].HttpOnly || !cookies[1].HttpOnly ||
+		!cookies[0].Secure || !cookies[1].Secure || cookies[0].SameSite != http.SameSiteLaxMode || cookies[1].SameSite != http.SameSiteLaxMode ||
 		cookies[0].Path != "/" || cookies[1].Path != "/" || cookies[0].MaxAge != cfg.AccessMinutes*60 || cookies[1].MaxAge != 2*24*3600 {
 		t.Fatalf("login should set exact http-only session cookies: %#v", cookies)
 	}
@@ -124,7 +126,8 @@ func TestSessionRoutesRefreshRotatesAndLogoutRevokesExactly(t *testing.T) {
 		t.Fatalf("logout response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	cookies := rec.Result().Cookies()
-	if len(cookies) != 2 || cookieMaxAge(t, cookies, "access_token") != -1 || cookieMaxAge(t, cookies, "refresh_token") != -1 {
+	if len(cookies) != 2 || cookieMaxAge(t, cookies, "access_token") != -1 || cookieMaxAge(t, cookies, "refresh_token") != -1 ||
+		!cookies[0].HttpOnly || !cookies[1].HttpOnly || cookies[0].SameSite != http.SameSiteLaxMode || cookies[1].SameSite != http.SameSiteLaxMode {
 		t.Fatalf("logout should clear both session cookies: %#v", cookies)
 	}
 	req = httptest.NewRequest(http.MethodPost, "/session/refresh", nil)
