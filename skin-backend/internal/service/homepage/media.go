@@ -16,8 +16,10 @@ import (
 )
 
 const (
-	MaxImageBytes    = 5 * 1024 * 1024
-	MaxPanoramaBytes = 50 * 1024 * 1024
+	MaxImageBytes     = 5 * 1024 * 1024
+	MaxPanoramaBytes  = 50 * 1024 * 1024
+	MaxImageDimension = 8192
+	MaxImagePixels    = 32 * 1024 * 1024
 )
 
 var (

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"image"
@@ -68,6 +69,15 @@ func pngBytes(t *testing.T, w, h int) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func webpBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := base64.StdEncoding.DecodeString("UklGRhwAAABXRUJQVlA4TA8AAAAvAUAAAAcQ/Y/+ByKi/wEA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func standardPanoramaZip(t *testing.T) []byte {

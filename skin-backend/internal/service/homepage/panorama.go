@@ -3,7 +3,6 @@ package homepage
 import (
 	"archive/zip"
 	"bytes"
-	"image"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -43,7 +42,7 @@ func ReadPanoramaZip(data []byte) (map[string][]byte, error) {
 		if len(content) > MaxImageBytes {
 			return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "panorama face too large"}
 		}
-		if _, _, err := image.DecodeConfig(bytes.NewReader(content)); err != nil {
+		if err := validateImageData(content, ".png"); err != nil {
 			return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid panorama face image"}
 		}
 		required[name] = true

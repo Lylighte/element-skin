@@ -29,6 +29,12 @@ func TestHomepageServiceRejectsPermissionsAndInvalidInputsExactly(t *testing.T) 
 	if _, err := svc.UploadImage(ctx, actor, newMultipartSource("file", "broken.png", []byte("not image"), nil)); !homepageHTTPError(err, http.StatusBadRequest, "invalid image") {
 		t.Fatalf("invalid image mismatch: %#v", err)
 	}
+	if _, err := svc.UploadImage(ctx, actor, newMultipartSource("file", "fake.webp", []byte("not webp"), nil)); !homepageHTTPError(err, http.StatusBadRequest, "invalid image") {
+		t.Fatalf("invalid webp mismatch: %#v", err)
+	}
+	if _, err := svc.UploadImage(ctx, actor, newMultipartSource("file", "mismatch.webp", tinyPNGBytes(t), nil)); !homepageHTTPError(err, http.StatusBadRequest, "invalid image") {
+		t.Fatalf("extension and image format mismatch: %#v", err)
+	}
 	if _, err := svc.UploadImage(ctx, actor, newFieldsOnlyMultipartSource(map[string]string{"title": "missing"})); !homepageHTTPError(err, http.StatusBadRequest, "file is required") {
 		t.Fatalf("missing image file mismatch: %#v", err)
 	}

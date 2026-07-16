@@ -49,7 +49,7 @@ func TestHomepageServiceImageLifecycleExactState(t *testing.T) {
 		t.Fatalf("upload should invalidate public homepage cache, err=%v", err)
 	}
 
-	second, err := svc.UploadImage(ctx, actor, newMultipartSource("file", "second.webp", []byte("webp bytes"), nil))
+	second, err := svc.UploadImage(ctx, actor, newMultipartSource("file", "second.webp", tinyWebPBytes(t), nil))
 	if err != nil {
 		t.Fatal(err)
 	}

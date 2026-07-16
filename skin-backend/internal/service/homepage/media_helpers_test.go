@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -73,6 +74,19 @@ func assertPgCode(t *testing.T, err error, code string) {
 func tinyPNGBytes(t *testing.T) []byte {
 	t.Helper()
 	raw, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func tinyWebPBytes(t *testing.T) []byte {
+	t.Helper()
+	encoded, err := os.ReadFile("testdata/tiny.webp.base64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(encoded)))
 	if err != nil {
 		t.Fatal(err)
 	}

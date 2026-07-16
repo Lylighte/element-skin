@@ -1,11 +1,8 @@
 package homepage
 
 import (
-	"bytes"
 	"context"
-	"image"
-	_ "image/jpeg"
-	_ "image/png"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -33,10 +30,12 @@ func (s Service) UploadImage(ctx context.Context, actor permission.Actor, upload
 	default:
 		return model.HomepageMedia{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "Unsupported file format"}
 	}
-	if ext != ".webp" {
-		if _, _, err := image.DecodeConfig(bytes.NewReader(upload.Data)); err != nil {
-			return model.HomepageMedia{}, util.HTTPError{Status: http.StatusBadRequest, Detail: "invalid image"}
+	if err := validateImageData(upload.Data, ext); err != nil {
+		detail := "invalid image"
+		if errors.Is(err, errImageDimensions) {
+			detail = "image dimensions exceed limit"
 		}
+		return model.HomepageMedia{}, util.HTTPError{Status: http.StatusBadRequest, Detail: detail}
 	}
 	values, err := ParseMediaValues(upload.Fields, "image")
 	if err != nil {

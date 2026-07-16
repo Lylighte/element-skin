@@ -1,6 +1,7 @@
 package admin_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -97,7 +98,7 @@ func TestHomepageMediaImageUploadPatchReorderDeleteExactState(t *testing.T) {
 	}
 }
 
-func TestHomepageMediaUploadAcceptsWebPBytesAndRejectsMalformedMultipartExactly(t *testing.T) {
+func TestHomepageMediaUploadValidatesWebPAndRejectsMalformedMultipartExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.CarouselDir = t.TempDir()
@@ -135,7 +136,8 @@ func TestHomepageMediaUploadAcceptsWebPBytesAndRejectsMalformedMultipartExactly(
 		t.Fatalf("panorama missing file mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.webp", []byte("webp bytes are stored without image decoding"))
+	webp := webpBytes(t)
+	req = multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.webp", webp)
 	rec = httptest.NewRecorder()
 	h.UploadHomepageImage(rec, req)
 	if rec.Code != http.StatusOK {
@@ -146,7 +148,7 @@ func TestHomepageMediaUploadAcceptsWebPBytesAndRejectsMalformedMultipartExactly(
 		t.Fatalf("webp homepage media mismatch: %#v", item)
 	}
 	got, err := os.ReadFile(filepath.Join(cfg.CarouselDir, item.StoragePath))
-	if err != nil || string(got) != "webp bytes are stored without image decoding" {
-		t.Fatalf("webp upload should persist exact bytes: got=%q err=%v", got, err)
+	if err != nil || !bytes.Equal(got, webp) {
+		t.Fatalf("webp upload should persist exact validated bytes: got=%q err=%v", got, err)
 	}
 }
