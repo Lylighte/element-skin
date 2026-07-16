@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -259,9 +260,9 @@ func TestSettingsRoutesReturnErrorWhenCacheInvalidationFailsAfterPersist(t *test
 	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"Internal server error\"}\n" {
 		t.Fatalf("named public group save should fail when public cache invalidation fails: status=%d body=%q", rec.Code, rec.Body.String())
 	}
-	raw, err := db.Settings.Get(req.Context(), "easter_eggs_enabled", "")
-	if err != nil || raw != `["christmas"]` {
-		t.Fatalf("easter egg settings should persist before public cache invalidation failure: got=%q err=%v", raw, err)
+	enabled, err := db.EasterEggs.ListEnabled(req.Context())
+	if err != nil || !reflect.DeepEqual(enabled, []string{"christmas"}) {
+		t.Fatalf("easter egg settings should persist before public cache invalidation failure: got=%#v err=%v", enabled, err)
 	}
 
 	redis.failPublic = false
