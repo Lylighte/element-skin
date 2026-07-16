@@ -129,6 +129,55 @@ func TestPublicAuthUsesGuestAndRejectsInvalidOrDeniedAuthenticatedActorsExactly(
 	}
 }
 
+func TestPublicV1ResourcesUseGuestAndRejectInvalidOrDeniedCredentialsExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	cfg := testutil.TestConfig()
+	user := testutil.CreateUser(t, db, "public-v1-denied@test.com", "Password123", "PublicV1Denied", false)
+	for _, code := range []string{
+		"site_public.read.public",
+		"texture.read.public",
+		"minecraft_profile.read.public",
+		"minecraft_texture_property.read.public",
+	} {
+		if err := db.Permissions.SetSubjectPermissionOverride(t.Context(), user.ID, permission.MustDefinitionByCode(code), "deny", ""); err != nil {
+			t.Fatalf("deny %s: %v", code, err)
+		}
+	}
+	token, err := util.CreateAccessToken(cfg.JWTSecret, user.ID, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := httpapi.NewRouter(cfg, db, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+
+	for _, tc := range publicV1ResourceCases {
+		t.Run(tc.name, func(t *testing.T) {
+			guestReq := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			guestRec := httptest.NewRecorder()
+			router.ServeHTTP(guestRec, guestReq)
+			if guestRec.Code != tc.guestStatus || (tc.guestBody != "" && guestRec.Body.String() != tc.guestBody) ||
+				(tc.guestContains != "" && !strings.Contains(guestRec.Body.String(), tc.guestContains)) {
+				t.Fatalf("guest response mismatch: status=%d body=%q", guestRec.Code, guestRec.Body.String())
+			}
+
+			invalidReq := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			invalidReq.Header.Set("Authorization", "Bearer invalid-public-v1-token")
+			invalidRec := httptest.NewRecorder()
+			router.ServeHTTP(invalidRec, invalidReq)
+			if invalidRec.Code != http.StatusUnauthorized || invalidRec.Body.String() != "{\"detail\":\"not authenticated\"}\n" {
+				t.Fatalf("invalid credential response mismatch: status=%d body=%q", invalidRec.Code, invalidRec.Body.String())
+			}
+
+			deniedReq := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			deniedReq.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+			deniedRec := httptest.NewRecorder()
+			router.ServeHTTP(deniedRec, deniedReq)
+			if deniedRec.Code != http.StatusForbidden || deniedRec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+				t.Fatalf("denied actor response mismatch: status=%d body=%q", deniedRec.Code, deniedRec.Body.String())
+			}
+		})
+	}
+}
+
 func TestAuthRedisErrorDoesNotFallBackToDatabase(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
@@ -474,6 +523,29 @@ func containsAuthPermission(values []string, want string) bool {
 type authCacheWriteFailStore struct {
 	redisstore.Store
 	setCalls int
+}
+
+type publicV1ResourceCase struct {
+	name          string
+	method        string
+	path          string
+	body          string
+	guestStatus   int
+	guestBody     string
+	guestContains string
+}
+
+var publicV1ResourceCases = []publicV1ResourceCase{
+	{name: "capabilities", method: http.MethodGet, path: "/v1/capabilities", guestStatus: http.StatusOK, guestContains: `"api_version":"v1"`},
+	{name: "permission catalog", method: http.MethodGet, path: "/v1/permissions/catalog", guestStatus: http.StatusOK, guestContains: `"permissions":[`},
+	{name: "skin library", method: http.MethodGet, path: "/v1/public/skin-library", guestStatus: http.StatusOK, guestContains: `"items":[]`},
+	{name: "public settings", method: http.MethodGet, path: "/v1/public/settings", guestStatus: http.StatusOK, guestContains: `"site_name"`},
+	{name: "homepage media", method: http.MethodGet, path: "/v1/public/homepage-media", guestStatus: http.StatusOK, guestBody: "[]\n"},
+	{name: "fallback status", method: http.MethodGet, path: "/v1/public/fallback-status", guestStatus: http.StatusOK, guestContains: `"endpoints":[]`},
+	{name: "profile by name", method: http.MethodGet, path: "/v1/minecraft/profiles/by-name/Missing", guestStatus: http.StatusNotFound, guestBody: "{\"detail\":\"minecraft profile not found\"}\n"},
+	{name: "profile by id", method: http.MethodGet, path: "/v1/minecraft/profiles/missing", guestStatus: http.StatusNotFound, guestBody: "{\"detail\":\"minecraft profile not found\"}\n"},
+	{name: "textures property", method: http.MethodGet, path: "/v1/minecraft/profiles/missing/textures-property", guestStatus: http.StatusNotFound, guestBody: "{\"detail\":\"minecraft profile not found\"}\n"},
+	{name: "profiles by names", method: http.MethodPost, path: "/v1/minecraft/profiles/by-names", body: `{"names":[]}`, guestStatus: http.StatusOK, guestBody: "{\"items\":[]}\n"},
 }
 
 func (s *authCacheWriteFailStore) SetAuthUser(context.Context, redisstore.AuthUser, time.Duration) error {
