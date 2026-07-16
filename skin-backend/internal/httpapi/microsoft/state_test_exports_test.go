@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	TestStateKindOAuth   = stateKindOAuth
-	TestStateKindProfile = stateKindProfile
-	TestStateKindImport  = stateKindImport
+	TestStateKindOAuth   = "oauth_state"
+	TestStateKindProfile = "profile"
+	TestStateKindImport  = "import"
 )
 
 func SeedStateForTest(states redisstore.Store, token string, session map[string]any, ttl time.Duration) error {

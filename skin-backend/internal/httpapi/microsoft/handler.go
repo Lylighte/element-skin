@@ -12,11 +12,8 @@ import (
 )
 
 type Handler struct {
-	cfg      config.Config
-	settings settingssvc.Settings
 	auth     shared.AuthFunc
-	states   redisstore.Store
-	imports  importsvc.ImportService
+	workflow importsvc.MicrosoftImportWorkflow
 }
 
 func New(cfg config.Config, db *database.DB, settings settingssvc.Settings, auth shared.AuthFunc, states redisstore.Store) Handler {
@@ -24,12 +21,17 @@ func New(cfg config.Config, db *database.DB, settings settingssvc.Settings, auth
 }
 
 func NewWithHTTPClient(cfg config.Config, db *database.DB, settings settingssvc.Settings, auth shared.AuthFunc, states redisstore.Store, client *http.Client) Handler {
+	profiles := importsvc.ImportService{DB: db, TexturesDir: cfg.TexturesDir, HTTPClient: client}
 	return Handler{
-		cfg:      cfg,
-		settings: settings,
-		auth:     auth,
-		states:   states,
-		imports:  importsvc.ImportService{DB: db, TexturesDir: cfg.TexturesDir, HTTPClient: client},
+		auth: auth,
+		workflow: importsvc.MicrosoftImportWorkflow{
+			APIURL:     cfg.APIURL,
+			SiteURL:    cfg.SiteURL,
+			Settings:   settings,
+			States:     states,
+			Profiles:   profiles,
+			HTTPClient: client,
+		},
 	}
 }
 

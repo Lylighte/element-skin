@@ -1,4 +1,4 @@
-package microsoft
+package imports
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 )
 
 const (
-	stateKindOAuth   = "oauth_state"
-	stateKindProfile = "profile"
-	stateKindImport  = "import"
+	microsoftStateKindOAuth   = "oauth_state"
+	microsoftStateKindProfile = "profile"
+	microsoftStateKindImport  = "import"
 )
 
-func (h Handler) popState(ctx context.Context, token, kind, invalidDetail string) (map[string]any, error) {
-	session, err := h.states.PopState(ctx, token)
+func (s MicrosoftImportWorkflow) popState(ctx context.Context, token, kind, invalidDetail string) (map[string]any, error) {
+	session, err := s.States.PopState(ctx, token)
 	if errors.Is(err, redisstore.ErrCacheMiss) {
 		return nil, util.HTTPError{Status: 400, Detail: invalidDetail}
 	}
@@ -28,14 +28,14 @@ func (h Handler) popState(ctx context.Context, token, kind, invalidDetail string
 	return session, nil
 }
 
-func requireStateOwner(session map[string]any, userID, detail string) error {
+func requireMicrosoftStateOwner(session map[string]any, userID, detail string) error {
 	if session["user_id"] != userID {
 		return util.HTTPError{Status: 403, Detail: detail}
 	}
 	return nil
 }
 
-func randomToken(length int) (string, error) {
+func randomMicrosoftToken(length int) (string, error) {
 	id, err := util.GenerateUUIDNoDash()
 	if err != nil {
 		return "", err

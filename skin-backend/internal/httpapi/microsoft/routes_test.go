@@ -22,7 +22,11 @@ func TestMicrosoftRoutesAuthURLAndCallbackValidationExactResponses(t *testing.T)
 	cfg := testutil.TestConfig()
 	cfg.SiteURL = "https://skin.example/root"
 	states := redisstore.NewMemoryStore()
-	h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
+	settingsCache := testutil.NewMemoryRedis()
+	if err := settingsCache.SetSetting(context.Background(), "microsoft_client_id", "client-id", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: settingsCache}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
 		return next
 	}, states)
 
@@ -93,7 +97,7 @@ func TestMicrosoftRoutesAuthURLAndCallbackValidationExactResponses(t *testing.T)
 	}
 }
 
-func TestMicrosoftRoutesSettingsFailuresAndDefaultRedirectConsumeStateExactly(t *testing.T) {
+func TestMicrosoftRoutesSettingsFailuresAndMissingSiteURLConsumeStateExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.SiteURL = ""
@@ -136,8 +140,8 @@ func TestMicrosoftRoutesSettingsFailuresAndDefaultRedirectConsumeStateExactly(t 
 	req = httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/callback?code=code&state=default-site-state", nil)
 	rec = httptest.NewRecorder()
 	h.Callback(rec, req)
-	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://localhost:5173/dashboard/roles?error=auth_failed" {
-		t.Fatalf("empty site URL fallback mismatch: status=%d location=%q", rec.Code, rec.Header().Get("Location"))
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"detail\":\"site URL is not configured\"}\n" || rec.Header().Get("Location") != "" {
+		t.Fatalf("empty site URL mismatch: status=%d location=%q body=%q", rec.Code, rec.Header().Get("Location"), rec.Body.String())
 	}
 }
 
@@ -172,7 +176,11 @@ func TestMicrosoftRoutesReturnExactErrorsForLaterDependencyFailures(t *testing.T
 		db, _ := testutil.NewTestApp(t)
 		states := redisstore.NewMemoryStore()
 		states.Err = errors.New("state store unavailable")
-		h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
+		cache := testutil.NewMemoryRedis()
+		if err := cache.SetSetting(ctx, "microsoft_client_id", "client-id", time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		h := microsoft.New(cfg, db, settings.Settings{DB: db, Redis: cache}, func(next http.HandlerFunc, _ ...permission.Definition) http.HandlerFunc {
 			return next
 		}, states)
 		req := httptest.NewRequest(http.MethodGet, "/v1/imports/microsoft/auth-url", nil)
