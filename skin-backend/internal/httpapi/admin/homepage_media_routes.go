@@ -1,16 +1,12 @@
 package admin
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/permission"
 	homepagesvc "element-skin/backend/internal/service/homepage"
 	"element-skin/backend/internal/util"
 )
-
-var homepageMediaCreatePermission = permission.MustDefinitionByCode("homepage_media.create.any")
 
 func (h Handler) ListHomepageMedia(w http.ResponseWriter, req *http.Request) {
 	items, err := h.homepage.List(req.Context(), shared.CurrentActor(req))
@@ -22,10 +18,6 @@ func (h Handler) ListHomepageMedia(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UploadHomepageImage(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, homepageMediaCreatePermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	upload, err := shared.ReadMultipartUpload(req, "file", homepagesvc.MaxImageBytes)
 	if err != nil {
 		util.Error(w, err)
@@ -44,10 +36,6 @@ func (h Handler) UploadHomepageImage(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UploadHomepagePanorama(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, homepageMediaCreatePermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	upload, err := shared.ReadMultipartUpload(req, "file", homepagesvc.MaxPanoramaBytes)
 	if err != nil {
 		util.Error(w, err)
@@ -77,7 +65,7 @@ func (h Handler) PatchHomepageMedia(w http.ResponseWriter, req *http.Request) {
 		Enabled             *bool    `json:"enabled"`
 		DurationMS          *int     `json:"duration_ms"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json body"})
 		return
 	}
@@ -103,7 +91,7 @@ func (h Handler) ReorderHomepageMedia(w http.ResponseWriter, req *http.Request) 
 	var body struct {
 		IDs []string `json:"ids"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json body"})
 		return
 	}

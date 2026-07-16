@@ -248,68 +248,6 @@ func TestBearerTokenRequiresBearerSchemeAndNonEmptyToken(t *testing.T) {
 	}
 }
 
-func TestMultipartFileBytesReadsExactFieldAndRejectsTooLarge(t *testing.T) {
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", "skin.png")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.WriteString(part, "abcde"); err != nil {
-		t.Fatal(err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest(http.MethodPost, "/upload", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	if err := req.ParseMultipartForm(1024); err != nil {
-		t.Fatal(err)
-	}
-	data, err := shared.MultipartFileBytes(req, "file", 5)
-	if err != nil || string(data) != "abcde" {
-		t.Fatalf("shared.MultipartFileBytes exact read mismatch: data=%q err=%v", data, err)
-	}
-
-	body = &bytes.Buffer{}
-	writer = multipart.NewWriter(body)
-	part, err = writer.CreateFormFile("file", "skin.png")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.WriteString(part, "abcdef"); err != nil {
-		t.Fatal(err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	req = httptest.NewRequest(http.MethodPost, "/upload", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	if err := req.ParseMultipartForm(1024); err != nil {
-		t.Fatal(err)
-	}
-	if data, err := shared.MultipartFileBytes(req, "file", 5); err == nil || string(data) != "" || !bytes.Contains([]byte(err.Error()), []byte("File too large")) {
-		t.Fatalf("oversized upload should reject: data=%q err=%v", data, err)
-	}
-
-	body = &bytes.Buffer{}
-	writer = multipart.NewWriter(body)
-	if err := writer.WriteField("note", "missing file"); err != nil {
-		t.Fatal(err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	req = httptest.NewRequest(http.MethodPost, "/upload", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	if err := req.ParseMultipartForm(1024); err != nil {
-		t.Fatal(err)
-	}
-	if data, err := shared.MultipartFileBytes(req, "file", 5); err == nil || data != nil || err.Error() != "file is required" {
-		t.Fatalf("missing upload field should return exact contract: data=%q err=%v", data, err)
-	}
-}
-
 func TestReadMultipartUploadReadsFileAndFieldsExactly(t *testing.T) {
 	req := readMultipartUploadRequest(t, "file", "hero.png", []byte("abcde"), map[string]string{
 		"duration_ms":           "7000",

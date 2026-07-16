@@ -19,22 +19,18 @@ func (h Handler) ListMyTextures(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UploadMyTexture(w http.ResponseWriter, req *http.Request) {
-	if err := req.ParseMultipartForm(16 << 20); err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid multipart form"})
-		return
-	}
-	data, err := shared.MultipartFileBytes(req, "file", 16<<20)
+	upload, err := shared.ReadMultipartUpload(req, "file", 16<<20)
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
 	res, err := h.uploads.UploadToLibrary(req.Context(), texturesvc.UploadInput{
 		Actor:       shared.CurrentActor(req),
-		Data:        data,
-		TextureType: req.FormValue("texture_type"),
-		Note:        req.FormValue("note"),
-		IsPublic:    shared.FormBool(req.FormValue("is_public")),
-		Model:       req.FormValue("model"),
+		Data:        upload.Data,
+		TextureType: upload.Fields["texture_type"],
+		Note:        upload.Fields["note"],
+		IsPublic:    shared.FormBool(upload.Fields["is_public"]),
+		Model:       upload.Fields["model"],
 	})
 	if err != nil {
 		util.Error(w, err)
@@ -44,22 +40,18 @@ func (h Handler) UploadMyTexture(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UploadAndApplyTexture(w http.ResponseWriter, req *http.Request) {
-	if err := req.ParseMultipartForm(16 << 20); err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid multipart form"})
-		return
-	}
-	data, err := shared.MultipartFileBytes(req, "file", 16<<20)
+	upload, err := shared.ReadMultipartUpload(req, "file", 16<<20)
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
 	res, err := h.uploads.UploadAndApply(req.Context(), texturesvc.UploadInput{
 		Actor:       shared.CurrentActor(req),
-		Data:        data,
-		TextureType: req.FormValue("texture_type"),
-		IsPublic:    shared.FormBool(req.FormValue("is_public")),
-		Model:       req.FormValue("model"),
-	}, req.FormValue("uuid"))
+		Data:        upload.Data,
+		TextureType: upload.Fields["texture_type"],
+		IsPublic:    shared.FormBool(upload.Fields["is_public"]),
+		Model:       upload.Fields["model"],
+	}, upload.Fields["uuid"])
 	if err != nil {
 		util.Error(w, err)
 		return

@@ -34,11 +34,7 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "Invalid texture_type"})
 		return
 	}
-	if err := req.ParseMultipartForm(16 << 20); err != nil {
-		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid multipart form"})
-		return
-	}
-	data, err := shared.MultipartFileBytes(req, "file", 16<<20)
+	upload, err := shared.ReadMultipartUpload(req, "file", 16<<20)
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -47,9 +43,9 @@ func (h Handler) UploadTexture(w http.ResponseWriter, req *http.Request) {
 		req.Context(),
 		texturesvc.UploadInput{
 			Actor:       actor,
-			Data:        data,
+			Data:        upload.Data,
 			TextureType: textureType,
-			Model:       req.FormValue("model"),
+			Model:       upload.Fields["model"],
 		},
 		*tok.ProfileID,
 	); err != nil {

@@ -12,22 +12,6 @@ const (
 	MaxMultipartFieldBytes = 4096
 )
 
-func MultipartFileBytes(req *http.Request, field string, maxBytes int64) ([]byte, error) {
-	file, _, err := req.FormFile(field)
-	if err != nil {
-		return nil, util.HTTPError{Status: 400, Detail: "file is required"}
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(data)) > maxBytes {
-		return nil, util.HTTPError{Status: 400, Detail: "File too large"}
-	}
-	return data, nil
-}
-
 type MultipartUpload struct {
 	Filename string
 	Data     []byte

@@ -1,6 +1,8 @@
 package yggdrasil
 
 import (
+	"net/http"
+
 	"element-skin/backend/internal/config"
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/redisstore"
@@ -20,13 +22,17 @@ type Handler struct {
 }
 
 func New(cfg config.Config, db *database.DB, redis redisstore.Store, settings settingssvc.Settings, ygg yggpkg.Yggdrasil) Handler {
+	return NewWithHTTPClient(cfg, db, redis, settings, ygg, nil)
+}
+
+func NewWithHTTPClient(cfg config.Config, db *database.DB, redis redisstore.Store, settings settingssvc.Settings, ygg yggpkg.Yggdrasil, client *http.Client) Handler {
 	ygg.Redis = redis
 	ygg.Settings = settings
 	return Handler{
 		profiles: profilesvc.Service{DB: db, Settings: settings},
 		textures: texturesvc.LibraryService{DB: db, Settings: settings},
 		uploads:  texturesvc.UploadService{DB: db, TexturesDir: cfg.TexturesDir},
-		fallback: fallbacksvc.Fallback{DB: db, Redis: redis, Settings: settings},
+		fallback: fallbacksvc.Fallback{DB: db, Redis: redis, Settings: settings, Client: client},
 		ygg:      ygg,
 	}
 }

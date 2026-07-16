@@ -22,13 +22,15 @@ func TestHomepageMediaMutationsRejectInvalidRequestsExactly(t *testing.T) {
 		run  func(*httptest.ResponseRecorder)
 	}{
 		{name: "upload image", run: func(rec *httptest.ResponseRecorder) {
-			req := multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 8, 8))
-			req = httptest.NewRequest(req.Method, req.URL.String(), req.Body)
+			original := multipartUploadRequest(t, "/v1/admin/homepage-media/image", "file", "slide.png", pngBytes(t, 8, 8))
+			req := httptest.NewRequest(original.Method, original.URL.String(), original.Body)
+			req.Header.Set("Content-Type", original.Header.Get("Content-Type"))
 			h.UploadHomepageImage(rec, req)
 		}},
 		{name: "upload panorama", run: func(rec *httptest.ResponseRecorder) {
-			req := multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t))
-			req = httptest.NewRequest(req.Method, req.URL.String(), req.Body)
+			original := multipartUploadRequest(t, "/v1/admin/homepage-media/panorama", "file", "panorama.zip", standardPanoramaZip(t))
+			req := httptest.NewRequest(original.Method, original.URL.String(), original.Body)
+			req.Header.Set("Content-Type", original.Header.Get("Content-Type"))
 			h.UploadHomepagePanorama(rec, req)
 		}},
 		{name: "patch", run: func(rec *httptest.ResponseRecorder) {

@@ -75,7 +75,7 @@ func TestLookupNamesMergesLocalAndFallbackProfilesExactly(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	h := yggdrasil.New(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	h := yggdrasil.NewWithHTTPClient(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg}, server.Client())
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -291,7 +291,7 @@ func TestLookupRoutesWriteExactFallbackResponses(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	h := yggdrasil.New(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
+	h := yggdrasil.NewWithHTTPClient(cfg, db, redis, settings.Settings{DB: db, Redis: redis}, yggsvc.Yggdrasil{DB: db, Cfg: cfg}, server.Client())
 
 	req := httptest.NewRequest(http.MethodGet, "/sessionserver/session/minecraft/hasJoined?username=RemoteJoin&serverId=remote-server&ip=127.0.0.2", nil)
 	rec := httptest.NewRecorder()
