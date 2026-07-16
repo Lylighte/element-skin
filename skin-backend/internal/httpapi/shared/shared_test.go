@@ -3,11 +3,14 @@ package shared_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"element-skin/backend/internal/permission"
@@ -117,6 +120,16 @@ func TestParsePositiveIntFormBoolAndDecodeJSONContracts(t *testing.T) {
 	req = httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(`{"name":`))
 	if err := shared.DecodeJSON(req, &body); err == nil {
 		t.Fatal("DecodeJSON must return malformed JSON errors")
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(`{"name":"first"} {"name":"second"}`))
+	if err := shared.DecodeJSON(req, &body); !errors.Is(err, shared.ErrMultipleJSONValues) {
+		t.Fatalf("DecodeJSON multiple values err=%v, want ErrMultipleJSONValues", err)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(bytes.Repeat([]byte("x"), shared.MaxJSONBodyBytes+1)))
+	if err := shared.DecodeJSON(req, &body); !errors.Is(err, shared.ErrJSONBodyTooLarge) {
+		t.Fatalf("DecodeJSON oversized body err=%v, want ErrJSONBodyTooLarge", err)
 	}
 }
 
@@ -338,6 +351,73 @@ func TestReadMultipartUploadRejectsExactMalformedInputs(t *testing.T) {
 		t.Fatalf("malformed upload should return zero upload, got %#v", upload)
 	}
 	assertSharedHTTPError(t, err, http.StatusBadRequest, "invalid multipart form")
+}
+
+func TestReadMultipartUploadRejectsAmbiguousAndExcessivePartsExactly(t *testing.T) {
+	requestWithParts := func(parts func(*multipart.Writer)) *http.Request {
+		t.Helper()
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		parts(writer)
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/upload", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		return req
+	}
+
+	for _, tc := range []struct {
+		name   string
+		parts  func(*multipart.Writer)
+		detail string
+	}{
+		{
+			name: "duplicate file",
+			parts: func(writer *multipart.Writer) {
+				for index := 0; index < 2; index++ {
+					part, err := writer.CreateFormFile("file", "hero.png")
+					if err != nil {
+						t.Fatal(err)
+					}
+					_, _ = part.Write([]byte("x"))
+				}
+			},
+			detail: "duplicate file field",
+		},
+		{
+			name: "duplicate field",
+			parts: func(writer *multipart.Writer) {
+				_ = writer.WriteField("title", "first")
+				_ = writer.WriteField("title", "second")
+			},
+			detail: "duplicate multipart field",
+		},
+		{
+			name: "oversized field",
+			parts: func(writer *multipart.Writer) {
+				_ = writer.WriteField("title", strings.Repeat("x", shared.MaxMultipartFieldBytes+1))
+			},
+			detail: "multipart field too large",
+		},
+		{
+			name: "too many fields",
+			parts: func(writer *multipart.Writer) {
+				for index := 0; index < shared.MaxMultipartParts+1; index++ {
+					_ = writer.WriteField(fmt.Sprintf("field_%d", index), "x")
+				}
+			},
+			detail: "too many multipart fields",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upload, err := shared.ReadMultipartUpload(requestWithParts(tc.parts), "file", 5)
+			if !reflect.DeepEqual(upload, shared.MultipartUpload{}) {
+				t.Fatalf("rejected multipart returned upload %#v", upload)
+			}
+			assertSharedHTTPError(t, err, http.StatusBadRequest, tc.detail)
+		})
+	}
 }
 
 func readMultipartUploadRequest(t *testing.T, fileField, filename string, data []byte, fields map[string]string) *http.Request {

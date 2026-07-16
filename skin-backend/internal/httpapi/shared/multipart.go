@@ -7,6 +7,11 @@ import (
 	"element-skin/backend/internal/util"
 )
 
+const (
+	MaxMultipartParts      = 32
+	MaxMultipartFieldBytes = 4096
+)
+
 func MultipartFileBytes(req *http.Request, field string, maxBytes int64) ([]byte, error) {
 	file, _, err := req.FormFile(field)
 	if err != nil {
@@ -35,6 +40,7 @@ func ReadMultipartUpload(req *http.Request, fileField string, maxBytes int64) (M
 		return MultipartUpload{}, util.HTTPError{Status: 400, Detail: "invalid multipart form"}
 	}
 	out := MultipartUpload{Fields: map[string]string{}}
+	partCount := 0
 	for {
 		part, err := reader.NextPart()
 		if err == io.EOF {
@@ -43,12 +49,21 @@ func ReadMultipartUpload(req *http.Request, fileField string, maxBytes int64) (M
 		if err != nil {
 			return MultipartUpload{}, util.HTTPError{Status: 400, Detail: "invalid multipart form"}
 		}
+		partCount++
+		if partCount > MaxMultipartParts {
+			_ = part.Close()
+			return MultipartUpload{}, util.HTTPError{Status: 400, Detail: "too many multipart fields"}
+		}
 		formName := part.FormName()
 		if formName == "" {
 			_ = part.Close()
 			continue
 		}
 		if formName == fileField {
+			if out.Filename != "" {
+				_ = part.Close()
+				return MultipartUpload{}, util.HTTPError{Status: 400, Detail: "duplicate file field"}
+			}
 			out.Filename = part.FileName()
 			data, err := io.ReadAll(io.LimitReader(part, maxBytes+1))
 			_ = part.Close()
@@ -61,10 +76,17 @@ func ReadMultipartUpload(req *http.Request, fileField string, maxBytes int64) (M
 			out.Data = data
 			continue
 		}
-		data, err := io.ReadAll(io.LimitReader(part, 4097))
+		if _, exists := out.Fields[formName]; exists {
+			_ = part.Close()
+			return MultipartUpload{}, util.HTTPError{Status: 400, Detail: "duplicate multipart field"}
+		}
+		data, err := io.ReadAll(io.LimitReader(part, MaxMultipartFieldBytes+1))
 		_ = part.Close()
 		if err != nil {
 			return MultipartUpload{}, err
+		}
+		if len(data) > MaxMultipartFieldBytes {
+			return MultipartUpload{}, util.HTTPError{Status: 400, Detail: "multipart field too large"}
 		}
 		out.Fields[formName] = string(data)
 	}

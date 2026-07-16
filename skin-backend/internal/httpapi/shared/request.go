@@ -1,11 +1,21 @@
 package shared
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+)
+
+const MaxJSONBodyBytes = 1 << 20
+
+var (
+	ErrJSONBodyTooLarge   = errors.New("json body too large")
+	ErrMultipleJSONValues = errors.New("multiple json values")
 )
 
 func ParsePositiveInt(raw string) (int, error) {
@@ -32,5 +42,23 @@ func FormBool(raw string) bool {
 
 func DecodeJSON(req *http.Request, dst any) error {
 	defer req.Body.Close()
-	return json.NewDecoder(req.Body).Decode(dst)
+	data, err := io.ReadAll(io.LimitReader(req.Body, MaxJSONBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(data) > MaxJSONBodyBytes {
+		return ErrJSONBodyTooLarge
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return ErrMultipleJSONValues
+		}
+		return err
+	}
+	return nil
 }
