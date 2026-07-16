@@ -4,23 +4,10 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
-var (
-	profileReadOwnedPermission   = permission.MustDefinitionByCode("profile.read.owned")
-	profileCreateOwnedPermission = permission.MustDefinitionByCode("profile.create.owned")
-	profileUpdateOwnedPermission = permission.MustDefinitionByCode("profile.update.owned")
-	profileDeleteOwnedPermission = permission.MustDefinitionByCode("profile.delete.owned")
-	textureClearOwnedPermission  = permission.MustDefinitionByCode("texture.clear.owned")
-)
-
 func (h Handler) CreateProfile(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, profileCreateOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -35,10 +22,6 @@ func (h Handler) CreateProfile(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, profileUpdateOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	var body map[string]string
 	if err := shared.DecodeJSON(req, &body); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Detail: "invalid json"})
@@ -52,10 +35,6 @@ func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) DeleteProfile(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, profileDeleteOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	if err := h.profiles.DeleteProfile(req.Context(), shared.CurrentActor(req), profilePathID(req)); err != nil {
 		util.Error(w, err)
 		return
@@ -64,10 +43,6 @@ func (h Handler) DeleteProfile(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ClearProfileSkin(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, textureClearOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	if err := h.profiles.ClearProfileTexture(req.Context(), shared.CurrentActor(req), profilePathID(req), "skin"); err != nil {
 		util.Error(w, err)
 		return
@@ -76,10 +51,6 @@ func (h Handler) ClearProfileSkin(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) ClearProfileCape(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, textureClearOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	if err := h.profiles.ClearProfileTexture(req.Context(), shared.CurrentActor(req), profilePathID(req), "cape"); err != nil {
 		util.Error(w, err)
 		return
@@ -95,10 +66,6 @@ func profilePathID(req *http.Request) string {
 }
 
 func (h Handler) ListMyProfiles(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, profileReadOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
 	limit := util.ClampLimit(req.URL.Query().Get("limit"))
 	res, err := h.profiles.ListMyProfiles(req.Context(), shared.CurrentActor(req), req.URL.Query().Get("cursor"), limit)
 	if err != nil {
