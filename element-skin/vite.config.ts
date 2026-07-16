@@ -7,6 +7,8 @@ import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
+import { isPathInside, resolveStaticAssetRequest } from './vite/staticAssets'
+
 const isLowMemory = process.env.BUILD_MODE === 'low-memory'
 const appVersion = 'v3.0.0'
 
@@ -24,27 +26,22 @@ export default defineConfig({
       name: 'serve-static-assets',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          // 获取不带 base 前缀的路径
           const base = process.env.VITE_BASE_PATH || '/'
           const url = req.url || ''
-          if (!url.startsWith(base)) return next()
+          const asset = resolveStaticAssetRequest(
+            path.resolve(__dirname, '../skin-backend'),
+            base,
+            url,
+          )
 
-          const relativeUrl = url.slice(base.length - 1) // 保持以 / 开头
-          const staticMatch = relativeUrl.match(/^\/static\/(textures|carousel)\/(.+)$/)
+          if (asset && fs.existsSync(asset.filePath) && fs.statSync(asset.filePath).isFile()) {
+            const realRoot = fs.realpathSync(asset.rootPath)
+            const realFile = fs.realpathSync(asset.filePath)
+            if (!isPathInside(realRoot, realFile)) return next()
 
-          if (staticMatch) {
-            const [, type, filename] = staticMatch
-            // 映射到后端目录
-            const filePath = path.resolve(
-              __dirname,
-              `../skin-backend/${type}/${filename.split('?')[0]}`,
-            )
-
-            if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-              res.setHeader('Content-Type', type === 'textures' ? 'image/png' : 'image/jpeg')
-              res.end(fs.readFileSync(filePath))
-              return
-            }
+            res.setHeader('Content-Type', asset.contentType)
+            res.end(fs.readFileSync(realFile))
+            return
           }
           next()
         })
