@@ -108,3 +108,26 @@ func TestLoadRejectsInvalidEnvironmentOverride(t *testing.T) {
 		t.Fatalf("invalid env error=%v cfg=%#v; want exact SERVER_PORT error", err, cfg)
 	}
 }
+
+func TestLoadRejectsCredentialedWildcardCORSExactly(t *testing.T) {
+	clearConfigEnv(t)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	raw := strings.Replace(
+		minimalConfigYAML(),
+		"    - \"https://file.example\"\n  allow_credentials: true",
+		"    - \"*\"\n  allow_credentials: true",
+		1,
+	)
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err == nil || err.Error() != "invalid config cors.allow_origins: wildcard is not allowed when credentials are enabled" {
+		t.Fatalf("credentialed wildcard result: cfg=%#v err=%v", cfg, err)
+	}
+	after, readErr := os.ReadFile(path)
+	if readErr != nil || string(after) != raw {
+		t.Fatalf("invalid CORS config must not be rewritten: readErr=%v after=%q", readErr, string(after))
+	}
+}

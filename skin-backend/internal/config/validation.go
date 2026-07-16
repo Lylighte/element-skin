@@ -46,6 +46,9 @@ func validateRequiredConfig(cfg Config, raw rawConfig) error {
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required config fields: %s", strings.Join(missing, ", "))
 	}
+	if cfg.CORSCredentials && containsString(cfg.CORSOrigins, "*") {
+		return fmt.Errorf("invalid config cors.allow_origins: wildcard is not allowed when credentials are enabled")
+	}
 	for _, check := range []struct {
 		field string
 		ok    bool
@@ -80,6 +83,15 @@ func validateRequiredConfig(cfg Config, raw rawConfig) error {
 		}
 	}
 	return nil
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Config) deriveConnectionStrings() {

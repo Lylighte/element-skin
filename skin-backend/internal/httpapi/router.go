@@ -62,6 +62,9 @@ func (r *Router) applyCORS(w http.ResponseWriter, req *http.Request) bool {
 		return false
 	}
 	allowed, wildcard := corsOriginAllowed(origin, r.cfg.CORSOrigins)
+	if wildcard && r.cfg.CORSCredentials {
+		allowed = false
+	}
 	if !allowed {
 		if req.Method == http.MethodOptions && req.Header.Get("Access-Control-Request-Method") != "" {
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
@@ -70,7 +73,7 @@ func (r *Router) applyCORS(w http.ResponseWriter, req *http.Request) bool {
 		return false
 	}
 	w.Header().Add("Vary", "Origin")
-	if wildcard && !r.cfg.CORSCredentials {
+	if wildcard {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 	} else {
 		w.Header().Set("Access-Control-Allow-Origin", origin)

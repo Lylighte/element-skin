@@ -162,7 +162,7 @@ func TestRouterAppliesConfiguredCORSExactly(t *testing.T) {
 	}
 }
 
-func TestRouterWildcardCORSDoesNotUseStarWhenCredentialsAreAllowed(t *testing.T) {
+func TestRouterRejectsCredentialedWildcardCORSExactly(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	cfg := testutil.TestConfig()
 	cfg.CORSOrigins = []string{"*"}
@@ -174,9 +174,18 @@ func TestRouterWildcardCORSDoesNotUseStarWhenCredentialsAreAllowed(t *testing.T)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK ||
-		rec.Header().Get("Access-Control-Allow-Origin") != "https://any.example" ||
-		rec.Header().Get("Access-Control-Allow-Credentials") != "true" {
+		rec.Header().Get("Access-Control-Allow-Origin") != "" ||
+		rec.Header().Get("Access-Control-Allow-Credentials") != "" {
 		t.Fatalf("credentialed wildcard cors mismatch: status=%d headers=%#v body=%q", rec.Code, rec.Header(), rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodOptions, "/v1/users/me", nil)
+	req.Header.Set("Origin", "https://any.example")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || rec.Body.String() != "Forbidden\n" || rec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("credentialed wildcard preflight mismatch: status=%d headers=%#v body=%q", rec.Code, rec.Header(), rec.Body.String())
 	}
 
 	cfg.CORSCredentials = false
