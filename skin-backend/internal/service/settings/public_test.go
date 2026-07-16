@@ -78,7 +78,6 @@ func TestSettingsPublicPropagatesEachSettingReadErrorExactly(t *testing.T) {
 		"filing_icp_link",
 		"filing_mps",
 		"filing_mps_link",
-		"easter_eggs_enabled",
 	}
 	for index, key := range keys {
 		t.Run(key, func(t *testing.T) {
@@ -96,6 +95,19 @@ func TestSettingsPublicPropagatesEachSettingReadErrorExactly(t *testing.T) {
 				t.Fatalf("Public() setting access trace=%#v calls=%d want failure at %s", cache.keys, cache.calls, key)
 			}
 		})
+	}
+}
+
+func TestSettingsPublicPropagatesEasterEggStoreErrorExactly(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	svc := settings.Settings{DB: db, Redis: testutil.NewMemoryRedis()}
+	if _, err := db.Pool.Exec(ctx, `DROP TABLE enabled_easter_eggs`); err != nil {
+		t.Fatal(err)
+	}
+	out, err := svc.Public(ctx, "http://cfg-site.local/", "http://cfg-api.local/")
+	if out != nil || err == nil {
+		t.Fatalf("Public() easter egg store failure out=%#v err=%v, want nil and database error", out, err)
 	}
 }
 

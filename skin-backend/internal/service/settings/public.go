@@ -59,11 +59,10 @@ func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map
 	if err != nil {
 		return nil, err
 	}
-	easterEggsRaw, err := s.Get(ctx, "easter_eggs_enabled", SettingDefaults["easter_eggs_enabled"])
+	easterEggs, err := s.DB.EasterEggs.ListEnabled(ctx)
 	if err != nil {
 		return nil, err
 	}
-	easterEggs := settingValue("easter_eggs_enabled", easterEggsRaw)
 	status := map[string]any{
 		"session":  "https://sessionserver.mojang.com",
 		"account":  "https://api.mojang.com",

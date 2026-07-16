@@ -28,6 +28,7 @@ func TestDBInitSchemaDefaultsAndCoreHelpers(t *testing.T) {
 		"fallback_endpoints",
 		"whitelisted_users",
 		"verification_codes",
+		"enabled_easter_eggs",
 		"delegated_clients",
 		"delegated_client_permissions",
 		"delegated_permission_grants",

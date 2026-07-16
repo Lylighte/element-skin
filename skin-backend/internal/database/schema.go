@@ -119,6 +119,12 @@ CREATE TABLE IF NOT EXISTS homepage_media (
     updated_at BIGINT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS enabled_easter_eggs (
+    id TEXT PRIMARY KEY,
+    sort_order INTEGER NOT NULL,
+    enabled_at BIGINT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS notices (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
@@ -415,6 +421,7 @@ CREATE INDEX IF NOT EXISTS idx_skin_library_created_hash ON skin_library (create
 CREATE INDEX IF NOT EXISTS idx_skin_library_public_usage_created_hash ON skin_library (is_public, usage_count DESC, created_at DESC, skin_hash DESC);
 CREATE INDEX IF NOT EXISTS idx_whitelisted_users_endpoint ON whitelisted_users (endpoint_id);
 CREATE INDEX IF NOT EXISTS idx_homepage_media_public_order ON homepage_media (enabled, sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_enabled_easter_eggs_order ON enabled_easter_eggs (sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_notices_active ON notices (enabled, audience, pinned, starts_at, ends_at, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_notices_cleanup ON notices (ends_at) WHERE ends_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_notice_receipts_user ON notice_receipts (user_id, read_at, dismissed_at);
@@ -432,6 +439,8 @@ CREATE INDEX IF NOT EXISTS idx_oauth_authorization_codes_grant_expiry ON oauth_a
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_user_client ON oauth_refresh_tokens (user_id, client_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_grant_active_expiry ON oauth_refresh_tokens (grant_id, expires_at) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_oauth_device_codes_client_status ON oauth_device_codes (client_id, status, expires_at);
+
+DELETE FROM settings WHERE key IN ('fallback_services', 'easter_eggs_enabled');
 
 INSERT INTO settings (key, value) VALUES
 ('microsoft_client_id', ''),

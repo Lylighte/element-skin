@@ -2,7 +2,6 @@ package settings
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -36,6 +35,13 @@ func (s Settings) GetGroup(ctx context.Context, group string) (map[string]any, e
 	if !ok {
 		return nil, util.HTTPError{Status: 400, Detail: "invalid settings group"}
 	}
+	if group == "easter_eggs" {
+		enabled, err := s.DB.EasterEggs.ListEnabled(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"easter_eggs_enabled": enabled}, nil
+	}
 	out := map[string]any{}
 	for _, key := range keys {
 		raw, err := s.Get(ctx, key, SettingDefaults[key])
@@ -58,6 +64,17 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 	keys, ok := settingsGroups[group]
 	if !ok {
 		return util.HTTPError{Status: 400, Detail: "invalid settings group"}
+	}
+	if group == "easter_eggs" {
+		raw, ok := body["easter_eggs_enabled"]
+		if !ok {
+			return nil
+		}
+		enabled, err := ValidateEasterEggs(raw)
+		if err != nil {
+			return err
+		}
+		return s.DB.EasterEggs.ReplaceEnabled(ctx, enabled)
 	}
 	allowed := map[string]bool{}
 	for _, key := range keys {
@@ -83,17 +100,6 @@ func (s Settings) SaveGroup(ctx context.Context, group string, body map[string]a
 				return util.HTTPError{Status: 400, Detail: "fallback_probe_interval must be between 60 and 86400 seconds"}
 			}
 			value = strconv.Itoa(n)
-		}
-		if key == "easter_eggs_enabled" {
-			normalized, err := ValidateEasterEggs(value)
-			if err != nil {
-				return err
-			}
-			b, err := json.Marshal(normalized)
-			if err != nil {
-				return err
-			}
-			value = string(b)
 		}
 		pending[key] = value
 	}

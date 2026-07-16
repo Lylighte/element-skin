@@ -36,7 +36,7 @@ func TestInitSQLExecutesSuccessfullyAgainstRealDatabase(t *testing.T) {
 	expectedTables := []string{
 		"users", "profiles", "site_refresh_tokens", "invites", "settings",
 		"user_textures", "skin_library", "fallback_endpoints", "whitelisted_users",
-		"verification_codes", "homepage_media", "notices", "notice_receipts",
+		"verification_codes", "homepage_media", "enabled_easter_eggs", "notices", "notice_receipts",
 		"permission_subjects", "permission_resources", "permission_actions",
 		"permission_scopes", "permissions", "roles", "role_permissions",
 		"subject_roles", "subject_permission_overrides",

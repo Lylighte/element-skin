@@ -21,14 +21,3 @@ func TestSettingValueCoercesExactTypes(t *testing.T) {
 		}
 	}
 }
-
-func TestSettingValueEasterEggsJSON(t *testing.T) {
-	got := settingValue("easter_eggs_enabled", `["christmas","dragon-boat"]`)
-	enabled := got.([]string)
-	if len(enabled) != 2 || enabled[0] != "christmas" || enabled[1] != "dragon-boat" {
-		t.Fatalf("easter_eggs_enabled JSON did not decode exactly: %#v", got)
-	}
-	if got := settingValue("easter_eggs_enabled", `{bad json}`); len(got.([]string)) != 0 {
-		t.Fatalf("invalid easter_eggs_enabled JSON should return empty list, got %#v", got)
-	}
-}

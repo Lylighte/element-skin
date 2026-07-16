@@ -1,9 +1,6 @@
 package settings
 
-import (
-	"encoding/json"
-	"strconv"
-)
+import "strconv"
 
 func settingValue(key, raw string) any {
 	switch key {
@@ -15,12 +12,6 @@ func settingValue(key, raw string) any {
 			n, _ = strconv.Atoi(SettingDefaults[key])
 		}
 		return n
-	case "easter_eggs_enabled":
-		var out []string
-		if err := json.Unmarshal([]byte(raw), &out); err != nil {
-			return []string{}
-		}
-		return out
 	default:
 		return raw
 	}

@@ -7,12 +7,12 @@ import (
 )
 
 func TestSettingDefaultsAndGroupsExposeCurrentFrontendGroups(t *testing.T) {
-	for _, key := range []string{"site_name", "allow_register", "smtp_port", "fallback_strategy", "easter_eggs_enabled"} {
+	for _, key := range []string{"site_name", "allow_register", "smtp_port", "fallback_strategy"} {
 		if _, ok := settings.SettingDefaults[key]; !ok {
 			t.Fatalf("missing setting default %q", key)
 		}
 	}
-	if got := settings.SettingDefaults["easter_eggs_enabled"]; got != `[]` {
-		t.Fatalf("easter eggs should default to disabled, got %s", got)
+	if _, exists := settings.SettingDefaults["easter_eggs_enabled"]; exists {
+		t.Fatal("structured easter egg state must not have a string setting default")
 	}
 }

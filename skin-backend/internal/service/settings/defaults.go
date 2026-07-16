@@ -34,7 +34,6 @@ var SettingDefaults = map[string]string{
 	"email_verify_ttl":             "300",
 	"fallback_strategy":            "serial",
 	"fallback_probe_interval":      "600",
-	"easter_eggs_enabled":          `[]`,
 }
 
 var settingsGroups = map[string][]string{
@@ -48,5 +47,5 @@ var settingsGroups = map[string][]string{
 	"microsoft":   {"microsoft_client_id", "microsoft_client_secret", "microsoft_redirect_uri"},
 	"email":       {"smtp_host", "smtp_port", "smtp_user", "smtp_username", "smtp_password", "smtp_ssl", "smtp_sender", "email_verify_enabled", "email_verify_ttl"},
 	"fallback":    {"fallback_strategy", "fallback_probe_interval"},
-	"easter_eggs": {"easter_eggs_enabled"},
+	"easter_eggs": nil,
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"element-skin/backend/internal/config"
+	"element-skin/backend/internal/database/easteregg"
 	"element-skin/backend/internal/database/fallback"
 	"element-skin/backend/internal/database/homepage"
 	"element-skin/backend/internal/database/invite"
@@ -35,6 +36,7 @@ type DB struct {
 	Textures      texture.Store
 	Tokens        token.Store
 	Settings      setting.Store
+	EasterEggs    easteregg.Store
 	Invites       invite.Store
 	Fallbacks     fallback.Store
 	HomepageMedia homepage.Store
@@ -74,6 +76,7 @@ func New(pool *pgxpool.Pool) *DB {
 		Textures:      texture.Store{Pool: pool},
 		Tokens:        token.Store{Pool: pool},
 		Settings:      setting.Store{Pool: pool},
+		EasterEggs:    easteregg.Store{Pool: pool},
 		Invites:       invite.Store{Pool: pool},
 		Fallbacks:     fallback.Store{Pool: pool},
 		HomepageMedia: homepage.Store{Pool: pool},
