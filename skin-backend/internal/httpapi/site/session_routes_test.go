@@ -52,7 +52,8 @@ func TestSessionRoutesAuthRateLimitIsScopedByForwardedClientIP(t *testing.T) {
 	}
 
 	first := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"site-rate-limit@test.com","password":"Password123"}`))
-	first.Header.Set("X-Forwarded-For", "203.0.113.9, 198.51.100.1")
+	first.RemoteAddr = "10.0.0.2:1234"
+	first.Header.Set("X-Forwarded-For", "198.51.100.1, 203.0.113.9")
 	rec := httptest.NewRecorder()
 	h.Login(rec, first)
 	if rec.Code != http.StatusOK {
@@ -60,6 +61,7 @@ func TestSessionRoutesAuthRateLimitIsScopedByForwardedClientIP(t *testing.T) {
 	}
 
 	second := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"site-rate-limit@test.com","password":"Password123"}`))
+	second.RemoteAddr = "10.0.0.2:1234"
 	second.Header.Set("X-Forwarded-For", "203.0.113.9")
 	rec = httptest.NewRecorder()
 	h.Login(rec, second)
@@ -69,6 +71,7 @@ func TestSessionRoutesAuthRateLimitIsScopedByForwardedClientIP(t *testing.T) {
 	}
 
 	otherIP := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"site-rate-limit@test.com","password":"Password123"}`))
+	otherIP.RemoteAddr = "10.0.0.2:1234"
 	otherIP.Header.Set("X-Forwarded-For", "203.0.113.10")
 	rec = httptest.NewRecorder()
 	h.Login(rec, otherIP)

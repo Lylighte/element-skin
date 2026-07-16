@@ -53,8 +53,11 @@ func TestRateLimitAddressAndRetryHelpersReturnExactValues(t *testing.T) {
 		remoteAddr string
 		want       string
 	}{
-		{name: "first forwarded address", forwarded: " 203.0.113.7 , 198.51.100.2", remoteAddr: "10.0.0.1:1234", want: "203.0.113.7"},
-		{name: "empty forwarded first value", forwarded: " , 198.51.100.2", remoteAddr: "10.0.0.1:1234", want: "10.0.0.1"},
+		{name: "nearest forwarded address", forwarded: " 203.0.113.7 , 198.51.100.2", remoteAddr: "10.0.0.1:1234", want: "198.51.100.2"},
+		{name: "malformed forwarded values are skipped", forwarded: "203.0.113.7, invalid, ", remoteAddr: "10.0.0.1:1234", want: "203.0.113.7"},
+		{name: "public direct peer ignores spoofed forwarding", forwarded: "203.0.113.7", remoteAddr: "1.1.1.1:1234", want: "1.1.1.1"},
+		{name: "private proxy without forwarding", remoteAddr: "10.0.0.1:1234", want: "10.0.0.1"},
+		{name: "loopback proxy accepts forwarding", forwarded: "203.0.113.9", remoteAddr: "127.0.0.1:1234", want: "203.0.113.9"},
 		{name: "IPv6 host and port", remoteAddr: "[2001:db8::8]:4321", want: "2001:db8::8"},
 		{name: "address without port", remoteAddr: "unix-client", want: "unix-client"},
 	} {

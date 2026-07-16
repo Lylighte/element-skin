@@ -45,17 +45,33 @@ func (h Handler) checkAuthRateLimit(w http.ResponseWriter, req *http.Request, sc
 }
 
 func clientIP(req *http.Request) string {
-	if forwarded := req.Header.Get("X-Forwarded-For"); forwarded != "" {
-		first := strings.TrimSpace(strings.Split(forwarded, ",")[0])
-		if first != "" {
-			return first
+	remote := remoteIP(req.RemoteAddr)
+	if remote == nil || !trustedForwardingPeer(remote) {
+		if remote != nil {
+			return remote.String()
+		}
+		return req.RemoteAddr
+	}
+	forwarded := strings.Split(req.Header.Get("X-Forwarded-For"), ",")
+	for index := len(forwarded) - 1; index >= 0; index-- {
+		candidate := net.ParseIP(strings.TrimSpace(forwarded[index]))
+		if candidate != nil {
+			return candidate.String()
 		}
 	}
-	host, _, err := net.SplitHostPort(req.RemoteAddr)
-	if err == nil && host != "" {
-		return host
+	return remote.String()
+}
+
+func remoteIP(remoteAddr string) net.IP {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err == nil {
+		return net.ParseIP(host)
 	}
-	return req.RemoteAddr
+	return net.ParseIP(strings.TrimSpace(remoteAddr))
+}
+
+func trustedForwardingPeer(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
 func retryAfterSeconds(d time.Duration) string {
