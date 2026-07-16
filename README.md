@@ -111,7 +111,7 @@ docker compose up -d
 | **场景 2** | `/skin/` | `/skin/api/` |
 
 需要注意的是，`.env` 中的 `SERVER_SITE_URL` 和 `SERVER_API_URL` 也需要根据实际部署路径进行调整，以确保生成的链接正确。
-当 `VITE_API_BASE` 使用 `/skinapi`、`/skin/api` 这类前缀时，Nginx 的 `proxy_pass` 末尾必须带 `/`，这样会把前缀剥掉再转发给后端。例如 `/skinapi/me` 会转成后端实际路由 `/me`。
+当 `VITE_API_BASE` 使用 `/skinapi`、`/skin/api` 这类前缀时，Nginx 的 `proxy_pass` 末尾必须带 `/`，这样会把前缀剥掉再转发给后端。例如 `/skinapi/v1/users/me` 会转成后端实际路由 `/v1/users/me`。
 
 **Nginx 主机配置 (对应场景 1)**
 ```nginx

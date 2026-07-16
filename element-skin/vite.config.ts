@@ -54,38 +54,22 @@ export default defineConfig({
     },
   },
   server: {
-    // 开发时将常用后端路由代理到本地后端，避免跨域或错发到 Vite dev server
     proxy: {
-      // Versioned site APIs
       '^/v1': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        rewrite: (path) => path,
       },
-      // Yggdrasil / auth APIs
-      '^/authserver': {
+      '^/(authserver|sessionserver|api|users|minecraft)': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        rewrite: (path) => path,
       },
-      // Session APIs
-      '^/sessionserver': {
+      '^/oauth': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        rewrite: (path) => path,
-      },
-      // API routes that might conflict with frontend routes
-      // When a browser refreshes on these paths, it should serve index.html instead of proxying to the backend
-      '^/(admin|register|reset-password|site-login|site-logout|me|public|microsoft|send-verification-code|remote-ygg|textures|notices|oauth)':
-        {
-          target: 'http://127.0.0.1:8000',
-          changeOrigin: true,
-          bypass: (req) => {
-            if (req.headers.accept?.indexOf('text/html') !== -1) {
-              return '/index.html'
-            }
-          },
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) return '/index.html'
         },
+      },
     },
   },
   build: {
