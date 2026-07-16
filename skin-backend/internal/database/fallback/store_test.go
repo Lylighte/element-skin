@@ -15,8 +15,8 @@ func TestStoreEndpointsDomainsAndWhitelist(t *testing.T) {
 	ctx := context.Background()
 	store := fallback.Store{Pool: db.Pool}
 	if err := store.SaveEndpoints(ctx, []fallback.Endpoint{
-		{Priority: 2, SessionURL: "https://session-two", AccountURL: "https://account-two", ServicesURL: "https://services-two", CacheTTL: 120, SkinDomains: "skins.example, cdn.example", EnableWhitelist: true, Note: "second"},
-		{Priority: 1, SessionURL: "https://session-one", AccountURL: "https://account-one", ServicesURL: "https://services-one", CacheTTL: 60, SkinDomains: "cdn.example, textures.example", EnableProfile: true, Note: "first"},
+		{Priority: 2, SessionURL: "https://session-two", AccountURL: "https://account-two", ServicesURL: "https://services-two", CacheTTL: 120, SkinDomains: []string{"skins.example", "cdn.example"}, EnableWhitelist: true, Note: "second"},
+		{Priority: 1, SessionURL: "https://session-one", AccountURL: "https://account-one", ServicesURL: "https://services-one", CacheTTL: 60, SkinDomains: []string{"cdn.example", "textures.example"}, EnableProfile: true, Note: "first"},
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -26,6 +26,7 @@ func TestDBInitSchemaDefaultsAndCoreHelpers(t *testing.T) {
 		"user_textures",
 		"skin_library",
 		"fallback_endpoints",
+		"fallback_skin_domains",
 		"whitelisted_users",
 		"verification_codes",
 		"enabled_easter_eggs",

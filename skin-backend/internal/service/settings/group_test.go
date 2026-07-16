@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -169,7 +170,7 @@ func TestSettingsInvalidFallbackGroupPreservesExistingConfiguration(t *testing.T
 		got["account_url"] != "https://old-account.example" ||
 		got["services_url"] != "https://old-services.example" ||
 		got["cache_ttl"] != 45 ||
-		got["skin_domains"] != "old-skins.example" ||
+		!reflect.DeepEqual(got["skin_domains"], []string{"old-skins.example"}) ||
 		got["enable_profile"] != false ||
 		got["enable_hasjoined"] != true ||
 		got["enable_whitelist"] != true ||

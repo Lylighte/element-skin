@@ -21,8 +21,8 @@ func TestYggdrasilMetadataUsesSiteSettingsAndSigningKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.Fallbacks.SaveEndpoints(ctx, []dbfallback.Endpoint{
-		{Priority: 1, SessionURL: "https://session.one", AccountURL: "https://account.one", ServicesURL: "https://services.one", CacheTTL: 60, SkinDomains: "cdn.example, skins.example"},
-		{Priority: 2, SessionURL: "https://session.two", AccountURL: "https://account.two", ServicesURL: "https://services.two", CacheTTL: 60, SkinDomains: "skins.example, skin.example"},
+		{Priority: 1, SessionURL: "https://session.one", AccountURL: "https://account.one", ServicesURL: "https://services.one", CacheTTL: 60, SkinDomains: []string{"cdn.example", "skins.example"}},
+		{Priority: 2, SessionURL: "https://session.two", AccountURL: "https://account.two", ServicesURL: "https://services.two", CacheTTL: 60, SkinDomains: []string{"skins.example", "skin.example"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

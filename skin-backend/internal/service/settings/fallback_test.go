@@ -35,8 +35,8 @@ func TestFallbackNormalizationHelpersExactValues(t *testing.T) {
 	if !boolValue("1") || !boolValue(float64(1)) || boolValue("false") || boolValue(0) {
 		t.Fatalf("boolValue exact coercion failed")
 	}
-	if got := normalizeDomains([]any{" skins.example ", "", "cdn.example"}); got != "skins.example,cdn.example" {
-		t.Fatalf("normalizeDomains list mismatch: %q", got)
+	if got := normalizeDomains([]any{" skins.example ", "", "cdn.example"}); !reflect.DeepEqual(got, []string{"skins.example", "cdn.example"}) {
+		t.Fatalf("normalizeDomains list mismatch: %#v", got)
 	}
 	if got := valueOr(nil, "fallback"); got != "fallback" {
 		t.Fatalf("valueOr nil mismatch: %#v", got)
@@ -114,7 +114,7 @@ func TestValidateFallbackEndpointsNormalizesJSONCompatibleValuesExactly(t *testi
 		"https://account.example",
 		"https://services.example",
 		90,
-		"skins.example,cdn.example",
+		[]string{"skins.example", "cdn.example"},
 		true,
 		false,
 		true,

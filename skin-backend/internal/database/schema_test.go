@@ -35,7 +35,7 @@ func TestInitSQLExecutesSuccessfullyAgainstRealDatabase(t *testing.T) {
 	ctx := context.Background()
 	expectedTables := []string{
 		"users", "profiles", "site_refresh_tokens", "invites", "settings",
-		"user_textures", "skin_library", "fallback_endpoints", "whitelisted_users",
+		"user_textures", "skin_library", "fallback_endpoints", "fallback_skin_domains", "whitelisted_users",
 		"verification_codes", "homepage_media", "enabled_easter_eggs", "notices", "notice_receipts",
 		"permission_subjects", "permission_resources", "permission_actions",
 		"permission_scopes", "permissions", "roles", "role_permissions",
@@ -111,6 +111,39 @@ func TestInitMigratesVersion241AdminColumnToPermissionRolesAndDropsIt(t *testing
 	}
 	if exists {
 		t.Fatal("2.4.1 is_admin column should be dropped after migration")
+	}
+}
+
+func TestInitMigratesDelimitedFallbackDomainsToStructuredRows(t *testing.T) {
+	db, _ := testutil.NewTestApp(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `
+		ALTER TABLE fallback_endpoints ADD COLUMN skin_domains TEXT DEFAULT '';
+		INSERT INTO fallback_endpoints (
+			priority,session_url,account_url,services_url,cache_ttl,skin_domains,
+			enable_profile,enable_hasjoined,enable_whitelist,note
+		) VALUES (1,'session','account','services',60,' first.example, second.example, first.example ',TRUE,TRUE,FALSE,'migration');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	domains, err := db.Fallbacks.CollectSkinDomains(ctx)
+	if err != nil || strings.Join(domains, ",") != "first.example,second.example" {
+		t.Fatalf("migrated fallback domains=%#v err=%v, want exact ordered unique rows", domains, err)
+	}
+	var legacyColumnExists bool
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema='public' AND table_name='fallback_endpoints' AND column_name='skin_domains'
+		)
+	`).Scan(&legacyColumnExists); err != nil {
+		t.Fatal(err)
+	}
+	if legacyColumnExists {
+		t.Fatal("legacy fallback_endpoints.skin_domains column should be removed")
 	}
 }
 

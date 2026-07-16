@@ -30,7 +30,7 @@ func ValidateFallbackEndpoints(value any) ([]fallback.Endpoint, error) {
 			AccountURL:      normalized["account_url"].(string),
 			ServicesURL:     normalized["services_url"].(string),
 			CacheTTL:        normalized["cache_ttl"].(int),
-			SkinDomains:     normalized["skin_domains"].(string),
+			SkinDomains:     normalized["skin_domains"].([]string),
 			EnableProfile:   normalized["enable_profile"].(bool),
 			EnableHasJoined: boolValue(valueOr(m["enable_hasjoined"], true)),
 			EnableWhitelist: normalized["enable_whitelist"].(bool),
@@ -97,7 +97,7 @@ func boolValue(v any) bool {
 	}
 }
 
-func normalizeDomains(value any) string {
+func normalizeDomains(value any) []string {
 	var parts []string
 	switch v := value.(type) {
 	case []any:
@@ -116,7 +116,7 @@ func normalizeDomains(value any) string {
 			clean = append(clean, part)
 		}
 	}
-	return strings.Join(clean, ",")
+	return clean
 }
 
 func valueOr(v any, fallback any) any {

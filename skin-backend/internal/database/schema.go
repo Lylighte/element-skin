@@ -76,11 +76,18 @@ CREATE TABLE IF NOT EXISTS fallback_endpoints (
     account_url TEXT NOT NULL,
     services_url TEXT NOT NULL,
     cache_ttl INTEGER NOT NULL,
-    skin_domains TEXT DEFAULT '',
     enable_profile BOOLEAN DEFAULT TRUE,
     enable_hasjoined BOOLEAN DEFAULT TRUE,
     enable_whitelist BOOLEAN DEFAULT FALSE,
     note TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS fallback_skin_domains (
+    endpoint_id INTEGER NOT NULL,
+    domain TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    PRIMARY KEY(endpoint_id, domain),
+    FOREIGN KEY(endpoint_id) REFERENCES fallback_endpoints(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS whitelisted_users (
@@ -402,6 +409,24 @@ DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS tokens;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE permission_subjects ADD COLUMN IF NOT EXISTS protected BOOLEAN NOT NULL DEFAULT FALSE;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='fallback_endpoints' AND column_name='skin_domains'
+    ) THEN
+        INSERT INTO fallback_skin_domains (endpoint_id,domain,sort_order)
+        SELECT endpoint.id, btrim(item.domain), item.ordinality
+        FROM fallback_endpoints endpoint
+        CROSS JOIN LATERAL unnest(string_to_array(endpoint.skin_domains, ','))
+            WITH ORDINALITY AS item(domain, ordinality)
+        WHERE btrim(item.domain) <> ''
+        ON CONFLICT (endpoint_id,domain) DO NOTHING;
+        ALTER TABLE fallback_endpoints DROP COLUMN skin_domains;
+    END IF;
+END $$;
+
 UPDATE users SET created_at = 0 WHERE created_at IS NULL;
 UPDATE skin_library sl SET usage_count = CASE sl.texture_type
     WHEN 'skin' THEN (SELECT COUNT(*) FROM user_textures ut WHERE ut.hash = sl.skin_hash AND ut.texture_type = 'skin')
@@ -420,6 +445,7 @@ CREATE INDEX IF NOT EXISTS idx_skin_library_public_created_hash ON skin_library 
 CREATE INDEX IF NOT EXISTS idx_skin_library_created_hash ON skin_library (created_at, skin_hash);
 CREATE INDEX IF NOT EXISTS idx_skin_library_public_usage_created_hash ON skin_library (is_public, usage_count DESC, created_at DESC, skin_hash DESC);
 CREATE INDEX IF NOT EXISTS idx_whitelisted_users_endpoint ON whitelisted_users (endpoint_id);
+CREATE INDEX IF NOT EXISTS idx_fallback_skin_domains_order ON fallback_skin_domains (endpoint_id, sort_order, domain);
 CREATE INDEX IF NOT EXISTS idx_homepage_media_public_order ON homepage_media (enabled, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_enabled_easter_eggs_order ON enabled_easter_eggs (sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_notices_active ON notices (enabled, audience, pinned, starts_at, ends_at, created_at, id);

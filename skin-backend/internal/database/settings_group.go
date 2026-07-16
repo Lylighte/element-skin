@@ -32,21 +32,8 @@ func (db *DB) SaveSettingsGroup(ctx context.Context, updates []SettingUpdate, en
 		}
 	}
 	if replaceEndpoints {
-		if _, err := tx.Exec(ctx, `DELETE FROM fallback_endpoints`); err != nil {
+		if err := fallback.ReplaceEndpoints(ctx, tx, endpoints); err != nil {
 			return err
-		}
-		for _, endpoint := range endpoints {
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO fallback_endpoints (
-					priority,session_url,account_url,services_url,cache_ttl,skin_domains,
-					enable_profile,enable_hasjoined,enable_whitelist,note
-				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-			`, endpoint.Priority, endpoint.SessionURL, endpoint.AccountURL, endpoint.ServicesURL,
-				endpoint.CacheTTL, endpoint.SkinDomains, endpoint.EnableProfile,
-				endpoint.EnableHasJoined, endpoint.EnableWhitelist, endpoint.Note,
-			); err != nil {
-				return err
-			}
 		}
 	}
 	return tx.Commit(ctx)

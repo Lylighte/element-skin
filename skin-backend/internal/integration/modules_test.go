@@ -59,7 +59,7 @@ func TestSettingsVerificationAndFallbackModules(t *testing.T) {
 	}
 	if err := db.Fallbacks.SaveEndpoints(ctx, []fallback.Endpoint{{
 		Priority: 1, SessionURL: "s1", AccountURL: "a1", ServicesURL: "v1",
-		CacheTTL: 60, SkinDomains: "d1,d2", EnableProfile: true, EnableHasJoined: true,
+		CacheTTL: 60, SkinDomains: []string{"d1", "d2"}, EnableProfile: true, EnableHasJoined: true,
 		EnableWhitelist: true, Note: "CustomEP",
 	}}); err != nil {
 		t.Fatal(err)

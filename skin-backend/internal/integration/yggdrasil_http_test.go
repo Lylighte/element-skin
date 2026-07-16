@@ -31,7 +31,7 @@ func TestYggdrasilAuthenticateJoinAndProfile(t *testing.T) {
 	db, h, redis := testutil.NewTestAppWithRedisTB(t)
 	if err := db.Fallbacks.SaveEndpoints(context.Background(), []fallback.Endpoint{{
 		Priority: 1, SessionURL: "https://session.example", AccountURL: "https://account.example", ServicesURL: "https://services.example",
-		CacheTTL: 60, SkinDomains: "textures.minecraft.net",
+		CacheTTL: 60, SkinDomains: []string{"textures.minecraft.net"},
 	}}); err != nil {
 		t.Fatal(err)
 	}

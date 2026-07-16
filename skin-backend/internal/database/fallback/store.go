@@ -3,9 +3,9 @@ package fallback
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,7 +17,7 @@ type Endpoint struct {
 	AccountURL      string
 	ServicesURL     string
 	CacheTTL        int
-	SkinDomains     string
+	SkinDomains     []string
 	EnableProfile   bool
 	EnableHasJoined bool
 	EnableWhitelist bool
@@ -36,7 +36,17 @@ func IsEndpointNotFound(err error) bool {
 }
 
 func (s Store) ListEndpoints(ctx context.Context) ([]map[string]any, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,priority,session_url,account_url,services_url,cache_ttl,skin_domains,enable_profile,enable_hasjoined,enable_whitelist,note FROM fallback_endpoints ORDER BY priority,id`)
+	rows, err := s.Pool.Query(ctx, `
+		SELECT endpoint.id,endpoint.priority,endpoint.session_url,endpoint.account_url,
+		       endpoint.services_url,endpoint.cache_ttl,
+		       COALESCE(array_agg(domain.domain ORDER BY domain.sort_order,domain.domain)
+		           FILTER (WHERE domain.domain IS NOT NULL), ARRAY[]::TEXT[]),
+		       endpoint.enable_profile,endpoint.enable_hasjoined,endpoint.enable_whitelist,endpoint.note
+		FROM fallback_endpoints endpoint
+		LEFT JOIN fallback_skin_domains domain ON domain.endpoint_id=endpoint.id
+		GROUP BY endpoint.id
+		ORDER BY endpoint.priority,endpoint.id
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -63,22 +73,48 @@ func (s Store) SaveEndpoints(ctx context.Context, endpoints []Endpoint) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `DELETE FROM fallback_endpoints`); err != nil {
+	if err := ReplaceEndpoints(ctx, tx, endpoints); err != nil {
 		return err
-	}
-	for _, e := range endpoints {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO fallback_endpoints (priority,session_url,account_url,services_url,cache_ttl,skin_domains,enable_profile,enable_hasjoined,enable_whitelist,note)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		`, e.Priority, e.SessionURL, e.AccountURL, e.ServicesURL, e.CacheTTL, e.SkinDomains, e.EnableProfile, e.EnableHasJoined, e.EnableWhitelist, e.Note); err != nil {
-			return err
-		}
 	}
 	return tx.Commit(ctx)
 }
 
+func ReplaceEndpoints(ctx context.Context, tx pgx.Tx, endpoints []Endpoint) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM fallback_endpoints`); err != nil {
+		return err
+	}
+	for _, endpoint := range endpoints {
+		var endpointID int
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO fallback_endpoints (
+				priority,session_url,account_url,services_url,cache_ttl,
+				enable_profile,enable_hasjoined,enable_whitelist,note
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			RETURNING id
+		`, endpoint.Priority, endpoint.SessionURL, endpoint.AccountURL, endpoint.ServicesURL,
+			endpoint.CacheTTL, endpoint.EnableProfile, endpoint.EnableHasJoined,
+			endpoint.EnableWhitelist, endpoint.Note).Scan(&endpointID); err != nil {
+			return err
+		}
+		for index, domain := range endpoint.SkinDomains {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO fallback_skin_domains (endpoint_id,domain,sort_order)
+				VALUES ($1,$2,$3)
+			`, endpointID, domain, index+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (s Store) CollectSkinDomains(ctx context.Context) ([]string, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT skin_domains FROM fallback_endpoints ORDER BY priority,id`)
+	rows, err := s.Pool.Query(ctx, `
+		SELECT domain.domain
+		FROM fallback_skin_domains domain
+		JOIN fallback_endpoints endpoint ON endpoint.id=domain.endpoint_id
+		ORDER BY endpoint.priority,endpoint.id,domain.sort_order,domain.domain
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -86,16 +122,13 @@ func (s Store) CollectSkinDomains(ctx context.Context) ([]string, error) {
 	seen := map[string]bool{}
 	var out []string
 	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
+		var domain string
+		if err := rows.Scan(&domain); err != nil {
 			return nil, err
 		}
-		for _, part := range strings.Split(raw, ",") {
-			d := strings.TrimSpace(part)
-			if d != "" && !seen[d] {
-				seen[d] = true
-				out = append(out, d)
-			}
+		if !seen[domain] {
+			seen[domain] = true
+			out = append(out, domain)
 		}
 	}
 	return out, rows.Err()

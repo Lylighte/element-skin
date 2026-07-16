@@ -3,6 +3,7 @@ package database_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"element-skin/backend/internal/database"
@@ -29,7 +30,7 @@ func TestSaveSettingsGroupPersistsExactSettingsAndEndpoints(t *testing.T) {
 			AccountURL:      "https://first.example/account",
 			ServicesURL:     "https://first.example/services",
 			CacheTTL:        45,
-			SkinDomains:     "first.example,cdn.first.example",
+			SkinDomains:     []string{"first.example", "cdn.first.example"},
 			EnableProfile:   true,
 			EnableHasJoined: false,
 			EnableWhitelist: true,
@@ -41,7 +42,7 @@ func TestSaveSettingsGroupPersistsExactSettingsAndEndpoints(t *testing.T) {
 			AccountURL:      "https://second.example/account",
 			ServicesURL:     "https://second.example/services",
 			CacheTTL:        90,
-			SkinDomains:     "second.example",
+			SkinDomains:     []string{"second.example"},
 			EnableProfile:   false,
 			EnableHasJoined: true,
 			EnableWhitelist: false,
@@ -80,7 +81,7 @@ func TestSaveSettingsGroupPersistsExactSettingsAndEndpoints(t *testing.T) {
 			item["account_url"] != want.AccountURL ||
 			item["services_url"] != want.ServicesURL ||
 			item["cache_ttl"] != want.CacheTTL ||
-			item["skin_domains"] != want.SkinDomains ||
+			!reflect.DeepEqual(item["skin_domains"], want.SkinDomains) ||
 			item["enable_profile"] != want.EnableProfile ||
 			item["enable_hasjoined"] != want.EnableHasJoined ||
 			item["enable_whitelist"] != want.EnableWhitelist ||
