@@ -15,13 +15,6 @@ import (
 	"element-skin/backend/internal/testutil"
 )
 
-type probeRoute struct {
-	Method string
-	Path   string
-	Status int
-	Calls  int32
-}
-
 func TestProbeRunMarksUpFor200And404AndDownOtherwise(t *testing.T) {
 	db, _, redis := testutil.NewTestAppWithRedisTB(t)
 	ctx := context.Background()

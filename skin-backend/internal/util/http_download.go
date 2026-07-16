@@ -44,7 +44,7 @@ func DownloadTexture(client *http.Client, rawURL string, maxBytes int64) ([]byte
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Failed to download texture: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to download texture: status %d", resp.StatusCode)
 	}
 	if resp.ContentLength > maxBytes {
 		return nil, fmt.Errorf("texture too large")

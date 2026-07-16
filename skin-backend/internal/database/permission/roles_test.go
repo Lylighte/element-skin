@@ -328,15 +328,6 @@ func TestRoleIDsForUserRowsScanError(t *testing.T) {
 	}
 }
 
-func containsRole(roles []string, expected string) bool {
-	for _, role := range roles {
-		if role == expected {
-			return true
-		}
-	}
-	return false
-}
-
 func sameStringSlice(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

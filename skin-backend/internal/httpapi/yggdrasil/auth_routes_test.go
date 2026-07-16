@@ -77,7 +77,7 @@ func TestAuthRoutesAuthenticateRefreshJoinAndHasJoinedFlow(t *testing.T) {
 	}
 	refreshPayload := decodeYggJSON(t, rec.Body.String())
 	refreshed, ok := refreshPayload["accessToken"].(string)
-	if refreshed == "" || refreshed == access {
+	if !ok || refreshed == "" || refreshed == access {
 		t.Fatalf("refresh should rotate access token: old=%q newBody=%q", access, rec.Body.String())
 	}
 	if _, err := redis.GetYggToken(context.Background(), access); !errors.Is(err, redisstore.ErrCacheMiss) {

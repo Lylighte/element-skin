@@ -136,7 +136,7 @@ func TestTextureRoutesRejectMalformedUploadsExactly(t *testing.T) {
 	req = withUserActor(req, user.ID)
 	rec = httptest.NewRecorder()
 	h.UploadAndApplyTexture(rec, req)
-	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Image must be PNG format\"}\n" {
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"image must be PNG format\"}\n" {
 		t.Fatalf("upload apply invalid image mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
@@ -167,7 +167,7 @@ func TestTextureRoutesInvalidImageReturns400(t *testing.T) {
 	req = withUserActor(req, user.ID)
 	rec := httptest.NewRecorder()
 	h.UploadMyTexture(rec, req)
-	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"Image must be PNG format\"}\n" {
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != "{\"detail\":\"image must be PNG format\"}\n" {
 		t.Fatalf("invalid image should return 400: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 

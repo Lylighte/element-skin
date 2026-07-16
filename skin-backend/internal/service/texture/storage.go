@@ -35,7 +35,7 @@ func (s *TextureStorage) ProcessAndSave(data []byte, textureType string) (string
 func (s *TextureStorage) ProcessAndSaveTracked(data []byte, textureType string) (string, bool, error) {
 	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
-		return "", false, fmt.Errorf("Image must be PNG format")
+		return "", false, fmt.Errorf("image must be PNG format")
 	}
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()

@@ -170,7 +170,7 @@ func TestTextureUploadRejectsMissingFileAndNonPNGExactly(t *testing.T) {
 	req.SetPathValue("texture_type", "skin")
 	rec = httptest.NewRecorder()
 	h.UploadTexture(rec, req)
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"Image must be PNG format"`) {
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"detail":"image must be PNG format"`) {
 		t.Fatalf("non-PNG upload mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }

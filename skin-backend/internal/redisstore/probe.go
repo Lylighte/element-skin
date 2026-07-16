@@ -51,7 +51,12 @@ func (s *RedisStore) AppendProbeSamples(ctx context.Context, samples []ProbeSamp
 
 func (s *RedisStore) GetProbeHistory(ctx context.Context, since time.Time) ([]ProbeSample, error) {
 	min := strconv.FormatInt(since.UnixMilli(), 10)
-	values, err := s.client.ZRangeByScore(ctx, s.probeHistoryKey(), &redis.ZRangeBy{Min: min, Max: "+inf"}).Result()
+	values, err := s.client.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     s.probeHistoryKey(),
+		Start:   min,
+		Stop:    "+inf",
+		ByScore: true,
+	}).Result()
 	if err != nil {
 		return nil, err
 	}

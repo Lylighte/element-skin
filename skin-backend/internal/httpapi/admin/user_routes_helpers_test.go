@@ -90,27 +90,6 @@ type authInvalidateFailRedis struct {
 	userIDs []string
 }
 
-type repopulateDuringTransferRedis struct {
-	redisstore.Store
-	oldUsers map[string]redisstore.AuthUser
-	userIDs  []string
-}
-
-func (r *repopulateDuringTransferRedis) InvalidateAuthUser(ctx context.Context, userID string) error {
-	r.userIDs = append(r.userIDs, userID)
-	if err := r.Store.InvalidateAuthUser(ctx, userID); err != nil {
-		return err
-	}
-	if len(r.userIDs) == 2 {
-		for _, oldUser := range r.oldUsers {
-			if err := r.Store.SetAuthUser(ctx, oldUser, time.Minute); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (r *authInvalidateFailRedis) InvalidateAuthUser(ctx context.Context, userID string) error {
 	r.userIDs = append(r.userIDs, userID)
 	if len(r.userIDs) == r.failAt {
