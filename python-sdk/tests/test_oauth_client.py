@@ -6,7 +6,6 @@ import httpx
 import pytest
 
 from element_skin_sdk import MemoryTokenStore, OAuthClient
-from element_skin_sdk.http import HTTPClient
 from element_skin_sdk.exceptions import InvalidScope, OAuthError
 from element_skin_sdk.permissions import AccountScopes, InviteScopes, MinecraftScopes, ProfileScopes
 
