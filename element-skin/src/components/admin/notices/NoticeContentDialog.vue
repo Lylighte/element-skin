@@ -12,14 +12,14 @@
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
           <el-form-item label="标题">
             <el-input
-              v-model="form.title"
+              v-model="title"
               maxlength="80"
               show-word-limit
               placeholder="例如：OAuth 应用注册开放说明"
             />
           </el-form-item>
           <el-form-item label="展示方式">
-            <el-radio-group v-model="form.display_mode">
+            <el-radio-group v-model="displayMode">
               <el-radio-button value="inline">短公告</el-radio-button>
               <el-radio-button value="detail">长公告</el-radio-button>
             </el-radio-group>
@@ -27,7 +27,7 @@
         </div>
         <el-form-item label="摘要">
           <el-input
-            v-model="form.summary"
+            v-model="summary"
             type="textarea"
             :rows="4"
             maxlength="160"
@@ -41,7 +41,7 @@
         </el-form-item>
         <el-form-item v-if="form.display_mode === 'detail'" label="正文 Markdown">
           <el-input
-            v-model="form.content_markdown"
+            v-model="contentMarkdown"
             type="textarea"
             :rows="18"
             maxlength="20000"
@@ -96,12 +96,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
 import type { NoticeDraft } from '@/api/admin/notices'
 import { noticeLevelLabel, noticeLevelTagType } from './noticeForm'
 
-defineProps<{
+const props = defineProps<{
   modelValue: boolean
   createMode: boolean
   form: NoticeDraft
@@ -110,6 +111,19 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  'update:form': [value: NoticeDraft]
   continue: []
 }>()
+
+const title = draftField('title')
+const displayMode = draftField('display_mode')
+const summary = draftField('summary')
+const contentMarkdown = draftField('content_markdown')
+
+function draftField<K extends keyof NoticeDraft>(field: K) {
+  return computed<NoticeDraft[K]>({
+    get: () => props.form[field],
+    set: (value) => emit('update:form', { ...props.form, [field]: value }),
+  })
+}
 </script>

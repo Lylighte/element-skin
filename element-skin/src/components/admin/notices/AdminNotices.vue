@@ -113,6 +113,7 @@
       :create-mode="createMode"
       :form="form"
       :preview-html="previewHtml"
+      @update:form="replaceForm"
       @continue="continueToSettings"
     />
 
@@ -121,6 +122,7 @@
       :create-mode="createMode"
       :saving="saving"
       :form="form"
+      @update:form="replaceForm"
       @back="backToContent"
       @save="saveNotice"
     />
@@ -175,6 +177,10 @@ const levelTagType = noticeLevelTagType
 
 function resetForm() {
   Object.assign(form, defaultNoticeDraft())
+}
+
+function replaceForm(next: NoticeDraft) {
+  Object.assign(form, next)
 }
 
 function formatDate(ts: number | null | undefined) {
