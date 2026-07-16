@@ -89,13 +89,20 @@ func TestPublicAuthUsesGuestAndRejectsInvalidOrDeniedAuthenticatedActorsExactly(
 	if len(publicKeys.ProfilePropertyKeys) != 1 || len(publicKeys.PlayerCertificateKeys) != 1 || publicKeys.ProfilePropertyKeys[0] != wantKeys[0] || publicKeys.PlayerCertificateKeys[0] != wantKeys[0] {
 		t.Fatalf("guest public keys body mismatch: %#v", publicKeys)
 	}
+	recWithoutSlash := httptest.NewRecorder()
+	router.ServeHTTP(recWithoutSlash, httptest.NewRequest(http.MethodGet, "/api/publickeys", nil))
+	if recWithoutSlash.Code != http.StatusOK || recWithoutSlash.Body.String() != rec.Body.String() {
+		t.Fatalf("public keys aliases diverged: slash=%q no-slash status=%d body=%q", rec.Body.String(), recWithoutSlash.Code, recWithoutSlash.Body.String())
+	}
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("Authorization", "Bearer invalid-public-token")
-	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized || rec.Body.String() != "{\"detail\":\"not authenticated\"}\n" {
-		t.Fatalf("invalid public bearer mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	for _, path := range publicSiteAuthPaths {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer invalid-public-token")
+		rec = httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized || rec.Body.String() != "{\"detail\":\"not authenticated\"}\n" {
+			t.Fatalf("invalid public bearer mismatch for %s: status=%d body=%q", path, rec.Code, rec.Body.String())
+		}
 	}
 
 	user := testutil.CreateUser(t, db, "public-denied@test.com", "Password123", "PublicDenied", false)
@@ -106,12 +113,14 @@ func TestPublicAuthUsesGuestAndRejectsInvalidOrDeniedAuthenticatedActorsExactly(
 	if err != nil {
 		t.Fatal(err)
 	}
-	req = httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
-	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
-		t.Fatalf("denied authenticated public actor mismatch: status=%d body=%q", rec.Code, rec.Body.String())
+	for _, path := range publicSiteAuthPaths {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+		rec = httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden || rec.Body.String() != "{\"detail\":\"permission denied\"}\n" {
+			t.Fatalf("denied authenticated public actor mismatch for %s: status=%d body=%q", path, rec.Code, rec.Body.String())
+		}
 	}
 
 	rec = httptest.NewRecorder()
@@ -547,6 +556,8 @@ var publicV1ResourceCases = []publicV1ResourceCase{
 	{name: "textures property", method: http.MethodGet, path: "/v1/minecraft/profiles/missing/textures-property", guestStatus: http.StatusNotFound, guestBody: "{\"detail\":\"minecraft profile not found\"}\n"},
 	{name: "profiles by names", method: http.MethodPost, path: "/v1/minecraft/profiles/by-names", body: `{"names":[]}`, guestStatus: http.StatusOK, guestBody: "{\"items\":[]}\n"},
 }
+
+var publicSiteAuthPaths = []string{"/", "/api/publickeys", "/api/publickeys/"}
 
 func (s *authCacheWriteFailStore) SetAuthUser(context.Context, redisstore.AuthUser, time.Duration) error {
 	s.setCalls++
