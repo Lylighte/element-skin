@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -118,7 +119,7 @@ func (c *Config) apply(raw rawConfig) {
 	c.DatabasePassword = getString(raw, "database.password", c.DatabasePassword)
 	c.DatabaseName = getString(raw, "database.name", c.DatabaseName)
 	c.DatabaseSSLMode = getString(raw, "database.sslmode", c.DatabaseSSLMode)
-	if n := getInt(raw, "database.max_connections", int(c.MaxConnections)); n > 0 {
+	if n := getInt(raw, "database.max_connections", int(c.MaxConnections)); n > 0 && n <= math.MaxInt32 {
 		c.MaxConnections = int32(n)
 	}
 	c.JWTSecret = getString(raw, "jwt.secret", c.JWTSecret)

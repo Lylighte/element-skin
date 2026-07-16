@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -113,7 +114,7 @@ func applyInt32Env(raw rawConfig, envName, dotted string, target *int32, valid f
 	if !ok {
 		return false, nil
 	}
-	if valid != nil && !valid(value) {
+	if (valid != nil && !valid(value)) || value > math.MaxInt32 {
 		return false, fmt.Errorf("invalid environment variable %s", envName)
 	}
 	*target = int32(value)

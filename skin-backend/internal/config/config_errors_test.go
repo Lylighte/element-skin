@@ -109,6 +109,48 @@ func TestLoadRejectsInvalidEnvironmentOverride(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsOverflowingMaxConnectionsFromFileAndEnvironmentExactly(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		fileValue string
+		envValue  string
+		wantError string
+	}{
+		{
+			name:      "file",
+			fileValue: "4294967297",
+			wantError: "invalid config database.max_connections",
+		},
+		{
+			name:      "environment",
+			fileValue: "10",
+			envValue:  "4294967297",
+			wantError: "invalid environment variable DATABASE_MAX_CONNECTIONS",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearConfigEnv(t)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			raw := strings.Replace(minimalConfigYAML(), "max_connections: 10", "max_connections: "+tc.fileValue, 1)
+			if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if tc.envValue != "" {
+				t.Setenv("DATABASE_MAX_CONNECTIONS", tc.envValue)
+			}
+
+			cfg, err := Load(path)
+			if err == nil || err.Error() != tc.wantError {
+				t.Fatalf("overflow result: cfg=%#v err=%v; want %q", cfg, err, tc.wantError)
+			}
+			after, readErr := os.ReadFile(path)
+			if readErr != nil || string(after) != raw {
+				t.Fatalf("overflowing config must not be rewritten: readErr=%v after=%q", readErr, string(after))
+			}
+		})
+	}
+}
+
 func TestLoadRejectsCredentialedWildcardCORSExactly(t *testing.T) {
 	clearConfigEnv(t)
 	path := filepath.Join(t.TempDir(), "config.yaml")
