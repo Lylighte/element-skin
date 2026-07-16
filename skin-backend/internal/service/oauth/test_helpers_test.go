@@ -60,6 +60,12 @@ func newOAuthService(db *database.DB) oauth.Service {
 	return oauth.Service{DB: db, Redis: redisstore.NewMemoryStore()}
 }
 
+func oauthNoticeReader(userID string) permission.Actor {
+	bits := permission.NewBitSet(len(permission.Definitions))
+	bits.Set(permission.MustDefinitionByCode("notice.read.owned").BitIndex)
+	return permission.Actor{SubjectID: "user:" + userID, UserID: userID, Permissions: bits}
+}
+
 func grantClientPermission(t *testing.T, db *database.DB, clientID, code string) {
 	t.Helper()
 	def := permission.MustDefinitionByCode(code)

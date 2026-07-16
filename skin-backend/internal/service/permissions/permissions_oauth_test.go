@@ -128,7 +128,7 @@ func TestPermissionServiceSetOverrideReconcilesOAuthDependentsExactly(t *testing
 	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("auth cache should still be invalidated exactly, got %v", err)
 	}
-	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestPermissionServiceClearAllowOverrideReconcilesOAuthDependentsExactly(t *
 		t.Fatalf("auth cache should be invalidated exactly after clear, got %v", err)
 	}
 
-	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

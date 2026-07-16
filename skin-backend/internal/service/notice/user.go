@@ -8,10 +8,15 @@ import (
 	"element-skin/backend/internal/database"
 	noticedb "element-skin/backend/internal/database/notice"
 	"element-skin/backend/internal/model"
+	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/util"
 )
 
-func (s Service) ListForUser(ctx context.Context, user CurrentUser, params ListParams) (map[string]any, error) {
+func (s Service) ListForUser(ctx context.Context, actor permission.Actor, params ListParams) (map[string]any, error) {
+	if err := requirePermission(actor, noticeReadOwnedPermission); err != nil {
+		return nil, err
+	}
+	user := noticeUser(actor)
 	cur, err := parseCursor(params.Cursor)
 	if err != nil {
 		return nil, util.HTTPError{Status: http.StatusBadRequest, Detail: "Invalid cursor"}
@@ -36,7 +41,11 @@ func (s Service) ListForUser(ctx context.Context, user CurrentUser, params ListP
 	})
 }
 
-func (s Service) GetForUser(ctx context.Context, id string, user CurrentUser) (*model.NoticeView, error) {
+func (s Service) GetForUser(ctx context.Context, id string, actor permission.Actor) (*model.NoticeView, error) {
+	if err := requirePermission(actor, noticeReadOwnedPermission); err != nil {
+		return nil, err
+	}
+	user := noticeUser(actor)
 	item, err := s.DB.Notices.GetForUser(ctx, id, user.ID, user.CanReadAdminAudience)
 	if err != nil {
 		return nil, err
@@ -55,7 +64,11 @@ func (s Service) GetForUser(ctx context.Context, id string, user CurrentUser) (*
 	return item, nil
 }
 
-func (s Service) MarkRead(ctx context.Context, id string, user CurrentUser) error {
+func (s Service) MarkRead(ctx context.Context, id string, actor permission.Actor) error {
+	if err := requirePermission(actor, noticeReadOwnedPermission); err != nil {
+		return err
+	}
+	user := noticeUser(actor)
 	item, err := s.DB.Notices.GetForUser(ctx, id, user.ID, user.CanReadAdminAudience)
 	if err != nil {
 		return err
@@ -66,7 +79,11 @@ func (s Service) MarkRead(ctx context.Context, id string, user CurrentUser) erro
 	return s.DB.Notices.MarkRead(ctx, id, user.ID, database.NowMS())
 }
 
-func (s Service) Dismiss(ctx context.Context, id string, user CurrentUser) error {
+func (s Service) Dismiss(ctx context.Context, id string, actor permission.Actor) error {
+	if err := requirePermission(actor, noticeDismissOwnedPermission); err != nil {
+		return err
+	}
+	user := noticeUser(actor)
 	item, err := s.DB.Notices.GetForUser(ctx, id, user.ID, user.CanReadAdminAudience)
 	if err != nil {
 		return err

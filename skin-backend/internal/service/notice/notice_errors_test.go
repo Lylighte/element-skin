@@ -15,7 +15,7 @@ func TestNoticeServicePropagatesDatabaseErrorsExactly(t *testing.T) {
 	svc := noticesvc.Service{DB: db}
 	ctx := context.Background()
 	db.Close()
-	user := noticesvc.CurrentUser{ID: "notice-db-error-user"}
+	user := noticeActor("notice-db-error-user", "notice.read.owned", "notice.dismiss.owned")
 	actor := noticeManagerActor("admin-id")
 
 	if _, err := svc.GetForUser(ctx, "notice-id", user); err == nil || err.Error() != "closed pool" {

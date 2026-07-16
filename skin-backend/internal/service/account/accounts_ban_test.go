@@ -49,7 +49,7 @@ func TestAccountServiceBanUserPersistsInvalidatesCacheAndSendsExactNotice(t *tes
 		t.Fatalf("ban should invalidate auth cache exactly, got %v", err)
 	}
 
-	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestAccountServiceBanUserPersistsInvalidatesCacheAndSendsExactNotice(t *tes
 	}
 
 	other := testutil.CreateUser(t, db, "other-account-ban@test.com", "Password123", "OtherAccountBan", false)
-	otherPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: other.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	otherPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(other.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

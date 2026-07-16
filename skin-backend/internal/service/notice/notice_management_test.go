@@ -96,14 +96,15 @@ func TestNoticeServiceAdminListMarkReadDeleteAndCursorErrorsExactly(t *testing.T
 	if _, err := svc.ListForManagement(ctx, actor, noticesvc.ListParams{Cursor: "not-a-cursor"}); !httpError(err, 400, "Invalid cursor") {
 		t.Fatalf("invalid admin cursor error mismatch: %#v", err)
 	}
-	if _, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: user.ID}, noticesvc.ListParams{Type: "other"}); !httpError(err, 400, "invalid type") {
+	reader := noticeActor(user.ID, "notice.read.owned")
+	if _, err := svc.ListForUser(ctx, reader, noticesvc.ListParams{Type: "other"}); !httpError(err, 400, "invalid type") {
 		t.Fatalf("invalid user type error mismatch: %#v", err)
 	}
-	if _, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: user.ID}, noticesvc.ListParams{Cursor: "not-a-cursor"}); !httpError(err, 400, "Invalid cursor") {
+	if _, err := svc.ListForUser(ctx, reader, noticesvc.ListParams{Cursor: "not-a-cursor"}); !httpError(err, 400, "Invalid cursor") {
 		t.Fatalf("invalid user cursor error mismatch: %#v", err)
 	}
 
-	if err := svc.MarkRead(ctx, enabled.ID, noticesvc.CurrentUser{ID: user.ID}); err != nil {
+	if err := svc.MarkRead(ctx, enabled.ID, reader); err != nil {
 		t.Fatal(err)
 	}
 	view, err := db.Notices.GetForUser(ctx, enabled.ID, user.ID, false)
@@ -113,7 +114,7 @@ func TestNoticeServiceAdminListMarkReadDeleteAndCursorErrorsExactly(t *testing.T
 	if view == nil || !view.Read || view.ReadAt == nil {
 		t.Fatalf("MarkRead should persist exact read state: %#v", view)
 	}
-	if err := svc.MarkRead(ctx, scheduled.ID, noticesvc.CurrentUser{ID: user.ID}); !httpError(err, 404, "notice not found") {
+	if err := svc.MarkRead(ctx, scheduled.ID, reader); !httpError(err, 404, "notice not found") {
 		t.Fatalf("MarkRead hidden notice error mismatch: %#v", err)
 	}
 	if err := svc.Delete(ctx, actor, "missing-notice"); !httpError(err, 404, "notice not found") {

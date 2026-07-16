@@ -48,7 +48,7 @@ func TestServiceOAuthReviewFlowCreatesExactNotifications(t *testing.T) {
 		MinEnds:  beforeCreate + int64((30*24*60*60*1000)-1000),
 	})
 
-	ownerSystemPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: owner.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	ownerSystemPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, oauthNoticeReader(owner.ID), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestServiceOAuthReviewFlowCreatesExactNotifications(t *testing.T) {
 		MinEnds:  beforeCreate + int64((30*24*60*60*1000)-1000),
 	})
 
-	otherPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: other.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	otherPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, oauthNoticeReader(other.ID), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

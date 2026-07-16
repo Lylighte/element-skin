@@ -62,7 +62,7 @@ func TestNoticeServiceTargetedAudienceOnlyVisibleToTargets(t *testing.T) {
 		t.Fatalf("target rows=%d want 1", targetRows)
 	}
 
-	targetPage, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	targetPage, err := svc.ListForUser(ctx, noticeActor(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,17 +70,17 @@ func TestNoticeServiceTargetedAudienceOnlyVisibleToTargets(t *testing.T) {
 	if len(targetItems) != 1 || targetItems[0].ID != created.ID || targetItems[0].Read || targetItems[0].Audience != noticesvc.AudienceTargeted {
 		t.Fatalf("target user list mismatch: %#v", targetItems)
 	}
-	otherPage, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: other.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	otherPage, err := svc.ListForUser(ctx, noticeActor(other.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if items := otherPage["items"].([]model.NoticeView); len(items) != 0 {
 		t.Fatalf("other user should not see targeted notice: %#v", items)
 	}
-	if _, err := svc.GetForUser(ctx, created.ID, noticesvc.CurrentUser{ID: other.ID}); !httpError(err, 404, "notice not found") {
+	if _, err := svc.GetForUser(ctx, created.ID, noticeActor(other.ID, "notice.read.owned")); !httpError(err, 404, "notice not found") {
 		t.Fatalf("other user targeted detail mismatch: %#v", err)
 	}
-	got, err := svc.GetForUser(ctx, created.ID, noticesvc.CurrentUser{ID: target.ID})
+	got, err := svc.GetForUser(ctx, created.ID, noticeActor(target.ID, "notice.read.owned"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,17 +113,17 @@ func TestNoticeServiceTargetedAudienceOnlyVisibleToTargets(t *testing.T) {
 	if replacedTargets != 1 {
 		t.Fatalf("replaced target rows=%d want 1", replacedTargets)
 	}
-	if _, err := svc.GetForUser(ctx, created.ID, noticesvc.CurrentUser{ID: target.ID}); !httpError(err, 404, "notice not found") {
+	if _, err := svc.GetForUser(ctx, created.ID, noticeActor(target.ID, "notice.read.owned")); !httpError(err, 404, "notice not found") {
 		t.Fatalf("old targeted detail mismatch after replace: %#v", err)
 	}
-	replacedView, err := svc.GetForUser(ctx, replaced.ID, noticesvc.CurrentUser{ID: target.ID})
+	replacedView, err := svc.GetForUser(ctx, replaced.ID, noticeActor(target.ID, "notice.read.owned"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if replacedView.Title != "Targeted notice replaced" || replacedView.ContentMarkdown != "Replacement body" {
 		t.Fatalf("replaced targeted detail mismatch: %#v", replacedView)
 	}
-	if _, err := svc.GetForUser(ctx, replaced.ID, noticesvc.CurrentUser{ID: other.ID}); !httpError(err, 404, "notice not found") {
+	if _, err := svc.GetForUser(ctx, replaced.ID, noticeActor(other.ID, "notice.read.owned")); !httpError(err, 404, "notice not found") {
 		t.Fatalf("other user replaced targeted detail mismatch: %#v", err)
 	}
 }
@@ -141,10 +141,10 @@ func TestNoticeServiceAudienceAndLifecycleVisibilityExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.GetForUser(ctx, adminOnly.ID, noticesvc.CurrentUser{ID: user.ID}); !httpError(err, 404, "notice not found") {
+	if _, err := svc.GetForUser(ctx, adminOnly.ID, noticeActor(user.ID, "notice.read.owned")); !httpError(err, 404, "notice not found") {
 		t.Fatalf("normal user should not see admin notice, got %#v", err)
 	}
-	if got, err := svc.GetForUser(ctx, adminOnly.ID, noticesvc.CurrentUser{ID: admin.ID, CanReadAdminAudience: true}); err != nil || got == nil || got.ID != adminOnly.ID {
+	if got, err := svc.GetForUser(ctx, adminOnly.ID, noticeActor(admin.ID, "notice.read.owned", "notice.read.any")); err != nil || got == nil || got.ID != adminOnly.ID {
 		t.Fatalf("admin should see admin notice: got=%#v err=%v", got, err)
 	}
 
@@ -152,7 +152,7 @@ func TestNoticeServiceAudienceAndLifecycleVisibilityExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.GetForUser(ctx, scheduled.ID, noticesvc.CurrentUser{ID: admin.ID, CanReadAdminAudience: true}); !httpError(err, 404, "notice not found") {
+	if _, err := svc.GetForUser(ctx, scheduled.ID, noticeActor(admin.ID, "notice.read.owned", "notice.read.any")); !httpError(err, 404, "notice not found") {
 		t.Fatalf("scheduled notice should be hidden, got %#v", err)
 	}
 	expired, err := svc.Create(ctx, actor, noticesvc.CreateInput{Title: "Expired Soon", ContentMarkdown: "Body", EndsAt: ptrInt64(now + 1)})
@@ -194,7 +194,7 @@ func TestNoticeServiceCursorPaginationUsesExactOrderAndDashboardDefaults(t *test
 		}
 	}
 
-	page1, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: user.ID}, noticesvc.ListParams{Limit: 1, Dashboard: true})
+	page1, err := svc.ListForUser(ctx, noticeActor(user.ID, "notice.read.owned"), noticesvc.ListParams{Limit: 1, Dashboard: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestNoticeServiceCursorPaginationUsesExactOrderAndDashboardDefaults(t *test
 		t.Fatalf("dashboard first page cursor mismatch: %#v", page1)
 	}
 
-	page2, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: user.ID}, noticesvc.ListParams{Limit: 1, Dashboard: true, Cursor: cursor})
+	page2, err := svc.ListForUser(ctx, noticeActor(user.ID, "notice.read.owned"), noticesvc.ListParams{Limit: 1, Dashboard: true, Cursor: cursor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestNoticeServiceCursorPaginationUsesExactOrderAndDashboardDefaults(t *test
 		t.Fatalf("dashboard second page metadata mismatch: %#v", page2)
 	}
 
-	allTypes, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: user.ID}, noticesvc.ListParams{Limit: 10, IncludeRead: true})
+	allTypes, err := svc.ListForUser(ctx, noticeActor(user.ID, "notice.read.owned"), noticesvc.ListParams{Limit: 10, IncludeRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}

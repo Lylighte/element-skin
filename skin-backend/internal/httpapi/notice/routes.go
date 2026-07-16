@@ -4,23 +4,12 @@ import (
 	"net/http"
 
 	"element-skin/backend/internal/httpapi/shared"
-	"element-skin/backend/internal/permission"
 	noticesvc "element-skin/backend/internal/service/notice"
 	"element-skin/backend/internal/util"
 )
 
-var (
-	noticeReadOwnedPermission    = permission.MustDefinitionByCode("notice.read.owned")
-	noticeDismissOwnedPermission = permission.MustDefinitionByCode("notice.dismiss.owned")
-	readAdminAudiencePermission  = permission.MustDefinitionByCode("notice.read.any")
-)
-
 func (h Handler) List(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, noticeReadOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	res, err := h.notices.ListForUser(req.Context(), currentUser(req), noticesvc.ListParams{
+	res, err := h.notices.ListForUser(req.Context(), shared.CurrentActor(req), noticesvc.ListParams{
 		Type:        req.URL.Query().Get("type"),
 		Limit:       util.ClampLimit(req.URL.Query().Get("limit")),
 		Cursor:      req.URL.Query().Get("cursor"),
@@ -35,11 +24,7 @@ func (h Handler) List(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) Detail(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, noticeReadOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	res, err := h.notices.GetForUser(req.Context(), req.PathValue("id"), currentUser(req))
+	res, err := h.notices.GetForUser(req.Context(), req.PathValue("id"), shared.CurrentActor(req))
 	if err != nil {
 		util.Error(w, err)
 		return
@@ -48,11 +33,7 @@ func (h Handler) Detail(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) MarkRead(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, noticeReadOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if err := h.notices.MarkRead(req.Context(), req.PathValue("id"), currentUser(req)); err != nil {
+	if err := h.notices.MarkRead(req.Context(), req.PathValue("id"), shared.CurrentActor(req)); err != nil {
 		util.Error(w, err)
 		return
 	}
@@ -60,20 +41,9 @@ func (h Handler) MarkRead(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) Dismiss(w http.ResponseWriter, req *http.Request) {
-	if err := shared.RequirePermission(req, noticeDismissOwnedPermission); err != nil {
-		util.Error(w, err)
-		return
-	}
-	if err := h.notices.Dismiss(req.Context(), req.PathValue("id"), currentUser(req)); err != nil {
+	if err := h.notices.Dismiss(req.Context(), req.PathValue("id"), shared.CurrentActor(req)); err != nil {
 		util.Error(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func currentUser(req *http.Request) noticesvc.CurrentUser {
-	return noticesvc.CurrentUser{
-		ID:                   shared.CurrentUserID(req),
-		CanReadAdminAudience: shared.CurrentActor(req).Has(readAdminAudiencePermission),
-	}
 }

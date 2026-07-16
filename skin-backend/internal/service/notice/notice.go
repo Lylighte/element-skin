@@ -39,13 +39,15 @@ var (
 	noticeDeletePermission       = permission.MustDefinitionByCode("notice.delete.any")
 	noticeCreateSystemPermission = permission.MustDefinitionByCode("notice.create.system")
 	noticeDeleteSystemPermission = permission.MustDefinitionByCode("notice.delete.system")
+	noticeReadOwnedPermission    = permission.MustDefinitionByCode("notice.read.owned")
+	noticeDismissOwnedPermission = permission.MustDefinitionByCode("notice.dismiss.owned")
 )
 
 type Service struct {
 	DB *database.DB
 }
 
-type CurrentUser struct {
+type currentUser struct {
 	ID                   string
 	CanReadAdminAudience bool
 }

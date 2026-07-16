@@ -39,7 +39,7 @@ func TestAccountServiceGrantAndRevokeRolesExactly(t *testing.T) {
 	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("grant role should invalidate auth cache exactly, got %v", err)
 	}
-	grantPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	grantPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestAccountServiceGrantAndRevokeRolesExactly(t *testing.T) {
 	if cached, err := cache.GetAuthUser(ctx, target.ID); err != nil || cached.ID != target.ID {
 		t.Fatalf("duplicate role grant must not invalidate cache: cached=%#v err=%v", cached, err)
 	}
-	duplicateGrantPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	duplicateGrantPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestAccountServiceGrantAndRevokeRolesExactly(t *testing.T) {
 	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("revoke role should invalidate auth cache exactly, got %v", err)
 	}
-	revokePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	revokePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestAccountServiceRevokeRoleReconcilesOAuthDependentsExactly(t *testing.T) 
 		t.Fatalf("role revoke should invalidate auth cache exactly, got %v", err)
 	}
 
-	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestAccountServiceTransfersProtectedSubjectExactly(t *testing.T) {
 			t.Fatalf("transfer should invalidate auth cache for %s exactly, got %v", userID, err)
 		}
 	}
-	actorPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: actorUser.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	actorPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(actorUser.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestAccountServiceTransfersProtectedSubjectExactly(t *testing.T) {
 		clientDependencyNotice.CreatedBy != nil {
 		t.Fatalf("protected transfer client dependency notice mismatch: %#v", clientDependencyNotice)
 	}
-	targetPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	targetPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestAccountServiceTransfersProtectedSubjectExactly(t *testing.T) {
 		gainedNotice.Level != noticesvc.LevelInfo || gainedNotice.CreatedBy != nil {
 		t.Fatalf("protected subject gained notice mismatch: %#v", gainedNotice)
 	}
-	stalePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: stale.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	stalePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(stale.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

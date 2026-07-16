@@ -2,6 +2,7 @@ package notice_test
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"element-skin/backend/internal/database"
@@ -9,6 +10,25 @@ import (
 	noticesvc "element-skin/backend/internal/service/notice"
 	"element-skin/backend/internal/testutil"
 )
+
+func TestNoticeUserActionsRejectMissingPermissionsBeforeDatabaseAccess(t *testing.T) {
+	svc := noticesvc.Service{}
+	ctx := context.Background()
+	actor := noticeActor("notice-denied-user")
+
+	if result, err := svc.ListForUser(ctx, actor, noticesvc.ListParams{}); result != nil || !httpError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("denied list result=%#v err=%#v", result, err)
+	}
+	if result, err := svc.GetForUser(ctx, "notice-id", actor); result != nil || !httpError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("denied detail result=%#v err=%#v", result, err)
+	}
+	if err := svc.MarkRead(ctx, "notice-id", actor); !httpError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("denied mark read err=%#v", err)
+	}
+	if err := svc.Dismiss(ctx, "notice-id", actor); !httpError(err, http.StatusForbidden, "permission denied") {
+		t.Fatalf("denied dismiss err=%#v", err)
+	}
+}
 
 func TestNoticeServiceUserVisibilityReadDismissAndPatchExactState(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
@@ -39,21 +59,22 @@ func TestNoticeServiceUserVisibilityReadDismissAndPatchExactState(t *testing.T) 
 		t.Fatalf("created detail notice mismatch: %#v", detail)
 	}
 
-	got, err := svc.GetForUser(ctx, detail.ID, noticesvc.CurrentUser{ID: user.ID})
+	reader := noticeActor(user.ID, "notice.read.owned", "notice.dismiss.owned")
+	got, err := svc.GetForUser(ctx, detail.ID, reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got == nil || got.ID != detail.ID || !got.Read || got.ReadAt == nil || got.ContentMarkdown != "Full **markdown** body" {
 		t.Fatalf("GetForUser should mark read and return exact notice: %#v", got)
 	}
-	readAgain, err := svc.GetForUser(ctx, detail.ID, noticesvc.CurrentUser{ID: user.ID})
+	readAgain, err := svc.GetForUser(ctx, detail.ID, reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if readAgain.ReadAt == nil || *readAgain.ReadAt != *got.ReadAt {
 		t.Fatalf("read timestamp should remain idempotent: first=%#v second=%#v", got, readAgain)
 	}
-	if err := svc.Dismiss(ctx, detail.ID, noticesvc.CurrentUser{ID: user.ID}); !httpError(err, 403, "notice is not dismissible") {
+	if err := svc.Dismiss(ctx, detail.ID, reader); !httpError(err, 403, "notice is not dismissible") {
 		t.Fatalf("non-dismissible notice should reject exactly, got %#v", err)
 	}
 
@@ -87,10 +108,10 @@ func TestNoticeServiceUserVisibilityReadDismissAndPatchExactState(t *testing.T) 
 	if oldReceipts != 0 {
 		t.Fatalf("patch should cascade old receipts, got %d", oldReceipts)
 	}
-	if err := svc.Dismiss(ctx, updated.ID, noticesvc.CurrentUser{ID: user.ID}); err != nil {
+	if err := svc.Dismiss(ctx, updated.ID, reader); err != nil {
 		t.Fatal(err)
 	}
-	list, err := svc.ListForUser(ctx, noticesvc.CurrentUser{ID: user.ID}, noticesvc.ListParams{Type: noticesvc.TypeAnnouncement, Limit: 10, IncludeRead: true})
+	list, err := svc.ListForUser(ctx, reader, noticesvc.ListParams{Type: noticesvc.TypeAnnouncement, Limit: 10, IncludeRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}

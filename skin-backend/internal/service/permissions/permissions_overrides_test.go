@@ -75,7 +75,7 @@ func TestPermissionServiceSetOverrideSendsExactSystemNoticeOnlyOnChange(t *testi
 	}
 	afterSet := database.NowMS()
 
-	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestPermissionServiceSetOverrideSendsExactSystemNoticeOnlyOnChange(t *testi
 	if cached, err := cache.GetAuthUser(ctx, target.ID); err != nil || cached.ID != target.ID {
 		t.Fatalf("duplicate override must not invalidate cache: cached=%#v err=%v", cached, err)
 	}
-	duplicatePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	duplicatePage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestPermissionServiceClearOverrideSendsExactSystemNotice(t *testing.T) {
 	}
 	afterClear := database.NowMS()
 
-	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: target.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestPermissionServiceClearOverrideSendsExactSystemNotice(t *testing.T) {
 		t.Fatalf("clear override notice ends_at mismatch: ends_at=%v before=%d after=%d", clearNotice.EndsAt, beforeClear, afterClear)
 	}
 
-	otherPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, noticesvc.CurrentUser{ID: other.ID}, noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
+	otherPage, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(other.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

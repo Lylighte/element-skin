@@ -41,7 +41,7 @@ func TestRemoteYggPreviewProfilesAuthenticatesAndFiltersExactly(t *testing.T) {
 		return remoteYggJSONResponse(200, `{"availableProfiles":[{"id":"p1","name":"One"},{"id":"","name":"Broken"},{"id":"p2","name":"  Two  "}]}`)
 	})}
 
-	profiles, err := service.PreviewProfiles(context.Background(), "https://93.184.216.34/api/", " remote-user ", "remote-pass")
+	profiles, err := service.PreviewProfiles(context.Background(), remoteYggUserActor("preview-user"), "https://93.184.216.34/api/", " remote-user ", "remote-pass")
 	if err != nil {
 		t.Fatalf("PreviewProfiles returned error: %v", err)
 	}
@@ -57,14 +57,39 @@ func TestRemoteYggPreviewProfilesRejectsInputAndRemoteErrorsExactly(t *testing.T
 		return remoteYggJSONResponse(403, `{"errorMessage":"Invalid credentials"}`)
 	})}
 
-	if profiles, err := service.PreviewProfiles(context.Background(), "", "u", "p"); profiles != nil || !remoteYggHTTPError(err, 400, "api_url, username and password are required") {
+	actor := remoteYggUserActor("preview-user")
+	if profiles, err := service.PreviewProfiles(context.Background(), actor, "", "u", "p"); profiles != nil || !remoteYggHTTPError(err, 400, "api_url, username and password are required") {
 		t.Fatalf("missing api_url mismatch: profiles=%#v err=%#v", profiles, err)
 	}
-	if profiles, err := service.PreviewProfiles(context.Background(), "not-a-url", "u", "p"); profiles != nil || !remoteYggHTTPError(err, 400, "invalid remote api url") {
+	if profiles, err := service.PreviewProfiles(context.Background(), actor, "not-a-url", "u", "p"); profiles != nil || !remoteYggHTTPError(err, 400, "invalid remote api url") {
 		t.Fatalf("invalid api_url mismatch: profiles=%#v err=%#v", profiles, err)
 	}
-	if profiles, err := service.PreviewProfiles(context.Background(), "https://93.184.216.34/api", "u", "p"); profiles != nil || !remoteYggHTTPError(err, 400, "远端认证失败: Invalid credentials") {
+	if profiles, err := service.PreviewProfiles(context.Background(), actor, "https://93.184.216.34/api", "u", "p"); profiles != nil || !remoteYggHTTPError(err, 400, "远端认证失败: Invalid credentials") {
 		t.Fatalf("remote auth error mismatch: profiles=%#v err=%#v", profiles, err)
+	}
+}
+
+func TestRemoteYggServiceRejectsMissingPermissionsBeforeAnyOutboundRequest(t *testing.T) {
+	requests := 0
+	service := imports.RemoteYggService{HTTPClient: remoteYggServiceClient(t, func(req *http.Request) *http.Response {
+		requests++
+		return remoteYggJSONResponse(http.StatusOK, `{}`)
+	})}
+	ctx := context.Background()
+
+	profiles, err := service.PreviewProfiles(ctx, remoteYggActor("denied-preview"), "https://93.184.216.34/api", "user", "password")
+	if profiles != nil || !remoteYggHTTPError(err, http.StatusForbidden, "permission denied") || requests != 0 {
+		t.Fatalf("denied preview result: profiles=%#v err=%#v requests=%d", profiles, err, requests)
+	}
+
+	result, err := service.ImportProfile(ctx, remoteYggActor("denied-import", "profile.create.owned"), "https://93.184.216.34/api", "profile-id", "ProfileName")
+	if result != nil || !remoteYggHTTPError(err, http.StatusForbidden, "permission denied") || requests != 0 {
+		t.Fatalf("denied single import result: result=%#v err=%#v requests=%d", result, err, requests)
+	}
+
+	result, err = service.ImportProfiles(ctx, remoteYggActor("denied-batch", "texture.create.owned"), "https://93.184.216.34/api", []map[string]string{{"profile_id": "profile-id", "profile_name": "ProfileName"}})
+	if result != nil || !remoteYggHTTPError(err, http.StatusForbidden, "permission denied") || requests != 0 {
+		t.Fatalf("denied batch import result: result=%#v err=%#v requests=%d", result, err, requests)
 	}
 }
 
@@ -204,12 +229,15 @@ func TestRemoteYggImportProfilesReportsPartialFailuresExactly(t *testing.T) {
 		}
 	})}
 
-	result := service.ImportProfiles(ctx, remoteYggUserActor(user.ID), "https://93.184.216.34/api", []map[string]string{
+	result, err := service.ImportProfiles(ctx, remoteYggUserActor(user.ID), "https://93.184.216.34/api", []map[string]string{
 		{"profile_id": "remote_batch_ok", "profile_name": "RemoteBatchOk"},
 		{"profile_id": "", "profile_name": "RemoteMissingID"},
 		{"profile_id": "remote_batch_fail", "profile_name": "RemoteBatchFail"},
 		{"profile_id": "remote_batch_bad_name", "profile_name": "Bad Name!"},
 	})
+	if err != nil {
+		t.Fatalf("ImportProfiles returned error: %v", err)
+	}
 	if result["success_count"] != 1 || result["failure_count"] != 3 {
 		t.Fatalf("batch counts mismatch: %#v", result)
 	}
@@ -281,9 +309,12 @@ func TestRemoteYggImportProfilesRejectsMissingAPIURLWithoutPersisting(t *testing
 	user := testutil.CreateUser(t, db, "remote-ygg-batch-missing-api@test.com", "Password123", "RemoteYggBatchMissingAPI", false)
 	service := imports.RemoteYggService{DB: db}
 
-	result := service.ImportProfiles(ctx, remoteYggUserActor(user.ID), " ", []map[string]string{
+	result, err := service.ImportProfiles(ctx, remoteYggUserActor(user.ID), " ", []map[string]string{
 		{"profile_id": "remote_batch_missing_api", "profile_name": "RemoteBatchMissingAPI"},
 	})
+	if err != nil {
+		t.Fatalf("ImportProfiles returned error: %v", err)
+	}
 	if result["success_count"] != 0 || result["failure_count"] != 1 {
 		t.Fatalf("missing api_url batch counts mismatch: %#v", result)
 	}
@@ -301,21 +332,22 @@ func TestRemoteYggImportProfilesRejectsMissingAPIURLWithoutPersisting(t *testing
 
 func TestRemoteYggServiceHandlesNetworkAndFallbackErrorsExactly(t *testing.T) {
 	networkService := imports.RemoteYggService{HTTPClient: remoteYggServiceErrorClient(errors.New("network down"))}
-	if profiles, err := networkService.PreviewProfiles(context.Background(), "https://93.184.216.34/api", "user", "pass"); profiles != nil || !remoteYggHTTPError(err, 400, "无法获取远端资料，请检查账号或稍后重试") {
+	actor := remoteYggUserActor("preview-user")
+	if profiles, err := networkService.PreviewProfiles(context.Background(), actor, "https://93.184.216.34/api", "user", "pass"); profiles != nil || !remoteYggHTTPError(err, 400, "无法获取远端资料，请检查账号或稍后重试") {
 		t.Fatalf("network auth error mismatch: profiles=%#v err=%#v", profiles, err)
 	}
 
 	errorFieldService := imports.RemoteYggService{HTTPClient: remoteYggServiceClient(t, func(req *http.Request) *http.Response {
 		return remoteYggJSONResponse(401, `{"error":"Forbidden"}`)
 	})}
-	if profiles, err := errorFieldService.PreviewProfiles(context.Background(), "https://93.184.216.34/api", "user", "pass"); profiles != nil || !remoteYggHTTPError(err, 400, "远端认证失败: Forbidden") {
+	if profiles, err := errorFieldService.PreviewProfiles(context.Background(), actor, "https://93.184.216.34/api", "user", "pass"); profiles != nil || !remoteYggHTTPError(err, 400, "远端认证失败: Forbidden") {
 		t.Fatalf("remote error field mismatch: profiles=%#v err=%#v", profiles, err)
 	}
 
 	statusFallbackService := imports.RemoteYggService{HTTPClient: remoteYggServiceClient(t, func(req *http.Request) *http.Response {
 		return remoteYggJSONResponse(503, `{}`)
 	})}
-	if profiles, err := statusFallbackService.PreviewProfiles(context.Background(), "https://93.184.216.34/api", "user", "pass"); profiles != nil || !remoteYggHTTPError(err, 400, "远端认证失败: HTTP 503") {
+	if profiles, err := statusFallbackService.PreviewProfiles(context.Background(), actor, "https://93.184.216.34/api", "user", "pass"); profiles != nil || !remoteYggHTTPError(err, 400, "远端认证失败: HTTP 503") {
 		t.Fatalf("remote status fallback mismatch: profiles=%#v err=%#v", profiles, err)
 	}
 }
@@ -388,8 +420,12 @@ func remoteYggTexturesValue(t *testing.T, payload string) string {
 }
 
 func remoteYggUserActor(userID string) permission.Actor {
+	return remoteYggActor(userID, "profile.create.owned", "texture.create.owned")
+}
+
+func remoteYggActor(userID string, codes ...string) permission.Actor {
 	bits := permission.NewBitSet(len(permission.Definitions))
-	for _, code := range []string{"profile.create.owned", "texture.create.owned"} {
+	for _, code := range codes {
 		bits.Set(permission.MustDefinitionByCode(code).BitIndex)
 	}
 	return permission.Actor{

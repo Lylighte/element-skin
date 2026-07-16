@@ -29,7 +29,14 @@ func requireCreatePermission(actor permission.Actor, input CreateInput) error {
 	return util.HTTPError{Status: 403, Detail: "permission denied"}
 }
 
-func visibleToUser(item model.NoticeView, user CurrentUser, now int64) bool {
+func noticeUser(actor permission.Actor) currentUser {
+	return currentUser{
+		ID:                   actor.UserID,
+		CanReadAdminAudience: actor.Has(noticeReadPermission),
+	}
+}
+
+func visibleToUser(item model.NoticeView, user currentUser, now int64) bool {
 	if !item.Enabled {
 		return false
 	}

@@ -90,6 +90,7 @@ func TestRemoteYggRoutesRejectMissingFineGrainedPermissionsExactly(t *testing.T)
 		call       func(http.ResponseWriter, *http.Request)
 		wantStatus int
 	}{
+		{"preview requires profile create", "profile.create.owned", "/v1/imports/remote-ygg/profiles/preview", `{"api_url":"https://93.184.216.34/ygg","username":"u","password":"p"}`, h.GetProfiles, http.StatusForbidden},
 		{"single import requires profile create", "profile.create.owned", "/v1/imports/remote-ygg/profiles/import", `{"profile_id":"p","profile_name":"P"}`, h.ImportProfile, http.StatusForbidden},
 		{"single import requires texture create", "texture.create.owned", "/v1/imports/remote-ygg/profiles/import", `{"profile_id":"p","profile_name":"P"}`, h.ImportProfile, http.StatusForbidden},
 		{"batch import requires profile create", "profile.create.owned", "/v1/imports/remote-ygg/profiles/import-batch", `{"profiles":[{"profile_id":"p","profile_name":"P"}]}`, h.ImportProfiles, http.StatusForbidden},
