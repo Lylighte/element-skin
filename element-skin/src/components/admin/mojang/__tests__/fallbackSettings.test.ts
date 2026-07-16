@@ -36,7 +36,7 @@ const endpointB: FallbackEndpoint = {
   enable_hasjoined: true,
   enable_whitelist: false,
   note: 'B',
-  skin_domains: 'textures-b.example',
+  skin_domains: ['textures-b.example'],
 }
 
 const existingRow: FallbackRow = {
@@ -112,7 +112,7 @@ describe('fallback settings normalization', () => {
 
   it('creates stable local row keys for unsaved endpoints', () => {
     const row = createFallbackRowFromEndpoint(
-      { ...endpointA, id: null, skin_domains: null },
+      { ...endpointA, id: null, skin_domains: [] },
       3,
       [],
       67890,

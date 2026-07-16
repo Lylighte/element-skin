@@ -23,8 +23,7 @@ function endpointMatchesRow(endpoint: FallbackEndpoint, row: FallbackRow): boole
 }
 
 function skinDomainsText(value: FallbackEndpoint['skin_domains']): string {
-  if (Array.isArray(value)) return value.join(',')
-  return String(value || '')
+  return value.join(',')
 }
 
 function normalizeProbeInterval(value: unknown): number {

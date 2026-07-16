@@ -30,5 +30,5 @@ export interface FallbackEndpoint {
   enable_hasjoined: boolean
   enable_whitelist: boolean
   note?: string
-  skin_domains?: string[] | string | null
+  skin_domains: string[]
 }

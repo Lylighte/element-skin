@@ -35,7 +35,8 @@ func TestFallbackNormalizationHelpersExactValues(t *testing.T) {
 	if !boolValue("1") || !boolValue(float64(1)) || boolValue("false") || boolValue(0) {
 		t.Fatalf("boolValue exact coercion failed")
 	}
-	if got := normalizeDomains([]any{" skins.example ", "", "cdn.example"}); !reflect.DeepEqual(got, []string{"skins.example", "cdn.example"}) {
+	got, err := normalizeDomains(3, []any{" skins.example ", "", "cdn.example", "skins.example"})
+	if err != nil || !reflect.DeepEqual(got, []string{"skins.example", "cdn.example"}) {
 		t.Fatalf("normalizeDomains list mismatch: %#v", got)
 	}
 	if got := valueOr(nil, "fallback"); got != "fallback" {
@@ -81,6 +82,32 @@ func TestValidateFallbackInputsRejectInvalidShapesExactly(t *testing.T) {
 			},
 			detail: "fallback[1] cache_ttl must be non-negative",
 		},
+		{
+			name: "skin domains must be list",
+			call: func() error {
+				_, err := ValidateFallbackEndpoints([]any{map[string]any{
+					"session_url":  "https://session.example",
+					"account_url":  "https://account.example",
+					"services_url": "https://services.example",
+					"skin_domains": "skins.example",
+				}})
+				return err
+			},
+			detail: "fallback[1] skin_domains must be a list",
+		},
+		{
+			name: "skin domains must contain strings",
+			call: func() error {
+				_, err := ValidateFallbackEndpoints([]any{map[string]any{
+					"session_url":  "https://session.example",
+					"account_url":  "https://account.example",
+					"services_url": "https://services.example",
+					"skin_domains": []any{"skins.example", 7},
+				}})
+				return err
+			},
+			detail: "fallback[1] skin_domains must contain only strings",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.call()
@@ -99,7 +126,7 @@ func TestValidateFallbackEndpointsNormalizesJSONCompatibleValuesExactly(t *testi
 		"account_url":      " https://account.example ",
 		"services_url":     " https://services.example ",
 		"cache_ttl":        int64(90),
-		"skin_domains":     []string{" skins.example ", "", "cdn.example"},
+		"skin_domains":     []string{" skins.example ", "", "cdn.example", "skins.example"},
 		"enable_profile":   true,
 		"enable_hasjoined": 0,
 		"enable_whitelist": float64(1),

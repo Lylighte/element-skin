@@ -51,11 +51,15 @@ func normalizeFallbackMap(idx int, m map[string]any) (map[string]any, error) {
 	if ttl < 0 {
 		return nil, util.HTTPError{Status: 400, Detail: fmt.Sprintf("fallback[%d] cache_ttl must be non-negative", idx)}
 	}
+	domains, err := normalizeDomains(idx, m["skin_domains"])
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"session_url":      session,
 		"account_url":      account,
 		"services_url":     services,
-		"skin_domains":     normalizeDomains(m["skin_domains"]),
+		"skin_domains":     domains,
 		"cache_ttl":        ttl,
 		"enable_profile":   boolValue(valueOr(m["enable_profile"], true)),
 		"enable_whitelist": boolValue(valueOr(m["enable_whitelist"], false)),
@@ -97,26 +101,39 @@ func boolValue(v any) bool {
 	}
 }
 
-func normalizeDomains(value any) []string {
+func normalizeDomains(idx int, value any) ([]string, error) {
+	if value == nil {
+		return []string{}, nil
+	}
 	var parts []string
 	switch v := value.(type) {
 	case []any:
 		for _, item := range v {
-			parts = append(parts, fmt.Sprint(item))
+			part, ok := item.(string)
+			if !ok {
+				return nil, util.HTTPError{Status: 400, Detail: fmt.Sprintf("fallback[%d] skin_domains must contain only strings", idx)}
+			}
+			parts = append(parts, part)
 		}
 	case []string:
 		parts = append(parts, v...)
-	case string:
-		parts = strings.Split(v, ",")
+	default:
+		return nil, util.HTTPError{Status: 400, Detail: fmt.Sprintf("fallback[%d] skin_domains must be a list", idx)}
 	}
 	clean := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		if part != "" {
-			clean = append(clean, part)
+		if part == "" {
+			continue
 		}
+		if _, exists := seen[part]; exists {
+			continue
+		}
+		seen[part] = struct{}{}
+		clean = append(clean, part)
 	}
-	return clean
+	return clean, nil
 }
 
 func valueOr(v any, fallback any) any {
