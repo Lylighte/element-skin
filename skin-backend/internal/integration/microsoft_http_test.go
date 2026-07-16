@@ -118,6 +118,9 @@ func TestMicrosoftImportProfileTokenSemantics(t *testing.T) {
 
 func TestMicrosoftAuthURLAndGetProfileTokenSemantics(t *testing.T) {
 	userDB, h, cache := testutil.NewTestAppWithRedisTB(t)
+	if err := userDB.Settings.Set(t.Context(), "microsoft_client_id", "integration-client-id"); err != nil {
+		t.Fatal(err)
+	}
 	user := testutil.CreateUser(t, userDB, "msflow@test.com", "Password123", "MsFlow", false)
 	other := testutil.CreateUser(t, userDB, "msflow-other@test.com", "Password123", "MsFlowOther", false)
 	token, _ := util.CreateAccessToken(testutil.TestConfig().JWTSecret, user.ID, time.Hour)

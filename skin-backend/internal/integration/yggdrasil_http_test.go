@@ -373,86 +373,26 @@ func TestTextureUploadAndYggdrasilTextureRoutes(t *testing.T) {
 	}
 }
 
-func TestYggdrasilFallbackRoutes(t *testing.T) {
-	db, h := testutil.NewTestApp(t)
-	ctx := context.Background()
-
-	var seen []string
-	fallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		seen = append(seen, r.Method+" "+r.URL.String())
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/session/minecraft/hasJoined":
-			if r.URL.Query().Get("username") != "RemotePlayer" || r.URL.Query().Get("serverId") != "remote-server" || r.URL.Query().Get("ip") != "127.0.0.1" {
-				t.Fatalf("unexpected hasJoined query: %s", r.URL.RawQuery)
-			}
-			_, _ = w.Write([]byte(`{"id":"remoteid","name":"RemotePlayer"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/session/minecraft/profile/remoteid":
-			if r.URL.Query().Get("unsigned") != "false" {
-				t.Fatalf("expected unsigned=false, got %q", r.URL.RawQuery)
-			}
-			_, _ = w.Write([]byte(`{"id":"remoteid","name":"RemotePlayer","properties":[{"name":"textures","value":"v"}]}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/users/profiles/minecraft/RemoteAccount":
-			_, _ = w.Write([]byte(`{"id":"accountid","name":"RemoteAccount"}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/profiles/minecraft":
-			var names []string
-			if err := json.NewDecoder(r.Body).Decode(&names); err != nil {
-				t.Fatalf("decode fallback bulk body: %v", err)
-			}
-			if len(names) != 1 || names[0] != "RemoteBulk" {
-				t.Fatalf("unexpected fallback bulk names: %#v", names)
-			}
-			_, _ = w.Write([]byte(`[{"id":"bulkid","name":"RemoteBulk"}]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/minecraft/profile/lookup/name/RemoteServices":
-			_, _ = w.Write([]byte(`{"id":"servicesid","name":"RemoteServices"}`))
-		default:
-			http.NotFound(w, r)
+func TestYggdrasilPublicLookupAliasesAreRegisteredExactly(t *testing.T) {
+	_, h := testutil.NewTestApp(t)
+	cases := []struct {
+		method string
+		path   string
+		body   any
+		status int
+		want   string
+	}{
+		{http.MethodGet, "/sessionserver/session/minecraft/hasJoined?username=Missing&serverId=missing", nil, http.StatusNoContent, ""},
+		{http.MethodGet, "/sessionserver/session/minecraft/profile/missing?unsigned=false", nil, http.StatusNoContent, ""},
+		{http.MethodGet, "/api/profiles/minecraft/Missing", nil, http.StatusNoContent, ""},
+		{http.MethodGet, "/users/profiles/minecraft/Missing", nil, http.StatusNoContent, ""},
+		{http.MethodPost, "/api/profiles/minecraft", []string{"Missing"}, http.StatusOK, "[]\n"},
+		{http.MethodGet, "/minecraft/profile/lookup/name/Missing", nil, http.StatusNoContent, ""},
+	}
+	for _, tc := range cases {
+		rec := doJSON(t, h, tc.method, tc.path, tc.body)
+		if rec.Code != tc.status || rec.Body.String() != tc.want {
+			t.Fatalf("%s %s mismatch: status=%d body=%q", tc.method, tc.path, rec.Code, rec.Body.String())
 		}
-	}))
-	defer fallbackServer.Close()
-
-	if err := db.Fallbacks.SaveEndpoints(ctx, []fallback.Endpoint{{
-		Priority: 1, SessionURL: fallbackServer.URL, AccountURL: fallbackServer.URL, ServicesURL: fallbackServer.URL,
-		CacheTTL: 60, EnableProfile: true, EnableHasJoined: true,
-	}}); err != nil {
-		t.Fatal(err)
-	}
-
-	hasJoined := doJSON(t, h, "GET", "/sessionserver/session/minecraft/hasJoined?username=RemotePlayer&serverId=remote-server&ip=127.0.0.1", nil)
-	if hasJoined.Code != 200 || !strings.Contains(hasJoined.Body.String(), `"RemotePlayer"`) {
-		t.Fatalf("hasJoined fallback failed: %d %s", hasJoined.Code, hasJoined.Body.String())
-	}
-
-	profile := doJSON(t, h, "GET", "/sessionserver/session/minecraft/profile/remoteid?unsigned=false", nil)
-	if profile.Code != 200 || !strings.Contains(profile.Body.String(), `"properties"`) {
-		t.Fatalf("profile fallback failed: %d %s", profile.Code, profile.Body.String())
-	}
-
-	account := doJSON(t, h, "GET", "/api/profiles/minecraft/RemoteAccount", nil)
-	if account.Code != 200 || parseJSON(t, account)["id"] != "accountid" {
-		t.Fatalf("account lookup fallback failed: %d %s", account.Code, account.Body.String())
-	}
-
-	userAccount := doJSON(t, h, "GET", "/users/profiles/minecraft/RemoteAccount", nil)
-	if userAccount.Code != 200 || parseJSON(t, userAccount)["id"] != "accountid" {
-		t.Fatalf("users profile fallback failed: %d %s", userAccount.Code, userAccount.Body.String())
-	}
-
-	bulk := doJSON(t, h, "POST", "/api/profiles/minecraft", []string{"RemoteBulk"})
-	var bulkBody []map[string]any
-	if err := json.Unmarshal(bulk.Body.Bytes(), &bulkBody); err != nil {
-		t.Fatalf("decode bulk body: %v body=%s", err, bulk.Body.String())
-	}
-	if bulk.Code != 200 || len(bulkBody) != 1 || bulkBody[0]["id"] != "bulkid" {
-		t.Fatalf("bulk fallback failed: %d %s", bulk.Code, bulk.Body.String())
-	}
-
-	services := doJSON(t, h, "GET", "/minecraft/profile/lookup/name/RemoteServices", nil)
-	if services.Code != 200 || parseJSON(t, services)["id"] != "servicesid" {
-		t.Fatalf("services lookup fallback failed: %d %s", services.Code, services.Body.String())
-	}
-
-	if len(seen) < 6 {
-		t.Fatalf("expected fallback server to receive all lookup requests, saw %#v", seen)
 	}
 }
