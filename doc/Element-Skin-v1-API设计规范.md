@@ -67,6 +67,7 @@ v1 API 的 base path 是：
 
 ```text
 GET    /
+GET    /api/publickeys/
 POST   /authserver/authenticate
 POST   /authserver/refresh
 POST   /authserver/validate
@@ -85,7 +86,22 @@ PUT    /api/user/profile/{uuid}/{texture_type}
 DELETE /api/user/profile/{uuid}/{texture_type}
 ```
 
-这些端点的权限语义仍由 Yggdrasil token、服务器 join 逻辑和现有 Yggdrasil 权限模型控制，不参与 `/v1` 站点 API 命名迁移。
+这些端点不参与 `/v1` 站点 API 命名迁移。会话和材质写入端点继续使用 Yggdrasil token、服务器 join 逻辑和对应细粒度权限；`GET /` 与 `GET /api/publickeys/` 通过公开 Actor 检查 `site_public.read.public`。
+
+`GET /api/publickeys/` 返回本站签名公钥和当前 fallback 端点缓存的签名公钥。本站公钥固定排在首位，相同 DER 公钥只返回一次：
+
+```json
+{
+  "playerCertificateKeys": [
+    { "publicKey": "base64-encoded SubjectPublicKeyInfo DER" }
+  ],
+  "profilePropertyKeys": [
+    { "publicKey": "base64-encoded SubjectPublicKeyInfo DER" }
+  ]
+}
+```
+
+根元数据继续通过 `signaturePublickey` 返回本站 PEM 公钥，并通过 `signaturePublickeys` 返回本站及 fallback 的全部 PEM 公钥。旧客户端可以继续读取单数属性；支持多公钥的客户端应读取复数属性。
 
 ## 5. 认证模型
 
@@ -107,9 +123,9 @@ Authorization: Bearer <oauth_access_token>
 
 1. 若存在合法 Bearer OAuth token，使用 OAuth Actor。
 2. 否则若存在合法 Cookie access token，使用 Web Session Actor。
-3. 两者都不存在时返回 `401`。
+3. 两者都不存在时，公开端点使用 Guest Actor，其他端点返回 `401`。
 
-公开端点不要求认证。
+公开端点不要求调用方预先认证，但不绕过权限模型。Guest Actor 的 `subject_id` 固定为 `guest:public`，只包含 scope 为 `public` 的权限。公开端点携带有效 Cookie 或 OAuth token 时使用真实 Actor，因此主体 deny 覆盖仍然生效。任何显式但无效的 Cookie 或 Bearer token 都返回 `401`，不得回退为 Guest Actor。
 
 ### 5.1 OAuth Actor 权限裁剪
 
