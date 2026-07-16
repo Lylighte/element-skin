@@ -3,11 +3,23 @@ package util
 import (
 	"errors"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 )
 
 var ErrUnsafeURL = errors.New("unsafe outbound URL")
+
+var nonPublicOutboundPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("2001:db8::/32"),
+}
 
 func ValidateOutboundURL(raw string) error {
 	return validateOutboundURL(raw, net.LookupIP)
@@ -47,5 +59,18 @@ func validateOutboundURL(raw string, lookupIP func(string) ([]net.IP, error)) er
 }
 
 func isPublicIP(ip net.IP) bool {
-	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified())
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, prefix := range nonPublicOutboundPrefixes {
+		if prefix.Contains(addr) {
+			return false
+		}
+	}
+	return true
 }

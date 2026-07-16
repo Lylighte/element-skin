@@ -42,6 +42,7 @@ func TestProbeHelpersUseExactURLClockRetentionAndStatusRules(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	svc.Client = server.Client()
 	if got := svc.checkURL(context.Background(), server.URL+"/ok"); got != StatusUp {
 		t.Fatalf("200 status = %q, want %q", got, StatusUp)
 	}

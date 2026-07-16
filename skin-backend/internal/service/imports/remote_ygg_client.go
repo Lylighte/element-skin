@@ -51,7 +51,7 @@ func (s RemoteYggService) doJSON(ctx context.Context, method, rawURL string, pay
 
 func remoteYggHTTPClient(base *http.Client) *http.Client {
 	if base == nil {
-		base = &http.Client{Timeout: 10 * time.Second}
+		base = util.NewSecureOutboundHTTPClient(10 * time.Second)
 	}
 	client := *base
 	if client.Timeout == 0 {

@@ -6,13 +6,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
+
+	"element-skin/backend/internal/util"
 )
 
-const fallbackRequestTTL = 30 * time.Second
+const (
+	fallbackRequestTTL       = 30 * time.Second
+	maxFallbackResponseBytes = 1 << 20
+)
 
 func (f Fallback) get(ctx context.Context, ep map[string]any, rawURL string) (*FallbackResponse, error) {
 	return f.do(ctx, ep, http.MethodGet, rawURL, nil, nil)
@@ -28,16 +34,19 @@ func (f Fallback) postJSON(ctx context.Context, ep map[string]any, rawURL string
 }
 
 func (f Fallback) do(ctx context.Context, ep map[string]any, method, rawURL string, reqBody io.Reader, payload []byte) (*FallbackResponse, error) {
+	client := f.Client
+	if client == nil {
+		if err := util.ValidateOutboundURL(rawURL); err != nil {
+			return nil, err
+		}
+		client = util.NewSecureOutboundHTTPClient(10 * time.Second)
+	}
 	marked, endpoint, request, err := f.markRequest(ctx, ep, method, rawURL, payload)
 	if err != nil || !marked {
 		return nil, err
 	}
 	if marked && f.Redis != nil {
 		defer func() { _ = f.Redis.DeleteFallbackRequest(context.Background(), endpoint, request) }()
-	}
-	client := f.Client
-	if client == nil {
-		client = http.DefaultClient
 	}
 	req, err := http.NewRequestWithContext(ctx, method, rawURL, reqBody)
 	if err != nil {
@@ -54,8 +63,11 @@ func (f Fallback) do(ctx context.Context, ep map[string]any, method, rawURL stri
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil
 	}
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxFallbackResponseBytes+1))
+	if err != nil || len(respBody) > maxFallbackResponseBytes {
+		if err == nil {
+			err = errors.New("fallback response too large")
+		}
 		return nil, err
 	}
 	return &FallbackResponse{Status: resp.StatusCode, Body: respBody}, nil

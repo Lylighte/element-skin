@@ -9,6 +9,7 @@ import (
 
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/redisstore"
+	"element-skin/backend/internal/util"
 )
 
 const (
@@ -31,7 +32,6 @@ func New(db *database.DB, redis redisstore.Store) *Service {
 	return &Service{
 		DB:        db,
 		Redis:     redis,
-		Client:    &http.Client{Timeout: httpTimeout},
 		Now:       time.Now,
 		Retention: redisstore.ProbeHistoryRetention,
 	}
@@ -87,7 +87,10 @@ func (s *Service) checkURL(ctx context.Context, rawURL string) string {
 	}
 	client := s.Client
 	if client == nil {
-		client = &http.Client{Timeout: httpTimeout}
+		if err := util.ValidateOutboundURL(rawURL); err != nil {
+			return StatusDown
+		}
+		client = util.NewSecureOutboundHTTPClient(httpTimeout)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

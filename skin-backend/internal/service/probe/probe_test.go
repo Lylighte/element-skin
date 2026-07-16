@@ -66,6 +66,7 @@ func TestProbeRunMarksUpFor200And404AndDownOtherwise(t *testing.T) {
 	}
 
 	svc := probe.New(db, redis)
+	svc.Client = &http.Client{Timeout: time.Second}
 	checkedAt := time.Now()
 	svc.Now = func() time.Time { return checkedAt }
 	if err := svc.Run(ctx); err != nil {
@@ -210,6 +211,7 @@ func TestProbeRunRetainsHistoryWindow(t *testing.T) {
 
 	svc := probe.New(db, redis)
 	svc.Retention = time.Hour
+	svc.Client = server.Client()
 	now := time.Now()
 	clock := now.Add(-3 * time.Hour)
 	svc.Now = func() time.Time { return clock }

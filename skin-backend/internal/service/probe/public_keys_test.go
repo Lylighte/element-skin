@@ -28,6 +28,7 @@ func TestProbePublicKeysDiscoverySuccessSkipsServicesFallbackAndDeduplicates(t *
 	saveProbeEndpoints(t, db, redis, server.URL, 2)
 
 	svc := probe.New(db, redis)
+	svc.Client = server.Client()
 	if err := svc.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +53,7 @@ func TestProbePublicKeysFallsBackToServicesWithoutChangingHealthCheck(t *testing
 	saveProbeEndpoints(t, db, redis, server.URL, 1)
 
 	svc := probe.New(db, redis)
+	svc.Client = server.Client()
 	checkedAt := time.Now().Truncate(time.Millisecond)
 	svc.Now = func() time.Time { return checkedAt }
 	if err := svc.Run(ctx); err != nil {
@@ -100,7 +102,9 @@ func TestProbePublicKeysFailurePreservesPreviousCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := probe.New(db, redis).Run(ctx); err != nil {
+	svc := probe.New(db, redis)
+	svc.Client = server.Client()
+	if err := svc.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
 	assertCachedPublicKeys(t, ctx, db, redis, old)

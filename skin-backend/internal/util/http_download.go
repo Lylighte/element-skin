@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 const HardCapBytes = 8 * 1024 * 1024
@@ -17,7 +18,7 @@ func DownloadTexture(client *http.Client, rawURL string, maxBytes int64) ([]byte
 		return nil, err
 	}
 	if client == nil {
-		client = http.DefaultClient
+		client = NewSecureOutboundHTTPClient(15 * time.Second)
 	}
 	redirectClient := *client
 	previousCheckRedirect := client.CheckRedirect

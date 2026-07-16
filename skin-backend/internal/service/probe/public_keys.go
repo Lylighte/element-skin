@@ -9,6 +9,7 @@ import (
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/redisstore"
 	fallbacksvc "element-skin/backend/internal/service/fallback"
+	"element-skin/backend/internal/util"
 )
 
 const maxPublicKeysResponseBytes = 1 << 20
@@ -64,7 +65,10 @@ func (s *Service) getPublicKeysResponse(ctx context.Context, rawURL string) ([]b
 	}
 	client := s.Client
 	if client == nil {
-		client = &http.Client{Timeout: httpTimeout}
+		if err := util.ValidateOutboundURL(rawURL); err != nil {
+			return nil, false
+		}
+		client = util.NewSecureOutboundHTTPClient(httpTimeout)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
