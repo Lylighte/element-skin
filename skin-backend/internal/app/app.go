@@ -12,6 +12,7 @@ import (
 	"element-skin/backend/internal/permission"
 	"element-skin/backend/internal/redisstore"
 	mailsvc "element-skin/backend/internal/service/mail"
+	noticesvc "element-skin/backend/internal/service/notice"
 	oauthsvc "element-skin/backend/internal/service/oauth"
 	probesvc "element-skin/backend/internal/service/probe"
 	settingssvc "element-skin/backend/internal/service/settings"
@@ -31,7 +32,7 @@ type refreshTokenCleaner interface {
 }
 
 type noticeCleaner interface {
-	DeleteExpired(ctx context.Context, cutoff int64) error
+	DeleteExpired(ctx context.Context, actor permission.Actor, cutoff int64) error
 }
 
 type oauthGrantCleaner interface {
@@ -50,7 +51,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		db.Close()
 		return nil, err
 	}
-	if err := db.Notices.DeleteExpired(ctx, database.NowMS()); err != nil {
+	noticeService := noticesvc.Service{DB: db}
+	if err := noticeService.DeleteExpired(ctx, permission.SystemMaintenanceActor(), database.NowMS()); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -78,7 +80,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	probeService := probesvc.New(db, redis)
 	StartScheduler(cleanupCtx,
 		refreshCleanupTask(db.Tokens, time.Hour),
-		noticeCleanupTask(db.Notices, time.Hour),
+		noticeCleanupTask(noticeService, time.Hour),
 		oauthGrantCleanupTask(oauthCleaner, time.Hour),
 		probeStatusTask(probeService, settings),
 	)
@@ -142,7 +144,7 @@ func noticeCleanupTask(cleaner noticeCleaner, interval time.Duration) ScheduledT
 		Name:     "notice_cleanup",
 		Interval: fixedInterval(interval),
 		Run: func(ctx context.Context) error {
-			return cleaner.DeleteExpired(ctx, database.NowMS())
+			return cleaner.DeleteExpired(ctx, permission.SystemMaintenanceActor(), database.NowMS())
 		},
 	}
 }

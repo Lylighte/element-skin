@@ -11,6 +11,7 @@ import (
 	"element-skin/backend/internal/database"
 	"element-skin/backend/internal/model"
 	"element-skin/backend/internal/permission"
+	noticesvc "element-skin/backend/internal/service/notice"
 	oauthsvc "element-skin/backend/internal/service/oauth"
 	"element-skin/backend/internal/testutil"
 )
@@ -140,7 +141,7 @@ func TestSchedulerNoticeCleanupTaskRemovesExpiredThenCancels(t *testing.T) {
 		Name:     "notice_cleanup_test",
 		Interval: fixedTestInterval(10 * time.Millisecond),
 		Run: func(ctx context.Context) error {
-			return db.Notices.DeleteExpired(ctx, database.NowMS())
+			return noticesvc.Service{DB: db}.DeleteExpired(ctx, permission.SystemMaintenanceActor(), database.NowMS())
 		},
 	})[0]
 	deadline := time.Now().Add(5 * time.Second)
@@ -169,11 +170,15 @@ func TestSchedulerNoticeCleanupTaskRemovesExpiredThenCancels(t *testing.T) {
 }
 
 type flakyNoticeCleaner struct {
-	calls atomic.Int64
+	calls       atomic.Int64
+	invalidCall atomic.Bool
 }
 
-func (f *flakyNoticeCleaner) DeleteExpired(context.Context, int64) error {
+func (f *flakyNoticeCleaner) DeleteExpired(_ context.Context, actor permission.Actor, cutoff int64) error {
 	f.calls.Add(1)
+	if cutoff <= 0 || !actor.Has(permission.MustDefinitionByCode("notice.delete.system")) {
+		f.invalidCall.Store(true)
+	}
 	return errors.New("notice boom")
 }
 
@@ -184,7 +189,7 @@ func TestSchedulerNoticeCleanupTaskSurvivesCleanupError(t *testing.T) {
 		Name:     "flaky_notice_cleanup_test",
 		Interval: fixedTestInterval(10 * time.Millisecond),
 		Run: func(ctx context.Context) error {
-			return cleaner.DeleteExpired(ctx, database.NowMS())
+			return cleaner.DeleteExpired(ctx, permission.SystemMaintenanceActor(), database.NowMS())
 		},
 	})[0]
 
@@ -198,8 +203,8 @@ func TestSchedulerNoticeCleanupTaskSurvivesCleanupError(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("notice cleanup loop did not stop after cancellation")
 	}
-	if cleaner.calls.Load() < 2 {
-		t.Fatalf("notice cleanup loop should continue after errors, calls=%d", cleaner.calls.Load())
+	if cleaner.calls.Load() < 2 || cleaner.invalidCall.Load() {
+		t.Fatalf("notice cleanup loop should continue with the maintenance actor, calls=%d invalid=%v", cleaner.calls.Load(), cleaner.invalidCall.Load())
 	}
 }
 

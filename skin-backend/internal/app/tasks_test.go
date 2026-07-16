@@ -22,10 +22,12 @@ func (c *taskRefreshCleaner) DeleteExpiredRefresh(_ context.Context, cutoff int6
 
 type taskNoticeCleaner struct {
 	cutoff int64
+	actor  permission.Actor
 	err    error
 }
 
-func (c *taskNoticeCleaner) DeleteExpired(_ context.Context, cutoff int64) error {
+func (c *taskNoticeCleaner) DeleteExpired(_ context.Context, actor permission.Actor, cutoff int64) error {
+	c.actor = actor
 	c.cutoff = cutoff
 	return c.err
 }
@@ -60,8 +62,12 @@ func TestCleanupTaskConstructorsRunExactCleaners(t *testing.T) {
 	if noticeTask.Name != "notice_cleanup" || noticeTask.RunImmediately || noticeTask.Interval(ctx) != 30*time.Minute {
 		t.Fatalf("notice cleanup task metadata mismatch: %#v", noticeTask)
 	}
-	if err := noticeTask.Run(ctx); !errors.Is(err, boom) || notice.cutoff <= 0 {
-		t.Fatalf("notice cleanup run mismatch: cutoff=%d err=%v", notice.cutoff, err)
+	if err := noticeTask.Run(ctx); !errors.Is(err, boom) || notice.cutoff <= 0 ||
+		notice.actor.SubjectID != "system:maintenance" ||
+		notice.actor.SessionKind != permission.SessionKindSystem ||
+		notice.actor.Entrypoint != permission.EntrypointMaintenance ||
+		!notice.actor.Has(permission.MustDefinitionByCode("notice.delete.system")) {
+		t.Fatalf("notice cleanup run mismatch: cutoff=%d actor=%#v err=%v", notice.cutoff, notice.actor, err)
 	}
 
 	oauth := &taskOAuthGrantCleaner{err: boom}
