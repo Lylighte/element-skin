@@ -48,5 +48,9 @@ func newHTTPServer(cfg config.Config, handler http.Handler) *http.Server {
 		Addr:              cfg.ServerHost + ":" + cfg.ServerPort,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 }

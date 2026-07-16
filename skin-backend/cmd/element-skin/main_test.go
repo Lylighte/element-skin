@@ -25,4 +25,16 @@ func TestNewHTTPServerUsesConfiguredAddressHandlerAndTimeout(t *testing.T) {
 	if server.ReadHeaderTimeout != 10*time.Second {
 		t.Fatalf("unexpected read header timeout: %s", server.ReadHeaderTimeout)
 	}
+	if server.ReadTimeout != 30*time.Second {
+		t.Fatalf("unexpected read timeout: %s", server.ReadTimeout)
+	}
+	if server.WriteTimeout != 30*time.Second {
+		t.Fatalf("unexpected write timeout: %s", server.WriteTimeout)
+	}
+	if server.IdleTimeout != 120*time.Second {
+		t.Fatalf("unexpected idle timeout: %s", server.IdleTimeout)
+	}
+	if server.MaxHeaderBytes != 1<<20 {
+		t.Fatalf("unexpected max header bytes: %d", server.MaxHeaderBytes)
+	}
 }
