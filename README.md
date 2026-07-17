@@ -307,40 +307,61 @@ go test ./...
 
 ## 📈 并发压测结果
 
-最新一次压测在本机通过 `skin-backend/cmd/loadtest` 启动隔离测试数据库、真实 Redis key 前缀和进程内 HTTP 服务完成，不会触碰正常运行数据库。命令如下：
+最新一次 v3.0.0 压测在本机通过 `skin-backend/cmd/loadtest` 启动隔离测试数据库、真实 Redis key 前缀和进程内 HTTP 服务完成，不会触碰正常运行数据库。命令如下：
 
 ```bash
 cd skin-backend
 LOADTEST_ENABLE=1 LOADTEST_CONCURRENCY=200 LOADTEST_DURATION=1s go test ./cmd/loadtest -run TestRealBackendLoad -count=1 -v
 ```
 
-测试数据：100 个用户、300 个角色、500 条材质记录、50 个邀请码、1 个预置 Yggdrasil join 会话。固定并发：200；每个场景窗口：1s；数据库连接池：20。
+测试数据：100 个用户、300 个角色、500 条材质记录、50 个邀请码、1 个预置 Yggdrasil join 会话。固定并发：200；每个场景窗口：1s；数据库连接池：20。当前报告包含公开端点、Cookie、OAuth delegated、Client Credentials、管理员和 Yggdrasil 场景，全部 0 失败。
 
-| 场景 | Go 成功 req/s | Python 成功 req/s | 提升 | Go P95 | Python P95 |
+### v3.0.0 与 v2.4.1 功能对照
+
+下表比较的是同一业务功能在两个版本中的实际接口，不是 Go 与 Python 实现语言对比。v2.4.1 使用旧站点路径，v3.0.0 使用 `/v1` 路径；Yggdrasil 协议路径保持不变。
+
+| 功能（v2.4.1 → v3.0.0） | v3.0.0 req/s | v2.4.1 req/s | 变化 | v3.0.0 P95 | v2.4.1 P95 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Public settings | 26105.8 | 1913.7 | 13.6x | 9.1ms | 200.3ms |
-| Public homepage media | 30420.8 | 2138.0 | 14.2x | 8.2ms | 113.4ms |
-| Public skin library search | 16894.7 | 777.9 | 21.7x | 17.0ms | 552.6ms |
-| Site login | 305.6 | 42.1 | 7.3x | 695.7ms | 4.58s |
-| Yggdrasil metadata | 32938.5 | 2694.4 | 12.2x | 7.5ms | 110.9ms |
-| Yggdrasil authenticate | 292.1 | 42.6 | 6.9x | 1.04s | 4.54s |
-| Yggdrasil validate | 31803.1 | 1126.3 | 28.2x | 7.8ms | 422.1ms |
-| Yggdrasil profile | 61355.0 | 1782.7 | 34.4x | 5.2ms | 151.1ms |
-| Yggdrasil lookup name | 64973.6 | 1827.5 | 35.6x | 4.8ms | 164.2ms |
-| Yggdrasil hasJoined | 2072.2 | 250.8 | 8.3x | 127.6ms | 1.36s |
-| Me | 20258.1 | 984.3 | 20.6x | 13.6ms | 384.1ms |
-| My profiles | 28928.8 | 891.2 | 32.5x | 8.9ms | 469.3ms |
-| My textures | 29838.0 | 1125.8 | 26.5x | 8.5ms | 361.6ms |
-| Texture detail | 29216.8 | 1101.1 | 26.5x | 8.6ms | 360.5ms |
-| Admin users | 18290.2 | 672.9 | 27.2x | 16.7ms | 780.4ms |
-| Admin user detail | 28837.8 | 822.2 | 35.1x | 8.9ms | 510.3ms |
-| Admin user profiles | 28739.6 | 1032.5 | 27.8x | 9.1ms | 689.5ms |
-| Admin profiles | 22630.1 | 809.2 | 28.0x | 13.2ms | 822.5ms |
-| Admin textures | 22827.7 | 793.0 | 28.8x | 13.6ms | 659.7ms |
-| Admin invites | 24581.6 | 915.9 | 26.8x | 12.1ms | 371.8ms |
-| Admin settings/site | 2415.1 | 1318.3 | 1.8x | 90.0ms | 890.1ms |
+| 公开设置（`/public/settings` → `/v1/public/settings`） | 26733.6 | 35839.7 | -25.4% | 8.4ms | 6.9ms |
+| 首页媒体（`/public/homepage-media` → `/v1/public/homepage-media`） | 32634.7 | 34373.7 | -5.1% | 7.8ms | 11.4ms |
+| 公开皮肤库（`/public/skin-library` → `/v1/public/skin-library`） | 18196.2 | 22222.8 | -18.1% | 16.1ms | 13.4ms |
+| 登录（`/site-login` → `/v1/auth/login`） | 311.7 | 271.1 | +15.0% | 890.7ms | 1.17s |
+| Yggdrasil 元数据（`/` → `/`） | 26109.0 | 33210.8 | -21.4% | 10.2ms | 10.9ms |
+| Yggdrasil authenticate | 289.6 | 287.9 | +0.6% | 1.11s | 1.16s |
+| Yggdrasil validate | 16188.3 | 17246.6 | -6.1% | 13.9ms | 23.9ms |
+| Yggdrasil profile | 70172.7 | 76284.7 | -8.0% | 4.6ms | 4.5ms |
+| Yggdrasil 按名称查询 | 75233.8 | 80444.3 | -6.5% | 4.2ms | 4.4ms |
+| Yggdrasil hasJoined | 1976.9 | 2046.7 | -3.4% | 158.5ms | 147.9ms |
+| 当前用户（`/me` → `/v1/users/me`） | 12896.7 | 20109.5 | -35.9% | 18.7ms | 12.3ms |
+| 我的角色（`/me/profiles` → `/v1/users/me/profiles`） | 17094.2 | 20785.0 | -17.8% | 13.4ms | 15.1ms |
+| 我的材质（`/me/textures` → `/v1/users/me/textures`） | 17070.5 | 20894.3 | -18.3% | 13.6ms | 11.8ms |
+| 材质详情（`/me/textures/{hash}/skin` → `/v1/users/me/textures/{hash}/skin`） | 16641.1 | 21344.9 | -22.0% | 13.8ms | 11.4ms |
+| 管理员用户列表（`/admin/users` → `/v1/admin/users`） | 1879.5 | 3797.7 | -50.5% | 124.8ms | 65.0ms |
+| 管理员用户详情（`/admin/users/{id}` → `/v1/admin/users/{id}`） | 12154.6 | 19608.9 | -38.0% | 19.4ms | 12.6ms |
+| 管理员角色列表（`/admin/profiles` → `/v1/admin/profiles`） | 14260.2 | 14156.7 | +0.7% | 17.0ms | 29.5ms |
+| 管理员材质列表（`/admin/textures` → `/v1/admin/textures`） | 14997.6 | 19838.2 | -24.4% | 17.0ms | 15.0ms |
+| 管理员邀请码（`/admin/invites` → `/v1/admin/invites`） | 14821.4 | 17875.0 | -17.1% | 16.0ms | 15.9ms |
+| 管理员站点设置（`/admin/settings/site` → `/v1/admin/settings/site`） | 2607.6 | 2237.5 | +16.5% | 80.8ms | 129.2ms |
 
-完整报告见 [`reports/concurrency-load-test.md`](reports/concurrency-load-test.md)，Python 对照基线为 `dev:reports/python-concurrency-load-test.md`。
+这组对比只能说明固定测试条件下的吞吐和延迟差异，不能把路径迁移本身当作性能原因。3.0.0 额外增加了细粒度权限、Redis 权限缓存和统一 Actor 处理，因此当前用户和管理员列表等复杂权限路径需要重点关注。
+
+### v3.0.0 新增 OAuth 压测场景
+
+v2.4.1 没有对应 OAuth 功能，因此以下场景不参与跨版本对比：
+
+| 场景 | 接口 | 成功 req/s | P95 |
+| --- | --- | ---: | ---: |
+| OAuth delegated 当前用户 | `/v1/users/me` | 9588.1 | 28.1ms |
+| OAuth delegated 角色列表 | `/v1/users/me/profiles` | 13213.5 | 18.9ms |
+| OAuth delegated 材质列表 | `/v1/users/me/textures` | 11809.0 | 23.5ms |
+| OAuth delegated 材质详情 | `/v1/users/me/textures/{hash}/skin` | 13124.8 | 19.1ms |
+| OAuth delegated 管理员用户列表 | `/v1/admin/users` | 1712.3 | 136.3ms |
+| OAuth delegated 管理员用户详情 | `/v1/admin/users/{id}` | 9374.1 | 29.7ms |
+| OAuth delegated 管理员邀请码 | `/v1/admin/invites` | 11404.4 | 22.5ms |
+| Client Credentials 管理员邀请码 | `/v1/admin/invites` | 6709.2 | 42.1ms |
+| OAuth delegated 管理员设置 | `/v1/admin/settings/site` | 2525.0 | 83.0ms |
+
+完整报告见 [`reports/concurrency-load-test.md`](reports/concurrency-load-test.md)。压测报告使用隔离 PostgreSQL 数据库和 Redis key 前缀，测试结束后自动清理测试数据。
 
 ## 📄 许可证
 
