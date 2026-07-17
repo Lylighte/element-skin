@@ -402,13 +402,13 @@ CREATE TABLE IF NOT EXISTS permission_audit_logs (
     FOREIGN KEY(target_grant_id) REFERENCES delegated_permission_grants(id) ON DELETE SET NULL
 );
 
+-- Migrations from the Python 2.4.1 schema only.
 ALTER TABLE skin_library DROP CONSTRAINT IF EXISTS skin_library_pkey;
 ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash, texture_type);
 ALTER TABLE skin_library ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DEFAULT 0;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS tokens;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0;
-ALTER TABLE permission_subjects ADD COLUMN IF NOT EXISTS protected BOOLEAN NOT NULL DEFAULT FALSE;
 
 DO $$
 BEGIN
@@ -465,8 +465,6 @@ CREATE INDEX IF NOT EXISTS idx_oauth_authorization_codes_grant_expiry ON oauth_a
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_user_client ON oauth_refresh_tokens (user_id, client_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_grant_active_expiry ON oauth_refresh_tokens (grant_id, expires_at) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_oauth_device_codes_client_status ON oauth_device_codes (client_id, status, expires_at);
-
-DELETE FROM settings WHERE key IN ('fallback_services', 'easter_eggs_enabled');
 
 INSERT INTO settings (key, value) VALUES
 ('microsoft_client_id', ''),

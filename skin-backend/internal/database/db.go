@@ -100,6 +100,7 @@ func (db *DB) Init(ctx context.Context) error {
 	if err := db.Permissions.SeedDefaults(ctx); err != nil {
 		return err
 	}
+	// SeedDefaults reads the 2.4.1 is_admin flag before this final cleanup.
 	_, err := db.Pool.Exec(ctx, `
 		ALTER TABLE users DROP COLUMN IF EXISTS is_admin;
 	`)

@@ -148,6 +148,7 @@ func seedUserSubjects(ctx context.Context, tx pgx.Tx, now int64) error {
 	`, core.RoleUser, now); err != nil {
 		return err
 	}
+	// The flag exists only in the Python 2.4.1 source schema.
 	hasAdmin, err := usersColumnExists(ctx, tx, "is_admin")
 	if err != nil {
 		return err

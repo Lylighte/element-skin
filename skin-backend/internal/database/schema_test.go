@@ -30,6 +30,36 @@ func TestInitSQLContainsExpectedTablesConstraintsIndexesAndSeeds(t *testing.T) {
 	}
 }
 
+func TestInitSQLContainsOnlyVersion241MigrationPaths(t *testing.T) {
+	for _, fragment := range []string{
+		"ALTER TABLE skin_library DROP CONSTRAINT IF EXISTS skin_library_pkey",
+		"ALTER TABLE skin_library ADD CONSTRAINT skin_library_pkey PRIMARY KEY (skin_hash, texture_type)",
+		"ALTER TABLE skin_library ADD COLUMN IF NOT EXISTS usage_count",
+		"DROP TABLE IF EXISTS sessions",
+		"DROP TABLE IF EXISTS tokens",
+		"ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at",
+		"UPDATE users SET created_at = 0 WHERE created_at IS NULL",
+		"UPDATE skin_library sl SET usage_count",
+		"ALTER TABLE fallback_endpoints DROP COLUMN skin_domains",
+	} {
+		if !strings.Contains(database.InitSQL, fragment) {
+			t.Fatalf("InitSQL missing version 2.4.1 migration fragment %q", fragment)
+		}
+	}
+	for _, fragment := range []string{
+		"ALTER TABLE permissions DROP COLUMN IF EXISTS bit_index",
+		"ALTER TABLE homepage_media DROP COLUMN IF EXISTS config",
+		"ALTER TABLE delegated_clients ADD COLUMN IF NOT EXISTS",
+		"ALTER TABLE oauth_device_codes ADD COLUMN IF NOT EXISTS",
+		"ALTER TABLE permission_subjects ADD COLUMN IF NOT EXISTS protected",
+		"DELETE FROM settings WHERE key IN ('fallback_services', 'easter_eggs_enabled')",
+	} {
+		if strings.Contains(database.InitSQL, fragment) {
+			t.Fatalf("InitSQL contains development-only migration fragment %q", fragment)
+		}
+	}
+}
+
 func TestInitSQLExecutesSuccessfullyAgainstRealDatabase(t *testing.T) {
 	db, _ := testutil.NewTestApp(t)
 	ctx := context.Background()
