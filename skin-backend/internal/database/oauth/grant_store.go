@@ -36,6 +36,28 @@ func (s Store) RevokeGrant(ctx context.Context, grantID, userID string, revokedA
 	return tag.RowsAffected() > 0, nil
 }
 
+func (s Store) RevokeGrantsByClient(ctx context.Context, clientID string, revokedAt int64) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		UPDATE delegated_permission_grants
+		SET status='revoked', revoked_at=$2
+		WHERE client_id=$1 AND status='active'
+		RETURNING id
+	`, clientID, revokedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var grantIDs []string
+	for rows.Next() {
+		var grantID string
+		if err := rows.Scan(&grantID); err != nil {
+			return nil, err
+		}
+		grantIDs = append(grantIDs, grantID)
+	}
+	return grantIDs, rows.Err()
+}
+
 func (s Store) RevokeInactiveGrants(ctx context.Context, now, createdBefore int64) (int64, error) {
 	tag, err := s.Pool.Exec(ctx, `
 		UPDATE delegated_permission_grants AS g

@@ -96,6 +96,10 @@ func (s Service) UpdateClient(ctx context.Context, actor permission.Actor, clien
 	if err != nil {
 		return nil, err
 	}
+	currentPermissionCodes, err := s.clientPermissionCodes(ctx, current.ID)
+	if err != nil {
+		return nil, err
+	}
 	client, permissionIDs, permissionCodes, err := s.clientFromInput(actor, input)
 	if err != nil {
 		return nil, err
@@ -122,6 +126,31 @@ func (s Service) UpdateClient(ctx context.Context, actor permission.Actor, clien
 	if !updated {
 		return nil, notFound("oauth client not found")
 	}
+	if client.Status != StatusActive {
+		if err := s.revokeClientAuthorizations(ctx, client.ID, client.UpdatedAt); err != nil {
+			return nil, err
+		}
+	} else if hasRemovedPermission(currentPermissionCodes, permissionCodes) {
+		revoked, err := s.DB.OAuth.RevokeInvalidGrantsForClient(ctx, client.ID, client.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range revoked {
+			if err := s.invalidateGrantCredentials(ctx, item.GrantID, client.UpdatedAt); err != nil {
+				return nil, err
+			}
+		}
+		if err := s.Redis.DeleteOAuthAccessTokensByClient(ctx, client.ID); err != nil {
+			return nil, err
+		}
+		if err := s.notifyPermissionDependencyChanges(ctx, PermissionDependencyResult{RevokedGrants: revoked}); err != nil {
+			return nil, err
+		}
+	} else if current.RedirectURI != client.RedirectURI || current.ClientType != client.ClientType {
+		if err := s.invalidateClientCredentials(ctx, client.ID, client.UpdatedAt); err != nil {
+			return nil, err
+		}
+	}
 	return clientResponse(client, permissionCodes, ""), nil
 }
 
@@ -138,6 +167,9 @@ func (s Service) SubmitClientForReview(ctx context.Context, actor permission.Act
 	}
 	if !ok {
 		return nil, notFound("oauth client not found")
+	}
+	if err := s.revokeClientAuthorizations(ctx, client.ID, client.UpdatedAt); err != nil {
+		return nil, err
 	}
 	if err := s.notifyAdminsClientSubmitted(ctx, *client); err != nil {
 		return nil, err
@@ -165,5 +197,18 @@ func (s Service) DeleteClient(ctx context.Context, actor permission.Actor, clien
 	if !ok {
 		return notFound("oauth client not found")
 	}
-	return nil
+	return s.Redis.DeleteOAuthAccessTokensByClient(ctx, client.ID)
+}
+
+func hasRemovedPermission(before, after []string) bool {
+	afterSet := make(map[string]struct{}, len(after))
+	for _, code := range after {
+		afterSet[code] = struct{}{}
+	}
+	for _, code := range before {
+		if _, ok := afterSet[code]; !ok {
+			return true
+		}
+	}
+	return false
 }

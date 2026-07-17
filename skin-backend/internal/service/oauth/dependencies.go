@@ -28,9 +28,19 @@ func (s Service) ReconcileUserPermissionDependents(ctx context.Context, userID s
 	if err != nil {
 		return PermissionDependencyResult{}, err
 	}
+	for _, item := range revoked {
+		if err := s.invalidateGrantCredentials(ctx, item.GrantID, now); err != nil {
+			return PermissionDependencyResult{}, err
+		}
+	}
 	disabled, err := s.DB.OAuth.DisableInvalidClientsForOwner(ctx, userID, allowedIDs, serverPermissionIDs(), now)
 	if err != nil {
 		return PermissionDependencyResult{}, err
+	}
+	for _, item := range disabled {
+		if err := s.revokeClientAuthorizations(ctx, item.ClientID, now); err != nil {
+			return PermissionDependencyResult{}, err
+		}
 	}
 	result := PermissionDependencyResult{RevokedGrants: revoked, DisabledClients: disabled}
 	if err := s.notifyPermissionDependencyChanges(ctx, result); err != nil {
@@ -40,7 +50,23 @@ func (s Service) ReconcileUserPermissionDependents(ctx context.Context, userID s
 }
 
 func (s Service) DeleteUserOAuthData(ctx context.Context, userID string) (dboauth.UserCleanupResult, error) {
-	return s.DB.OAuth.DeleteUserOAuthData(ctx, userID)
+	clientIDs, err := s.DB.OAuth.ClientIDsByOwner(ctx, userID)
+	if err != nil {
+		return dboauth.UserCleanupResult{}, err
+	}
+	result, err := s.DB.OAuth.DeleteUserOAuthData(ctx, userID)
+	if err != nil {
+		return dboauth.UserCleanupResult{}, err
+	}
+	if err := s.Redis.DeleteOAuthAccessTokensByUser(ctx, userID); err != nil {
+		return dboauth.UserCleanupResult{}, err
+	}
+	for _, clientID := range clientIDs {
+		if err := s.Redis.DeleteOAuthAccessTokensByClient(ctx, clientID); err != nil {
+			return dboauth.UserCleanupResult{}, err
+		}
+	}
+	return result, nil
 }
 
 func permissionIDsFromBitSet(bits permission.BitSet) []int64 {

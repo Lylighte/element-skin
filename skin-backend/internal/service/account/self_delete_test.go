@@ -58,6 +58,14 @@ func TestAccountServiceDeleteSelfRejectsProtectedRoleAndDeletesPlainUserExactly(
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := cache.SetOAuthAccessToken(ctx, redisstore.OAuthAccessToken{
+		TokenHash: "self-delete-access",
+		ClientID:  client.ID,
+		UserID:    plain.ID,
+		GrantID:   grant.ID,
+	}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	if err := svc.DeleteSelf(ctx, actorWithPermissions(plain.ID, "account.delete.self")); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +82,9 @@ func TestAccountServiceDeleteSelfRejectsProtectedRoleAndDeletesPlainUserExactly(
 	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM permission_subjects WHERE id=$1`, permissiondb.SubjectIDForClient(client.ID), 0)
 	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM delegated_permission_grants WHERE id=$1`, grant.ID, 0)
 	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM oauth_refresh_tokens WHERE token_hash=$1`, "self-delete-refresh", 0)
+	if _, err := cache.GetOAuthAccessToken(ctx, "self-delete-access"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("DeleteSelf should remove oauth access token exactly, got %v", err)
+	}
 }
 
 func TestAccountServiceDeleteSelfPreservesUserWhenYggRevocationFails(t *testing.T) {

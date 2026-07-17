@@ -105,7 +105,7 @@ func TestServiceOAuthRevokedGrantRejectsAuthorizationCodeAndRefreshExactly(t *te
 	`, clientID, user.ID).Scan(&activeRefreshCount); err != nil {
 		t.Fatal(err)
 	}
-	if activeRefreshCount != 1 {
-		t.Fatalf("revoked grant refresh failure should not rotate token, active refresh count=%d want 1", activeRefreshCount)
+	if activeRefreshCount != 0 {
+		t.Fatalf("revoked grant should revoke its refresh token, active refresh count=%d want 0", activeRefreshCount)
 	}
 }

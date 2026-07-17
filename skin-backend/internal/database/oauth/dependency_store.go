@@ -72,6 +72,48 @@ func (s Store) RevokeInvalidGrantsForUser(ctx context.Context, userID string, al
 	return items, rows.Err()
 }
 
+func (s Store) RevokeInvalidGrantsForClient(ctx context.Context, clientID string, revokedAt int64) ([]RevokedGrantDependency, error) {
+	rows, err := s.Pool.Query(ctx, `
+		WITH invalid AS (
+			SELECT DISTINCT g.id, c.name AS client_name
+			FROM delegated_permission_grants g
+			JOIN delegated_clients c ON c.id=g.client_id
+			WHERE g.client_id=$1
+			  AND g.status='active'
+			  AND EXISTS (
+			      SELECT 1
+			      FROM delegated_grant_permissions gp
+			      LEFT JOIN delegated_client_permissions cp
+			        ON cp.client_id=g.client_id AND cp.permission_id=gp.permission_id
+			      WHERE gp.grant_id=g.id AND cp.permission_id IS NULL
+			  )
+		),
+		updated AS (
+			UPDATE delegated_permission_grants g
+			SET status='revoked', revoked_at=$2
+			FROM invalid
+			WHERE g.id=invalid.id
+			RETURNING g.id, g.user_id, g.client_id, invalid.client_name, g.revoked_at
+		)
+		SELECT id, user_id, client_id, client_name, revoked_at
+		FROM updated
+		ORDER BY user_id, id
+	`, clientID, revokedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RevokedGrantDependency{}
+	for rows.Next() {
+		var item RevokedGrantDependency
+		if err := rows.Scan(&item.GrantID, &item.UserID, &item.ClientID, &item.ClientName, &item.RevokedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s Store) DisableInvalidClientsForOwner(ctx context.Context, ownerUserID string, allowedPermissionIDs []int64, exemptPermissionIDs []int64, updatedAt int64) ([]DisabledClientDependency, error) {
 	rows, err := s.Pool.Query(ctx, `
 		WITH invalid AS (
@@ -127,7 +169,6 @@ func (s Store) DeleteUserOAuthData(ctx context.Context, userID string) (UserClea
 	if err != nil {
 		return UserCleanupResult{}, err
 	}
-
 	var result UserCleanupResult
 	tag, err := tx.Exec(ctx, `DELETE FROM delegated_permission_grants WHERE user_id=$1`, userID)
 	if err != nil {

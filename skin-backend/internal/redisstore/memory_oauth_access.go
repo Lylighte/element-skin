@@ -36,6 +36,43 @@ func (s *MemoryStore) DeleteOAuthAccessToken(_ context.Context, tokenHash string
 	return nil
 }
 
+func (s *MemoryStore) DeleteOAuthAccessTokensByClient(_ context.Context, clientID string) error {
+	return s.deleteOAuthAccessTokens(func(token OAuthAccessToken) bool { return token.ClientID == clientID })
+}
+
+func (s *MemoryStore) DeleteOAuthAccessTokensByGrant(_ context.Context, grantID string) error {
+	return s.deleteOAuthAccessTokens(func(token OAuthAccessToken) bool { return token.GrantID == grantID })
+}
+
+func (s *MemoryStore) DeleteOAuthAccessTokensByUser(_ context.Context, userID string) error {
+	return s.deleteOAuthAccessTokens(func(token OAuthAccessToken) bool { return token.UserID == userID })
+}
+
+func (s *MemoryStore) deleteOAuthAccessTokens(match func(OAuthAccessToken) bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Err != nil {
+		return s.Err
+	}
+	for key, item := range s.items {
+		if len(key) < len("oauth:access:") || key[:len("oauth:access:")] != "oauth:access:" {
+			continue
+		}
+		raw, ok := item.value.(map[string]any)
+		if !ok {
+			token, ok := item.value.(OAuthAccessToken)
+			if ok && match(token) {
+				delete(s.items, key)
+			}
+			continue
+		}
+		if match(oauthAccessTokenFromMap(raw)) {
+			delete(s.items, key)
+		}
+	}
+	return nil
+}
+
 func oauthAccessTokenFromMap(raw map[string]any) OAuthAccessToken {
 	token := OAuthAccessToken{
 		TokenHash: stringValue(raw["token_hash"]),

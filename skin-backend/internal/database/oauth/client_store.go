@@ -103,6 +103,23 @@ func (s Store) ListClientsByOwner(ctx context.Context, ownerUserID string, limit
 	return scanClients(rows)
 }
 
+func (s Store) ClientIDsByOwner(ctx context.Context, ownerUserID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id FROM delegated_clients WHERE owner_user_id=$1 ORDER BY id`, ownerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var clientIDs []string
+	for rows.Next() {
+		var clientID string
+		if err := rows.Scan(&clientID); err != nil {
+			return nil, err
+		}
+		clientIDs = append(clientIDs, clientID)
+	}
+	return clientIDs, rows.Err()
+}
+
 func (s Store) ListClients(ctx context.Context, limit int) ([]model.OAuthClient, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT id, owner_user_id, name, description, redirect_uri, website_url, client_type, secret_hash, status, created_at, updated_at

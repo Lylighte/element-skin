@@ -43,6 +43,11 @@ func (s Service) ReviewClient(ctx context.Context, actor permission.Actor, clien
 	if !ok {
 		return nil, notFound("oauth client not found")
 	}
+	if status != StatusActive {
+		if err := s.revokeClientAuthorizations(ctx, client.ID, client.UpdatedAt); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.notifyOwnerReviewResult(ctx, *client, status, reason); err != nil {
 		return nil, err
 	}
@@ -62,6 +67,9 @@ func (s Service) RotateClientSecret(ctx context.Context, actor permission.Actor,
 		return nil, err
 	}
 	updatedAt := database.NowMS()
+	if err := s.invalidateClientCredentials(ctx, client.ID, updatedAt); err != nil {
+		return nil, err
+	}
 	ok, err := s.DB.OAuth.RotateClientSecret(ctx, client.ID, hash, updatedAt)
 	if err != nil {
 		return nil, err

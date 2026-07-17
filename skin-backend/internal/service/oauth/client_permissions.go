@@ -70,7 +70,10 @@ func (s Service) SetClientPermissionOverride(ctx context.Context, actor permissi
 	if !ok || def.Scope.ID == permission.ScopeSystem {
 		return badRequest("invalid permission")
 	}
-	return s.DB.Permissions.SetPermissionOverrideForSubject(ctx, permissiondb.SubjectIDForClient(client.ID), def, effect, actor.SubjectID)
+	if err := s.DB.Permissions.SetPermissionOverrideForSubject(ctx, permissiondb.SubjectIDForClient(client.ID), def, effect, actor.SubjectID); err != nil {
+		return err
+	}
+	return s.Redis.DeleteOAuthAccessTokensByClient(ctx, client.ID)
 }
 
 func (s Service) ClearClientPermissionOverride(ctx context.Context, actor permission.Actor, clientID, code string) error {
@@ -95,7 +98,7 @@ func (s Service) ClearClientPermissionOverride(ctx context.Context, actor permis
 	if !ok {
 		return notFound("permission override not found")
 	}
-	return nil
+	return s.Redis.DeleteOAuthAccessTokensByClient(ctx, client.ID)
 }
 
 func (s Service) grantReviewedClientPermissions(ctx context.Context, actor permission.Actor, clientID string, codes []string) error {

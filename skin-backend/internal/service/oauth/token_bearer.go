@@ -27,7 +27,14 @@ func (s Service) Introspect(ctx context.Context, actor permission.Actor, token s
 	if access.ExpiresAt <= database.NowMS() {
 		return map[string]any{"active": false}, nil
 	}
-	codes := permissionCodesFromIDs(access.PermissionIDs)
+	tokenActor, active, err := s.actorForAccessToken(ctx, access)
+	if err != nil {
+		return nil, err
+	}
+	if !active {
+		return map[string]any{"active": false}, nil
+	}
+	codes := permissionCodesFromBitSet(tokenActor.Permissions)
 	if access.UserID == "" {
 		return map[string]any{
 			"active":      true,
@@ -61,6 +68,10 @@ func (s Service) ActorForBearer(ctx context.Context, bearer string) (permission.
 	if token.ExpiresAt <= database.NowMS() {
 		return permission.Actor{}, false, nil
 	}
+	return s.actorForAccessToken(ctx, token)
+}
+
+func (s Service) actorForAccessToken(ctx context.Context, token redisstore.OAuthAccessToken) (permission.Actor, bool, error) {
 	if token.UserID != "" {
 		actor, err := s.DB.Permissions.ActorForUser(ctx, token.UserID, permissiondb.EffectiveOptions{
 			SessionKind:       permission.SessionKindDelegated,
@@ -73,6 +84,9 @@ func (s Service) ActorForBearer(ctx context.Context, bearer string) (permission.
 		}
 		actor.SessionID = token.TokenHash
 		actor.Permissions = actor.Permissions.And(bitSetFromPermissionIDs(token.PermissionIDs))
+		if actor.Permissions.Empty() {
+			return permission.Actor{}, false, nil
+		}
 		return actor, true, nil
 	}
 
@@ -90,7 +104,16 @@ func (s Service) ActorForBearer(ctx context.Context, bearer string) (permission.
 	if err != nil {
 		return permission.Actor{}, false, err
 	}
+	clientPermissionIDs, err := s.DB.OAuth.ClientPermissionIDs(ctx, token.ClientID)
+	if err != nil {
+		return permission.Actor{}, false, err
+	}
 	actor.SessionID = token.TokenHash
-	actor.Permissions = actor.Permissions.And(bitSetFromPermissionIDs(token.PermissionIDs))
+	actor.Permissions = actor.Permissions.
+		And(bitSetFromPermissionIDs(token.PermissionIDs)).
+		And(bitSetFromPermissionIDs(clientPermissionIDs))
+	if actor.Permissions.Empty() {
+		return permission.Actor{}, false, nil
+	}
 	return actor, true, nil
 }

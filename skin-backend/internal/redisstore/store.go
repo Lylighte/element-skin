@@ -90,6 +90,9 @@ type Store interface {
 	SetOAuthAccessToken(context.Context, OAuthAccessToken, time.Duration) error
 	GetOAuthAccessToken(context.Context, string) (OAuthAccessToken, error)
 	DeleteOAuthAccessToken(context.Context, string) error
+	DeleteOAuthAccessTokensByClient(context.Context, string) error
+	DeleteOAuthAccessTokensByGrant(context.Context, string) error
+	DeleteOAuthAccessTokensByUser(context.Context, string) error
 }
 
 type RedisStore struct {

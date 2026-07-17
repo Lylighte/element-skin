@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"element-skin/backend/internal/database"
 	permissiondb "element-skin/backend/internal/database/permission"
@@ -79,6 +80,42 @@ func TestPermissionServiceSetOverrideReconcilesOAuthDependentsExactly(t *testing
 	if err := db.OAuth.CreateGrant(ctx, unaffectedGrant, permissionTestIDs("account.read.self")); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.OAuth.CreateRefreshToken(ctx, model.OAuthToken{
+		TokenHash: "permission-reconcile-refresh",
+		ClientID:  client.ID,
+		UserID:    target.ID,
+		GrantID:   grant.ID,
+		ExpiresAt: database.NowMS() + int64(time.Hour/time.Millisecond),
+		CreatedAt: database.NowMS(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.OAuth.CreateRefreshToken(ctx, model.OAuthToken{
+		TokenHash: "permission-reconcile-unaffected-refresh",
+		ClientID:  unaffectedClient.ID,
+		UserID:    target.ID,
+		GrantID:   unaffectedGrant.ID,
+		ExpiresAt: database.NowMS() + int64(time.Hour/time.Millisecond),
+		CreatedAt: database.NowMS(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.SetOAuthAccessToken(ctx, redisstore.OAuthAccessToken{
+		TokenHash: "permission-reconcile-access",
+		ClientID:  client.ID,
+		UserID:    target.ID,
+		GrantID:   grant.ID,
+	}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.SetOAuthAccessToken(ctx, redisstore.OAuthAccessToken{
+		TokenHash: "permission-reconcile-unaffected-access",
+		ClientID:  unaffectedClient.ID,
+		UserID:    target.ID,
+		GrantID:   unaffectedGrant.ID,
+	}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	if err := cache.SetAuthUser(ctx, redisstore.AuthUser{ID: target.ID}, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +165,14 @@ func TestPermissionServiceSetOverrideReconcilesOAuthDependentsExactly(t *testing
 	if _, err := cache.GetAuthUser(ctx, target.ID); !errors.Is(err, redisstore.ErrCacheMiss) {
 		t.Fatalf("auth cache should still be invalidated exactly, got %v", err)
 	}
+	assertOAuthRefreshRevoked(t, db, "permission-reconcile-refresh", true)
+	assertOAuthRefreshRevoked(t, db, "permission-reconcile-unaffected-refresh", false)
+	if _, err := cache.GetOAuthAccessToken(ctx, "permission-reconcile-access"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("affected oauth access token should be removed exactly, got %v", err)
+	}
+	if token, err := cache.GetOAuthAccessToken(ctx, "permission-reconcile-unaffected-access"); err != nil || token.ClientID != unaffectedClient.ID || token.GrantID != unaffectedGrant.ID {
+		t.Fatalf("unaffected oauth access token should remain exactly: token=%#v err=%v", token, err)
+	}
 	page, err := noticesvc.Service{DB: db}.ListForUser(ctx, actorWithPermissions(target.ID, "notice.read.owned"), noticesvc.ListParams{Type: noticesvc.TypeSystem, IncludeRead: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
@@ -167,6 +212,17 @@ func TestPermissionServiceSetOverrideReconcilesOAuthDependentsExactly(t *testing
 		strings.Contains(clientDependencyNotice.ContentMarkdown, unaffectedClient.ID) ||
 		clientDependencyNotice.CreatedBy != nil {
 		t.Fatalf("oauth client dependency notice mismatch: %#v", clientDependencyNotice)
+	}
+}
+
+func assertOAuthRefreshRevoked(t *testing.T, db *database.DB, tokenHash string, wantRevoked bool) {
+	t.Helper()
+	token, err := db.OAuth.GetRefreshToken(context.Background(), tokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token == nil || (token.RevokedAt != nil) != wantRevoked {
+		t.Fatalf("oauth refresh token %q revoked mismatch: token=%#v want_revoked=%v", tokenHash, token, wantRevoked)
 	}
 }
 

@@ -448,8 +448,8 @@ func TestAuthAcceptsClientBearerAndRejectsInactiveOrMissingBearerExactly(t *test
 	profile := testutil.CreateProfile(t, db, profileUser.ID, "AuthBearerProfile", "default")
 	cache := redisstore.NewMemoryStore()
 	router := httpapi.NewRouterWithRedis(cfg, db, cache, yggsvc.Yggdrasil{DB: db, Cfg: cfg})
-	clientID := createActiveOAuthClientForAuthTest(t, db, owner.ID, "auth-client-bearer", nil)
 	def := permission.MustDefinitionByCode("minecraft_session.hasjoined.server")
+	clientID := createActiveOAuthClientForAuthTest(t, db, owner.ID, "auth-client-bearer", []int64{int64(def.ID)})
 	if err := db.Permissions.SetPermissionOverrideForSubject(t.Context(), permissiondb.SubjectIDForClient(clientID), def, "allow", ""); err != nil {
 		t.Fatal(err)
 	}

@@ -87,6 +87,15 @@ type oauthAccessDeleteFailStore struct {
 	deletedHash string
 }
 
+type oauthClientAccessDeleteFailStore struct {
+	redisstore.Store
+	err error
+}
+
+func (s *oauthClientAccessDeleteFailStore) DeleteOAuthAccessTokensByClient(_ context.Context, _ string) error {
+	return s.err
+}
+
 func (s *oauthAccessDeleteFailStore) DeleteOAuthAccessToken(_ context.Context, tokenHash string) error {
 	s.deletedHash = tokenHash
 	return s.err

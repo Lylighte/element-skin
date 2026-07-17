@@ -61,7 +61,7 @@ func TestOAuthClientCredentialsTokenWorksForMinecraftOnly(t *testing.T) {
 		"name":         "Minecraft server plugin",
 		"redirect_uri": "https://server.example/callback",
 		"client_type":  "confidential",
-		"permissions":  []string{"minecraft_profile.read.public"},
+		"permissions":  []string{"minecraft_profile.read.public", "minecraft_session.hasjoined.server"},
 	}, session, "")
 	if createRes.Code != http.StatusCreated {
 		t.Fatalf("create app status=%d body=%s", createRes.Code, createRes.Body.String())

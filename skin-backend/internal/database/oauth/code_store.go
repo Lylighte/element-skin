@@ -102,6 +102,46 @@ func (s Store) RevokeRefreshToken(ctx context.Context, tokenHash string, revoked
 	return tag.RowsAffected() > 0, nil
 }
 
+func (s Store) RevokeRefreshTokensByClient(ctx context.Context, clientID string, revokedAt int64) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE oauth_refresh_tokens
+		SET revoked_at=$2
+		WHERE client_id=$1 AND revoked_at IS NULL
+	`, clientID, revokedAt)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+func (s Store) RevokeRefreshTokensByGrant(ctx context.Context, grantID string, revokedAt int64) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE oauth_refresh_tokens
+		SET revoked_at=$2
+		WHERE grant_id=$1 AND revoked_at IS NULL
+	`, grantID, revokedAt)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+func (s Store) DeleteAuthorizationCodesByClient(ctx context.Context, clientID string) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM oauth_authorization_codes WHERE client_id=$1`, clientID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+func (s Store) DeleteAuthorizationCodesByGrant(ctx context.Context, grantID string) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM oauth_authorization_codes WHERE grant_id=$1`, grantID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (s Store) RotateRefreshToken(ctx context.Context, oldRefreshHash string, newRefresh model.OAuthToken, revokedAt int64) (bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {

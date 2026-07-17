@@ -2,13 +2,16 @@ package oauth_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"element-skin/backend/internal/database"
 	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/permission"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/oauth"
 	"element-skin/backend/internal/testutil"
+	"element-skin/backend/internal/util"
 )
 
 func TestServiceClientCredentialsIssueAppOnlyActorExactly(t *testing.T) {
@@ -29,7 +32,7 @@ func TestServiceClientCredentialsIssueAppOnlyActorExactly(t *testing.T) {
 		Name:            "Server plugin",
 		RedirectURI:     "https://server.example/callback",
 		ClientType:      oauth.ClientTypeConfidential,
-		PermissionCodes: []string{"minecraft_profile.read.public"},
+		PermissionCodes: []string{"minecraft_profile.read.public", "minecraft_session.hasjoined.server"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -92,21 +95,18 @@ func TestServiceClientCredentialsIssueAppOnlyActorExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Permissions.SetPermissionOverrideForSubject(
-		ctx,
-		permissiondb.SubjectIDForClient(clientID),
-		permission.MustDefinitionByCode("minecraft_session.hasjoined.server"),
-		"deny",
-		"",
-	); err != nil {
+	if err := svc.SetClientPermissionOverride(ctx, adminActor, clientID, "minecraft_session.hasjoined.server", "deny"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := svc.Redis.GetOAuthAccessToken(ctx, util.HashRefreshToken(token.AccessToken)); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("client permission override should remove existing access token exactly, got %v", err)
 	}
 	appActor, ok, err = svc.ActorForBearer(ctx, token.AccessToken)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || appActor.Has(permission.MustDefinitionByCode("minecraft_session.hasjoined.server")) {
-		t.Fatalf("app-only actor should be narrowed after permission revoke: ok=%v actor=%#v", ok, appActor)
+	if ok || appActor.SubjectID != "" {
+		t.Fatalf("app-only token with no remaining permission should be inactive: ok=%v actor=%#v", ok, appActor)
 	}
 	if ok, err := db.OAuth.UpdateClientStatus(ctx, clientID, oauth.StatusDisabled, database.NowMS()); err != nil || !ok {
 		t.Fatalf("disable client after token issue: ok=%v err=%v", ok, err)
@@ -218,6 +218,79 @@ func TestServiceClientCredentialsReviewApprovalGrantsRequestedClientScopesExactl
 		Scope:        "account.read.self",
 	})
 	assertHTTPError(t, err, 403, "permission denied")
+}
+
+func TestServiceClientCredentialsCannotUseRemovedApplicationPermissionExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	owner := testutil.CreateUser(t, db, "oauth-client-limit-owner@test.com", "Password123", "OAuthClientLimitOwner", true, true)
+	admin := testutil.CreateUser(t, db, "oauth-client-limit-admin@test.com", "Password123", "OAuthClientLimitAdmin", true, true)
+	ownerActor, err := db.Permissions.ActorForUser(ctx, owner.ID, permissiondb.EffectiveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminActor, err := db.Permissions.ActorForUser(ctx, admin.ID, permissiondb.EffectiveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := newOAuthService(db)
+	created, err := svc.CreateClient(ctx, ownerActor, oauth.ClientInput{
+		Name:            "Requested permission limit",
+		RedirectURI:     "https://client-limit.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"invite.read.any", "invite.create.any"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientID := created["client_id"].(string)
+	clientSecret := created["client_secret"].(string)
+	if _, err := svc.ReviewClient(ctx, adminActor, clientID, oauth.StatusActive, ""); err != nil {
+		t.Fatal(err)
+	}
+	before, err := svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Scope:        "invite.create.any invite.read.any",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Scope != "invite.create.any invite.read.any" {
+		t.Fatalf("initial client credentials scope mismatch: %#v", before)
+	}
+
+	if _, err := svc.UpdateClient(ctx, ownerActor, clientID, oauth.ClientInput{
+		Name:            "Requested permission limit",
+		RedirectURI:     "https://client-limit.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"invite.read.any"},
+	}, oauth.StatusActive); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Redis.GetOAuthAccessToken(ctx, util.HashRefreshToken(before.AccessToken)); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("permission limit reduction should remove old app-only access token, got %v", err)
+	}
+	_, err = svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Scope:        "invite.create.any",
+	})
+	assertHTTPError(t, err, 403, "permission denied")
+	kept, err := svc.IssueToken(ctx, oauth.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Scope:        "invite.read.any",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept.Scope != "invite.read.any" || len(kept.Permissions) != 1 || kept.Permissions[0] != "invite.read.any" {
+		t.Fatalf("remaining client credentials scope mismatch: %#v", kept)
+	}
 }
 
 func TestServiceClientCredentialsRejectsPublicClientAndExcessScopeExactly(t *testing.T) {

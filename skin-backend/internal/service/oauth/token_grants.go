@@ -101,6 +101,11 @@ func (s Service) clientCredentialsToken(ctx context.Context, req TokenRequest) (
 	if err != nil {
 		return TokenResponse{}, err
 	}
+	clientPermissionIDs, err := s.DB.OAuth.ClientPermissionIDs(ctx, client.ID)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	actor.Permissions = actor.Permissions.And(bitSetFromPermissionIDs(clientPermissionIDs))
 	codes, err := requestedOrDefaultClientScopes(req.Scope, actor)
 	if err != nil {
 		return TokenResponse{}, err

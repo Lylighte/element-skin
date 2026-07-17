@@ -108,6 +108,16 @@ func TestAccountServiceDeleteUserCascadesAndInvalidatesExactly(t *testing.T) {
 	}, accountOAuthPermissionIDs("account.read.self")); err != nil {
 		t.Fatal(err)
 	}
+	oauthAccessTokens := []redisstore.OAuthAccessToken{
+		{TokenHash: "account-delete-target-access", ClientID: otherClient.ID, UserID: target.ID, GrantID: targetGrantToOther.ID},
+		{TokenHash: "account-delete-owned-client-access", ClientID: ownedClient.ID, UserID: other.ID, GrantID: otherGrantToTargetApp.ID},
+		{TokenHash: "account-delete-unaffected-access", ClientID: unaffectedClient.ID, UserID: unaffected.ID, GrantID: unaffectedGrant.ID},
+	}
+	for _, token := range oauthAccessTokens {
+		if err := cache.SetOAuthAccessToken(ctx, token, time.Hour); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	if err := svc.DeleteUser(ctx, actor, target.ID); err != nil {
 		t.Fatal(err)
@@ -135,6 +145,15 @@ func TestAccountServiceDeleteUserCascadesAndInvalidatesExactly(t *testing.T) {
 	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM oauth_refresh_tokens WHERE token_hash=$1`, "account-delete-refresh", 0)
 	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM oauth_authorization_codes WHERE code_hash=$1`, "account-delete-code", 0)
 	assertAccountRowCount(t, db, `SELECT COUNT(*) FROM oauth_device_codes WHERE device_code_hash=$1`, "account-delete-device", 0)
+	if _, err := cache.GetOAuthAccessToken(ctx, "account-delete-target-access"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("delete should remove target delegated access token exactly, got %v", err)
+	}
+	if _, err := cache.GetOAuthAccessToken(ctx, "account-delete-owned-client-access"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("delete should remove access tokens issued to owned clients exactly, got %v", err)
+	}
+	if token, err := cache.GetOAuthAccessToken(ctx, "account-delete-unaffected-access"); err != nil || token.ClientID != unaffectedClient.ID || token.UserID != unaffected.ID {
+		t.Fatalf("delete should preserve unrelated oauth access token: token=%#v err=%v", token, err)
+	}
 
 	if err := svc.DeleteUser(ctx, actor, adminUser.ID); !httpErrorIs(err, http.StatusForbidden, "cannot delete yourself") {
 		t.Fatalf("self delete error mismatch: %#v", err)

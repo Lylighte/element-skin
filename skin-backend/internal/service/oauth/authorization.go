@@ -51,14 +51,15 @@ func (s Service) RevokeGrant(ctx context.Context, actor permission.Actor, grantI
 	if err := actor.Require(permission.MustDefinitionByCode("oauth_grant.revoke.owned")); err != nil {
 		return forbidden()
 	}
-	ok, err := s.DB.OAuth.RevokeGrant(ctx, grantID, actor.UserID, database.NowMS())
+	revokedAt := database.NowMS()
+	ok, err := s.DB.OAuth.RevokeGrant(ctx, grantID, actor.UserID, revokedAt)
 	if err != nil {
 		return err
 	}
 	if !ok {
 		return notFound("oauth grant not found")
 	}
-	return nil
+	return s.invalidateGrantCredentials(ctx, grantID, revokedAt)
 }
 
 func (s Service) CleanupGrants(ctx context.Context, actor permission.Actor, now int64) (GrantCleanupResult, error) {

@@ -2,10 +2,13 @@ package oauth_test
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	permissiondb "element-skin/backend/internal/database/permission"
 	"element-skin/backend/internal/permission"
+	"element-skin/backend/internal/redisstore"
 	"element-skin/backend/internal/service/oauth"
 	"element-skin/backend/internal/testutil"
 )
@@ -141,11 +144,23 @@ func TestServiceClientManagementReviewSecretDeleteAndAdminListExactly(t *testing
 	if rotated["client_secret"] == "" || rotated["client_secret"] == firstSecret || rotated["status"] != oauth.StatusActive {
 		t.Fatalf("rotated secret mismatch: %#v", rotated)
 	}
+	if err := svc.Redis.SetOAuthAccessToken(ctx, redisstore.OAuthAccessToken{
+		TokenHash: "managed-client-delete-access",
+		ClientID:  clientID,
+	}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	if err := svc.DeleteClient(ctx, otherActor, clientID); !isHTTPError(err, 403, "permission denied") {
 		t.Fatalf("other delete error mismatch: %#v", err)
 	}
+	if token, err := svc.Redis.GetOAuthAccessToken(ctx, "managed-client-delete-access"); err != nil || token.ClientID != clientID {
+		t.Fatalf("failed client delete must preserve access token: token=%#v err=%v", token, err)
+	}
 	if err := svc.DeleteClient(ctx, ownerActor, clientID); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := svc.Redis.GetOAuthAccessToken(ctx, "managed-client-delete-access"); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("deleted client access token should be removed exactly, got %v", err)
 	}
 	if _, err := svc.GetClient(ctx, ownerActor, clientID); !isHTTPError(err, 404, "oauth client not found") {
 		t.Fatalf("deleted client get error mismatch: %#v", err)

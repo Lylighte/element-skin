@@ -204,3 +204,44 @@ func TestServiceOAuthTokenIssuanceRedisFailuresKeepExactDatabaseState(t *testing
 		}
 	})
 }
+
+func TestServiceSecretRotationDoesNotChangeSecretWhenCredentialInvalidationFailsExactly(t *testing.T) {
+	db, _ := testutil.NewTestAppTB(t)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, db, "oauth-rotation-redis-fail@test.com", "Password123", "OAuthRotationRedisFail", false)
+	actor, err := db.Permissions.ActorForUser(ctx, user.ID, permissiondb.EffectiveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	healthy := newOAuthService(db)
+	created, err := healthy.CreateClient(ctx, actor, oauth.ClientInput{
+		Name:            "Rotation redis fail app",
+		RedirectURI:     "https://rotation-redis-fail.example/callback",
+		ClientType:      oauth.ClientTypeConfidential,
+		PermissionCodes: []string{"account.read.self"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientID := created["client_id"].(string)
+	originalSecret := created["client_secret"].(string)
+	activateOAuthClient(t, db, clientID)
+	forced := errors.New("oauth client access invalidation failed")
+	failing := oauth.Service{
+		DB: db,
+		Redis: &oauthClientAccessDeleteFailStore{
+			Store: healthy.Redis,
+			err:   forced,
+		},
+	}
+	if _, err := failing.RotateClientSecret(ctx, actor, clientID); !errors.Is(err, forced) {
+		t.Fatalf("secret rotation invalidation error mismatch: got=%v want=%v", err, forced)
+	}
+	client, err := db.OAuth.GetClient(ctx, clientID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client == nil || client.SecretHash != util.HashRefreshToken(originalSecret) {
+		t.Fatalf("failed secret rotation must preserve original secret hash: %#v", client)
+	}
+}
