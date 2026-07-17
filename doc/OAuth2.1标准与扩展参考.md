@@ -454,13 +454,14 @@ Client Credentials 的最终权限：
 ```text
 client subject effective permissions
 ∩ session_permission_bitset(client_credentials, api)
+∩ delegated_client_permissions
 ∩ requested_token_scope
 ∩ app status active
 ```
 
 `requested_token_scope` 只能缩小应用主体已经拥有的权限，不能申请新权限。
 
-管理员审核通过后，直接给 `client:{client_id}` 逐项授予 permission。Client Credentials 场景不使用用户授权页，不使用 `delegated_permission_grants`，也不使用 `delegated_client_permissions` 作为申请上限。
+管理员审核通过后，直接给 `client:{client_id}` 逐项授予 permission。Client Credentials 场景不使用用户授权页，也不使用 `delegated_permission_grants`；`delegated_client_permissions` 是开发者提交并经审核的应用权限上限，必须与客户端主体有效权限取交集。
 
 Client Credentials 首批站点能力包括 Minecraft 服务端查询和经管理员审核下放的站点管理能力：
 
