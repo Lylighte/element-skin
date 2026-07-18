@@ -1,0 +1,113 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+
+import { appStorage } from '../storage'
+
+describe('appStorage', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    window.sessionStorage.clear()
+  })
+
+  it('returns exact site defaults and persists site settings', () => {
+    expect(appStorage.siteSettings.getSiteName()).toBe('皮肤站')
+    expect(appStorage.siteSettings.getSiteSubtitle()).toBe(
+      '简洁、高效、现代的 Minecraft 皮肤 management 站',
+    )
+    expect(appStorage.siteSettings.getEnableSkinLibrary()).toBe(true)
+
+    appStorage.siteSettings.setSiteName('Element Skin')
+    appStorage.siteSettings.setSiteSubtitle('Minecraft skin service')
+    appStorage.siteSettings.setEnableSkinLibrary(false)
+
+    expect(appStorage.siteSettings.getSiteName()).toBe('Element Skin')
+    expect(appStorage.siteSettings.getSiteSubtitle()).toBe('Minecraft skin service')
+    expect(appStorage.siteSettings.getEnableSkinLibrary()).toBe(false)
+
+    appStorage.siteSettings.setEnableSkinLibrary(true)
+    expect(appStorage.siteSettings.getEnableSkinLibrary()).toBe(true)
+  })
+
+  it('persists only supported theme values and treats invalid values as absent', () => {
+    expect(appStorage.theme.get()).toBeNull()
+    expect(appStorage.theme.hasUserPreference()).toBe(false)
+
+    appStorage.theme.set('dark')
+    expect(appStorage.theme.get()).toBe('dark')
+    expect(appStorage.theme.hasUserPreference()).toBe(true)
+
+    appStorage.theme.set('light')
+    expect(appStorage.theme.get()).toBe('light')
+
+    window.localStorage.setItem('theme', 'sepia')
+    expect(appStorage.theme.get()).toBeNull()
+    expect(appStorage.theme.hasUserPreference()).toBe(false)
+  })
+
+  it('stores the easter egg disabled preference with the current key only', () => {
+    expect(appStorage.easterEgg.isDisabled()).toBe(false)
+
+    appStorage.easterEgg.setDisabled(true)
+    expect(appStorage.easterEgg.isDisabled()).toBe(true)
+    expect(window.localStorage.getItem('disableEasterEgg')).toBe('1')
+
+    appStorage.easterEgg.setDisabled(false)
+    expect(appStorage.easterEgg.isDisabled()).toBe(false)
+    expect(window.localStorage.getItem('disableEasterEgg')).toBeNull()
+  })
+
+  it('cleans every unused localStorage key without removing active preferences', () => {
+    window.localStorage.setItem('avatar_cache_old', 'large-old-avatar')
+    window.localStorage.setItem('avatar_cache_lru', '{"entries":[]}')
+    window.localStorage.setItem('legacy_auth_state', 'stale')
+    window.localStorage.setItem('random_unused_key', 'stale')
+    window.localStorage.setItem('site_name_cache', 'Kept Site')
+    window.localStorage.setItem('site_subtitle_cache', 'Kept Subtitle')
+    window.localStorage.setItem('enable_skin_library_cache', 'false')
+    window.localStorage.setItem('theme', 'dark')
+    window.localStorage.setItem('disableEasterEgg', '1')
+
+    appStorage.cleanupUnusedKeys()
+
+    expect(window.localStorage.getItem('avatar_cache_old')).toBeNull()
+    expect(window.localStorage.getItem('avatar_cache_lru')).toBeNull()
+    expect(window.localStorage.getItem('legacy_auth_state')).toBeNull()
+    expect(window.localStorage.getItem('random_unused_key')).toBeNull()
+    expect(window.localStorage.getItem('site_name_cache')).toBe('Kept Site')
+    expect(window.localStorage.getItem('site_subtitle_cache')).toBe('Kept Subtitle')
+    expect(window.localStorage.getItem('enable_skin_library_cache')).toBe('false')
+    expect(window.localStorage.getItem('theme')).toBe('dark')
+    expect(window.localStorage.getItem('disableEasterEgg')).toBe('1')
+  })
+
+  it('falls back without throwing when browser storage is unavailable', () => {
+    const originalLocalStorage = window.localStorage
+    const throwingStorage = {
+      getItem: () => {
+        throw new Error('storage unavailable')
+      },
+      setItem: () => {
+        throw new Error('storage unavailable')
+      },
+      removeItem: () => {
+        throw new Error('storage unavailable')
+      },
+    } as unknown as Storage
+
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: throwingStorage,
+    })
+
+    expect(appStorage.siteSettings.getSiteName('Fallback Name')).toBe('Fallback Name')
+    expect(appStorage.siteSettings.getEnableSkinLibrary(false)).toBe(false)
+    expect(appStorage.theme.get()).toBeNull()
+    expect(appStorage.easterEgg.isDisabled()).toBe(false)
+    expect(() => appStorage.siteSettings.setSiteName('Ignored')).not.toThrow()
+    expect(() => appStorage.cleanupUnusedKeys()).not.toThrow()
+
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: originalLocalStorage,
+    })
+  })
+})

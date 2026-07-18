@@ -32,6 +32,12 @@ let globalRenderLock: Promise<void> = Promise.resolve()
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as skinview3d from 'skinview3d'
 import { Loading } from '@element-plus/icons-vue'
+import {
+  canvasToBlob,
+  getCachedImageUrl,
+  setCachedImageUrl,
+  skinSnapshotCacheKey,
+} from '@/storage/renderCache'
 
 const props = withDefaults(
   defineProps<{
@@ -67,8 +73,21 @@ async function initViewer() {
   if (props.isStatic) {
     // 使用全局锁排队执行，防止 WebGL 上下文溢出
     globalRenderLock = globalRenderLock.then(async () => {
+      const cacheKey = skinSnapshotCacheKey({
+        skinUrl: props.skinUrl,
+        capeUrl: props.capeUrl,
+        model: props.model,
+        width: props.width,
+        height: props.height,
+      })
+
       // 再次检查快照是否已存在（防止重复渲染）
       if (snapshotUrl.value) return
+      const cachedUrl = await getCachedImageUrl('viewer-snapshot', cacheKey)
+      if (cachedUrl) {
+        snapshotUrl.value = cachedUrl
+        return
+      }
 
       const tempCanvas = document.createElement('canvas')
       let staticViewer: skinview3d.SkinViewer | null = null
@@ -96,7 +115,9 @@ async function initViewer() {
         if (props.capeUrl) await staticViewer.loadCape(props.capeUrl)
 
         staticViewer.render()
-        snapshotUrl.value = tempCanvas.toDataURL('image/png')
+        const blob = await canvasToBlob(tempCanvas)
+        const storedUrl = blob ? await setCachedImageUrl('viewer-snapshot', cacheKey, blob) : null
+        snapshotUrl.value = storedUrl ?? tempCanvas.toDataURL('image/png')
       } catch (e) {
         console.error('SkinViewer static render error:', e)
       } finally {

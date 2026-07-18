@@ -15,172 +15,176 @@
             <p>探索并收藏精美材质</p>
           </div>
         </div>
-        <div class="page-header-actions">
-          <div class="search-bar-container">
-            <el-input
-              v-model="searchQuery"
-              placeholder="搜索哈希、材质名或上传者"
-              clearable
-              @clear="handleClearSearch"
-              @keyup.enter="handleSearch"
-              size="large"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-              <template #append>
-                <el-button :icon="Search" @click="handleSearch">搜索</el-button>
-              </template>
-            </el-input>
-          </div>
-          <el-radio-group v-model="filterType" @change="handleFilterChange" size="large" class="capsule-radio">
+        <ActionBar full align="center">
+          <SearchBar
+            v-model="searchQuery"
+            placeholder="搜索哈希、材质名或上传者"
+            @clear="handleClearSearch"
+            @search="handleSearch"
+          />
+          <UiSegmented
+            v-model="filterType"
+            @change="handleFilterChange"
+            size="large"
+            class="skin-library-filter"
+          >
             <el-radio-button value="">全部</el-radio-button>
             <el-radio-button value="skin">皮肤</el-radio-button>
             <el-radio-button value="cape">披风</el-radio-button>
-          </el-radio-group>
-        </div>
+          </UiSegmented>
+          <el-select v-model="sortBy" @change="handleSortChange" size="large" class="sort-select">
+            <el-option label="最新上传" value="latest" />
+            <el-option label="最多使用" value="most_used" />
+          </el-select>
+        </ActionBar>
       </div>
 
-    <div class="library-grid-container" v-loading="loading" element-loading-background="transparent">
-      <div class="auto-grid" v-if="items.length > 0">
-        <div 
-          class="surface-card hoverable animate-card-slide clickable-card" 
-          v-for="(item, index) in items" 
-          :key="item.hash"
-          :style="{ '--delay-index': index % 20 }"
-          @click="openPreviewDialog(item)"
-        >
-          <div class="texture-preview" :style="{ background: isDark ? 'var(--color-background-hero-dark)' : 'var(--color-background-hero-light)' }">
-            <SkinViewer
-              v-if="item.type === 'skin'"
-              :skinUrl="texturesUrl(item.hash)"
-              :model="item.model || 'default'"
-              :width="200"
-              :height="280"
-              is-static
-            />
-            <CapeViewer
-              v-else
-              :capeUrl="texturesUrl(item.hash)"
-              :width="200"
-              :height="280"
-              is-static
-            />
-            <div
-              v-if="item.type === 'skin' && textureResolutions.get(item.hash)"
-              class="floating-badge"
-              :style="getResolutionBadgeStyle(textureResolutions.get(item.hash))"
-            >
-              {{ textureResolutions.get(item.hash) }}x
-            </div>
-          </div>
-          <div class="texture-info">
-            <div class="texture-title">{{ item.name || '未命名材质' }}</div>
-            <div class="texture-meta-info">
-              <span class="uploader-name" v-if="item.uploader_name">
-                <el-icon><User /></el-icon>
-                {{ item.uploader_name }}
-              </span>
-              <span class="meta-separator" v-if="item.uploader_name">·</span>
-              <span class="texture-date">
-                {{ formatDate(item.created_at) }}
-              </span>
-            </div>
-          </div>
-          <div class="texture-actions" @click.stop>
-            <el-button 
-              class="btn-gradient btn-gradient-primary" 
-              @click="addToWardrobe(item.hash)"
-              :disabled="!isLogged"
-            >
-              <el-icon><Plus /></el-icon>
-              <span>添加到衣柜</span>
-            </el-button>
-          </div>
-        </div>
-      </div>
-      
-      <el-empty v-else-if="!loading" description="库中暂无公开材质" />
-
-      <!-- 预览对话框 -->
-      <el-dialog
-        v-model="showPreviewDialog"
-        destroy-on-close
-        class="dialog-viewer"
-        append-to-body
+      <div
+        class="library-grid-container"
+        v-loading="loading"
+        element-loading-background="transparent"
       >
-        <div class="viewer-layout" v-if="selectedItem">
-          <div class="viewer-stage">
-            <SkinViewer
-              v-if="selectedItem.type === 'skin'"
-              :skinUrl="texturesUrl(selectedItem.hash)"
-              :model="selectedItem.model || 'default'"
-              :width="320"
-              :height="430"
-            />
-            <CapeViewer
-              v-else
-              :capeUrl="texturesUrl(selectedItem.hash)"
-              :width="320"
-              :height="430"
-            />
-          </div>
-
-          <div class="viewer-info-panel">
-            <section class="viewer-section title-section">
-              <div class="viewer-title-row">
-                <h2 class="viewer-display-title">{{ selectedItem.name || '未命名纹理' }}</h2>
-              </div>
-            </section>
-
-            <section class="viewer-section meta-section">
-              <div class="viewer-title-row">
-                <span class="meta-chip">{{ textureResolutions.get(selectedItem.hash) || '--' }}px</span>
-                <span class="meta-chip" :class="selectedItem.type">
-                  {{ selectedItem.type === 'skin' ? '皮肤' : '披风' }}
+        <div
+          class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6"
+          v-if="items.length > 0"
+        >
+          <TextureCard
+            v-for="(item, index) in items"
+            :key="item.hash"
+            :texture="item"
+            :delay-index="index % 20"
+            :is-dark="isDark"
+            :textures-url="texturesUrl"
+            :resolution="textureResolutions.get(item.hash)"
+            :title="item.name || '未命名材质'"
+            @preview="openPreviewDialog"
+          >
+            <template #info="{ texture }">
+              <div class="texture-title">{{ item.name || '未命名材质' }}</div>
+              <div class="texture-meta-info">
+                <span class="uploader-name" v-if="texture.uploader_name">
+                  <el-icon><User /></el-icon>
+                  {{ texture.uploader_name }}
                 </span>
+                <span class="meta-separator" v-if="texture.uploader_name">·</span>
+                <span class="texture-date">
+                  {{ formatDate(texture.created_at) }}
+                </span>
+                <span class="meta-separator">·</span>
+                <el-tooltip content="使用次数" placement="top">
+                  <span
+                    class="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs leading-none"
+                  >
+                    <span aria-hidden="true" class="text-[15px] leading-none">♡</span>
+                    <span class="tabular-nums">{{ texture.usage_count || 0 }}</span>
+                  </span>
+                </el-tooltip>
               </div>
-              <div class="hash-label">HASH: {{ selectedItem.hash }}</div>
-            </section>
-
-            <section class="viewer-section" v-if="selectedItem.uploader_name">
-              <div class="viewer-section-label">上传者</div>
-              <div class="uploader-info">
-                <el-icon><User /></el-icon>
-                <span>{{ selectedItem.uploader_name }}</span>
-              </div>
-            </section>
-
-            <section class="viewer-section footer-section" style="margin-top: auto;">
-              <el-button 
-                type="primary" 
-                size="large" 
-                class="btn-gradient btn-gradient-primary" 
-                style="width: 100%; border-radius: 12px; height: 50px;"
-                @click="addToWardrobe(selectedItem.hash)"
+            </template>
+            <template #actions="{ texture }">
+              <UiButton
+                variant="gradient-primary"
+                @click="addToWardrobe(texture)"
                 :disabled="!isLogged"
               >
                 <el-icon><Plus /></el-icon>
-                <span style="margin-left: 8px;">添加到我的衣柜</span>
-              </el-button>
-              <p v-if="!isLogged" class="login-hint">登录后即可收藏此纹理</p>
-            </section>
-          </div>
+                <span>添加到衣柜</span>
+              </UiButton>
+            </template>
+          </TextureCard>
         </div>
-      </el-dialog>
 
-      <div class="pagination-container">
-        <CursorPager
-          v-if="items.length > 0"
-          :count="items.length"
-          :loading="pagination.isLoading.value"
-          :disabled-prev="!pagination.canGoPrev.value"
-          :disabled-next="!pagination.canGoNext.value"
-          @prev="handlePrevPage"
-          @next="handleNextPage"
-        />
+        <el-empty v-else-if="!loading" description="库中暂无公开材质" />
+
+        <!-- 预览对话框 -->
+        <UiDialog v-model="showPreviewDialog" destroy-on-close variant="viewer">
+          <UiViewerLayout v-if="selectedItem">
+            <template #stage>
+              <TexturePreviewStage :texture="selectedItem" :textures-url="texturesUrl" />
+            </template>
+
+            <div class="flex min-h-0 flex-1 flex-col">
+              <section class="border-b border-[var(--color-border)] py-3.5">
+                <div class="flex items-center gap-2 pr-12">
+                  <h2
+                    class="m-0 bg-gradient-to-br from-[var(--color-heading)] to-[var(--el-text-color-secondary)] bg-clip-text text-2xl font-bold text-transparent"
+                  >
+                    {{ selectedItem.name || '未命名纹理' }}
+                  </h2>
+                </div>
+              </section>
+
+              <section class="border-b border-[var(--color-border)] py-3.5">
+                <div class="flex items-center gap-2 pr-12">
+                  <span
+                    class="inline-flex h-7 max-w-full items-center rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 text-xs whitespace-nowrap text-[var(--color-text)] transition"
+                    >{{ textureResolutions.get(selectedItem.hash) || '--' }}px</span
+                  >
+                  <span
+                    class="inline-flex h-7 max-w-full items-center rounded-full border border-[var(--color-border)] bg-[var(--color-background-soft)] px-3 text-xs whitespace-nowrap text-[var(--color-text)] transition"
+                  >
+                    {{ selectedItem.type === 'skin' ? '皮肤' : '披风' }}
+                  </span>
+                </div>
+                <div
+                  class="mt-3 break-all rounded bg-[var(--color-background-soft)] px-2 py-1 font-mono text-[11px] text-[var(--el-text-color-secondary)]"
+                >
+                  HASH: {{ selectedItem.hash }}
+                </div>
+              </section>
+
+              <section
+                class="border-b border-[var(--color-border)] py-3.5"
+                v-if="selectedItem.uploader_name"
+              >
+                <div
+                  class="mb-2.5 text-xs font-bold uppercase tracking-[0.5px] text-[var(--color-text-light)]"
+                >
+                  上传者
+                </div>
+                <div
+                  class="flex items-center gap-2 text-[15px] text-[var(--color-heading)] font-medium"
+                >
+                  <el-icon><User /></el-icon>
+                  <span>{{ selectedItem.uploader_name }}</span>
+                </div>
+              </section>
+
+              <section class="mt-auto border-b-0 py-3.5">
+                <UiButton
+                  type="primary"
+                  size="large"
+                  variant="gradient-primary"
+                  class="w-full rounded-[12px] h-12"
+                  @click="addToWardrobe(selectedItem)"
+                  :disabled="!isLogged"
+                >
+                  <el-icon><Plus /></el-icon>
+                  <span class="ml-2">添加到我的衣柜</span>
+                </UiButton>
+                <p
+                  v-if="!isLogged"
+                  class="text-center text-[13px] text-[var(--el-text-color-secondary)] mt-3"
+                >
+                  登录后即可收藏此纹理
+                </p>
+              </section>
+            </div>
+          </UiViewerLayout>
+        </UiDialog>
+
+        <div class="pagination-container">
+          <CursorPager
+            v-if="items.length > 0"
+            :count="items.length"
+            :loading="pagination.isLoading.value"
+            :disabled-prev="!pagination.canGoPrev.value"
+            :disabled-next="!pagination.canGoNext.value"
+            @prev="handlePrevPage"
+            @next="handleNextPage"
+          />
+        </div>
       </div>
-    </div>
     </template>
   </div>
 </template>
@@ -188,14 +192,25 @@
 <script setup lang="ts">
 import { ref, onMounted, inject, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Search, User } from '@element-plus/icons-vue'
-import SkinViewer from '@/components/SkinViewer.vue'
-import CapeViewer from '@/components/CapeViewer.vue'
+import { Plus, User } from '@element-plus/icons-vue'
+import ActionBar from '@/components/common/ActionBar.vue'
 import CursorPager from '@/components/common/CursorPager.vue'
+import SearchBar from '@/components/common/SearchBar.vue'
+import TextureCard from '@/components/textures/TextureCard.vue'
+import TexturePreviewStage from '@/components/textures/TexturePreviewStage.vue'
+import {
+  cacheSkinTextureWidths,
+  textureAssetUrl as texturesUrl,
+} from '@/components/textures/textureAssets'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiDialog from '@/components/ui/UiDialog.vue'
+import UiSegmented from '@/components/ui/UiSegmented.vue'
+import UiViewerLayout from '@/components/ui/UiViewerLayout.vue'
 import { useCursorPagination } from '@/composables/useCursorPagination'
 import { getPublicSkinLibrary } from '@/api/public'
 import { addToWardrobe as apiAddToWardrobe } from '@/api/textures'
 import type { Texture, User as UserType } from '@/api/types'
+import { getErrorMessage, getErrorStatus } from '@/utils/error'
 
 const isDark = inject<Ref<boolean>>('isDark', ref(false))
 const user = inject<Ref<UserType | null>>('user', ref(null))
@@ -207,6 +222,7 @@ const pagination = useCursorPagination<Texture>(limit)
 const loading = ref(false)
 const isDisabled = ref(false)
 const filterType = ref('')
+const sortBy = ref<'latest' | 'most_used'>('latest')
 const searchQuery = ref('')
 const activeSearchQuery = ref('')
 const textureResolutions = ref(new Map<string, number>())
@@ -216,12 +232,6 @@ const selectedItem = ref<Texture | null>(null)
 function openPreviewDialog(item: Texture) {
   selectedItem.value = item
   showPreviewDialog.value = true
-}
-
-function texturesUrl(hash: string | null | undefined) {
-  if (!hash) return ''
-  const base = import.meta.env.BASE_URL
-  return `${base}static/textures/${hash}.png`.replace(/\/+/g, '/')
 }
 
 function formatDate(ts: number | undefined) {
@@ -239,19 +249,15 @@ async function fetchLibrary() {
       limit: limit,
       texture_type: filterType.value || undefined,
       q: activeSearchQuery.value || undefined,
+      sort: sortBy.value,
     }
     const res = await getPublicSkinLibrary(params)
     items.value = res.data.items
     pagination.setPageData(res.data)
-
-    items.value.forEach(item => {
-      if (item.type === 'skin') {
-        loadTextureResolution(item.hash)
-      }
-    })
-  } catch (e: any) {
+    void cacheSkinTextureWidths(items.value, textureResolutions.value)
+  } catch (e: unknown) {
     console.error('Fetch library error:', e)
-    if (e.response?.status === 403) {
+    if (getErrorStatus(e) === 403) {
       isDisabled.value = true
     } else {
       ElMessage.error('加载皮肤库失败')
@@ -262,31 +268,6 @@ async function fetchLibrary() {
   }
 }
 
-function loadTextureResolution(hash: string) {
-  if (textureResolutions.value.has(hash)) return
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.onload = () => {
-    textureResolutions.value.set(hash, img.width)
-  }
-  img.src = texturesUrl(hash)
-}
-
-function getResolutionBadgeStyle(resolution: number | undefined) {
-  if (!resolution) return {}
-  let hue = 0
-  if (resolution <= 64) hue = 120
-  else if (resolution <= 128) hue = 120 - ((resolution - 64) / 64) * 60
-  else if (resolution <= 256) hue = 60 - ((resolution - 128) / 128) * 30
-  else if (resolution <= 512) hue = 30 - ((resolution - 256) / 256) * 30
-  else hue = 330
-
-  return {
-    background: `linear-gradient(135deg, hsl(${hue}, 58%, 65%), hsl(${hue + 15}, 53%, 62%))`,
-    boxShadow: `0 2px 6px hsla(${hue}, 58%, 50%, 0.25)`
-  }
-}
-
 async function handleNextPage() {
   await pagination.goToNextPage(async (cursor, pageLimit) => {
     const params = {
@@ -294,16 +275,13 @@ async function handleNextPage() {
       limit: pageLimit,
       texture_type: filterType.value || undefined,
       q: activeSearchQuery.value || undefined,
+      sort: sortBy.value,
     }
     const res = await getPublicSkinLibrary(params)
     items.value = res.data.items
     return res.data
   })
-  items.value.forEach(item => {
-    if (item.type === 'skin') {
-      loadTextureResolution(item.hash)
-    }
-  })
+  void cacheSkinTextureWidths(items.value, textureResolutions.value)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -314,20 +292,22 @@ async function handlePrevPage() {
       limit: pageLimit,
       texture_type: filterType.value || undefined,
       q: activeSearchQuery.value || undefined,
+      sort: sortBy.value,
     }
     const res = await getPublicSkinLibrary(params)
     items.value = res.data.items
     return res.data
   })
-  items.value.forEach(item => {
-    if (item.type === 'skin') {
-      loadTextureResolution(item.hash)
-    }
-  })
+  void cacheSkinTextureWidths(items.value, textureResolutions.value)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function handleFilterChange() {
+  pagination.reset()
+  await fetchLibrary()
+}
+
+async function handleSortChange() {
   pagination.reset()
   await fetchLibrary()
 }
@@ -345,12 +325,12 @@ function handleClearSearch() {
   fetchLibrary()
 }
 
-async function addToWardrobe(hash: string) {
+async function addToWardrobe(item: Texture) {
   try {
-    await apiAddToWardrobe(hash)
+    await apiAddToWardrobe(item.hash, item.type)
     ElMessage.success('已成功添加到我的衣柜')
-  } catch (e: any) {
-    ElMessage.error('添加失败: ' + (e.response?.data?.detail || e.message))
+  } catch (e: unknown) {
+    ElMessage.error('添加失败: ' + getErrorMessage(e, '添加失败'))
   }
 }
 
@@ -374,22 +354,6 @@ onMounted(() => {
 
 .library-grid-container {
   min-height: 400px;
-}
-
-.texture-preview {
-  width: 100%;
-  height: 280px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.texture-info {
-  padding: 12px 16px;
-  text-align: center;
-  background: var(--color-card-background);
 }
 
 .texture-title {
@@ -429,50 +393,56 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.texture-actions {
-  display: flex;
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-background-soft);
+.skin-library-container .page-header {
+  align-items: flex-start;
+  flex-direction: column;
 }
 
-.texture-actions .el-button {
-  flex: 1;
-}
-
-.clickable-card {
-  cursor: pointer;
+.skin-library-container .page-header-content {
+  width: 100%;
 }
 
 .search-bar-container {
-  flex: 1;
-  min-width: 260px;
+  flex: 0 1 560px;
+  min-width: 320px;
 }
 
-.search-bar-container :deep(.el-input-group) {
-  display: flex;
-  align-items: stretch;
+.sort-select {
+  flex: 0 0 180px;
 }
 
-.search-bar-container :deep(.el-input-group__append) {
-  background: var(--el-color-primary);
-  color: #fff;
-  border-color: var(--el-color-primary);
-  cursor: pointer;
-  padding: 0 20px;
+.skin-library-filter {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
-.search-bar-container :deep(.el-input-group__append:hover) {
-  background: var(--el-color-primary-light-3);
-  border-color: var(--el-color-primary-light-3);
-  opacity: 0.9;
+@media (max-width: 900px) {
+  .search-bar-container {
+    flex: 1 1 420px;
+  }
 }
 
-.search-bar-container :deep(.el-input-group__append .el-button) {
-  border: none;
-  background: transparent;
-  color: inherit;
-  padding: 0;
-  margin: 0;
+@media (max-width: 640px) {
+  .search-bar-container {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .skin-library-filter {
+    flex: 1 1 260px;
+  }
+
+  .skin-library-filter :deep(.el-radio-button) {
+    flex: 1 1 0;
+  }
+
+  .skin-library-filter :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
+
+  .sort-select {
+    flex: 1 1 150px;
+    min-width: 150px;
+  }
 }
 </style>

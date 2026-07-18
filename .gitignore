@@ -38,6 +38,9 @@ yggdrasil.db-wal
 *.log
 .pytest_cache/
 coverage/
+.coverage
+coverage.out
+cover*.out
 
 ### IDEs
 .vscode/
@@ -51,17 +54,30 @@ coverage/
 ### Certificates / keys / secrets
 *.pem
 *.key
+.env
 .env.local
+python-sdk/demo/.*.json
+python-sdk/demo/.*_authorize.out
+python-sdk/demo/.*_authorize.err
 
 ### Backend textures / uploaded assets (can be large)
 /skin-backend/textures/
 /skin-backend/carousel/
+
+### Go backend build artifacts
+skin-backend/element-skin.exe
+skin-backend/element-skin-debug.exe
+*.exe~
+
 ### Misc
 .cache/
+.gocache/
+.gomodcache/
 node_modules/
 .history/
 
 .gemini/
+.claude/
 .sisyphus/
 skills/
 .playwright-mcp/

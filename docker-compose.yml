@@ -3,32 +3,71 @@ services:
     image: postgres:18-alpine
     restart: always
     environment:
-      POSTGRES_USER: elementskin
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: elementskin
+      POSTGRES_USER: ${DATABASE_USER:?DATABASE_USER is required}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      POSTGRES_DB: ${DATABASE_NAME:?DATABASE_NAME is required}
     volumes:
-      - ./data/db:/var/lib/postgresql/data # 👈 数据库数据在此
+      - ./data/db:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U elementskin"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\""]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: .
-      dockerfile: skin-backend/Dockerfile
+  redis:
+    image: redis:8-alpine
     restart: always
     environment:
-      - VITE_BASE_PATH=${VITE_BASE_PATH:-/}
-      - VITE_API_BASE=${VITE_API_BASE:-/skinapi}
-    args: []
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    image: ${ELEMENT_SKIN_IMAGE:?ELEMENT_SKIN_IMAGE is required}
+    restart: always
+    environment:
+      VITE_BASE_PATH: ${VITE_BASE_PATH:?VITE_BASE_PATH is required}
+      VITE_API_BASE: ${VITE_API_BASE:?VITE_API_BASE is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRE_DAYS: ${JWT_EXPIRE_DAYS:?JWT_EXPIRE_DAYS is required}
+      JWT_ACCESS_EXPIRE_MINUTES: ${JWT_ACCESS_EXPIRE_MINUTES:?JWT_ACCESS_EXPIRE_MINUTES is required}
+      KEYS_PRIVATE_KEY: ${KEYS_PRIVATE_KEY:?KEYS_PRIVATE_KEY is required}
+      KEYS_PUBLIC_KEY: ${KEYS_PUBLIC_KEY:?KEYS_PUBLIC_KEY is required}
+      DATABASE_HOST: ${DATABASE_HOST:-db}
+      DATABASE_PORT: ${DATABASE_PORT:?DATABASE_PORT is required}
+      DATABASE_USER: ${DATABASE_USER:?DATABASE_USER is required}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      DATABASE_NAME: ${DATABASE_NAME:?DATABASE_NAME is required}
+      DATABASE_SSLMODE: ${DATABASE_SSLMODE:?DATABASE_SSLMODE is required}
+      DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:?DATABASE_MAX_CONNECTIONS is required}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:?REDIS_PORT is required}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_DB: ${REDIS_DB:?REDIS_DB is required}
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:?REDIS_KEY_PREFIX is required}
+      REDIS_PUBLIC_CACHE_TTL_SECONDS: ${REDIS_PUBLIC_CACHE_TTL_SECONDS:?REDIS_PUBLIC_CACHE_TTL_SECONDS is required}
+      REDIS_AUTH_CACHE_TTL_SECONDS: ${REDIS_AUTH_CACHE_TTL_SECONDS:?REDIS_AUTH_CACHE_TTL_SECONDS is required}
+      TEXTURES_DIRECTORY: ${TEXTURES_DIRECTORY:?TEXTURES_DIRECTORY is required}
+      CAROUSEL_DIRECTORY: ${CAROUSEL_DIRECTORY:?CAROUSEL_DIRECTORY is required}
+      SERVER_HOST: ${SERVER_HOST:?SERVER_HOST is required}
+      SERVER_PORT: ${SERVER_PORT:?SERVER_PORT is required}
+      SERVER_SITE_URL: ${SERVER_SITE_URL:?SERVER_SITE_URL is required}
+      SERVER_API_URL: ${SERVER_API_URL:?SERVER_API_URL is required}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:?CORS_ALLOW_ORIGINS is required}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:?CORS_ALLOW_CREDENTIALS is required}
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-      - ./frontend:/app/frontend           # 👈 所有静态文件在此 (自动包含 static/ 皮肤数据)
-      - ./data:/app/data                   # 👈 RSA 密钥等持久化数据在此
+      - ./frontend:/app/frontend
+      - ./data:/app/data
     ports:
       - "8000:8000"

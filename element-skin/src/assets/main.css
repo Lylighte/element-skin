@@ -1,4 +1,7 @@
-@import './base.css';
+@layer theme, base, components, utilities;
+
+@import './styles/tailwind.css';
+@import './base.css' layer(base);
 @import './styles/index.css';
 
 #app {
@@ -7,26 +10,4 @@
   font-weight: normal;
   width: 100%;
   min-height: 100vh;
-}
-
-/* Dark mode backgrounds for auth pages */
-html.dark .login-container,
-html.dark .register-container,
-html.dark .reset-container {
-  background: var(--color-background-hero-dark);
-}
-
-/* Element Plus overrides */
-.el-tag__content {
-  display: flex;
-  align-items: center;
-}
-
-.el-input__wrapper,
-.el-textarea__inner {
-  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease;
-}
-
-.el-button + .el-button {
-  margin-left: 0;
 }

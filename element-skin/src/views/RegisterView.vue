@@ -1,9 +1,13 @@
 <template>
-  <div class="register-container">
-    <div class="register-card">
-      <div class="register-header">
-        <h1>注册账号</h1>
-        <p>创建一个新账号来开始使用</p>
+  <div
+    class="flex items-center justify-center min-h-screen p-5 bg-[var(--color-background-hero-light)] dark:bg-[var(--color-background-hero-dark)] transition-[background] duration-300"
+  >
+    <div
+      class="w-full max-w-[440px] bg-[var(--color-card-background)] rounded-[16px] p-10 shadow-[0_8px_32px_rgba(0,0,0,0.1)] animate-slide-up border border-[var(--color-border)] transition-colors"
+    >
+      <div class="text-center mb-8">
+        <h1 class="m-0 mb-2 text-[28px] font-semibold text-[var(--color-heading)]">注册账号</h1>
+        <p class="m-0 text-sm text-[var(--color-text-light)]">创建一个新账号来开始使用</p>
       </div>
 
       <el-form :model="form" :rules="rules" ref="formRef" label-position="top" size="large">
@@ -26,20 +30,20 @@
         </el-form-item>
 
         <el-form-item v-if="emailVerifyEnabled" label="验证码" prop="code">
-          <div class="verification-code-row">
+          <div class="flex gap-3 w-full">
             <el-input
               v-model="form.code"
               placeholder="请输入验证码"
               :prefix-icon="Ticket"
               @keyup.enter="register"
             />
-            <el-button 
+            <el-button
               type="primary"
               plain
-              :disabled="countdown > 0" 
+              :disabled="countdown > 0"
               :loading="codeLoading"
               @click="sendCode"
-              class="code-btn"
+              class="h-12 min-w-[120px]"
             >
               {{ countdown > 0 ? `${countdown}s` : '发送验证码' }}
             </el-button>
@@ -68,33 +72,26 @@
           />
         </el-form-item>
 
-        <el-form-item label="邀请码 (若需要)" prop="invite">
+        <el-form-item v-if="requireInvite" label="邀请码" prop="invite">
           <el-input
             v-model="form.invite"
-            placeholder="如果需要邀请码，请在此输入"
+            placeholder="请输入邀请码"
             :prefix-icon="Ticket"
             @keyup.enter="register"
           />
         </el-form-item>
 
         <el-form-item>
-          <el-button
-            type="primary"
-            @click="register"
-            :loading="loading"
-            style="width: 100%"
-          >
+          <el-button type="primary" @click="register" :loading="loading" class="w-full">
             <el-icon v-if="!loading"><UserFilled /></el-icon>
             {{ loading ? '注册中...' : '注册' }}
           </el-button>
         </el-form-item>
       </el-form>
 
-      <div class="register-footer">
+      <div class="text-center mt-6 text-[var(--color-text)] text-sm transition-colors">
         <span>已有账号？</span>
-        <el-button link type="primary" @click="$router.push('/login')">
-          立即登录
-        </el-button>
+        <el-button link type="primary" @click="$router.push('/login')"> 立即登录 </el-button>
       </div>
     </div>
   </div>
@@ -107,6 +104,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Message, Lock, Ticket, UserFilled, User } from '@element-plus/icons-vue'
 import { getPublicSettings } from '@/api/public'
 import { sendVerificationCode, register as apiRegister } from '@/api/auth'
+import { getErrorMessage, isValidationError } from '@/utils/error'
 
 const router = useRouter()
 const formRef = ref<FormInstance | null>(null)
@@ -118,10 +116,11 @@ const form = reactive({
   password: '',
   confirmPassword: '',
   invite: '',
-  code: ''
+  code: '',
 })
 
 const emailVerifyEnabled = ref(false)
+const requireInvite = ref(false)
 const codeLoading = ref(false)
 const countdown = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -131,18 +130,32 @@ const rules: FormRules = {
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, message: '用户名至少需要3个字符', trigger: 'blur' },
     { max: 20, message: '用户名长度不能超过20个字符', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/, message: '用户名仅支持中英文、数字和下划线', trigger: 'blur' }
+    {
+      pattern: /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/,
+      message: '用户名仅支持中英文、数字和下划线',
+      trigger: 'blur',
+    },
   ],
   email: [
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
-    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' }
+    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' },
   ],
-  code: [
-    { required: true, message: '请输入验证码' }
+  code: [{ required: true, message: '请输入验证码' }],
+  invite: [
+    {
+      validator: (_rule, value, callback) => {
+        if (requireInvite.value && !String(value || '').trim()) {
+          callback(new Error('请输入邀请码'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur',
+    },
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码至少需要6个字符', trigger: 'blur' }
+    { min: 6, message: '密码至少需要6个字符', trigger: 'blur' },
   ],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
@@ -154,15 +167,20 @@ const rules: FormRules = {
           callback()
         }
       },
-      trigger: 'blur'
-    }
-  ]
+      trigger: 'blur',
+    },
+  ],
 }
 
 onMounted(async () => {
   try {
     const res = await getPublicSettings()
     emailVerifyEnabled.value = res.data.email_verify_enabled ?? false
+    requireInvite.value = res.data.require_invite ?? false
+    if (!requireInvite.value) {
+      form.invite = ''
+      formRef.value?.clearValidate('invite')
+    }
   } catch (e) {
     console.error('Failed to fetch settings', e)
   }
@@ -172,7 +190,7 @@ async function sendCode() {
   try {
     if (!formRef.value) return
     await formRef.value.validateField('email')
-  } catch (e) {
+  } catch {
     ElMessage.warning('请先输入有效的邮箱地址')
     return
   }
@@ -181,7 +199,7 @@ async function sendCode() {
     codeLoading.value = true
     await sendVerificationCode({
       email: form.email,
-      type: 'register'
+      type: 'register',
     })
     ElMessage.success('验证码已发送到您的邮箱')
 
@@ -192,12 +210,8 @@ async function sendCode() {
         clearInterval(timer)
       }
     }, 1000)
-  } catch (e: any) {
-    if (e.response?.data?.detail) {
-      ElMessage.error('发送失败: ' + e.response.data.detail)
-    } else {
-      ElMessage.error('发送失败，请稍后再试')
-    }
+  } catch (e: unknown) {
+    ElMessage.error('发送失败: ' + getErrorMessage(e, '请稍后再试'))
   } finally {
     codeLoading.value = false
   }
@@ -209,13 +223,12 @@ async function register() {
     await formRef.value.validate()
     loading.value = true
 
-    // 在发送前trim邀请码
     const payload = {
       username: form.username,
       email: form.email,
       password: form.password,
-      invite: form.invite ? form.invite.trim() : '',
-      code: form.code
+      code: form.code,
+      ...(requireInvite.value ? { invite: form.invite.trim() } : {}),
     }
 
     await apiRegister(payload)
@@ -225,11 +238,9 @@ async function register() {
     setTimeout(() => {
       router.push('/login')
     }, 1500)
-  } catch (e: any) {
-    if (e.response?.data?.detail) {
-      ElMessage.error('注册失败: ' + e.response.data.detail)
-    } else if (e.message && !e.message.includes('validate')) {
-      ElMessage.error('注册失败: ' + e.message)
+  } catch (e: unknown) {
+    if (!isValidationError(e)) {
+      ElMessage.error('注册失败: ' + getErrorMessage(e, '注册失败'))
     }
   } finally {
     loading.value = false
@@ -238,67 +249,6 @@ async function register() {
 </script>
 
 <style scoped>
-.register-container {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: var(--color-background-hero-light);
-  transition: background 0.3s ease;
-}
-
-.register-card {
-  width: 100%;
-  max-width: 440px;
-  background: var(--color-card-background);
-  border-radius: 16px;
-  padding: 40px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  animation: slideUp 0.5s ease-out;
-  border: 1px solid var(--color-border);
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.register-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.register-header h1 {
-  margin: 0 0 8px 0;
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--color-heading);
-  transition: color 0.3s ease;
-}
-
-.register-header p {
-  margin: 0;
-  font-size: 14px;
-  color: var(--color-text-light);
-  transition: color 0.3s ease;
-}
-
-.register-footer {
-  text-align: center;
-  margin-top: 24px;
-  color: var(--color-text);
-  font-size: 14px;
-  transition: color 0.3s ease;
-}
-
 :deep(.el-form-item__label) {
   font-weight: 500;
   color: var(--color-text);
@@ -307,16 +257,5 @@ async function register() {
 
 :deep(.el-input__wrapper) {
   height: 48px;
-}
-
-.verification-code-row {
-  display: flex;
-  gap: 12px;
-  width: 100%;
-}
-
-.code-btn {
-  height: 48px;
-  min-width: 120px;
 }
 </style>

@@ -1,0 +1,19 @@
+/* Element Plus overrides. Keep this file unlayered so it can override Element Plus CSS. */
+
+.el-tag__content {
+  display: flex;
+  align-items: center;
+}
+
+.el-input__wrapper,
+.el-textarea__inner {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    color 0.3s ease;
+}
+
+.el-button {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}

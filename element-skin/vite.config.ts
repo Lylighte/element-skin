@@ -3,11 +3,14 @@ import path from 'node:path'
 import fs from 'node:fs'
 
 import { defineConfig } from 'vite'
+import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
+import { isPathInside, resolveStaticAssetRequest } from './vite/staticAssets'
+
 const isLowMemory = process.env.BUILD_MODE === 'low-memory'
-const appVersion = 'v2.4.1'
+const appVersion = 'v3.0.0'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -16,68 +19,58 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
+    tailwindcss(),
     vue(),
     vueDevTools(),
     {
       name: 'serve-static-assets',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          // 获取不带 base 前缀的路径
           const base = process.env.VITE_BASE_PATH || '/'
           const url = req.url || ''
-          if (!url.startsWith(base)) return next()
+          const asset = resolveStaticAssetRequest(
+            path.resolve(__dirname, '../skin-backend'),
+            base,
+            url,
+          )
 
-          const relativeUrl = url.slice(base.length - 1) // 保持以 / 开头
-          const staticMatch = relativeUrl.match(/^\/static\/(textures|carousel)\/(.+)$/)
+          if (asset && fs.existsSync(asset.filePath) && fs.statSync(asset.filePath).isFile()) {
+            const realRoot = fs.realpathSync(asset.rootPath)
+            const realFile = fs.realpathSync(asset.filePath)
+            if (!isPathInside(realRoot, realFile)) return next()
 
-          if (staticMatch) {
-            const [, type, filename] = staticMatch
-            // 映射到后端目录
-            const filePath = path.resolve(__dirname, `../skin-backend/${type}/${filename.split('?')[0]}`)
-
-            if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-              res.setHeader('Content-Type', type === 'textures' ? 'image/png' : 'image/jpeg')
-              res.end(fs.readFileSync(filePath))
-              return
-            }
+            res.setHeader('Content-Type', asset.contentType)
+            res.end(fs.readFileSync(realFile))
+            return
           }
           next()
         })
-      }
-    }
+      },
+    },
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {
-    // 开发时将常用后端路由代理到本地后端，避免跨域或错发到 Vite dev server
     proxy: {
-      // Yggdrasil / auth APIs
-      '^/authserver': {
+      '^/v1': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        rewrite: (path) => path,
       },
-      // Session APIs
-      '^/sessionserver': {
+      '^/(authserver|sessionserver|api|users|minecraft)': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        rewrite: (path) => path,
       },
-      // API routes that might conflict with frontend routes
-      // When a browser refreshes on these paths, it should serve index.html instead of proxying to the backend
-      '^/(admin|register|reset-password|site-login|site-logout|me|public|microsoft|send-verification-code|remote-ygg|textures)': {
+      '^/oauth': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         bypass: (req) => {
-          if (req.headers.accept?.indexOf('text/html') !== -1) {
-            return '/index.html';
-          }
-        }
+          if (req.headers.accept?.includes('text/html')) return '/index.html'
+        },
       },
-    }
+    },
   },
   build: {
     sourcemap: !isLowMemory,
@@ -90,8 +83,8 @@ export default defineConfig({
           'vendor-element': ['element-plus'],
           'vendor-utils': ['axios', 'vue', 'vue-router', 'pinia'],
           'vendor-render': ['three', 'skinview3d'],
-        }
-      }
-    }
-  }
+        },
+      },
+    },
+  },
 })

@@ -1,168 +1,335 @@
-import type { InjectionKey } from 'vue'
+import * as THREE from 'three'
+import type { HomepageMedia } from '@/api/types'
 
-// A single source-of-truth background renderer.
-// One requestAnimationFrame loop draws the crossfade onto the background
-// canvas; glass buttons subscribe and copy a blurred crop of that exact
-// frame, so the buttons can never drift from or jump ahead of the background.
 export interface HeroSceneController {
   setTarget(canvas: HTMLCanvasElement | null): void
-  setImages(urls: string[]): void
-  subscribe(fn: () => void): () => void
-  getCanvas(): HTMLCanvasElement | null
-  getDpr(): number
+  setMedia(items: HomepageMedia[]): void
   start(): void
   stop(): void
   destroy(): void
 }
 
-export const heroSceneKey: InjectionKey<HeroSceneController> = Symbol('heroScene')
-
 export interface HeroSceneOptions {
-  interval?: number
   transition?: number
-  overlay?: string
+  maxFps?: number
 }
 
+type PreparedMedia =
+  | {
+      item: HomepageMedia
+      kind: 'image'
+      texture: THREE.Texture
+      ready: boolean
+    }
+  | {
+      item: HomepageMedia
+      kind: 'panorama'
+      texture: THREE.CubeTexture
+      ready: boolean
+    }
+
 export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneController {
-  const interval = options.interval ?? 5000
-  const transition = options.transition ?? 800
-  const overlay = options.overlay ?? 'rgba(0, 0, 0, 0.45)'
+  const transition = options.transition ?? 900
+  const minFrameInterval = 1000 / (options.maxFps ?? 60)
 
   let target: HTMLCanvasElement | null = null
-  let ctx: CanvasRenderingContext2D | null = null
-  let dpr = Math.max(window.devicePixelRatio || 1, 1)
-  let cssW = 0
-  let cssH = 0
+  let renderer: THREE.WebGLRenderer | null = null
+  let dpr = sceneDpr()
+  let cssW = 1
+  let cssH = 1
 
-  let images: string[] = []
-  const loaded = new Map<string, HTMLImageElement>()
+  const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+  const compositeScene = new THREE.Scene()
+  const fallbackTexture = createFallbackTexture()
+  const fallbackCubeTexture = createFallbackCubeTexture()
+  const compositeUniforms: {
+    currentMap: { value: THREE.Texture }
+    nextMap: { value: THREE.Texture }
+    currentCube: { value: THREE.CubeTexture }
+    nextCube: { value: THREE.CubeTexture }
+    currentKind: { value: number }
+    nextKind: { value: number }
+    currentAspect: { value: number }
+    nextAspect: { value: number }
+    viewportAspect: { value: number }
+    currentRotation: { value: THREE.Matrix3 }
+    nextRotation: { value: THREE.Matrix3 }
+    transitionMix: { value: number }
+    overlayOpacity: { value: number }
+  } = {
+    currentMap: { value: fallbackTexture },
+    nextMap: { value: fallbackTexture },
+    currentCube: { value: fallbackCubeTexture },
+    nextCube: { value: fallbackCubeTexture },
+    currentKind: { value: 0 },
+    nextKind: { value: 0 },
+    currentAspect: { value: 16 / 9 },
+    nextAspect: { value: 16 / 9 },
+    viewportAspect: { value: 16 / 9 },
+    currentRotation: { value: new THREE.Matrix3() },
+    nextRotation: { value: new THREE.Matrix3() },
+    transitionMix: { value: 0 },
+    overlayOpacity: { value: 0.45 },
+  }
+  const compositeMaterial = new THREE.ShaderMaterial({
+    uniforms: compositeUniforms,
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D currentMap;
+      uniform sampler2D nextMap;
+      uniform samplerCube currentCube;
+      uniform samplerCube nextCube;
+      uniform float currentKind;
+      uniform float nextKind;
+      uniform float currentAspect;
+      uniform float nextAspect;
+      uniform float viewportAspect;
+      uniform mat3 currentRotation;
+      uniform mat3 nextRotation;
+      uniform float transitionMix;
+      uniform float overlayOpacity;
+      varying vec2 vUv;
+
+      vec3 sampleImage(sampler2D map, float imageAspect) {
+        vec2 uv = vUv;
+        if (imageAspect > viewportAspect) {
+          uv.x = (uv.x - 0.5) * (viewportAspect / imageAspect) + 0.5;
+        } else {
+          uv.y = (uv.y - 0.5) * (imageAspect / viewportAspect) + 0.5;
+        }
+        return texture2D(map, uv).rgb;
+      }
+
+      vec3 samplePanorama(samplerCube cubeMap, mat3 rotation) {
+        vec2 p = vUv * 2.0 - 1.0;
+        float fovScale = tan(radians(70.0) * 0.5);
+        vec3 dir = normalize(vec3(p.x * viewportAspect * fovScale, p.y * fovScale, -1.0));
+        return textureCube(cubeMap, rotation * dir).rgb;
+      }
+
+      vec3 sampleMedia(float kind, sampler2D map, samplerCube cubeMap, float imageAspect, mat3 rotation) {
+        if (kind < 0.5) {
+          return sampleImage(map, imageAspect);
+        }
+        return samplePanorama(cubeMap, rotation);
+      }
+
+      void main() {
+        float mixAmount = clamp(transitionMix, 0.0, 1.0);
+        vec3 color = sampleMedia(currentKind, currentMap, currentCube, currentAspect, currentRotation);
+        if (mixAmount > 0.001) {
+          vec3 nextColor = sampleMedia(nextKind, nextMap, nextCube, nextAspect, nextRotation);
+          color = mix(color, nextColor, mixAmount);
+        }
+        color = mix(color, vec3(0.0), clamp(overlayOpacity, 0.0, 1.0));
+        gl_FragColor = vec4(color, 1.0);
+        #include <colorspace_fragment>
+      }
+    `,
+    depthTest: false,
+    depthWrite: false,
+  })
+  compositeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compositeMaterial))
+
+  let media: HomepageMedia[] = []
+  const prepared = new Map<string, PreparedMedia>()
+  const textureLoader = new THREE.TextureLoader()
+  const cubeLoader = new THREE.CubeTextureLoader()
+  const rotationEuler = new THREE.Euler(0, 0, 0, 'YXZ')
+  const rotationMatrix4 = new THREE.Matrix4()
 
   let current = 0
   let next = 0
   let transitioning = false
   let transStart = 0
-  let lastSwitch = 0
-
-  let dirty = true
+  let itemStart = performance.now()
   let rafId = 0
+  let lastFrameAt = 0
   let running = false
   let listenersBound = false
-  const consumers = new Set<() => void>()
 
-  function loadImage(url: string) {
-    if (loaded.has(url)) return
-    const img = new Image()
-    img.onload = () => {
-      if (img.naturalWidth > 0) {
-        loaded.set(url, img)
-        dirty = true
+  function mediaUrl(item: HomepageMedia, face?: string) {
+    const base = import.meta.env.BASE_URL
+    const suffix = face ? `${item.storage_path}/${face}` : item.storage_path
+    return `${base}static/carousel/${suffix}`.replace(/\/+/g, '/')
+  }
+
+  function prepare(item: HomepageMedia) {
+    if (prepared.has(item.id)) return
+    if (item.type === 'panorama') {
+      // CubeTextureLoader expects +X, -X, +Y, -Y, +Z, -Z.
+      // Uploaded panorama files are front, right, back, left, up, down.
+      const urls = [
+        mediaUrl(item, 'panorama_3.png'),
+        mediaUrl(item, 'panorama_1.png'),
+        mediaUrl(item, 'panorama_4.png'),
+        mediaUrl(item, 'panorama_5.png'),
+        mediaUrl(item, 'panorama_2.png'),
+        mediaUrl(item, 'panorama_0.png'),
+      ]
+      const entry: PreparedMedia = {
+        item,
+        kind: 'panorama',
+        texture: cubeLoader.load(urls, () => {
+          entry.ready = true
+        }),
+        ready: false,
       }
+      entry.texture.colorSpace = THREE.SRGBColorSpace
+      prepared.set(item.id, entry)
+      return
     }
-    img.src = url
-  }
-
-  function preload() {
-    for (const url of images) loadImage(url)
-  }
-
-  function ready(index: number): HTMLImageElement | null {
-    const url = images[index]
-    if (!url) return null
-    return loaded.get(url) ?? null
+    const entry: PreparedMedia = {
+      item,
+      kind: 'image',
+      texture: textureLoader.load(mediaUrl(item), () => {
+        entry.ready = true
+      }),
+      ready: false,
+    }
+    entry.texture.colorSpace = THREE.SRGBColorSpace
+    prepared.set(item.id, entry)
   }
 
   function resize() {
-    if (!target) return
+    if (!target || !renderer) return
     const rect = target.getBoundingClientRect()
-    const w = Math.max(Math.ceil(rect.width), 1)
-    const h = Math.max(Math.ceil(rect.height), 1)
-    dpr = Math.max(window.devicePixelRatio || 1, 1)
-    const pw = Math.ceil(w * dpr)
-    const ph = Math.ceil(h * dpr)
-    if (target.width !== pw || target.height !== ph) {
-      target.width = pw
-      target.height = ph
-    }
-    cssW = w
-    cssH = h
-    dirty = true
+    cssW = Math.max(Math.ceil(rect.width), 1)
+    cssH = Math.max(Math.ceil(rect.height), 1)
+    dpr = sceneDpr()
+    renderer.setPixelRatio(dpr)
+    renderer.setSize(cssW, cssH, false)
+    compositeUniforms.viewportAspect.value = cssW / cssH
   }
 
-  // Cover-fit an image into the viewport-sized canvas (mirrors object-fit: cover).
-  function drawCover(c: CanvasRenderingContext2D, img: HTMLImageElement) {
-    const scale = Math.max(cssW / img.naturalWidth, cssH / img.naturalHeight)
-    const dw = img.naturalWidth * scale
-    const dh = img.naturalHeight * scale
-    const dx = (cssW - dw) / 2
-    const dy = (cssH - dh) / 2
-    c.drawImage(img, dx, dy, dw, dh)
-  }
-
-  function easeInOut(t: number) {
-    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+  function renderPrepared(
+    currentEntry: PreparedMedia,
+    nextEntry: PreparedMedia,
+    now: number,
+    progress: number,
+    overlay: number,
+  ) {
+    if (!renderer) return
+    setMediaUniforms('current', currentEntry, now, itemStart)
+    setMediaUniforms('next', nextEntry, now, transStart)
+    compositeUniforms.transitionMix.value = progress
+    compositeUniforms.overlayOpacity.value = overlay
+    renderer.render(compositeScene, quadCamera)
   }
 
   function render(now: number) {
-    if (!ctx || !target) return
+    if (!renderer) return
+    let transitionAlpha = 0
+    const candidateNext = media.length > 1 ? (current + 1) % media.length : current
+    const candidateNextEntry = media[candidateNext] ? prepared.get(media[candidateNext].id) : null
 
-    // Advance the crossfade state machine on the shared clock.
-    let progress = 0
-    if (images.length > 1) {
-      if (!transitioning && now - lastSwitch >= interval) {
-        next = (current + 1) % images.length
-        if (ready(next)) {
-          transitioning = true
-          transStart = now
-        } else {
-          lastSwitch = now // wait for the image, retry next interval
-        }
+    if (media.length > 0) {
+      const active = media[current]
+      const duration = Math.max(active?.duration_ms || 6000, 1000)
+      if (
+        media.length > 1 &&
+        !transitioning &&
+        now - itemStart >= duration &&
+        candidateNextEntry?.ready
+      ) {
+        next = candidateNext
+        transitioning = true
+        transStart = now
       }
       if (transitioning) {
-        progress = Math.min((now - transStart) / transition, 1)
-        if (progress >= 1) {
+        transitionAlpha = easeInOut(Math.min((now - transStart) / transition, 1))
+        if (transitionAlpha >= 1) {
           current = next
           transitioning = false
-          lastSwitch = now
+          itemStart = transStart
+          transitionAlpha = 0
         }
-        dirty = true
       }
     }
 
-    if (!dirty) return
-    dirty = false
+    const currentItem = media[current]
+    const currentEntry = currentItem ? prepared.get(currentItem.id) : null
+    const nextItem = transitioning ? media[next] : currentItem
+    const nextEntry = transitioning && nextItem ? prepared.get(nextItem.id) : currentEntry
 
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, cssW, cssH)
-
-    const base = ready(current)
-    if (base) {
-      ctx.globalAlpha = 1
-      drawCover(ctx, base)
-      if (transitioning) {
-        const incoming = ready(next)
-        if (incoming) {
-          ctx.globalAlpha = easeInOut(progress)
-          drawCover(ctx, incoming)
-          ctx.globalAlpha = 1
-        }
-      }
+    if (currentEntry?.ready && nextEntry?.ready) {
+      const overlay = overlayOpacity(
+        currentItem,
+        transitioning ? nextItem : undefined,
+        transitionAlpha,
+      )
+      renderPrepared(currentEntry, nextEntry, now, transitionAlpha, overlay)
     } else {
-      const g = ctx.createLinearGradient(0, 0, cssW, cssH)
-      g.addColorStop(0, '#1a1a1a')
-      g.addColorStop(1, '#333333')
-      ctx.fillStyle = g
-      ctx.fillRect(0, 0, cssW, cssH)
+      renderFallback()
     }
+  }
 
-    ctx.fillStyle = overlay
-    ctx.fillRect(0, 0, cssW, cssH)
+  function setMediaUniforms(
+    slot: 'current' | 'next',
+    entry: PreparedMedia,
+    now: number,
+    startedAt: number,
+  ) {
+    const prefix = slot === 'current' ? 'current' : 'next'
+    compositeUniforms[`${prefix}Kind`].value = entry.kind === 'panorama' ? 1 : 0
+    compositeUniforms[`${prefix}Aspect`].value = imageAspect(entry)
 
-    for (const fn of consumers) fn()
+    if (entry.kind === 'panorama') {
+      compositeUniforms[`${prefix}Cube`].value = entry.texture
+      setPanoramaRotation(entry.item, now, startedAt, compositeUniforms[`${prefix}Rotation`].value)
+    } else {
+      compositeUniforms[`${prefix}Map`].value = entry.texture
+    }
+  }
+
+  function imageAspect(entry: PreparedMedia) {
+    if (entry.kind === 'panorama') return 16 / 9
+    const image = entry.texture.image as HTMLImageElement | undefined
+    const iw = image?.naturalWidth || image?.width || 16
+    const ih = image?.naturalHeight || image?.height || 9
+    return iw / ih
+  }
+
+  function setPanoramaRotation(
+    item: HomepageMedia,
+    now: number,
+    startedAt: number,
+    target: THREE.Matrix3,
+  ) {
+    const elapsed = (now - startedAt) / 1000
+    const yaw = THREE.MathUtils.degToRad(item.start_yaw + item.yaw_speed_dps * elapsed)
+    const pitch = THREE.MathUtils.degToRad(item.start_pitch + item.pitch_speed_dps * elapsed)
+    rotationEuler.set(pitch, yaw, 0, 'YXZ')
+    rotationMatrix4.makeRotationFromEuler(rotationEuler)
+    target.setFromMatrix4(rotationMatrix4)
+  }
+
+  function renderFallback() {
+    if (!renderer) return
+    renderer.setClearColor(0x1a1a1a, 1)
+    renderer.clear()
+  }
+
+  function overlayOpacity(currentItem?: HomepageMedia, nextItem?: HomepageMedia, progress = 0) {
+    const from = currentItem ? overlayOpacityForTheme(currentItem) : 0
+    if (!transitioning || !nextItem) return from
+    const to = overlayOpacityForTheme(nextItem)
+    return lerp(from, to, progress)
   }
 
   function loop() {
     if (!running) return
-    render(performance.now())
+    const now = performance.now()
+    if (now - lastFrameAt >= minFrameInterval) {
+      lastFrameAt = now
+      render(now)
+    }
     rafId = requestAnimationFrame(loop)
   }
 
@@ -181,29 +348,29 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
   return {
     setTarget(canvas) {
       target = canvas
-      ctx = canvas?.getContext('2d') ?? null
-      if (canvas) resize()
+      if (renderer) {
+        renderer.dispose()
+        renderer = null
+      }
+      if (canvas) {
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false })
+        resize()
+      }
     },
-    setImages(urls) {
-      images = urls.slice()
+    setMedia(items) {
+      media = items.filter((item) => item.enabled)
+      for (const item of media) prepare(item)
       current = 0
       next = 0
       transitioning = false
-      lastSwitch = performance.now()
-      preload()
-      dirty = true
+      itemStart = performance.now()
     },
-    subscribe(fn) {
-      consumers.add(fn)
-      return () => consumers.delete(fn)
-    },
-    getCanvas: () => target,
-    getDpr: () => dpr,
     start() {
       if (running) return
       running = true
       bindListeners()
-      lastSwitch = performance.now()
+      itemStart = performance.now()
+      lastFrameAt = 0
       rafId = requestAnimationFrame(loop)
     },
     stop() {
@@ -213,10 +380,58 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
     destroy() {
       this.stop()
       unbindListeners()
-      consumers.clear()
-      loaded.clear()
+      for (const entry of prepared.values()) entry.texture.dispose()
+      prepared.clear()
+      fallbackTexture.dispose()
+      fallbackCubeTexture.dispose()
+      renderer?.dispose()
+      renderer = null
       target = null
-      ctx = null
     },
   }
+}
+
+function overlayOpacityForTheme(item: HomepageMedia) {
+  return document.documentElement.classList.contains('dark')
+    ? item.overlay_opacity_dark
+    : item.overlay_opacity_light
+}
+
+function sceneDpr() {
+  return Math.min(Math.max(window.devicePixelRatio || 1, 1), 1.5)
+}
+
+function createFallbackTexture() {
+  const canvas = createSolidCanvas()
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+function createFallbackCubeTexture() {
+  const faces = Array.from({ length: 6 }, () => createSolidCanvas())
+  const texture = new THREE.CubeTexture(faces)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.needsUpdate = true
+  return texture
+}
+
+function createSolidCanvas() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 1
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    ctx.fillStyle = '#1a1a1a'
+    ctx.fillRect(0, 0, 1, 1)
+  }
+  return canvas
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t
+}
+
+function easeInOut(t: number) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
 }

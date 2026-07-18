@@ -1,34 +1,30 @@
 <template>
-  <div class="reset-container">
-    <div class="reset-card">
-      <div class="reset-header">
-        <h1>重置密码</h1>
-        <p>输入您的邮箱并获取验证码以重置密码</p>
+  <div
+    class="flex items-center justify-center min-h-screen p-5 bg-[var(--color-background-hero-light)] dark:bg-[var(--color-background-hero-dark)] transition-[background] duration-300"
+  >
+    <div
+      class="w-full max-w-[440px] bg-[var(--color-card-background)] rounded-[16px] p-10 shadow-[0_8px_32px_rgba(0,0,0,0.1)] animate-slide-up border border-[var(--color-border)]"
+    >
+      <div class="text-center mb-8">
+        <h1 class="m-0 mb-2 text-[28px] font-semibold text-[var(--color-heading)]">重置密码</h1>
+        <p class="m-0 text-sm text-[var(--color-text-light)]">输入您的邮箱并获取验证码以重置密码</p>
       </div>
 
       <el-form :model="form" :rules="rules" ref="formRef" label-position="top" size="large">
         <el-form-item label="邮箱地址" prop="email">
-          <el-input
-            v-model="form.email"
-            placeholder="请输入邮箱地址"
-            :prefix-icon="Message"
-          />
+          <el-input v-model="form.email" placeholder="请输入邮箱地址" :prefix-icon="Message" />
         </el-form-item>
 
         <el-form-item label="验证码" prop="code">
-          <div class="verification-code-row">
-            <el-input
-              v-model="form.code"
-              placeholder="请输入验证码"
-              :prefix-icon="Ticket"
-            />
-            <el-button 
+          <div class="flex gap-3 w-full">
+            <el-input v-model="form.code" placeholder="请输入验证码" :prefix-icon="Ticket" />
+            <el-button
               type="primary"
               plain
-              :disabled="countdown > 0" 
+              :disabled="countdown > 0"
               :loading="codeLoading"
               @click="sendCode"
-              class="code-btn"
+              class="h-12 min-w-[120px]"
             >
               {{ countdown > 0 ? `${countdown}s` : '发送验证码' }}
             </el-button>
@@ -56,21 +52,14 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button
-            type="primary"
-            @click="resetPassword"
-            :loading="loading"
-            style="width: 100%"
-          >
+          <el-button type="primary" @click="resetPassword" :loading="loading" class="w-full">
             {{ loading ? '提交中...' : '重置密码' }}
           </el-button>
         </el-form-item>
       </el-form>
 
-      <div class="reset-footer">
-        <el-button link type="primary" @click="$router.push('/login')">
-          返回登录
-        </el-button>
+      <div class="text-center mt-6">
+        <el-button link type="primary" @click="$router.push('/login')"> 返回登录 </el-button>
       </div>
     </div>
   </div>
@@ -83,6 +72,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Message, Lock, Ticket } from '@element-plus/icons-vue'
 import { getPublicSettings } from '@/api/public'
 import { sendVerificationCode, resetPassword as apiResetPassword } from '@/api/auth'
+import { getErrorMessage, isValidationError } from '@/utils/error'
 
 const router = useRouter()
 const formRef = ref<FormInstance | null>(null)
@@ -95,20 +85,18 @@ const form = reactive({
   email: '',
   code: '',
   password: '',
-  confirmPassword: ''
+  confirmPassword: '',
 })
 
 const rules: FormRules = {
   email: [
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
-    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' }
+    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' },
   ],
-  code: [
-    { required: true, message: '请输入验证码' }
-  ],
+  code: [{ required: true, message: '请输入验证码' }],
   password: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, message: '密码至少需要6个字符', trigger: 'blur' }
+    { min: 6, message: '密码至少需要6个字符', trigger: 'blur' },
   ],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
@@ -120,9 +108,9 @@ const rules: FormRules = {
           callback()
         }
       },
-      trigger: 'blur'
-    }
-  ]
+      trigger: 'blur',
+    },
+  ],
 }
 
 onMounted(async () => {
@@ -141,7 +129,7 @@ async function sendCode() {
   try {
     if (!formRef.value) return
     await formRef.value.validateField('email')
-  } catch (e) {
+  } catch {
     ElMessage.warning('请先输入有效的邮箱地址')
     return
   }
@@ -150,7 +138,7 @@ async function sendCode() {
     codeLoading.value = true
     await sendVerificationCode({
       email: form.email,
-      type: 'reset'
+      type: 'reset',
     })
     ElMessage.success('验证码已发送到您的邮箱')
 
@@ -161,12 +149,8 @@ async function sendCode() {
         clearInterval(timer)
       }
     }, 1000)
-  } catch (e: any) {
-    if (e.response?.data?.detail) {
-      ElMessage.error('发送失败: ' + e.response.data.detail)
-    } else {
-      ElMessage.error('发送失败，请稍后再试')
-    }
+  } catch (e: unknown) {
+    ElMessage.error('发送失败: ' + getErrorMessage(e, '请稍后再试'))
   } finally {
     codeLoading.value = false
   }
@@ -181,18 +165,16 @@ async function resetPassword() {
     await apiResetPassword({
       email: form.email,
       password: form.password,
-      code: form.code
+      code: form.code,
     })
 
     ElMessage.success('密码重置成功！请使用新密码登录。')
     setTimeout(() => {
       router.push('/login')
     }, 1500)
-  } catch (e: any) {
-    if (e.response?.data?.detail) {
-      ElMessage.error('重置失败: ' + e.response.data.detail)
-    } else if (e.message && !e.message.includes('validate')) {
-      ElMessage.error('重置失败: ' + e.message)
+  } catch (e: unknown) {
+    if (!isValidationError(e)) {
+      ElMessage.error('重置失败: ' + getErrorMessage(e, '重置失败'))
     }
   } finally {
     loading.value = false
@@ -201,61 +183,6 @@ async function resetPassword() {
 </script>
 
 <style scoped>
-.reset-container {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: var(--color-background-hero-light);
-  transition: background 0.3s ease;
-}
-
-.reset-card {
-  width: 100%;
-  max-width: 440px;
-  background: var(--color-card-background);
-  border-radius: 16px;
-  padding: 40px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  animation: slideUp 0.5s ease-out;
-  border: 1px solid var(--color-border);
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.reset-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.reset-header h1 {
-  margin: 0 0 8px 0;
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--color-heading);
-}
-
-.reset-header p {
-  margin: 0;
-  font-size: 14px;
-  color: var(--color-text-light);
-}
-
-.reset-footer {
-  text-align: center;
-  margin-top: 24px;
-}
-
 :deep(.el-form-item__label) {
   font-weight: 500;
   color: var(--color-text);
@@ -263,16 +190,5 @@ async function resetPassword() {
 
 :deep(.el-input__wrapper) {
   height: 48px;
-}
-
-.verification-code-row {
-  display: flex;
-  gap: 12px;
-  width: 100%;
-}
-
-.code-btn {
-  height: 48px;
-  min-width: 120px;
 }
 </style>

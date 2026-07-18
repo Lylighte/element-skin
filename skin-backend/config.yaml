@@ -4,7 +4,9 @@
 
 # JWT 认证配置
 jwt:
-  secret: "dev-secret-please-change-to-a-very-long-string-in-production-dev"  # 生产环境务必修改！
+  secret: "prod-secret-please-change-to-a-very-long-string-in-production-dev"  # 生产环境务必修改！
+  expire_days: 7
+  access_expire_minutes: 30
 
 # RSA 密钥配置
 keys:
@@ -13,14 +15,30 @@ keys:
 
 # 数据库配置
 database:
-  dsn: "postgresql://postgres:12345678@localhost:5432/elementskin?sslmode=disable"
+  host: "localhost"
+  port: "5432"
+  user: "postgres"
+  password: "12345678"
+  name: "elementskin"
+  sslmode: "disable"
   max_connections: 20
+
+# Redis 配置
+# Redis 是验证码、限流、公开设置/首页媒体缓存和短期鉴权缓存的必需依赖
+redis:
+  host: "127.0.0.1"
+  port: "6379"
+  password: ""
+  db: 0
+  key_prefix: "elementskin:"
+  public_cache_ttl_seconds: 60
+  auth_cache_ttl_seconds: 30
 
 # 材质存储配置
 textures:
   directory: "textures"
 
-# 轮播图配置
+# 首页媒体存储配置（目录名沿用 carousel，避免迁移成本）
 carousel:
   directory: "carousel"
 
@@ -28,13 +46,12 @@ carousel:
 server:
   host: "0.0.0.0"
   port: 8000
-  root_path: ""  # 子目录部署时配置，如 "/skin/api"
-  site_url: "http://localhost:5173" # 前端站点外部访问地址 (用于 OAuth 回调等)
-  api_url: "http://localhost:8000"  # 后端 API 外部访问地址 (用于 Yggdrasil 材质 URL)
+  site_url: "http://localhost:5173" # 前端站点外部访问地址 (用于 OAuth 回调、材质静态文件等)
+  api_url: "http://localhost:8000"  # 后端 API 外部访问地址 (用于 Yggdrasil/Authlib API 入口)
   debug: true  # 开启后会输出所有HTTP请求和响应的详细信息（包括图片请求），用于调试
 
 # CORS 跨域配置
 cors:
-  # 开发环境允许所有来源
-  allow_origins: ["*"]
+  # 开发环境前端地址；启用凭据时不能使用通配符来源
+  allow_origins: ["http://localhost:5173", "http://127.0.0.1:5173"]
   allow_credentials: true

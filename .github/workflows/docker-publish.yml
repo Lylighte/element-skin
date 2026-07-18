@@ -2,7 +2,7 @@ name: Docker Publish
 
 on:
   push:
-    branches: [ 'dev' ]
+    branches: [ 'dev', 'dev-next', 'main' ]
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
@@ -38,8 +38,12 @@ jobs:
             should_build=true
           elif [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             should_build=true
-          elif [ "${GITHUB_REF}" = "refs/heads/dev" ]; then
-            should_build=true
+          elif [ "${GITHUB_REF_TYPE}" = "branch" ]; then
+            case "${GITHUB_REF_NAME}" in
+              dev|dev-next|main)
+                should_build=true
+                ;;
+            esac
           elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             git fetch origin main --depth=1
             if git branch -r --contains "$GITHUB_SHA" | grep -q "origin/main"; then
@@ -90,3 +94,40 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             BUILD_MODE=standard
+
+  release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag belongs to main
+        id: verify
+        shell: bash
+        run: |
+          git fetch origin main
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag is not on main. Skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        if: steps.verify.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Element Skin ${{ github.ref_name }}
+          body_path: RELEASE.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -6,17 +6,17 @@ const apiClient = axios.create({
 })
 
 // 不参与"401 自动刷新"的端点：刷新接口自身、登录、登出（避免死循环）。
-const NO_REFRESH_PATHS = ['/me/refresh-token', '/site-login', '/site-logout']
+const NO_REFRESH_PATHS = ['/v1/auth/session/refresh', '/v1/auth/login', '/v1/auth/logout']
 
 function isNoRefreshPath(url: string | undefined): boolean {
   if (!url) return false
-  const path = (url.split('?')[0] ?? url)
+  const path = url.split('?')[0] ?? url
   return NO_REFRESH_PATHS.some((p) => path.endsWith(p))
 }
 
 // 需要登录的路由前缀。是否跳登录取决于**用户当前所在页面**，而非哪个接口 401——
-// /me 这类探针在公共页（首页等）也会调用并 401，按接口判断会误伤公共页访客。
-const PROTECTED_PREFIXES = ['/dashboard', '/admin', '/skin-library']
+// /v1/users/me 这类探针在公共页（首页等）也会调用并 401，按接口判断会误伤公共页访客。
+const PROTECTED_PREFIXES = ['/dashboard', '/admin', '/skin-library', '/notifications', '/oauth']
 
 function stripBase(pathname: string): string {
   // 去掉部署 base（如生产子目录 /skin/），使前缀判断在 dev 与 prod 一致。
@@ -48,7 +48,7 @@ let refreshPromise: Promise<void> | null = null
 function runRefresh(): Promise<void> {
   if (!refreshPromise) {
     refreshPromise = apiClient
-      .post('/me/refresh-token')
+      .post('/v1/auth/session/refresh')
       .then(() => undefined)
       .finally(() => {
         refreshPromise = null

@@ -1,0 +1,38 @@
+package main
+
+import (
+	"net/http"
+	"testing"
+	"time"
+
+	"element-skin/backend/internal/config"
+)
+
+func TestNewHTTPServerUsesConfiguredAddressHandlerAndTimeout(t *testing.T) {
+	handler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+	cfg := config.Config{ServerHost: "127.0.0.1", ServerPort: "18080"}
+
+	server := newHTTPServer(cfg, handler)
+
+	if server.Addr != "127.0.0.1:18080" {
+		t.Fatalf("server address should come from config, got %q", server.Addr)
+	}
+	if server.Handler == nil {
+		t.Fatal("server handler should be installed")
+	}
+	if server.ReadHeaderTimeout != 10*time.Second {
+		t.Fatalf("unexpected read header timeout: %s", server.ReadHeaderTimeout)
+	}
+	if server.ReadTimeout != 30*time.Second {
+		t.Fatalf("unexpected read timeout: %s", server.ReadTimeout)
+	}
+	if server.WriteTimeout != 30*time.Second {
+		t.Fatalf("unexpected write timeout: %s", server.WriteTimeout)
+	}
+	if server.IdleTimeout != 120*time.Second {
+		t.Fatalf("unexpected idle timeout: %s", server.IdleTimeout)
+	}
+	if server.MaxHeaderBytes != 1<<20 {
+		t.Fatalf("unexpected max header bytes: %d", server.MaxHeaderBytes)
+	}
+}
