@@ -166,13 +166,18 @@ export function createHeroScene(options: HeroSceneOptions = {}): HeroSceneContro
     if (prepared.has(item.id)) return
     if (item.type === 'panorama') {
       // Uploaded panorama files (panorama_0..5) are front, right, back, left,
-      // top, bottom — authored as seen FROM OUTSIDE the cube. GL samplerCube
-      // samples FROM INSIDE the cube, which mirrors the panorama left-right.
+      // top, bottom — authored as a camera at the cube center looking outward
+      // (Minecraft convention), but applied to the cube faces as textures on
+      // the OUTSIDE surface. Three.js CubeTexture / samplerCube samples from
+      // INSIDE the cube looking outward. The mismatch between "external
+      // texture" and "internal sampling" mirrors each face along its local
+      // axis, so each face image must be pre-flipped to appear correct.
       //
-      // To reconcile, reflect the cube across the YZ plane (x -> -x). The
-      // per-face 2D canvas flip needed to express this reflection depends on
-      // each face's UV axis orientation in Three.js CubeTexture convention,
-      // so top/bottom require a different flip than the side faces.
+      // The flip direction depends on each face's UV axis orientation in the
+      // OpenGL CubeTexture convention:
+      //   - side faces (±X, ±Z): mismatch manifests as horizontal flip
+      //   - top/bottom (±Y): UV axes are rotated 90° relative to sides, so
+      //     the same mismatch manifests as vertical flip
       //
       // Slot assignment (CubeTextureLoader expects +X, -X, +Y, -Y, +Z, -Z):
       //   +X <- right (panorama_1), -X <- left (panorama_3)
