@@ -18,6 +18,7 @@ type Handler struct {
 	textures texturesvc.LibraryService
 	uploads  texturesvc.UploadService
 	fallback fallbacksvc.Fallback
+	lookup   yggpkg.LookupService
 	ygg      yggpkg.Yggdrasil
 }
 
@@ -28,11 +29,13 @@ func New(cfg config.Config, db *database.DB, redis redisstore.Store, settings se
 func NewWithHTTPClient(cfg config.Config, db *database.DB, redis redisstore.Store, settings settingssvc.Settings, ygg yggpkg.Yggdrasil, client *http.Client) Handler {
 	ygg.Redis = redis
 	ygg.Settings = settings
+	fallback := fallbacksvc.Fallback{DB: db, Redis: redis, Settings: settings, Client: client}
 	return Handler{
 		profiles: profilesvc.Service{DB: db, Settings: settings},
 		textures: texturesvc.LibraryService{DB: db, Settings: settings},
 		uploads:  texturesvc.UploadService{DB: db, TexturesDir: cfg.TexturesDir},
-		fallback: fallbacksvc.Fallback{DB: db, Redis: redis, Settings: settings, Client: client},
+		fallback: fallback,
+		lookup:   yggpkg.LookupService{Ygg: ygg, Fallback: fallback},
 		ygg:      ygg,
 	}
 }

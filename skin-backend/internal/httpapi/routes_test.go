@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -39,6 +40,44 @@ func TestRoutesRegistersPublicAndYggdrasilEntrypointsExactly(t *testing.T) {
 		if rec.Code != tc.status || !bodyMatches {
 			t.Fatalf("%s %s mismatch: status=%d body=%q", tc.method, tc.path, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+func TestRoutesRegisterMinecraftServicesLookupsAndPublicKeys(t *testing.T) {
+	db, router := testutil.NewTestApp(t)
+	user := testutil.CreateUser(t, db, "services-routes@test.com", "Password123", "ServicesRoutes", false)
+	profile := testutil.CreateProfile(t, db, user.ID, "services_routes_profile", "ServicesRoutesPlayer")
+
+	namePath := "/minecraftservices/minecraft/profile/lookup/name/" + profile.Name
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, namePath, nil))
+	wantProfile := "{\"id\":\"" + profile.ID + "\",\"name\":\"" + profile.Name + "\"}\n"
+	if rec.Code != http.StatusOK || rec.Body.String() != wantProfile {
+		t.Fatalf("services name lookup status=%d body=%q; want 200 %q", rec.Code, rec.Body.String(), wantProfile)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/minecraftservices/minecraft/profile/lookup/name/MissingServicesPlayer", nil))
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("missing services name lookup status=%d body=%q; want 204 empty", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/minecraftservices/minecraft/profile/lookup/bulk/byname", strings.NewReader(`["ServicesRoutesPlayer","MissingServicesPlayer"]`)))
+	var profiles []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &profiles); err != nil {
+		t.Fatalf("decode services bulk lookup body=%q: %v", rec.Body.String(), err)
+	}
+	if rec.Code != http.StatusOK || len(profiles) != 1 || profiles[0]["id"] != profile.ID || profiles[0]["name"] != profile.Name {
+		t.Fatalf("services bulk lookup status=%d profiles=%#v", rec.Code, profiles)
+	}
+
+	legacy := httptest.NewRecorder()
+	router.ServeHTTP(legacy, httptest.NewRequest(http.MethodGet, "/api/publickeys", nil))
+	services := httptest.NewRecorder()
+	router.ServeHTTP(services, httptest.NewRequest(http.MethodGet, "/minecraftservices/publickeys", nil))
+	if services.Code != http.StatusOK || services.Body.String() != legacy.Body.String() || services.Header().Get("Content-Type") != "application/json; charset=utf-8" {
+		t.Fatalf("services public keys status=%d body=%q; api public keys status=%d body=%q", services.Code, services.Body.String(), legacy.Code, legacy.Body.String())
 	}
 }
 

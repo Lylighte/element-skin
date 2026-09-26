@@ -244,10 +244,10 @@ func TestLookupRoutesFallbackMissesReturnExactNoContent(t *testing.T) {
 		t.Fatalf("profile local+fallback miss should be exact 204 empty body: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/minecraft/profile/lookup/name/MissingServices", nil)
+	req = httptest.NewRequest(http.MethodGet, "/minecraftservices/minecraft/profile/lookup/name/MissingServices", nil)
 	req.SetPathValue("playerName", "MissingServices")
 	rec = httptest.NewRecorder()
-	h.LookupName(rec, req)
+	h.LookupServicesName(rec, req)
 	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("services lookup local+fallback miss should be exact 204 empty body: status=%d body=%q", rec.Code, rec.Body.String())
 	}
@@ -314,15 +314,15 @@ func TestLookupRoutesWriteExactFallbackResponses(t *testing.T) {
 	req.SetPathValue("playerName", "RemoteName")
 	rec = httptest.NewRecorder()
 	h.LookupName(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != `{"id":"remote_name_id","name":"RemoteName"}` {
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"id\":\"remote_name_id\",\"name\":\"RemoteName\"}\n" {
 		t.Fatalf("fallback account lookup response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/minecraft/profile/lookup/name/RemoteServices", nil)
+	req = httptest.NewRequest(http.MethodGet, "/minecraftservices/minecraft/profile/lookup/name/RemoteServices", nil)
 	req.SetPathValue("playerName", "RemoteServices")
 	rec = httptest.NewRecorder()
-	h.LookupName(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != `{"id":"remote_services_id","name":"RemoteServices"}` {
+	h.LookupServicesName(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"id\":\"remote_services_id\",\"name\":\"RemoteServices\"}\n" {
 		t.Fatalf("fallback services lookup response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	if len(requests) != 4 {

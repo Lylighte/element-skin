@@ -2,10 +2,10 @@ package yggdrasil
 
 import (
 	"net/http"
-	"strings"
 
 	"element-skin/backend/internal/httpapi/shared"
 	fallbacksvc "element-skin/backend/internal/service/fallback"
+	yggsvc "element-skin/backend/internal/service/yggdrasil"
 	"element-skin/backend/internal/util"
 )
 
@@ -69,26 +69,20 @@ func writeFallback(w http.ResponseWriter, resp *fallbacksvc.FallbackResponse) bo
 }
 
 func (h Handler) LookupName(w http.ResponseWriter, req *http.Request) {
-	playerName := req.PathValue("playerName")
-	res, status, err := h.ygg.LookupName(req.Context(), playerName)
+	h.lookupName(w, req, yggsvc.LookupAccount)
+}
+
+func (h Handler) LookupServicesName(w http.ResponseWriter, req *http.Request) {
+	h.lookupName(w, req, yggsvc.LookupServices)
+}
+
+func (h Handler) lookupName(w http.ResponseWriter, req *http.Request, source yggsvc.LookupSource) {
+	res, found, err := h.lookup.Name(req.Context(), req.PathValue("playerName"), source)
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
-	if status == 204 {
-		var resp *fallbacksvc.FallbackResponse
-		if strings.HasPrefix(req.URL.Path, "/api/minecraft/profile/lookup/name/") || strings.HasPrefix(req.URL.Path, "/minecraft/profile/lookup/name/") {
-			resp, err = h.fallback.ServicesLookup(req.Context(), playerName)
-		} else {
-			resp, err = h.fallback.GetProfileByName(req.Context(), playerName)
-		}
-		if err != nil {
-			util.Error(w, err)
-			return
-		}
-		if writeFallback(w, resp) {
-			return
-		}
+	if !found {
 		w.WriteHeader(204)
 		return
 	}
@@ -101,7 +95,7 @@ func (h Handler) LookupNames(w http.ResponseWriter, req *http.Request) {
 		util.Error(w, util.HTTPError{Status: 400, Object: "request", Operation: "decode", Reason: "invalid"})
 		return
 	}
-	profiles, err := h.fallback.LookupNames(req.Context(), names)
+	profiles, err := h.lookup.Names(req.Context(), names)
 	if err != nil {
 		util.Error(w, err)
 		return
