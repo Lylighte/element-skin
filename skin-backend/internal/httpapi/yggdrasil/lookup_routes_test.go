@@ -278,7 +278,7 @@ func TestLookupRoutesWriteExactFallbackResponses(t *testing.T) {
 		case req.Method == http.MethodGet && req.URL.Path == "/minecraft/profile/lookup/name/RemoteServices":
 			_, _ = w.Write([]byte(`{"id":"remote_services_id","name":"RemoteServices"}`))
 		case req.Method == http.MethodPost && req.URL.Path == "/minecraft/profile/lookup/bulk/byname":
-			_, _ = w.Write([]byte(`[{"id":"remote_services_bulk_id","name":"RemoteServicesBulk"}]`))
+			_, _ = w.Write([]byte(`[{"id":"remote_services_bulk_id","name":"RemoteSvcBulk"}]`))
 		default:
 			t.Fatalf("unexpected fallback request: %s %s", req.Method, req.URL.RequestURI())
 		}
@@ -316,7 +316,7 @@ func TestLookupRoutesWriteExactFallbackResponses(t *testing.T) {
 	req.SetPathValue("playerName", "RemoteName")
 	rec = httptest.NewRecorder()
 	h.LookupName(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != "{\"id\":\"remote_name_id\",\"name\":\"RemoteName\"}\n" {
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"id\":\"remote_name_id\",\"name\":\"RemoteName\"}" {
 		t.Fatalf("fallback account lookup response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
@@ -324,14 +324,14 @@ func TestLookupRoutesWriteExactFallbackResponses(t *testing.T) {
 	req.SetPathValue("playerName", "RemoteServices")
 	rec = httptest.NewRecorder()
 	h.LookupServicesName(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != "{\"id\":\"remote_services_id\",\"name\":\"RemoteServices\"}\n" {
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"id\":\"remote_services_id\",\"name\":\"RemoteServices\"}" {
 		t.Fatalf("fallback services lookup response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/minecraftservices/minecraft/profile/lookup/bulk/byname", strings.NewReader(`["RemoteServicesBulk"]`))
+	req = httptest.NewRequest(http.MethodPost, "/minecraftservices/minecraft/profile/lookup/bulk/byname", strings.NewReader(`["RemoteSvcBulk"]`))
 	rec = httptest.NewRecorder()
 	h.LookupServicesNames(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != "[{\"id\":\"remote_services_bulk_id\",\"name\":\"RemoteServicesBulk\"}]\n" {
+	if rec.Code != http.StatusOK || rec.Body.String() != "[{\"id\":\"remote_services_bulk_id\",\"name\":\"RemoteSvcBulk\"}]\n" {
 		t.Fatalf("fallback services bulk lookup response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 	if len(requests) != 5 {

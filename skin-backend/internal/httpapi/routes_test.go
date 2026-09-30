@@ -46,7 +46,7 @@ func TestRoutesRegistersPublicAndYggdrasilEntrypointsExactly(t *testing.T) {
 func TestRoutesRegisterMinecraftServicesLookupsAndPublicKeys(t *testing.T) {
 	db, router := testutil.NewTestApp(t)
 	user := testutil.CreateUser(t, db, "services-routes@test.com", "Password123", "ServicesRoutes", false)
-	profile := testutil.CreateProfile(t, db, user.ID, "services_routes_profile", "ServicesRoutesPlayer")
+	profile := testutil.CreateProfile(t, db, user.ID, "services_routes_profile", "ServicesPlayer")
 
 	namePath := "/minecraftservices/minecraft/profile/lookup/name/" + profile.Name
 	rec := httptest.NewRecorder()
@@ -57,13 +57,13 @@ func TestRoutesRegisterMinecraftServicesLookupsAndPublicKeys(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/minecraftservices/minecraft/profile/lookup/name/MissingServicesPlayer", nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/minecraftservices/minecraft/profile/lookup/name/MissingSvcPlayer", nil))
 	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("missing services name lookup status=%d body=%q; want 204 empty", rec.Code, rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/minecraftservices/minecraft/profile/lookup/bulk/byname", strings.NewReader(`["ServicesRoutesPlayer","MissingServicesPlayer"]`)))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/minecraftservices/minecraft/profile/lookup/bulk/byname", strings.NewReader(`["ServicesPlayer","MissingSvcPlayer"]`)))
 	var profiles []map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &profiles); err != nil {
 		t.Fatalf("decode services bulk lookup body=%q: %v", rec.Body.String(), err)
@@ -73,7 +73,7 @@ func TestRoutesRegisterMinecraftServicesLookupsAndPublicKeys(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/minecraft/profile/lookup/bulk/byname", strings.NewReader(`["ServicesRoutesPlayer","MissingServicesPlayer"]`)))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/minecraft/profile/lookup/bulk/byname", strings.NewReader(`["ServicesPlayer","MissingSvcPlayer"]`)))
 	profiles = nil
 	if err := json.Unmarshal(rec.Body.Bytes(), &profiles); err != nil {
 		t.Fatalf("api minecraft bulk lookup body=%q: %v", rec.Body.String(), err)
