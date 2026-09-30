@@ -3,6 +3,7 @@ package profile
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"element-skin/backend/internal/model"
 
@@ -61,7 +62,7 @@ func (s Store) GetByID(ctx context.Context, id string) (*model.Profile, error) {
 }
 
 func (s Store) GetByName(ctx context.Context, name string) (*model.Profile, error) {
-	p, err := scan(s.Pool.QueryRow(ctx, `SELECT id,user_id,name,texture_model,skin_hash,cape_hash FROM profiles WHERE name=$1`, name))
+	p, err := scan(s.Pool.QueryRow(ctx, `SELECT id,user_id,name,texture_model,skin_hash,cape_hash FROM profiles WHERE lower(name)=lower($1)`, name))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -171,7 +172,11 @@ func (s Store) DeleteCascade(ctx context.Context, id string) (bool, error) {
 }
 
 func (s Store) SearchByNames(ctx context.Context, names []string, limit int) ([]model.Profile, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,user_id,name,texture_model,skin_hash,cape_hash FROM profiles WHERE name = ANY($1) LIMIT $2`, names, limit)
+	lowerNames := make([]string, len(names))
+	for i, name := range names {
+		lowerNames[i] = strings.ToLower(name)
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT id,user_id,name,texture_model,skin_hash,cape_hash FROM profiles WHERE lower(name) = ANY($1) LIMIT $2`, lowerNames, limit)
 	if err != nil {
 		return nil, err
 	}

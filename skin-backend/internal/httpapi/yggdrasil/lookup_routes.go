@@ -77,13 +77,17 @@ func (h Handler) LookupServicesName(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h Handler) lookupName(w http.ResponseWriter, req *http.Request, source yggsvc.LookupSource) {
-	res, found, err := h.lookup.Name(req.Context(), req.PathValue("playerName"), source)
+	res, fallback, found, err := h.lookup.NameResponse(req.Context(), req.PathValue("playerName"), source)
 	if err != nil {
 		util.Error(w, err)
 		return
 	}
 	if !found {
 		w.WriteHeader(204)
+		return
+	}
+	if fallback != nil {
+		writeFallback(w, fallback)
 		return
 	}
 	util.JSON(w, 200, res)
@@ -97,10 +101,28 @@ func (h Handler) LookupServicesNames(w http.ResponseWriter, req *http.Request) {
 	h.lookupNames(w, req, true)
 }
 
+const maxServicesBulkNames = 10
+
+func validateServicesBulkNames(names []string) bool {
+	if len(names) == 0 || len(names) > maxServicesBulkNames {
+		return false
+	}
+	for _, name := range names {
+		if !util.ValidProfileName(name) {
+			return false
+		}
+	}
+	return true
+}
+
 func (h Handler) lookupNames(w http.ResponseWriter, req *http.Request, services bool) {
 	var names []string
 	if err := shared.DecodeJSON(req, &names); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Object: "request", Operation: "decode", Reason: "invalid"})
+		return
+	}
+	if services && !validateServicesBulkNames(names) {
+		util.Error(w, util.HTTPError{Status: 400, Object: "request", Operation: "validate", Reason: "invalid"})
 		return
 	}
 	var profiles []map[string]any

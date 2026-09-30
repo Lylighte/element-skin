@@ -21,12 +21,19 @@ type LookupService struct {
 }
 
 func (s LookupService) Name(ctx context.Context, name string, source LookupSource) (map[string]any, bool, error) {
+	profile, _, found, err := s.NameResponse(ctx, name, source)
+	return profile, found, err
+}
+
+// NameResponse returns the normalized profile and, for a fallback hit, the
+// original response so protocol-specific optional fields are preserved.
+func (s LookupService) NameResponse(ctx context.Context, name string, source LookupSource) (map[string]any, *fallbacksvc.FallbackResponse, bool, error) {
 	profile, status, err := s.Ygg.LookupName(ctx, name)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	if status != 204 {
-		return profile, true, nil
+		return profile, nil, true, nil
 	}
 
 	var response *fallbacksvc.FallbackResponse
@@ -36,22 +43,22 @@ func (s LookupService) Name(ctx context.Context, name string, source LookupSourc
 	case LookupServices:
 		response, err = s.Fallback.ServicesLookup(ctx, name)
 	default:
-		return nil, false, errors.New("invalid profile lookup source")
+		return nil, nil, false, errors.New("invalid profile lookup source")
 	}
 	if err != nil || response == nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	var remote struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(response.Body, &remote); err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	if remote.ID == "" || remote.Name == "" {
-		return nil, false, errors.New("invalid fallback profile lookup response")
+		return nil, nil, false, errors.New("invalid fallback profile lookup response")
 	}
-	return map[string]any{"id": remote.ID, "name": remote.Name}, true, nil
+	return map[string]any{"id": remote.ID, "name": remote.Name}, response, true, nil
 }
 
 func (s LookupService) Names(ctx context.Context, names []string) ([]map[string]any, error) {
