@@ -199,6 +199,15 @@ func TestFallbackLookupRoutesForwardExactRequests(t *testing.T) {
 				t.Fatalf("bulk lookup should send JSON content type, got %q", r.Header.Get("Content-Type"))
 			}
 			_, _ = w.Write([]byte(`[{"id":"alex-id","name":"Alex"},{"id":"steve-id","name":"Steve"}]`))
+		case "/minecraft/profile/lookup/bulk/byname":
+			var names []string
+			if err := json.NewDecoder(r.Body).Decode(&names); err != nil {
+				t.Fatalf("decode services bulk body: %v", err)
+			}
+			if len(names) != 2 || names[0] != "Alex" || names[1] != "Steve" {
+				t.Fatalf("unexpected services bulk names: %#v", names)
+			}
+			_, _ = w.Write([]byte(`[{"id":"services-alex-id","name":"Alex"},{"id":"services-steve-id","name":"Steve"}]`))
 		default:
 			t.Fatalf("unexpected fallback request: %s", r.URL.String())
 		}
@@ -228,10 +237,15 @@ func TestFallbackLookupRoutesForwardExactRequests(t *testing.T) {
 	if len(bulk) != 2 || bulk[0]["id"] != "alex-id" || bulk[1]["name"] != "Steve" {
 		t.Fatalf("unexpected bulk response: %#v", bulk)
 	}
+	servicesBulk, err := fb.ServicesBulkLookup(ctx, []string{"Alex", "Steve"})
+	if err != nil || len(servicesBulk) != 2 || servicesBulk[0]["id"] != "services-alex-id" || servicesBulk[1]["name"] != "Steve" {
+		t.Fatalf("unexpected services bulk response: %#v err=%v", servicesBulk, err)
+	}
 	want := []string{
 		"GET /users/profiles/minecraft/Name%20With%20Space",
 		"GET /minecraft/profile/lookup/name/Name%20With%20Space",
 		"POST /profiles/minecraft",
+		"POST /minecraft/profile/lookup/bulk/byname",
 	}
 	if len(seen) != len(want) {
 		t.Fatalf("unexpected requests: %#v", seen)

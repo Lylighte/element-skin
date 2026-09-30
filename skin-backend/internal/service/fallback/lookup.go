@@ -92,6 +92,14 @@ func (f Fallback) ServicesLookup(ctx context.Context, playerName string) (*Fallb
 }
 
 func (f Fallback) BulkLookup(ctx context.Context, names []string) ([]map[string]any, error) {
+	return f.bulkLookup(ctx, names, "account_url", "/profiles/minecraft")
+}
+
+func (f Fallback) ServicesBulkLookup(ctx context.Context, names []string) ([]map[string]any, error) {
+	return f.bulkLookup(ctx, names, "services_url", "/minecraft/profile/lookup/bulk/byname")
+}
+
+func (f Fallback) bulkLookup(ctx context.Context, names []string, endpointKey, path string) ([]map[string]any, error) {
 	eps, err := f.enabledEndpoints(ctx, "profile")
 	if err != nil || len(eps) == 0 {
 		return nil, err
@@ -101,11 +109,11 @@ func (f Fallback) BulkLookup(ctx context.Context, names []string) ([]map[string]
 		return nil, err
 	}
 	call := func(ep map[string]any) (*FallbackResponse, error) {
-		accountURL := strings.TrimRight(ep["account_url"].(string), "/")
-		if accountURL == "" {
+		baseURL := strings.TrimRight(ep[endpointKey].(string), "/")
+		if baseURL == "" {
 			return nil, nil
 		}
-		return f.postJSON(ctx, ep, accountURL+"/profiles/minecraft", names)
+		return f.postJSON(ctx, ep, baseURL+path, names)
 	}
 	resp, err := f.dispatch(ctx, eps, strategy, call)
 	if err != nil || resp == nil {
@@ -119,6 +127,14 @@ func (f Fallback) BulkLookup(ctx context.Context, names []string) ([]map[string]
 }
 
 func (f Fallback) LookupNames(ctx context.Context, names []string) ([]map[string]any, error) {
+	return f.lookupNames(ctx, names, f.BulkLookup)
+}
+
+func (f Fallback) LookupServicesNames(ctx context.Context, names []string) ([]map[string]any, error) {
+	return f.lookupNames(ctx, names, f.ServicesBulkLookup)
+}
+
+func (f Fallback) lookupNames(ctx context.Context, names []string, bulk func(context.Context, []string) ([]map[string]any, error)) ([]map[string]any, error) {
 	profiles, err := f.DB.Profiles.SearchByNames(ctx, names, 100)
 	if err != nil {
 		return nil, err
@@ -140,7 +156,7 @@ func (f Fallback) LookupNames(ctx context.Context, names []string) ([]map[string
 	if len(missing) == 0 {
 		return out, nil
 	}
-	fallbackProfiles, err := f.BulkLookup(ctx, missing)
+	fallbackProfiles, err := bulk(ctx, missing)
 	if err != nil {
 		return nil, err
 	}

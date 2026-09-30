@@ -90,12 +90,26 @@ func (h Handler) lookupName(w http.ResponseWriter, req *http.Request, source ygg
 }
 
 func (h Handler) LookupNames(w http.ResponseWriter, req *http.Request) {
+	h.lookupNames(w, req, false)
+}
+
+func (h Handler) LookupServicesNames(w http.ResponseWriter, req *http.Request) {
+	h.lookupNames(w, req, true)
+}
+
+func (h Handler) lookupNames(w http.ResponseWriter, req *http.Request, services bool) {
 	var names []string
 	if err := shared.DecodeJSON(req, &names); err != nil {
 		util.Error(w, util.HTTPError{Status: 400, Object: "request", Operation: "decode", Reason: "invalid"})
 		return
 	}
-	profiles, err := h.lookup.Names(req.Context(), names)
+	var profiles []map[string]any
+	var err error
+	if services {
+		profiles, err = h.lookup.ServicesNames(req.Context(), names)
+	} else {
+		profiles, err = h.lookup.Names(req.Context(), names)
+	}
 	if err != nil {
 		util.Error(w, err)
 		return

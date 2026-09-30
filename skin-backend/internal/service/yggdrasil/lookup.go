@@ -57,3 +57,7 @@ func (s LookupService) Name(ctx context.Context, name string, source LookupSourc
 func (s LookupService) Names(ctx context.Context, names []string) ([]map[string]any, error) {
 	return s.Fallback.LookupNames(ctx, names)
 }
+
+func (s LookupService) ServicesNames(ctx context.Context, names []string) ([]map[string]any, error) {
+	return s.Fallback.LookupServicesNames(ctx, names)
+}
