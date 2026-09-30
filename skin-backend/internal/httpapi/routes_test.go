@@ -72,6 +72,16 @@ func TestRoutesRegisterMinecraftServicesLookupsAndPublicKeys(t *testing.T) {
 		t.Fatalf("services bulk lookup status=%d profiles=%#v", rec.Code, profiles)
 	}
 
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/minecraft/profile/lookup/bulk/byname", strings.NewReader(`["ServicesRoutesPlayer","MissingServicesPlayer"]`)))
+	profiles = nil
+	if err := json.Unmarshal(rec.Body.Bytes(), &profiles); err != nil {
+		t.Fatalf("api minecraft bulk lookup body=%q: %v", rec.Body.String(), err)
+	}
+	if rec.Code != http.StatusOK || len(profiles) != 1 || profiles[0]["id"] != profile.ID || profiles[0]["name"] != profile.Name {
+		t.Fatalf("api minecraft bulk lookup status=%d profiles=%#v", rec.Code, profiles)
+	}
+
 	legacy := httptest.NewRecorder()
 	router.ServeHTTP(legacy, httptest.NewRequest(http.MethodGet, "/api/publickeys", nil))
 	services := httptest.NewRecorder()

@@ -711,6 +711,8 @@ authlib-injector 将 `api.minecraftservices.com` 的请求转发到 Yggdrasil AP
 | `GET /minecraftservices/minecraft/profile/lookup/name/{playerName}` | 命中时返回 `{ "id": "角色 UUID", "name": "角色名称" }`；未命中返回 `204 No Content` |
 | `POST /minecraftservices/minecraft/profile/lookup/bulk/byname` | 请求体为角色名称数组，返回已找到角色的 `{id,name}` 数组；均未命中返回 `[]` |
 
+Mojang API 的兼容批量查询别名为 `POST /api/minecraft/profile/lookup/bulk/byname`，与上述 Minecraft Services 批量端点使用相同的请求和响应格式。
+
 按名称查询先查本站角色，未命中时使用已启用 fallback 的 `services_url/minecraft/profile/lookup/name/{playerName}`。批量查询先汇总本站角色，仅对未命中的名称使用 fallback 的账号查询端点。
 
 ## 材质上传
