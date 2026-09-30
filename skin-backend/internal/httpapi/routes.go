@@ -123,6 +123,7 @@ func (r *Router) routes() {
 	r.handle("POST /api/profiles/minecraft", yggRoutes.LookupNames)
 	r.handle("GET /api/minecraft/profile/lookup/name/{playerName}", yggRoutes.LookupServicesName)
 	r.handle("POST /api/minecraft/profile/lookup/bulk/byname", yggRoutes.LookupServicesNames)
+	r.handle("GET /minecraft/profile/lookup/name/{playerName}", yggRoutes.LookupServicesName)
 	r.handle("GET /minecraftservices/minecraft/profile/lookup/name/{playerName}", yggRoutes.LookupServicesName)
 	r.handle("POST /minecraftservices/minecraft/profile/lookup/bulk/byname", yggRoutes.LookupServicesNames)
 	r.handle("PUT /api/user/profile/{uuid}/{texture_type}", yggRoutes.UploadTexture)
