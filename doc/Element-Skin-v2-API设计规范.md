@@ -13,8 +13,8 @@
 以下协议不属于站点 API，因此保持各自的标准路径和响应格式：
 
 - OAuth 2.1 / OpenID Connect：`/.well-known/*`、`/oauth/*`。
-- Yggdrasil / Mojang 兼容协议：`/authserver/*`、`/sessionserver/*`、`/minecraftservices/*` 及既有 Mojang 查询端点。
-- 根 Yggdrasil 元数据和公钥：`/`、`/api/publickeys/`、`/minecraftservices/publickeys`。
+- Yggdrasil / Mojang 兼容协议：`/authserver/*`、`/sessionserver/*` 及既有 Mojang 查询端点。
+- 根 Yggdrasil 元数据和公钥：`/`、`/api/publickeys/`。
 
 站点前端、OAuth bearer 客户端和 Python SDK 调用同一组 `/v2` 资源，不维护第二套业务接口。
 
