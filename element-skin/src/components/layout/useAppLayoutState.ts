@@ -122,8 +122,8 @@ export function useAppLayoutState() {
     clearUnreadNotifications()
     stopUnreadRefreshTimer()
     authReady.value = true
-    void push('/')
-    setTimeout(() => window.location.reload(), 100)
+    await push('/')
+    window.location.reload()
   }
 
   async function fetchMe() {

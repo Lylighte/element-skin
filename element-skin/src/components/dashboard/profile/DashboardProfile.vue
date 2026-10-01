@@ -282,10 +282,12 @@ async function confirmDeleteAccount() {
     ElMessage.success('账号已注销')
     showDeleteDialog.value = false
     deleteConfirmText.value = ''
+    user.value = null
     if (logout) {
       await logout()
     } else {
       await router.push('/')
+      window.location.reload()
     }
   } catch (e: unknown) {
     ElMessage.error('注销失败: ' + getErrorMessage(e, '注销失败'))
