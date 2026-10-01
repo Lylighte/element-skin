@@ -1,6 +1,5 @@
 import type { Component } from 'vue'
 import {
-  Back,
   Bell,
   Box,
   Link,
@@ -26,10 +25,14 @@ export interface NavLink {
 }
 
 export interface DrawerLink {
-  isDivider?: boolean
+  type?: 'item' | 'group'
+  index?: string
+  collapsible?: boolean
+	 isDivider?: boolean
   path?: string
   title?: string
-  icon?: Component
+	icon?: Component
+	children?: DrawerLink[]
 }
 
 const dashboardLinks: NavLink[] = [
@@ -43,7 +46,6 @@ const dashboardLinks: NavLink[] = [
 ]
 
 const adminNavLinks: NavLink[] = [
-  { path: '/dashboard', title: '返回面板', icon: Back },
   { path: '/admin/users', title: '用户管理', icon: User },
   { path: '/admin/roles', title: '角色管理', icon: User },
   { path: '/admin/textures', title: '材质管理', icon: Box },
@@ -96,9 +98,16 @@ export function buildNavLinks(input: {
   if (input.enableSkinLibrary && canAccessSitePath('/skin-library', input.userPermissions)) {
     links.push({ path: '/skin-library', title: '皮肤库', icon: Picture })
   }
-  links.push(...dashboardLinks.filter((item) => canAccessSiteLink(item, input.userPermissions)))
-  if (canAccessAdmin(input.userPermissions))
-    links.push({ path: '/admin', title: '管理面板', icon: Tools })
+  const primaryDashboardPaths = new Set([
+    '/dashboard/home',
+    '/dashboard/wardrobe',
+    '/dashboard/roles',
+  ])
+  links.push(
+    ...dashboardLinks.filter(
+      (item) => primaryDashboardPaths.has(item.path || '') && canAccessSiteLink(item, input.userPermissions),
+    ),
+  )
   return links
 }
 
@@ -110,14 +119,53 @@ export function buildDrawerLinks(input: {
   if (!input.isLogged) return []
 
   const links: DrawerLink[] = []
+  const dashboardItems = dashboardLinks.filter((item) => canAccessSiteLink(item, input.userPermissions))
+  const dashboardHome = dashboardItems.find((item) => item.path === '/dashboard/home')
+  if (dashboardHome) links.push(dashboardHome)
+
+  const materialItems = dashboardItems.filter((item) =>
+    ['/dashboard/wardrobe', '/dashboard/roles'].includes(item.path || ''),
+  )
   if (input.enableSkinLibrary && canAccessSitePath('/skin-library', input.userPermissions)) {
-    links.push({ path: '/skin-library', title: '皮肤库', icon: Picture })
+    materialItems.unshift({ path: '/skin-library', title: '皮肤库', icon: Picture })
   }
-  links.push({ isDivider: true })
-  links.push(...dashboardLinks.filter((item) => canAccessSiteLink(item, input.userPermissions)))
+  if (materialItems.length) {
+    links.push({
+      isDivider: true,
+    })
+    links.push({
+      type: 'group',
+      index: 'material-roles-group',
+      title: '材质与角色',
+      collapsible: false,
+      children: materialItems,
+    })
+  }
+
+  const accountItems = dashboardItems.filter((item) =>
+    ['/notifications', '/dashboard/profile', '/dashboard/identities', '/dashboard/oauth'].includes(
+      item.path || '',
+    ),
+  )
+  if (accountItems.length) {
+    links.push({ isDivider: true })
+    links.push({
+      type: 'group',
+      index: 'account-apps-group',
+      title: '消息与账户',
+      collapsible: false,
+      children: accountItems,
+    })
+  }
   if (canAccessAdmin(input.userPermissions)) {
     links.push({ isDivider: true })
-    links.push(...filterAdminLinks(adminNavLinks, input.userPermissions))
+    links.push({
+      type: 'group',
+      index: 'admin-group',
+      title: '管理面板',
+      collapsible: false,
+      children: filterAdminLinks(adminNavLinks, input.userPermissions),
+    })
   }
   return links
 }
@@ -152,7 +200,6 @@ function buildAdminNavItems(userPermissions: string[]): NavLink[] {
   )
 
   return [
-    { type: 'item', path: '/dashboard', title: '返回面板', icon: Back },
     ...(contentChildren.length
       ? [
           {

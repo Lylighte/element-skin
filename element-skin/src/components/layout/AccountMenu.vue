@@ -50,12 +50,23 @@
         </div>
       </div>
       <div class="account-actions">
-        <UiButton variant="outline" @click="emit('navigate', '/dashboard')">
-          <span>个人面板</span>
+        <div class="account-section-label">账户与应用</div>
+        <UiButton variant="outline" @click="emit('navigate', '/dashboard/profile')">
+          <span>个人资料</span>
         </UiButton>
-        <UiButton v-if="canAccessAdmin" variant="outline" @click="emit('navigate', '/admin')">
-          <span>管理面板</span>
+        <UiButton variant="outline" @click="emit('navigate', '/dashboard/identities')">
+          <span>身份管理</span>
         </UiButton>
+        <UiButton variant="outline" @click="emit('navigate', '/dashboard/oauth')">
+          <span>第三方应用</span>
+        </UiButton>
+        <template v-if="canAccessAdmin">
+          <div class="account-section-label">面板</div>
+          <UiButton variant="outline" @click="emit('navigate', '/admin')">
+            <span>管理面板</span>
+          </UiButton>
+        </template>
+        <div class="account-action-separator" />
         <UiButton variant="outline-danger" @click="emit('logout')">
           <span>退出登录</span>
         </UiButton>
@@ -147,6 +158,18 @@ const avatarInitial = computed(() => (props.accountName || 'U').slice(0, 1).toUp
   flex-direction: column;
   gap: 8px;
   width: 100%;
+}
+
+.account-section-label {
+  margin: 4px 0 -2px;
+  color: var(--color-text-light);
+  font-size: 12px;
+}
+
+.account-action-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-border);
 }
 
 .account-actions :deep(.el-button) {
