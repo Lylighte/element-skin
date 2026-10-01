@@ -28,11 +28,11 @@ export interface DrawerLink {
   type?: 'item' | 'group'
   index?: string
   collapsible?: boolean
-	 isDivider?: boolean
+  isDivider?: boolean
   path?: string
   title?: string
-	icon?: Component
-	children?: DrawerLink[]
+  icon?: Component
+  children?: DrawerLink[]
 }
 
 const dashboardLinks: NavLink[] = [
@@ -105,7 +105,9 @@ export function buildNavLinks(input: {
   ])
   links.push(
     ...dashboardLinks.filter(
-      (item) => primaryDashboardPaths.has(item.path || '') && canAccessSiteLink(item, input.userPermissions),
+      (item) =>
+        primaryDashboardPaths.has(item.path || '') &&
+        canAccessSiteLink(item, input.userPermissions),
     ),
   )
   return links
@@ -119,7 +121,9 @@ export function buildDrawerLinks(input: {
   if (!input.isLogged) return []
 
   const links: DrawerLink[] = []
-  const dashboardItems = dashboardLinks.filter((item) => canAccessSiteLink(item, input.userPermissions))
+  const dashboardItems = dashboardLinks.filter((item) =>
+    canAccessSiteLink(item, input.userPermissions),
+  )
   const dashboardHome = dashboardItems.find((item) => item.path === '/dashboard/home')
   if (dashboardHome) links.push(dashboardHome)
 

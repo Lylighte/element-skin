@@ -44,7 +44,10 @@
     </div>
 
     <!-- Card grid -->
-    <div v-else-if="textures.length > 0" class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6">
+    <div
+      v-else-if="textures.length > 0"
+      class="grid grid-cols-[repeat(auto-fill,240px)] justify-center gap-6"
+    >
       <TextureCard
         v-for="(item, index) in textures"
         :key="item.hash"
@@ -95,11 +98,11 @@
         :count="textures.length"
         :loading="pagination.isLoading.value"
         :disabled-prev="!pagination.canGoPrev.value"
-      :disabled-next="!pagination.canGoNext.value"
-      :page-size="pagination.limit.value"
-      @prev="handlePrevPage"
-      @next="handleNextPage"
-      @page-size-change="handlePageSizeChange"
+        :disabled-next="!pagination.canGoNext.value"
+        :page-size="pagination.limit.value"
+        @prev="handlePrevPage"
+        @next="handleNextPage"
+        @page-size-change="handlePageSizeChange"
       />
     </div>
 
@@ -150,10 +153,7 @@
             >
               模型选择
             </div>
-            <UiSegmented
-              :model-value="selectedItem.model"
-              @change="updateModel"
-            >
+            <UiSegmented :model-value="selectedItem.model" @change="updateModel">
               <el-radio-button value="default">Default</el-radio-button>
               <el-radio-button value="slim">Slim</el-radio-button>
             </UiSegmented>

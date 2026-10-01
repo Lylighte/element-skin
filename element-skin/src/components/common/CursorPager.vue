@@ -20,7 +20,12 @@
       :disabled="loading"
       @change="handlePageSizeChange"
     >
-      <el-option v-for="option in pageSizeOptions" :key="option" :label="String(option)" :value="option" />
+      <el-option
+        v-for="option in pageSizeOptions"
+        :key="option"
+        :label="String(option)"
+        :value="option"
+      />
     </el-select>
     <el-button
       class="pager-arrow"
@@ -68,7 +73,8 @@ const emit = defineEmits<{
 
 function handlePageSizeChange(value: unknown) {
   const parsed = Number(value)
-  if (Number.isFinite(parsed)) emit('page-size-change', Math.min(100, Math.max(1, Math.round(parsed))))
+  if (Number.isFinite(parsed))
+    emit('page-size-change', Math.min(100, Math.max(1, Math.round(parsed))))
 }
 </script>
 

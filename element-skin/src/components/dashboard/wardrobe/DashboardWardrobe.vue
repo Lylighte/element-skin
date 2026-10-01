@@ -89,7 +89,11 @@ import { Upload } from '@element-plus/icons-vue'
 import CursorPager from '@/components/common/CursorPager.vue'
 import TextureDetailDialog from '@/components/dashboard/wardrobe/TextureDetailDialog.vue'
 import TextureUploadDialog from '@/components/dashboard/wardrobe/TextureUploadDialog.vue'
-import { createDefaultUploadForm, disposeLocalTextureUrl, replaceLocalTextureUrl } from '@/components/dashboard/wardrobe/uploadForm'
+import {
+  createDefaultUploadForm,
+  disposeLocalTextureUrl,
+  replaceLocalTextureUrl,
+} from '@/components/dashboard/wardrobe/uploadForm'
 import TextureCard from '@/components/textures/TextureCard.vue'
 import {
   cacheSkinTextureWidths,

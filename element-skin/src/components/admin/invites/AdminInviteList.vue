@@ -55,11 +55,11 @@
           :count="invites.length"
           :loading="pagination.isLoading.value"
           :disabled-prev="!pagination.canGoPrev.value"
-        :disabled-next="!pagination.canGoNext.value"
-        :page-size="pagination.limit.value"
-        @prev="handlePrevPage"
-        @next="handleNextPage"
-        @page-size-change="handlePageSizeChange"
+          :disabled-next="!pagination.canGoNext.value"
+          :page-size="pagination.limit.value"
+          @prev="handlePrevPage"
+          @next="handleNextPage"
+          @page-size-change="handlePageSizeChange"
         />
       </div>
     </UiCard>
