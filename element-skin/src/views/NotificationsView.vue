@@ -288,15 +288,8 @@ async function loadNotices() {
     const routeID = String(route.params.id || '')
     if (routeID) {
       await loadDetail(routeID)
-    } else if (res.data.items.length > 0) {
-      const first = res.data.items[0]
-      if (first) {
-        selectedNotice.value = first
-        router.replace(`/notifications/${first.id}`)
-      }
     } else {
       selectedNotice.value = null
-      router.replace('/notifications')
     }
   } catch {
     ElMessage.error('加载通知失败')
@@ -371,9 +364,11 @@ async function dismiss(id: string) {
 watch(
   () => route.params.id,
   (id) => {
-    if (typeof id === 'string' && id && id !== selectedNotice.value?.id) {
-      void loadDetail(id)
+    if (typeof id !== 'string' || !id) {
+      selectedNotice.value = null
+      return
     }
+    if (id !== selectedNotice.value?.id) void loadDetail(id)
   },
 )
 
