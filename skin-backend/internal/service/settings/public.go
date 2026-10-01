@@ -39,6 +39,10 @@ func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map
 	if err != nil {
 		return nil, err
 	}
+	strongPassword, err := s.Get(ctx, "enable_strong_password_check", SettingDefaults["enable_strong_password_check"])
+	if err != nil {
+		return nil, err
+	}
 	footer, err := s.Get(ctx, "footer_text", SettingDefaults["footer_text"])
 	if err != nil {
 		return nil, err
@@ -78,20 +82,21 @@ func (s Settings) Public(ctx context.Context, cfgSiteURL, cfgAPIURL string) (map
 		status["services"] = primary["services_url"]
 	}
 	return map[string]any{
-		"site_name":            siteName,
-		"site_subtitle":        subtitle,
-		"site_url":             util.NormalizePublicURL(siteURL),
-		"api_url":              util.NormalizePublicURL(apiURL),
-		"allow_register":       settingBool(allow),
-		"require_invite":       settingBool(requireInvite),
-		"enable_skin_library":  settingBool(enableLibrary),
-		"email_verify_enabled": settingBool(emailVerify),
-		"footer_text":          footer,
-		"filing_icp":           icp,
-		"filing_icp_link":      icpLink,
-		"filing_mps":           mps,
-		"filing_mps_link":      mpsLink,
-		"easter_eggs":          map[string]any{"enabled": easterEggs},
-		"mojang_status_urls":   status,
+		"site_name":                    siteName,
+		"site_subtitle":                subtitle,
+		"site_url":                     util.NormalizePublicURL(siteURL),
+		"api_url":                      util.NormalizePublicURL(apiURL),
+		"allow_register":               settingBool(allow),
+		"require_invite":               settingBool(requireInvite),
+		"enable_skin_library":          settingBool(enableLibrary),
+		"email_verify_enabled":         settingBool(emailVerify),
+		"enable_strong_password_check": settingBool(strongPassword),
+		"footer_text":                  footer,
+		"filing_icp":                   icp,
+		"filing_icp_link":              icpLink,
+		"filing_mps":                   mps,
+		"filing_mps_link":              mpsLink,
+		"easter_eggs":                  map[string]any{"enabled": easterEggs},
+		"mojang_status_urls":           status,
 	}, nil
 }

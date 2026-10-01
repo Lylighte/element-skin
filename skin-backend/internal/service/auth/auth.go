@@ -86,7 +86,7 @@ func (s Service) Register(ctx context.Context, email, password, username, invite
 	}
 	if strong == "true" {
 		if errs := util.ValidateStrongPassword(password); len(errs) > 0 {
-			return "", util.HTTPError{Status: 400, Object: "password", Operation: "validate", Reason: "invalid", Params: map[string]any{"rules": errs}}
+			return "", util.HTTPError{Status: 400, Object: "password", Operation: "validate", Reason: "invalid"}
 		}
 	}
 	allow, err := settings.Get(ctx, "allow_register", "true")

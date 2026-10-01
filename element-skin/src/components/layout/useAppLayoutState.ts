@@ -148,6 +148,7 @@ export function useAppLayoutState() {
 
   provide('user', user)
   provide('fetchMe', fetchMe)
+  provide('logout', logout)
   provide('authReady', authReady)
   provide('isDark', isDark)
   provide('footerHeight', footerHeight)

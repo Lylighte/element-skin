@@ -51,7 +51,7 @@ describe('getErrorMessage', () => {
     ).toBe('OAuth 授权无效或已过期')
   })
 
-  it('uses controlled params for password requirements', () => {
+  it('uses a generic message for password policy failures', () => {
     const error = {
       response: {
         data: {
@@ -64,7 +64,7 @@ describe('getErrorMessage', () => {
         },
       },
     }
-    expect(getErrorMessage(error)).toBe('密码需要至少 8 个字符、包含数字')
+    expect(getErrorMessage(error)).toBe('密码不符合安全要求，请调整后重试')
   })
 
   it('rejects malformed descriptors and unknown protocol errors', () => {

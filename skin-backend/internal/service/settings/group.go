@@ -148,7 +148,7 @@ func (s Settings) SaveGroupAndInvalidate(ctx context.Context, group string, body
 		return err
 	}
 	switch group {
-	case "site", "fallback", "email", "easter_eggs":
+	case "site", "security", "fallback", "email", "easter_eggs":
 		if err := s.Redis.InvalidatePublicSettings(ctx); err != nil {
 			return err
 		}

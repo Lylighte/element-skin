@@ -24,13 +24,14 @@ beforeEach(() => {
       allow_register: true,
       require_invite: false,
       email_verify_enabled: false,
+      enable_strong_password_check: true,
       email_suffix_policy: { mode: 'disabled', suffixes: [] },
     },
   })
 })
 
 describe('RegisterView API validation errors', () => {
-  it('shows the exact strong-password requirements returned by the backend', async () => {
+  it('shows a generic strong-password validation message', async () => {
     authMocks.register.mockRejectedValue({
       response: {
         status: 400,
@@ -39,7 +40,6 @@ describe('RegisterView API validation errors', () => {
             object: 'password',
             operation: 'validate',
             reason: 'invalid',
-            params: { rules: ['min_length', 'uppercase', 'number'] },
           },
         },
       },
@@ -50,8 +50,8 @@ describe('RegisterView API validation errors', () => {
       Object.assign(mounted.setup.form, {
         username: 'ValidUser',
         email: 'valid@example.com',
-        password: 'abcdef',
-        confirmPassword: 'abcdef',
+        password: 'GoodPass123',
+        confirmPassword: 'GoodPass123',
       })
 
       await mounted.setup.register()
@@ -61,11 +61,11 @@ describe('RegisterView API validation errors', () => {
       expect(authMocks.register).toHaveBeenCalledWith({
         username: 'ValidUser',
         email: 'valid@example.com',
-        password: 'abcdef',
+        password: 'GoodPass123',
         code: '',
       })
       expect(document.body.textContent).toContain(
-        '注册失败: 密码需要至少 8 个字符、包含大写字母、包含数字',
+        '注册失败: 密码不符合安全要求，请调整后重试',
       )
     } finally {
       mounted.unmount()

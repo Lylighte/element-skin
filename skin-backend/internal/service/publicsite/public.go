@@ -63,7 +63,8 @@ func (s Service) PublicSettings(ctx context.Context, actor permission.Actor) (ma
 func currentPublicSettingsCache(cached map[string]any) bool {
 	_, hasInvite := cached["require_invite"]
 	_, hasEmailSuffixPolicy := cached["email_suffix_policy"]
-	return hasInvite && hasEmailSuffixPolicy
+	_, hasStrongPasswordSetting := cached["enable_strong_password_check"]
+	return hasInvite && hasEmailSuffixPolicy && hasStrongPasswordSetting
 }
 
 func (s Service) HomepageMedia(ctx context.Context, actor permission.Actor) ([]model.HomepageMedia, error) {

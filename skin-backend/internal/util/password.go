@@ -1,7 +1,7 @@
 package util
 
 import (
-	"regexp"
+	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -20,14 +20,27 @@ func ValidateStrongPassword(password string) []string {
 	if len([]rune(password)) < 8 {
 		errs = append(errs, "min_length")
 	}
-	if !regexp.MustCompile(`[a-z]`).MatchString(password) {
-		errs = append(errs, "lowercase")
+	var lower, upper, number, special bool
+	for _, r := range password {
+		switch {
+		case unicode.IsLower(r):
+			lower = true
+		case unicode.IsUpper(r):
+			upper = true
+		case unicode.IsDigit(r):
+			number = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			special = true
+		}
 	}
-	if !regexp.MustCompile(`[A-Z]`).MatchString(password) {
-		errs = append(errs, "uppercase")
+	categories := 0
+	for _, present := range []bool{lower, upper, number, special} {
+		if present {
+			categories++
+		}
 	}
-	if !regexp.MustCompile(`[0-9]`).MatchString(password) {
-		errs = append(errs, "number")
+	if categories < 2 {
+		errs = append(errs, "composition")
 	}
 	return errs
 }

@@ -86,7 +86,7 @@
             type="password"
             name="password"
             autocomplete="new-password"
-            placeholder="至少6个字符"
+            :placeholder="genericPasswordPlaceholder"
             :prefix-icon="Lock"
             show-password
             @keyup.enter="register"
@@ -150,6 +150,11 @@ import { getErrorMessage } from '@/utils/error'
 import { validateForm } from '@/utils/formValidation'
 import EmailSuffixInput from '@/components/common/EmailSuffixInput.vue'
 import { disabledEmailSuffixPolicy, emailSuffixPolicyError } from '@/utils/emailSuffixPolicy'
+import {
+  genericPasswordError,
+  genericPasswordPlaceholder,
+  meetsStrongPasswordPolicy,
+} from '@/utils/passwordPolicy'
 
 const router = useRouter()
 const formRef = ref<FormInstance | null>(null)
@@ -169,6 +174,7 @@ const form = reactive({
 
 const emailVerifyEnabled = ref(false)
 const requireInvite = ref(false)
+const strongPasswordEnabled = ref(false)
 const emailSuffixPolicy = ref<PublicEmailSuffixPolicy>({
   ...disabledEmailSuffixPolicy,
 })
@@ -208,7 +214,16 @@ const rules = computed<FormRules>(() => ({
     : [],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码至少需要6个字符', trigger: 'blur' },
+    {
+      validator: (_rule, value, callback) => {
+        if (strongPasswordEnabled.value && !meetsStrongPasswordPolicy(String(value || ''))) {
+          callback(new Error(genericPasswordError))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur',
+    },
   ],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
@@ -234,12 +249,14 @@ async function loadRegistrationSettings() {
       typeof res.data.allow_register !== 'boolean' ||
       typeof res.data.require_invite !== 'boolean' ||
       typeof res.data.email_verify_enabled !== 'boolean' ||
+      typeof res.data.enable_strong_password_check !== 'boolean' ||
       !res.data.email_suffix_policy
     ) {
       throw new Error('registration settings response is incomplete')
     }
     allowRegister.value = res.data.allow_register
     emailVerifyEnabled.value = res.data.email_verify_enabled
+    strongPasswordEnabled.value = res.data.enable_strong_password_check
     requireInvite.value = res.data.require_invite
     emailSuffixPolicy.value = res.data.email_suffix_policy
     if (!requireInvite.value) {

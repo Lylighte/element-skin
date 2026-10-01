@@ -79,6 +79,7 @@ export interface SiteSettings {
   require_invite?: boolean
   enable_skin_library?: boolean
   email_verify_enabled?: boolean
+  enable_strong_password_check?: boolean
   email_suffix_policy?: PublicEmailSuffixPolicy
   footer_text?: string
   filing_icp?: string

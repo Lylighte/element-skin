@@ -10,14 +10,12 @@ func TestPasswordHashVerifyAndStrongPasswordMessagesExact(t *testing.T) {
 	if hash == "GoodPass123" || !VerifyPassword("GoodPass123", hash) || VerifyPassword("WrongPass123", hash) {
 		t.Fatalf("password hash/verify mismatch: hash=%q", hash)
 	}
-	errs := ValidateStrongPassword("short")
-	want := []string{"min_length", "uppercase", "number"}
-	if len(errs) != len(want) {
-		t.Fatalf("unexpected strong password errors: %#v", errs)
+	if errs := ValidateStrongPassword("short"); len(errs) == 0 {
+		t.Fatal("short password should fail the strong password policy")
 	}
-	for i := range want {
-		if errs[i] != want[i] {
-			t.Fatalf("error %d got %q want %q; all=%#v", i, errs[i], want[i], errs)
+	for _, valid := range []string{"Password1", "Password!", "1234567!"} {
+		if errs := ValidateStrongPassword(valid); len(errs) != 0 {
+			t.Fatalf("password %q should pass, got %#v", valid, errs)
 		}
 	}
 }
