@@ -2,7 +2,7 @@
   <div class="app-shell" :class="{ 'is-home-layout': isHome, 'is-auth-layout': isAuthPage }">
     <el-header class="layout-header-wrap" v-if="!isAuthPage">
       <div class="layout-header" ref="headerRef">
-        <div class="header-brand">
+        <div ref="headerBrandRef" class="header-brand">
           <!-- Logo -->
           <div class="logo" @click="go('/')">{{ siteName }}</div>
 
@@ -19,7 +19,12 @@
         </div>
 
         <!-- Desktop Navigation -->
-        <div v-show="showDesktopNav" ref="desktopNavRef" class="desktop-nav">
+        <div
+          ref="desktopNavRef"
+          class="desktop-nav"
+          :class="{ 'is-hidden': !showDesktopNav }"
+          :aria-hidden="!showDesktopNav"
+        >
           <el-menu
             mode="horizontal"
             :default-active="activeRoute"
@@ -56,7 +61,7 @@
           </el-menu>
         </div>
 
-        <div class="header-actions">
+        <div ref="headerActionsRef" class="header-actions">
           <el-button
             v-if="authReady && isLogged"
             class="notification-toggle"
@@ -201,24 +206,41 @@ const {
 } = useAppLayoutState()
 
 const headerRef = ref<HTMLElement | null>(null)
+const headerBrandRef = ref<HTMLElement | null>(null)
+const headerActionsRef = ref<HTMLElement | null>(null)
 const desktopNavRef = ref<HTMLElement | null>(null)
 const showDesktopNav = ref(true)
 let navResizeObserver: ResizeObserver | null = null
 
 function updateDesktopNavVisibility() {
+  const header = headerRef.value
+  const brand = headerBrandRef.value
+  const actions = headerActionsRef.value
   const container = desktopNavRef.value
   const menu = container?.querySelector<HTMLElement>('.el-menu')
-  if (!container || !menu) return
-  const requiredWidth = Array.from(menu.children).reduce(
-    (total, child) => total + (child as HTMLElement).getBoundingClientRect().width,
-    0,
-  )
-  showDesktopNav.value = requiredWidth <= container.clientWidth + 1 && window.innerWidth > 768
+  if (!header || !brand || !actions || !container || !menu) return
+
+  const headerRect = header.getBoundingClientRect()
+  const brandRect = brand.getBoundingClientRect()
+  const actionsRect = actions.getBoundingClientRect()
+  const navWidth = menu.getBoundingClientRect().width
+  const headerCenter = headerRect.left + headerRect.width / 2
+  const navLeft = headerCenter - navWidth / 2
+  const navRight = headerCenter + navWidth / 2
+  const safeGap = 12
+
+  showDesktopNav.value =
+    window.innerWidth > 768 &&
+    navLeft >= brandRect.right + safeGap &&
+    navRight <= actionsRect.left - safeGap
 }
 
 onMounted(() => {
   navResizeObserver = new ResizeObserver(updateDesktopNavVisibility)
   if (headerRef.value) navResizeObserver.observe(headerRef.value)
+  if (headerBrandRef.value) navResizeObserver.observe(headerBrandRef.value)
+  if (headerActionsRef.value) navResizeObserver.observe(headerActionsRef.value)
+  if (desktopNavRef.value) navResizeObserver.observe(desktopNavRef.value)
   nextTick(updateDesktopNavVisibility)
   window.addEventListener('resize', updateDesktopNavVisibility)
 })
@@ -319,6 +341,7 @@ onUnmounted(() => {
 .is-home-layout .layout-header .logo,
 .is-home-layout .layout-header :deep(.account-name),
 .is-home-layout .layout-header .theme-toggle,
+.is-home-layout .layout-header .notification-toggle,
 .is-home-layout .layout-header .mobile-menu-btn,
 .is-home-layout .layout-header :deep(.el-menu-item),
 .is-home-layout .layout-header :deep(.el-sub-menu__title) {
@@ -328,6 +351,7 @@ onUnmounted(() => {
 .is-home-layout .layout-header :deep(.account-trigger:hover),
 .is-home-layout .layout-header .logo:hover,
 .is-home-layout .layout-header .theme-toggle:hover,
+.is-home-layout .layout-header .notification-toggle:hover,
 .is-home-layout .layout-header .mobile-menu-btn:hover,
 .is-home-layout .layout-header :deep(.el-menu-item:hover),
 .is-home-layout .layout-header :deep(.el-menu-item.is-active),
@@ -381,6 +405,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
   height: 100%;
   gap: 12px;
 }
@@ -406,11 +431,18 @@ onUnmounted(() => {
 }
 
 .desktop-nav {
-  flex-grow: 1;
-  min-width: 0;
   display: flex;
   justify-content: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
   height: 100%;
+}
+
+.desktop-nav.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .mobile-nav {
@@ -420,8 +452,8 @@ onUnmounted(() => {
   border-bottom: none;
   height: 100%;
   background: transparent;
-  max-width: 100%;
-  overflow: hidden;
+  max-width: none;
+  overflow: visible;
 }
 
 .desktop-nav :deep(.nav-menu-entry) {
@@ -500,12 +532,15 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1100px) {
-  .desktop-nav {
-    display: none;
-  }
-
   :deep(.account-name) {
     display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .desktop-nav {
+    visibility: hidden;
+    pointer-events: none;
   }
 }
 </style>
