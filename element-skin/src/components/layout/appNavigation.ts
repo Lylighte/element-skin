@@ -46,13 +46,13 @@ const dashboardLinks: NavLink[] = [
 ]
 
 const adminNavLinks: NavLink[] = [
+  { path: '/admin/settings', title: '站点设置', icon: Setting },
+  { path: '/admin/notices', title: '通知公告', icon: Bell },
   { path: '/admin/users', title: '用户管理', icon: User },
   { path: '/admin/roles', title: '角色管理', icon: User },
   { path: '/admin/textures', title: '材质管理', icon: Box },
   { path: '/admin/invites', title: '邀请码管理', icon: Tools },
-  { path: '/admin/settings', title: '站点设置', icon: Setting },
   { path: '/admin/email', title: '邮件服务', icon: Message },
-  { path: '/admin/notices', title: '通知公告', icon: Bell },
   { path: '/admin/oauth-apps', title: '第三方应用', icon: Link },
   { path: '/admin/identity-providers', title: 'OIDC 身份提供方', icon: Link },
   { path: '/admin/mojang', title: 'Fallback 服务', icon: Link },
@@ -181,15 +181,15 @@ function buildAdminNavItems(userPermissions: string[]): NavLink[] {
   )
   const directItems = filterAdminLinks(
     [
-      { type: 'item' as const, path: '/admin/invites', title: '邀请码管理', icon: Tools },
+      { type: 'item' as const, path: '/admin/notices', title: '通知公告', icon: Bell },
       { type: 'item' as const, path: '/admin/settings', title: '站点设置', icon: Setting },
     ],
     userPermissions,
   )
   const configChildren = filterAdminLinks(
     [
+      { path: '/admin/invites', title: '邀请码管理', icon: Tools },
       { path: '/admin/email', title: '邮件服务', icon: Message },
-      { path: '/admin/notices', title: '通知公告', icon: Bell },
       { path: '/admin/oauth-apps', title: '第三方应用', icon: Link },
       { path: '/admin/identity-providers', title: 'OIDC 身份提供方', icon: Link },
       { path: '/admin/mojang', title: 'Fallback 服务', icon: Link },
