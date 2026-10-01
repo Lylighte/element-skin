@@ -43,8 +43,10 @@
         :loading="pagination.isLoading.value"
         :disabled-prev="!pagination.canGoPrev.value"
         :disabled-next="!pagination.canGoNext.value"
+        :page-size="pagination.limit.value"
         @prev="handlePrevPage"
         @next="handleNextPage"
+        @page-size-change="handlePageSizeChange"
       />
     </div>
 
@@ -123,8 +125,8 @@ const fetchUserProfiles = async () => {
 }
 
 const textures = ref<Texture[]>([])
-const limit = 20
-const pagination = useCursorPagination<Texture>(limit)
+const pagination = useCursorPagination<Texture>(20)
+const limit = pagination.limit
 const loading = ref(false)
 const textureResolutions = ref(new Map<string, number>())
 const showDetailDialog = ref(false)
@@ -213,7 +215,7 @@ async function fetchTextures() {
   try {
     const params = {
       cursor: pagination.currentCursor.value,
-      limit: limit,
+      limit: limit.value,
     }
     const res = await getTextures(params)
     textures.value = res.data.items
@@ -246,6 +248,11 @@ async function handlePrevPage() {
   })
   void cacheSkinTextureWidths(textures.value, textureResolutions.value)
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+async function handlePageSizeChange(value: number) {
+  if (!pagination.setLimit(value)) return
+  await fetchTextures()
 }
 
 async function refreshFirstPage() {

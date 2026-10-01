@@ -8,6 +8,20 @@
       @click="$emit('prev')"
     />
     <span class="pager-count" v-if="showCount">{{ count }} 项</span>
+    <span v-if="showPageSize" class="pager-size-label">每页展示</span>
+    <el-select
+      v-if="showPageSize"
+      class="pager-size"
+      size="small"
+      filterable
+      allow-create
+      :model-value="pageSize"
+      :placeholder="String(pageSize)"
+      :disabled="loading"
+      @change="handlePageSizeChange"
+    >
+      <el-option v-for="option in pageSizeOptions" :key="option" :label="String(option)" :value="option" />
+    </el-select>
     <el-button
       class="pager-arrow"
       circle
@@ -20,6 +34,7 @@
 
 <script setup lang="ts">
 import { ArrowLeftBold, ArrowRightBold } from '@element-plus/icons-vue'
+import { PAGE_SIZE_OPTIONS } from '@/composables/useCursorPagination'
 
 interface Props {
   visible?: boolean
@@ -28,6 +43,9 @@ interface Props {
   disabledNext?: boolean
   showCount?: boolean
   count?: number
+  showPageSize?: boolean
+  pageSize?: number
+  pageSizeOptions?: readonly number[]
 }
 
 withDefaults(defineProps<Props>(), {
@@ -37,12 +55,21 @@ withDefaults(defineProps<Props>(), {
   disabledNext: false,
   showCount: true,
   count: 0,
+  showPageSize: true,
+  pageSize: 20,
+  pageSizeOptions: () => PAGE_SIZE_OPTIONS,
 })
 
-defineEmits<{
+const emit = defineEmits<{
   prev: []
   next: []
+  'page-size-change': [value: number]
 }>()
+
+function handlePageSizeChange(value: unknown) {
+  const parsed = Number(value)
+  if (Number.isFinite(parsed)) emit('page-size-change', Math.min(100, Math.max(1, Math.round(parsed))))
+}
 </script>
 
 <style scoped>
@@ -64,5 +91,15 @@ defineEmits<{
   text-align: center;
   font-size: 13px;
   color: var(--color-text-light);
+}
+
+.pager-size-label {
+  color: var(--color-text-light);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.pager-size {
+  width: 54px;
 }
 </style>

@@ -9,6 +9,7 @@ const localStorageKeys = {
   enableSkinLibrary: 'enable_skin_library_cache',
   theme: 'theme',
   easterEggDisabled: 'disableEasterEgg',
+  pageSize: 'page_size_preference',
 } as const
 
 const activeLocalStorageKeys = new Set<string>(Object.values(localStorageKeys))
@@ -99,6 +100,17 @@ export const appStorage = {
     },
     hasUserPreference(): boolean {
       return this.get() !== null
+    },
+  },
+
+  pageSize: {
+    get(fallback = 20): number {
+      const value = getString('local', localStorageKeys.pageSize)
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : fallback
+    },
+    set(value: number): void {
+      setString('local', localStorageKeys.pageSize, String(value))
     },
   },
 

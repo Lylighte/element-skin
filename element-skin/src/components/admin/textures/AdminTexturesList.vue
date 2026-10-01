@@ -95,9 +95,11 @@
         :count="textures.length"
         :loading="pagination.isLoading.value"
         :disabled-prev="!pagination.canGoPrev.value"
-        :disabled-next="!pagination.canGoNext.value"
-        @prev="handlePrevPage"
-        @next="handleNextPage"
+      :disabled-next="!pagination.canGoNext.value"
+      :page-size="pagination.limit.value"
+      @prev="handlePrevPage"
+      @next="handleNextPage"
+      @page-size-change="handlePageSizeChange"
       />
     </div>
 
@@ -198,8 +200,8 @@ type TextureQueryParams = { cursor?: string | null; limit?: number; q?: string; 
 const isDark = inject<Ref<boolean>>('isDark', ref(false))
 
 const textures = ref<Texture[]>([])
-const limit = 20
-const pagination = useCursorPagination<Texture>(limit)
+const pagination = useCursorPagination<Texture>(20)
+const limit = pagination.limit
 const loading = ref(false)
 const isLoading = ref(true)
 const searchQuery = ref('')
@@ -212,7 +214,7 @@ const selectedItem = ref<Texture | null>(null)
 const previewNote = ref('')
 
 function buildSearchParams(extraParams: TextureQueryParams = {}): TextureQueryParams {
-  const params: TextureQueryParams = { limit, ...extraParams }
+  const params: TextureQueryParams = { limit: limit.value, ...extraParams }
   if (activeSearchQuery.value) params.q = activeSearchQuery.value
   if (typeFilter.value) params.type = typeFilter.value
   return params
@@ -268,6 +270,11 @@ function handleClearSearch() {
   activeSearchQuery.value = ''
   pagination.reset()
   fetchTextures()
+}
+
+async function handlePageSizeChange(value: number) {
+  if (!pagination.setLimit(value)) return
+  await refreshTexturesFromFirst()
 }
 
 function handleTypeFilterChange() {
