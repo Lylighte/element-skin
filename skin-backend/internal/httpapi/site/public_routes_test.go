@@ -96,6 +96,7 @@ func TestPublicRoutesUseRedisCachedSettingsAndHomepageMediaExactly(t *testing.T)
 		"site_name":           "Cached Site",
 		"allow_register":      false,
 		"require_invite":      false,
+		"enable_strong_password_check": false,
 		"email_suffix_policy": map[string]any{"mode": "disabled", "suffixes": []string{}},
 		"mojang_status_urls":  map[string]any{"session": "cached-session"},
 		"cached_only_marker":  true,

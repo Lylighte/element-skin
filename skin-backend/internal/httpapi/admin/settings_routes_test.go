@@ -149,9 +149,8 @@ func TestSettingsRoutesNamedGroupsInvalidateOnlyRelevantPublicCaches(t *testing.
 	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("save security group response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
-	cached, err := redis.GetPublicSettings(t.Context())
-	if err != nil || cached["site_name"] != "still-fresh" {
-		t.Fatalf("save security group should not invalidate public settings cache: cached=%#v err=%v", cached, err)
+	if _, err := redis.GetPublicSettings(t.Context()); !errors.Is(err, redisstore.ErrCacheMiss) {
+		t.Fatalf("save security group should invalidate public settings cache, got %v", err)
 	}
 }
 
@@ -265,21 +264,14 @@ func TestSettingsRoutesReturnErrorWhenCacheInvalidationFailsAfterPersist(t *test
 		t.Fatalf("easter egg settings should persist before public cache invalidation failure: got=%#v err=%v", enabled, err)
 	}
 
-	redis.failPublic = false
-	if err := redis.SetPublicSettings(req.Context(), map[string]any{"site_name": "still-fresh"}, time.Minute); err != nil {
-		t.Fatal(err)
-	}
+	redis.failPublic = true
 	req = httptest.NewRequest(http.MethodPost, "/v2/admin/settings/security", strings.NewReader(`{"rate_limit_auth_attempts":11}`))
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("group", "security")
 	rec = httptest.NewRecorder()
 	h.SaveSettingsGroup(rec, req)
-	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
-		t.Fatalf("non-public settings group should not invalidate public cache: status=%d body=%q", rec.Code, rec.Body.String())
-	}
-	cached, err := redis.GetPublicSettings(req.Context())
-	if err != nil || cached["site_name"] != "still-fresh" {
-		t.Fatalf("non-public settings group should keep public cache intact: cached=%#v err=%v", cached, err)
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"error\":{\"object\":\"server\",\"operation\":\"handle\",\"reason\":\"failed\"}}\n" {
+		t.Fatalf("security settings save should expose generic error when public cache invalidation fails: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

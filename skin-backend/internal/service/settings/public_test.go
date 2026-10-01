@@ -73,6 +73,7 @@ func TestSettingsPublicPropagatesEachSettingReadErrorExactly(t *testing.T) {
 		"site_subtitle",
 		"enable_skin_library",
 		"email_verify_enabled",
+		"enable_strong_password_check",
 		"footer_text",
 		"filing_icp",
 		"filing_icp_link",
