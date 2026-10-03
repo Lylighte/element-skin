@@ -50,16 +50,17 @@
         </div>
       </div>
       <div class="account-actions">
-        <div class="account-section-label">账户与应用</div>
-        <UiButton variant="outline" @click="emit('navigate', '/dashboard/profile')">
-          <span>个人资料</span>
-        </UiButton>
-        <UiButton variant="outline" @click="emit('navigate', '/dashboard/identities')">
-          <span>身份管理</span>
-        </UiButton>
-        <UiButton variant="outline" @click="emit('navigate', '/dashboard/oauth')">
-          <span>第三方应用</span>
-        </UiButton>
+        <template v-if="links.length">
+          <div class="account-section-label">账户与应用</div>
+          <UiButton
+            v-for="item in links"
+            :key="item.path"
+            variant="outline"
+            @click="emit('navigate', item.path)"
+          >
+            <span>{{ item.title }}</span>
+          </UiButton>
+        </template>
         <template v-if="canAccessAdmin">
           <div class="account-section-label">面板</div>
           <UiButton variant="outline" @click="emit('navigate', '/admin')">
@@ -79,12 +80,14 @@
 import { computed } from 'vue'
 
 import UiButton from '@/components/ui/UiButton.vue'
+import type { AccountLink } from './appNavigation'
 
 const props = defineProps<{
   avatarSrc: string
   accountName: string
   roleLabel: string
   canAccessAdmin: boolean
+  links: readonly AccountLink[]
 }>()
 
 const emit = defineEmits<{

@@ -35,7 +35,12 @@ export interface DrawerLink {
   children?: DrawerLink[]
 }
 
-const dashboardLinks: NavLink[] = [
+export interface AccountLink {
+  path: string
+  title: string
+}
+
+const dashboardLinks: (AccountLink & { icon: Component })[] = [
   { path: '/dashboard/home', title: '仪表盘', icon: Odometer },
   { path: '/notifications', title: '通知中心', icon: Bell },
   { path: '/dashboard/wardrobe', title: '我的衣柜', icon: Box },
@@ -44,6 +49,14 @@ const dashboardLinks: NavLink[] = [
   { path: '/dashboard/identities', title: '身份管理', icon: Link },
   { path: '/dashboard/oauth', title: '第三方应用', icon: Link },
 ]
+
+const accountPaths = new Set(['/dashboard/profile', '/dashboard/identities', '/dashboard/oauth'])
+
+export function buildAccountLinks(userPermissions: string[]): AccountLink[] {
+  return dashboardLinks.filter(
+    (item) => accountPaths.has(item.path) && canAccessSiteLink(item, userPermissions),
+  )
+}
 
 const adminNavLinks: NavLink[] = [
   { path: '/admin/settings', title: '站点设置', icon: Setting },
@@ -146,10 +159,8 @@ export function buildDrawerLinks(input: {
     })
   }
 
-  const accountItems = dashboardItems.filter((item) =>
-    ['/notifications', '/dashboard/profile', '/dashboard/identities', '/dashboard/oauth'].includes(
-      item.path || '',
-    ),
+  const accountItems = dashboardItems.filter(
+    (item) => item.path === '/notifications' || accountPaths.has(item.path),
   )
   if (accountItems.length) {
     links.push({ isDivider: true })

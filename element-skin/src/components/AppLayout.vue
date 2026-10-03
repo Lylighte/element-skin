@@ -63,7 +63,7 @@
 
         <div ref="headerActionsRef" class="header-actions">
           <el-button
-            v-if="authReady && isLogged"
+            v-if="authReady && canAccessNotifications"
             class="notification-toggle"
             :icon="Bell"
             circle
@@ -92,6 +92,7 @@
             :account-name="accountName"
             :role-label="accountRoleLabel"
             :can-access-admin="canAccessAdmin"
+            :links="accountLinks"
             @navigate="go"
             @logout="logout"
           />
@@ -191,6 +192,8 @@ const {
   homeContentCenterY,
   isLogged,
   canAccessAdmin,
+  canAccessNotifications,
+  accountLinks,
   defaultOpeneds,
   navLinks,
   drawerLinks,
