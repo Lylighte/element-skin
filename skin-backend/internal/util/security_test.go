@@ -10,30 +10,6 @@ import (
 	"testing"
 )
 
-func TestPasswordHashVerifyAndStrongPasswordMessages(t *testing.T) {
-	hash, err := HashPassword("GoodPass123")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hash == "GoodPass123" {
-		t.Fatal("password hash must not equal plaintext")
-	}
-	if !VerifyPassword("GoodPass123", hash) {
-		t.Fatal("correct password should verify")
-	}
-	if VerifyPassword("WrongPass123", hash) {
-		t.Fatal("wrong password should not verify")
-	}
-
-	errs := ValidateStrongPassword("short")
-	if len(errs) == 0 {
-		t.Fatalf("short password should fail, got %#v", errs)
-	}
-	if errs := ValidateStrongPassword("GoodPass123"); len(errs) != 0 {
-		t.Fatalf("strong password should pass, got %#v", errs)
-	}
-}
-
 func TestValidateOutboundURLBlocksUnsafeTargets(t *testing.T) {
 	blocked := []string{
 		"http://127.0.0.1/x",

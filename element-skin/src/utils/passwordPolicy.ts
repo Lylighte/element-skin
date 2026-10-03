@@ -1,4 +1,8 @@
-export function meetsStrongPasswordPolicy(password: string) {
+const maxPasswordBytes = 72
+
+export function meetsPasswordPolicy(password: string, strong: boolean) {
+  if (!password || new TextEncoder().encode(password).length > maxPasswordBytes) return false
+  if (!strong) return true
   if ([...password].length < 8) return false
 
   const categories = [

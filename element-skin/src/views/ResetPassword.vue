@@ -77,7 +77,7 @@ import { validateForm } from '@/utils/formValidation'
 import {
   genericPasswordError,
   genericPasswordPlaceholder,
-  meetsStrongPasswordPolicy,
+  meetsPasswordPolicy,
 } from '@/utils/passwordPolicy'
 
 const router = useRouter()
@@ -105,7 +105,7 @@ const rules = computed<FormRules>(() => ({
     { required: true, message: '请输入新密码', trigger: 'blur' },
     {
       validator: (_rule, value, callback) => {
-        if (strongPasswordEnabled.value && !meetsStrongPasswordPolicy(String(value || ''))) {
+        if (!meetsPasswordPolicy(String(value || ''), strongPasswordEnabled.value)) {
           callback(new Error(genericPasswordError))
           return
         }

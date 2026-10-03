@@ -125,6 +125,8 @@ import {
 import { getMe } from '@/api/me'
 import type { PermissionOverrideEffect, User, Profile, UserPermissionsResponse } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
+import { getErrorMessage } from '@/utils/error'
+import { genericPasswordError, meetsPasswordPolicy } from '@/utils/passwordPolicy'
 import {
   banDurationPresets,
   buildUserSearchParams,
@@ -370,7 +372,7 @@ function showResetPasswordDialog() {
 
 async function confirmResetPassword() {
   const f = resetPasswordForm.value
-  if (!f.new_password || f.new_password.length < 6) return ElMessage.error('密码长度不足')
+  if (!meetsPasswordPolicy(f.new_password, false)) return ElMessage.error(genericPasswordError)
   if (f.new_password !== f.confirm_password) return ElMessage.error('两次密码不一致')
   if (!currentUser.value) return
 
@@ -382,8 +384,8 @@ async function confirmResetPassword() {
     })
     ElMessage.success('密码已重置')
     resetPasswordDialogVisible.value = false
-  } catch {
-    ElMessage.error('重置失败')
+  } catch (error: unknown) {
+    ElMessage.error(getErrorMessage(error, '重置失败'))
   } finally {
     resetting.value = false
   }
