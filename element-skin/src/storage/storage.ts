@@ -1,3 +1,5 @@
+import { normalizePageSize } from './pageSize'
+
 export type ColorTheme = 'dark' | 'light'
 
 const SITE_NAME_FALLBACK = '皮肤站'
@@ -106,11 +108,10 @@ export const appStorage = {
   pageSize: {
     get(fallback = 20): number {
       const value = getString('local', localStorageKeys.pageSize)
-      const parsed = Number(value)
-      return Number.isFinite(parsed) ? parsed : fallback
+      return normalizePageSize(value, fallback)
     },
     set(value: number): void {
-      setString('local', localStorageKeys.pageSize, String(value))
+      setString('local', localStorageKeys.pageSize, String(normalizePageSize(value)))
     },
   },
 

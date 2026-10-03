@@ -40,6 +40,7 @@
 <script setup lang="ts">
 import { ArrowLeftBold, ArrowRightBold } from '@element-plus/icons-vue'
 import { PAGE_SIZE_OPTIONS } from '@/composables/useCursorPagination'
+import { normalizePageSize } from '@/storage/pageSize'
 
 interface Props {
   visible?: boolean
@@ -53,7 +54,7 @@ interface Props {
   pageSizeOptions?: readonly number[]
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   visible: true,
   loading: false,
   disabledPrev: false,
@@ -72,9 +73,8 @@ const emit = defineEmits<{
 }>()
 
 function handlePageSizeChange(value: unknown) {
-  const parsed = Number(value)
-  if (Number.isFinite(parsed))
-    emit('page-size-change', Math.min(100, Math.max(1, Math.round(parsed))))
+  const next = normalizePageSize(value, props.pageSize)
+  if (next !== props.pageSize) emit('page-size-change', next)
 }
 </script>
 

@@ -1,19 +1,10 @@
 import { ref, computed } from 'vue'
 import type { CursorPageResponse } from '@/api/types'
 import { appStorage } from '@/storage'
+import { normalizePageSize } from '@/storage/pageSize'
 export { type CursorPageResponse } from '@/api/types'
 
 export const PAGE_SIZE_OPTIONS = [5, 10, 20, 30] as const
-
-export function normalizePageSize(value: unknown, fallback = 20) {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.min(100, Math.max(1, Math.round(parsed)))
-}
-
-function readPageSize(defaultLimit: number) {
-  return normalizePageSize(appStorage.pageSize.get(defaultLimit), normalizePageSize(defaultLimit))
-}
 
 export function useCursorPagination<T>(defaultLimit = 20) {
   const items = ref<T[]>([])
@@ -22,7 +13,7 @@ export function useCursorPagination<T>(defaultLimit = 20) {
   const currentCursor = ref<string | null>(null)
   const nextCursor = ref<string | null>(null)
   const isLoading = ref(false)
-  const limit = ref(readPageSize(defaultLimit))
+  const limit = ref(appStorage.pageSize.get(defaultLimit))
   const cursorStack = ref<(string | null)[]>([]) // 栈式结构，用于向前翻
 
   const canGoNext = computed(() => hasNext.value && !isLoading.value)
