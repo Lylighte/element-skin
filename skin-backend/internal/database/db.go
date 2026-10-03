@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,6 +32,7 @@ import (
 	"element-skin/backend/internal/model"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -119,6 +121,10 @@ func (db *DB) Close() {
 
 func (db *DB) Init(ctx context.Context) error {
 	if _, err := db.Pool.Exec(ctx, InitSQL); err != nil {
+		var pgErr *pgconn.PgError
+		if profile.IsNameConflict(err) && errors.As(err, &pgErr) {
+			return fmt.Errorf("initialize case-insensitive profile names: %s; resolve conflicting names before restarting: %w", pgErr.Detail, err)
+		}
 		return err
 	}
 	return db.Permissions.SeedDefaults(ctx)

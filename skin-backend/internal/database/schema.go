@@ -15,12 +15,17 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS profiles (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    name TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
     texture_model TEXT DEFAULT 'default',
     skin_hash TEXT,
     cape_hash TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
+
+-- Replace the published case-sensitive constraint without changing profile data.
+-- A conflicting legacy name aborts this schema transaction for manual repair.
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_name_key ON profiles (lower(name));
 
 CREATE TABLE IF NOT EXISTS site_refresh_tokens (
     token_hash TEXT PRIMARY KEY,

@@ -12,6 +12,21 @@ import (
 )
 
 func TestConcurrentProfileNameWritesReturnExactBusinessConflict(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		createNames [2]string
+		renameNames [2]string
+	}{
+		{"same spelling", [2]string{"ConcurrentCreate", "ConcurrentCreate"}, [2]string{"ConcurrentRename", "ConcurrentRename"}},
+		{"different case", [2]string{"ConcurrentCreate", "concurrentcreate"}, [2]string{"ConcurrentRename", "concurrentrename"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testConcurrentProfileNameWrites(t, tc.createNames, tc.renameNames)
+		})
+	}
+}
+
+func testConcurrentProfileNameWrites(t *testing.T, createNames, renameNames [2]string) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
 	svc := newProfileService(db)
@@ -30,13 +45,13 @@ func TestConcurrentProfileNameWritesReturnExactBusinessConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	createErrors := runConcurrentProfileWrites(2, func() error {
-		_, err := svc.CreateProfile(context.Background(), testUserActor(user.ID), "ConcurrentCreate", "default")
+	createErrors := runConcurrentProfileWrites(2, func(index int) error {
+		_, err := svc.CreateProfile(context.Background(), testUserActor(user.ID), createNames[index], "default")
 		return err
 	})
 	assertOneProfileWriteConflict(t, createErrors, "profile_name.reserve.conflict")
 	var createCount int
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM profiles WHERE name='ConcurrentCreate'`).Scan(&createCount); err != nil {
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM profiles WHERE lower(name)=lower($1)`, createNames[0]).Scan(&createCount); err != nil {
 		t.Fatal(err)
 	}
 	if createCount != 1 {
@@ -54,24 +69,18 @@ func TestConcurrentProfileNameWritesReturnExactBusinessConflict(t *testing.T) {
 	first := testutil.CreateProfile(t, db, user.ID, "profile_name_race_first", "RaceFirst")
 	second := testutil.CreateProfile(t, db, user.ID, "profile_name_race_second", "RaceSecond")
 	profileIDs := []string{first.ID, second.ID}
-	var index int
-	var mu sync.Mutex
-	renameErrors := runConcurrentProfileWrites(2, func() error {
-		mu.Lock()
-		profileID := profileIDs[index]
-		index++
-		mu.Unlock()
-		return svc.UpdateProfile(context.Background(), testUserActor(user.ID), profileID, "ConcurrentRename")
+	renameErrors := runConcurrentProfileWrites(2, func(index int) error {
+		return svc.UpdateProfile(context.Background(), testUserActor(user.ID), profileIDs[index], renameNames[index])
 	})
 	assertOneProfileWriteConflict(t, renameErrors, "profile_name.reserve.conflict")
 	var renamedCount, originalCount int
 	if err := db.Pool.QueryRow(ctx, `
 		SELECT
-			COUNT(*) FILTER (WHERE name='ConcurrentRename'),
+			COUNT(*) FILTER (WHERE lower(name)=lower($2)),
 			COUNT(*) FILTER (WHERE name IN ('RaceFirst','RaceSecond'))
 		FROM profiles
 		WHERE id = ANY($1)
-	`, profileIDs).Scan(&renamedCount, &originalCount); err != nil {
+	`, profileIDs, renameNames[0]).Scan(&renamedCount, &originalCount); err != nil {
 		t.Fatal(err)
 	}
 	if renamedCount != 1 || originalCount != 1 {
@@ -179,16 +188,16 @@ func waitForBlockedDatabaseOperation(t *testing.T, db interface {
 	}
 }
 
-func runConcurrentProfileWrites(count int, write func() error) []error {
+func runConcurrentProfileWrites(count int, write func(int) error) []error {
 	start := make(chan struct{})
 	results := make(chan error, count)
 	var wg sync.WaitGroup
-	for range count {
+	for index := range count {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-start
-			results <- write()
+			results <- write(index)
 		}()
 	}
 	close(start)

@@ -157,12 +157,12 @@ func TestOfficialProfileStoreSyncSkipsConflictingNameAndPersistsOtherFields(t *t
 		t.Fatal(err)
 	}
 	hash := "conflicting_name_synced_skin"
-	updated, err := db.OfficialProfiles.Sync(ctx, officialstore.SyncInput{ID: binding.ID, UserID: user.ID, RemoteName: "TakenName", RemoteSkinModel: "slim", SkinHash: &hash, SyncedAt: 50})
+	updated, err := db.OfficialProfiles.Sync(ctx, officialstore.SyncInput{ID: binding.ID, UserID: user.ID, RemoteName: "takenname", RemoteSkinModel: "slim", SkinHash: &hash, SyncedAt: 50})
 	if err != nil || !updated {
 		t.Fatalf("conflicting-name sync updated=%v err=%v; want true and nil", updated, err)
 	}
 	view, getErr := db.OfficialProfiles.GetByIDAndUser(ctx, binding.ID, user.ID)
-	if getErr != nil || view == nil || view.Binding.RemoteName != "TakenName" || view.Binding.LastSyncedAt == nil || *view.Binding.LastSyncedAt != 50 || view.Profile.Name != "BeforeSync" || view.Profile.TextureModel != "slim" || view.Profile.SkinHash == nil || *view.Profile.SkinHash != hash {
+	if getErr != nil || view == nil || view.Binding.RemoteName != "takenname" || view.Binding.LastSyncedAt == nil || *view.Binding.LastSyncedAt != 50 || view.Profile.Name != "BeforeSync" || view.Profile.TextureModel != "slim" || view.Profile.SkinHash == nil || *view.Profile.SkinHash != hash {
 		t.Fatalf("conflicting-name sync state mismatch: view=%#v err=%v", view, getErr)
 	}
 	if info, getErr := db.Textures.GetInfo(ctx, user.ID, hash, "skin"); getErr != nil || info == nil || info["model"] != "slim" || info["is_public"] != 0 {

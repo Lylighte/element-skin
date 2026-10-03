@@ -19,7 +19,7 @@ func TestInitSQLContainsExpectedTablesConstraintsIndexesAndSeeds(t *testing.T) {
 		"CREATE TABLE IF NOT EXISTS email_suffix_policy",
 		"CREATE TABLE IF NOT EXISTS email_suffix_rules",
 		"email TEXT UNIQUE NOT NULL",
-		"name TEXT UNIQUE NOT NULL",
+		"CREATE UNIQUE INDEX IF NOT EXISTS profiles_name_key ON profiles (lower(name))",
 		"PRIMARY KEY(user_id, hash, texture_type)",
 		"PRIMARY KEY(skin_hash, texture_type)",
 		"UNIQUE(username, endpoint_id)",

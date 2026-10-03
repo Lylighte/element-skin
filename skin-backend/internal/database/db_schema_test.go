@@ -128,7 +128,7 @@ func TestResetPublicSchemaRemovesDataAndRestoresDefaults(t *testing.T) {
 func TestInitSQLContainsExpectedConstraintsAndIndexes(t *testing.T) {
 	required := []string{
 		"email TEXT UNIQUE NOT NULL",
-		"name TEXT UNIQUE NOT NULL",
+		"CREATE UNIQUE INDEX IF NOT EXISTS profiles_name_key ON profiles (lower(name))",
 		"PRIMARY KEY(user_id, hash, texture_type)",
 		"PRIMARY KEY(skin_hash, texture_type)",
 		"UNIQUE(username, endpoint_id)",

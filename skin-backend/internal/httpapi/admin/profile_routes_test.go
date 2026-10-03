@@ -137,7 +137,7 @@ func TestProfileRoutesRejectInvalidInputsAndConflictsExactly(t *testing.T) {
 		t.Fatalf("profile update invalid name mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPatch, "/v2/admin/profiles/"+target.ID, strings.NewReader(`{"name":"AdminExisting"}`))
+	req = httptest.NewRequest(http.MethodPatch, "/v2/admin/profiles/"+target.ID, strings.NewReader(`{"name":"adminexisting"}`))
 	req = withAdminActor(req, "admin-test-user")
 	req.SetPathValue("profile_id", target.ID)
 	rec = httptest.NewRecorder()

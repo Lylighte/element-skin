@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -214,6 +215,20 @@ func TestImportProfilesDeniesBatchWhenActorLacksPermission(t *testing.T) {
 }
 
 func TestConcurrentImportsRetryConflictingProfileName(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		names [2]string
+	}{
+		{"same spelling", [2]string{"ConcurrentImp", "ConcurrentImp"}},
+		{"different case", [2]string{"ConcurrentImp", "concurrentimp"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testConcurrentImportsRetryConflictingProfileName(t, tc.names)
+		})
+	}
+}
+
+func testConcurrentImportsRetryConflictingProfileName(t *testing.T, inputNames [2]string) {
 	db, _ := testutil.NewTestAppWithMaxConnectionsTB(t, 8)
 	ctx := context.Background()
 	user := testutil.CreateUser(t, db, "concurrent-import-name@test.com", "Password123", "ConcurrentImportName", false)
@@ -241,13 +256,12 @@ func TestConcurrentImportsRetryConflictingProfileName(t *testing.T) {
 	start := make(chan struct{})
 	results := make(chan result, 2)
 	var wg sync.WaitGroup
-	for _, id := range []string{"concurrent_import_name_a", "concurrent_import_name_b"} {
-		id := id
+	for index, id := range []string{"concurrent_import_name_a", "concurrent_import_name_b"} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-start
-			res, err := importer.ImportProfile(context.Background(), importUserActor(user.ID), id, "ConcurrentImp", nil)
+			res, err := importer.ImportProfile(context.Background(), importUserActor(user.ID), id, inputNames[index], nil)
 			if err != nil {
 				results <- result{err: err}
 				return
@@ -264,10 +278,16 @@ func TestConcurrentImportsRetryConflictingProfileName(t *testing.T) {
 		if result.err != nil {
 			t.Fatalf("concurrent import failed: %v", result.err)
 		}
-		names = append(names, result.profile["name"].(string))
+		stored, err := db.Profiles.GetByID(ctx, result.profile["id"].(string))
+		if err != nil || stored == nil || !reflect.DeepEqual(result.profile, map[string]any{
+			"id": stored.ID, "name": stored.Name, "model": "default", "skin_hash": (*string)(nil), "cape_hash": (*string)(nil),
+		}) {
+			t.Fatalf("concurrent import response=%#v stored=%#v err=%v", result.profile, stored, err)
+		}
+		names = append(names, strings.ToLower(stored.Name))
 	}
 	sort.Strings(names)
-	if len(names) != 2 || names[0] != "ConcurrentImp" || names[1] != "ConcurrentImp_1" {
+	if len(names) != 2 || names[0] != "concurrentimp" || names[1] != "concurrentimp_1" {
 		t.Fatalf("concurrent imported names=%#v; want exact deduplicated names", names)
 	}
 	var count int
