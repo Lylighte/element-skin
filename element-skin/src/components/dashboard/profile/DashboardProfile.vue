@@ -172,7 +172,7 @@ const { currentAvatarImg: customAvatar } = useAvatar()
 // Inject shared state from AppLayout
 const user = inject<Ref<User | null>>('user', ref(null))
 const fetchMe = inject<() => Promise<void>>('fetchMe')
-const logout = inject<() => Promise<void>>('logout')
+const clearSessionState = inject<() => void>('clearSessionState')!
 
 const router = useRouter()
 const form = ref({
@@ -279,19 +279,15 @@ async function handleEmailChanged() {
 async function confirmDeleteAccount() {
   try {
     await deleteMe()
-    ElMessage.success('账号已注销')
-    showDeleteDialog.value = false
-    deleteConfirmText.value = ''
-    user.value = null
-    if (logout) {
-      await logout()
-    } else {
-      await router.push('/')
-      window.location.reload()
-    }
   } catch (e: unknown) {
     ElMessage.error('注销失败: ' + getErrorMessage(e, '注销失败'))
+    return
   }
+  showDeleteDialog.value = false
+  deleteConfirmText.value = ''
+  clearSessionState()
+  ElMessage.success('账号已注销')
+  await router.replace('/')
 }
 </script>
 

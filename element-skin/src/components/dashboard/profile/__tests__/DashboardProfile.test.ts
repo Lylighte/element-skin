@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { User } from '@/api/types'
 import fixtures from '../../../../../../testdata/password-policy.json'
 import DashboardProfile from '../DashboardProfile.vue'
+import { accountDeletionFailures } from './fixtures/accountDeletion'
 
 const mocks = vi.hoisted(() => ({
   changePassword: vi.fn(),
@@ -12,8 +13,10 @@ const mocks = vi.hoisted(() => ({
   deleteMe: vi.fn(),
   sendEmailChangeCode: vi.fn(),
   changeEmail: vi.fn(),
+  siteLogout: vi.fn(),
 }))
 vi.mock('@/api/me', () => mocks)
+vi.mock('@/api/auth', () => ({ siteLogout: mocks.siteLogout }))
 vi.mock('@/composables/useAvatar', () => ({
   useAvatar: () => ({ currentAvatarImg: ref('') }),
 }))
@@ -92,52 +95,62 @@ describe('profile password and account deletion', () => {
     },
   )
 
-  it('clears account state before invoking the shared logout after successful deletion', async () => {
+  it('clears the local session after deletion without requesting logout or reloading', async () => {
     const mounted = await mountPage()
     const events: string[] = []
     mocks.deleteMe.mockImplementation(async () => {
       events.push('delete')
       return { data: null }
     })
-    mounted.logout.mockImplementation(async () => {
-      events.push('logout')
-      expect(mounted.user.value).toBeNull()
+    mounted.clearSessionState.mockImplementation(() => {
+      events.push('clear')
       expect(mounted.setup.showDeleteDialog).toBe(false)
       expect(mounted.setup.deleteConfirmText).toBe('')
+      mounted.user.value = null
     })
     try {
       mounted.setup.showDeleteDialog = true
       mounted.setup.deleteConfirmText = '注销账号'
       await mounted.setup.confirmDeleteAccount()
       expect(mocks.deleteMe).toHaveBeenCalledTimes(1)
-      expect(mounted.logout).toHaveBeenCalledTimes(1)
-      expect(events).toEqual(['delete', 'logout'])
+      expect(mounted.clearSessionState).toHaveBeenCalledTimes(1)
+      expect(mocks.siteLogout).not.toHaveBeenCalled()
+      expect(mounted.router.currentRoute.value.path).toBe('/')
+      expect(mounted.replace).toHaveBeenCalledExactlyOnceWith('/')
+      expect(mounted.user.value).toBeNull()
+      expect(events).toEqual(['delete', 'clear'])
     } finally {
       mounted.unmount()
     }
   })
 
-  it('keeps account state and avoids logout when deletion is rejected', async () => {
-    const mounted = await mountPage()
-    mocks.deleteMe.mockRejectedValue({
-      response: {
-        data: { error: { object: 'protected_subject', operation: 'delete', reason: 'denied' } },
-      },
-    })
-    try {
-      mounted.setup.showDeleteDialog = true
-      mounted.setup.deleteConfirmText = '注销账号'
-      await mounted.setup.confirmDeleteAccount()
-      expect(mocks.deleteMe).toHaveBeenCalledTimes(1)
-      expect(mounted.logout).not.toHaveBeenCalled()
-      expect(mounted.user.value?.id).toBe('profile-user')
-      expect(mounted.setup.showDeleteDialog).toBe(true)
-      expect(mounted.setup.deleteConfirmText).toBe('注销账号')
-      expect(document.body.textContent).toContain('注销失败:')
-    } finally {
-      mounted.unmount()
-    }
-  })
+  it.each(accountDeletionFailures)(
+    'keeps account state when deletion fails: $error.reason',
+    async ({ error, message }) => {
+      const mounted = await mountPage()
+      mocks.deleteMe.mockRejectedValue({
+        response: {
+          data: { error },
+        },
+      })
+      try {
+        mounted.setup.showDeleteDialog = true
+        mounted.setup.deleteConfirmText = '注销账号'
+        await mounted.setup.confirmDeleteAccount()
+        expect(mocks.deleteMe).toHaveBeenCalledTimes(1)
+        expect(mounted.clearSessionState).not.toHaveBeenCalled()
+        expect(mocks.siteLogout).not.toHaveBeenCalled()
+        expect(mounted.replace).not.toHaveBeenCalled()
+        expect(mounted.router.currentRoute.value.path).toBe('/dashboard/profile')
+        expect(mounted.user.value?.id).toBe('profile-user')
+        expect(mounted.setup.showDeleteDialog).toBe(true)
+        expect(mounted.setup.deleteConfirmText).toBe('注销账号')
+        expect(document.body.textContent).toContain('注销失败: ' + message)
+      } finally {
+        mounted.unmount()
+      }
+    },
+  )
 })
 
 async function mountPage() {
@@ -157,17 +170,22 @@ async function mountPage() {
     display_name: 'ProfileUser',
     permissions: ['account.update.self', 'account.delete.self'],
   } as User)
-  const logout = vi.fn(async () => undefined)
+  const clearSessionState = vi.fn(() => {
+    user.value = null
+  })
+  const replace = vi.spyOn(router, 'replace')
   const app = createApp(DashboardProfile)
   app.use(router)
   app.use(ElementPlus)
   app.provide('user', user)
-  app.provide('logout', logout)
+  app.provide('clearSessionState', clearSessionState)
   app.mount(host)
   await nextTick()
   return {
     user,
-    logout,
+    clearSessionState,
+    router,
+    replace,
     setup: app._instance?.setupState as unknown as ProfileSetup,
     unmount() {
       ElMessage.closeAll()
