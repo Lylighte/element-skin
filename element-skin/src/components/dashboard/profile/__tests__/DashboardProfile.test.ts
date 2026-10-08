@@ -46,6 +46,20 @@ describe('profile password and account deletion', () => {
   it.each(fixtures.filter((fixture) => fixture.entrypoint_test && fixture.password !== ''))(
     'password: $name',
     async (fixture) => {
+      if (fixture.basic_errors.length > 0) {
+        mocks.changePassword.mockRejectedValue({
+          response: {
+            data: {
+              error: {
+                object: 'password',
+                operation: 'validate',
+                reason: 'invalid',
+                params: { rules: fixture.basic_errors },
+              },
+            },
+          },
+        })
+      }
       const mounted = await mountPage()
       try {
         Object.assign(mounted.setup.form, {
@@ -55,7 +69,11 @@ describe('profile password and account deletion', () => {
         })
         await mounted.setup.updateProfile()
         const accepted = fixture.basic_errors.length === 0
-        expect(mocks.changePassword).toHaveBeenCalledTimes(accepted ? 1 : 0)
+        expect(mocks.changePassword).toHaveBeenCalledTimes(1)
+        expect(mocks.changePassword).toHaveBeenCalledWith({
+          old_password: 'Password123',
+          new_password: fixture.password,
+        })
         expect(mocks.patchMe).toHaveBeenCalledTimes(accepted ? 1 : 0)
         if (accepted) {
           expect(mocks.changePassword).toHaveBeenCalledWith({
@@ -65,7 +83,7 @@ describe('profile password and account deletion', () => {
           expect(mocks.patchMe).toHaveBeenCalledWith({ display_name: 'ProfileUser' })
           expect(mounted.setup.form.new_password).toBe('')
         } else {
-          expect(document.body.textContent).toContain('密码不符合安全要求，请调整后重试')
+          expect(document.body.textContent).toContain('密码的UTF-8编码不能超过72字节')
           expect(mounted.setup.form.new_password).toBe(fixture.password)
         }
       } finally {

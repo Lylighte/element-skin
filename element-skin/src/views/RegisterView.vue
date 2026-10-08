@@ -86,7 +86,7 @@
             type="password"
             name="password"
             autocomplete="new-password"
-            :placeholder="genericPasswordPlaceholder"
+            placeholder="请输入密码"
             :prefix-icon="Lock"
             show-password
             @keyup.enter="register"
@@ -150,11 +150,6 @@ import { getErrorMessage } from '@/utils/error'
 import { validateForm } from '@/utils/formValidation'
 import EmailSuffixInput from '@/components/common/EmailSuffixInput.vue'
 import { disabledEmailSuffixPolicy, emailSuffixPolicyError } from '@/utils/emailSuffixPolicy'
-import {
-  genericPasswordError,
-  genericPasswordPlaceholder,
-  meetsPasswordPolicy,
-} from '@/utils/passwordPolicy'
 
 const router = useRouter()
 const formRef = ref<FormInstance | null>(null)
@@ -174,7 +169,6 @@ const form = reactive({
 
 const emailVerifyEnabled = ref(false)
 const requireInvite = ref(false)
-const strongPasswordEnabled = ref(false)
 const emailSuffixPolicy = ref<PublicEmailSuffixPolicy>({
   ...disabledEmailSuffixPolicy,
 })
@@ -212,19 +206,7 @@ const rules = computed<FormRules>(() => ({
   invite: requireInvite.value
     ? [{ required: true, message: '请输入邀请码', trigger: ['blur', 'change'] }]
     : [],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    {
-      validator: (_rule, value, callback) => {
-        if (!meetsPasswordPolicy(String(value || ''), strongPasswordEnabled.value)) {
-          callback(new Error(genericPasswordError))
-          return
-        }
-        callback()
-      },
-      trigger: 'blur',
-    },
-  ],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
     {
@@ -249,14 +231,12 @@ async function loadRegistrationSettings() {
       typeof res.data.allow_register !== 'boolean' ||
       typeof res.data.require_invite !== 'boolean' ||
       typeof res.data.email_verify_enabled !== 'boolean' ||
-      typeof res.data.enable_strong_password_check !== 'boolean' ||
       !res.data.email_suffix_policy
     ) {
       throw new Error('registration settings response is incomplete')
     }
     allowRegister.value = res.data.allow_register
     emailVerifyEnabled.value = res.data.email_verify_enabled
-    strongPasswordEnabled.value = res.data.enable_strong_password_check
     requireInvite.value = res.data.require_invite
     emailSuffixPolicy.value = res.data.email_suffix_policy
     if (!requireInvite.value) {

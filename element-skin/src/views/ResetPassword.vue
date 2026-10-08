@@ -35,7 +35,7 @@
           <el-input
             v-model="form.password"
             type="password"
-            :placeholder="genericPasswordPlaceholder"
+            placeholder="请输入新密码"
             :prefix-icon="Lock"
             show-password
           />
@@ -66,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted, computed } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Message, Lock, Ticket } from '@element-plus/icons-vue'
@@ -74,18 +74,12 @@ import { getPublicSettings } from '@/api/public'
 import { sendVerificationCode, resetPassword as apiResetPassword } from '@/api/auth'
 import { getErrorMessage } from '@/utils/error'
 import { validateForm } from '@/utils/formValidation'
-import {
-  genericPasswordError,
-  genericPasswordPlaceholder,
-  meetsPasswordPolicy,
-} from '@/utils/passwordPolicy'
 
 const router = useRouter()
 const formRef = ref<FormInstance | null>(null)
 const loading = ref(false)
 const codeLoading = ref(false)
 const countdown = ref(0)
-const strongPasswordEnabled = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
 
 const form = reactive({
@@ -95,25 +89,13 @@ const form = reactive({
   confirmPassword: '',
 })
 
-const rules = computed<FormRules>(() => ({
+const rules: FormRules = {
   email: [
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
     { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' },
   ],
   code: [{ required: true, message: '请输入验证码' }],
-  password: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    {
-      validator: (_rule, value, callback) => {
-        if (!meetsPasswordPolicy(String(value || ''), strongPasswordEnabled.value)) {
-          callback(new Error(genericPasswordError))
-          return
-        }
-        callback()
-      },
-      trigger: 'blur',
-    },
-  ],
+  password: [{ required: true, message: '请输入新密码', trigger: 'blur' }],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
     {
@@ -127,12 +109,11 @@ const rules = computed<FormRules>(() => ({
       trigger: 'blur',
     },
   ],
-}))
+}
 
 onMounted(async () => {
   try {
     const res = await getPublicSettings()
-    strongPasswordEnabled.value = res.data.enable_strong_password_check === true
     if (!res.data.email_verify_enabled) {
       ElMessage.warning('密码重置功能未开启')
       router.push('/login')

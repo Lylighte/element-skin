@@ -126,7 +126,6 @@ import { getMe } from '@/api/me'
 import type { PermissionOverrideEffect, User, Profile, UserPermissionsResponse } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { getErrorMessage } from '@/utils/error'
-import { genericPasswordError, meetsPasswordPolicy } from '@/utils/passwordPolicy'
 import {
   banDurationPresets,
   buildUserSearchParams,
@@ -372,7 +371,7 @@ function showResetPasswordDialog() {
 
 async function confirmResetPassword() {
   const f = resetPasswordForm.value
-  if (!meetsPasswordPolicy(f.new_password, false)) return ElMessage.error(genericPasswordError)
+  if (!f.new_password) return ElMessage.error('请输入新密码')
   if (f.new_password !== f.confirm_password) return ElMessage.error('两次密码不一致')
   if (!currentUser.value) return
 

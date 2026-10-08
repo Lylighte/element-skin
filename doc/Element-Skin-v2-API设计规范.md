@@ -381,8 +381,7 @@ refresh token 和 userinfo 立即失效。
 | POST | `/v2/imports/remote-ygg/profiles/import-batch` | 批量导入结果 |
 
 `GET /v2/public/settings` 同时公开注册交互必需的 `allow_register`、`require_invite`、
-`email_verify_enabled`、`enable_strong_password_check` 和 `email_suffix_policy`。
-`enable_strong_password_check` 为布尔值，默认 `false`；保存 security 设置后公开设置缓存同步失效。
+`email_verify_enabled` 和 `email_suffix_policy`。
 邮箱后缀策略不分页，只返回当前生效名单：
 
 ```json
@@ -403,10 +402,15 @@ refresh token 和 userinfo 立即失效。
 至少 8 个 Unicode 码点，并具有小写字母、大写字母、十进制数字、标点或符号中的任意两类。
 空格和没有大小写的文字不构成额外类别；emoji 属于符号类。关闭开关后不保留独立的 6 位下限。
 
-前端四个入口共用非空和字节上限判断；注册与邮件找回同时根据公开开关提前判断强度，
-个人和管理员入口的最终强度检查由后端执行。校验失败返回 `400 password.validate.invalid`，
-不携带 `params.rules`，前端采用通用提示；缺失必填字段保留对应 `required` 错误。
+`enable_strong_password_check` 仅在后台 security 设置中管理，默认 `false`，不作为公开配置返回。
+前端只检查必填、确认密码一致等表单条件，不实现密码长度或组成策略。四个入口均由后端
+判定策略，失败返回 `400 password.validate.invalid`，在 `params.rules` 中保留全部失败规则。
+规则标识为 `required`、`max_length`、`min_length`、`composition`；前端按标识显示具体修改原因，
+不显示后端展示文本。请求入口已有的必填字段错误保留对应 `required` 三元组。
 规则失败或配置读取失败发生在密码哈希、验证码消耗、token 撤销和密码写入之前。
+
+公开设置 Redis 缓存使用新的 schema 版本键，移除字段后不会读取旧实例留下的缓存。
+security 更新仍使内部设置缓存失效，不再触发公开设置缓存失效。
 
 `DELETE /v2/users/me` 成功后返回 `204` 空体，并清除 `access_token`、`refresh_token` 两个站点 Cookie。
 Cookie 保持 Path、HttpOnly、Secure 和 SameSite 属性；注销被拒绝或删除失败时不清除 Cookie。

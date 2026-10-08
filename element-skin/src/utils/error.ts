@@ -116,8 +116,21 @@ export function isApiError(error: unknown, object: string, operation: string, re
   )
 }
 
-function passwordPolicyMessage() {
-  return '密码不符合安全要求，请调整后重试'
+function passwordPolicyMessage(params: Record<string, unknown> | undefined) {
+  const rules = Array.isArray(params?.rules) ? params.rules : []
+  const messages: Record<string, string> = {
+    required: '请输入密码',
+    min_length: '密码至少需要8个字符',
+    max_length: '密码的UTF-8编码不能超过72字节',
+    composition: '密码需包含小写字母、大写字母、数字、标点或符号中的至少两类',
+  }
+  const reasons = rules
+    .filter(
+      (rule): rule is string =>
+        typeof rule === 'string' && Object.prototype.hasOwnProperty.call(messages, rule),
+    )
+    .map((rule) => messages[rule])
+  return reasons.length > 0 ? reasons.join('；') : '密码不符合安全要求'
 }
 
 export function getErrorMessage(error: unknown, fallback = '操作失败') {
@@ -139,7 +152,7 @@ export function getErrorMessage(error: unknown, fallback = '操作失败') {
 
 export function getApiErrorMessage(descriptor: ApiErrorDescriptor, fallback = '操作失败') {
   const key = `${descriptor.object}.${descriptor.operation}.${descriptor.reason}`
-  if (key === 'password.validate.invalid') return passwordPolicyMessage()
+  if (key === 'password.validate.invalid') return passwordPolicyMessage(descriptor.params)
   return exactMessages[key] ?? reasonMessages[descriptor.reason] ?? fallback
 }
 

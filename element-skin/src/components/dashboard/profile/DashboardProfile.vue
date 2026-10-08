@@ -78,7 +78,7 @@
           <el-input
             type="password"
             v-model="form.new_password"
-            placeholder="符合安全要求的密码（留空则不修改）"
+            placeholder="请输入新密码（留空则不修改）"
             show-password
           />
         </el-form-item>
@@ -166,7 +166,6 @@ import UiCard from '@/components/ui/UiCard.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
 import EmailChangeDialog from './EmailChangeDialog.vue'
 import { getErrorMessage } from '@/utils/error'
-import { genericPasswordError, meetsPasswordPolicy } from '@/utils/passwordPolicy'
 
 const { currentAvatarImg: customAvatar } = useAvatar()
 
@@ -244,10 +243,6 @@ async function updateProfile() {
     if (form.value.new_password) {
       if (!form.value.old_password) {
         ElMessage.error('请输入旧密码')
-        return
-      }
-      if (!meetsPasswordPolicy(form.value.new_password, false)) {
-        ElMessage.error(genericPasswordError)
         return
       }
       if (form.value.new_password !== form.value.confirm_password) {

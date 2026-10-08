@@ -19,8 +19,8 @@ func (s AccountService) validatePassword(ctx context.Context, password string) e
 	if err != nil {
 		return err
 	}
-	if len(util.ValidatePassword(password, enabled == "true")) > 0 {
-		return util.HTTPError{Status: http.StatusBadRequest, Object: "password", Operation: "validate", Reason: "invalid"}
+	if rules := util.ValidatePassword(password, enabled == "true"); len(rules) > 0 {
+		return util.HTTPError{Status: http.StatusBadRequest, Object: "password", Operation: "validate", Reason: "invalid", Params: map[string]any{"rules": rules}}
 	}
 	return nil
 }

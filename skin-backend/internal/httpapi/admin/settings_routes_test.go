@@ -149,8 +149,8 @@ func TestSettingsRoutesNamedGroupsInvalidateOnlyRelevantPublicCaches(t *testing.
 	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("save security group response mismatch: status=%d body=%q", rec.Code, rec.Body.String())
 	}
-	if _, err := redis.GetPublicSettings(t.Context()); !errors.Is(err, redisstore.ErrCacheMiss) {
-		t.Fatalf("save security group should invalidate public settings cache, got %v", err)
+	if cached, err := redis.GetPublicSettings(t.Context()); err != nil || !reflect.DeepEqual(cached, map[string]any{"site_name": "still-fresh"}) {
+		t.Fatalf("save security group should retain public settings cache: got=%#v err=%v", cached, err)
 	}
 }
 
@@ -270,8 +270,8 @@ func TestSettingsRoutesReturnErrorWhenCacheInvalidationFailsAfterPersist(t *test
 	req.SetPathValue("group", "security")
 	rec = httptest.NewRecorder()
 	h.SaveSettingsGroup(rec, req)
-	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"error\":{\"object\":\"server\",\"operation\":\"handle\",\"reason\":\"failed\"}}\n" {
-		t.Fatalf("security settings save should expose generic error when public cache invalidation fails: status=%d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("security settings should not depend on public cache invalidation: status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

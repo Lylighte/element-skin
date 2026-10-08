@@ -68,29 +68,29 @@ func TestPasswordPolicyFailuresPreserveHashRefreshYggAndAuthCache(t *testing.T) 
 					t.Fatal(err)
 				}
 				var store redisstore.Store = cache
-				passwords := make(map[string]string)
+				passwords := make(map[string]testutil.PasswordPolicyCase)
 				for _, fixture := range testutil.PasswordPolicyCases(t) {
-					passwords[fixture.Name] = fixture.Password
+					passwords[fixture.Name] = fixture
 				}
-				password := passwords["eight digits"]
+				fixture := passwords["eight digits"]
 				switch failure {
 				case "too_long":
-					password = passwords["73 UTF8 bytes"]
+					fixture = passwords["73 UTF8 bytes"]
 				case "setting_read", "setting_write":
-					password = passwords["digits and punctuation"]
+					fixture = passwords["digits and punctuation"]
 					store = passwordSettingFailureStore{Store: cache, failWrite: failure == "setting_write"}
 				}
 				svc := accountsvc.AccountService{DB: db, Redis: store}
 				if operation == "self" {
-					err = svc.ChangePasswordSelf(ctx, accountActor(t, db, user.ID), "Password123", password)
+					err = svc.ChangePasswordSelf(ctx, accountActor(t, db, user.ID), "Password123", fixture.Password)
 				} else {
-					err = svc.ResetPassword(ctx, actorWithPermissions(admin.ID, "account.update.any"), accountsvc.ResetPasswordInput{UserID: user.ID, NewPassword: password})
+					err = svc.ResetPassword(ctx, actorWithPermissions(admin.ID, "account.update.any"), accountsvc.ResetPasswordInput{UserID: user.ID, NewPassword: fixture.Password})
 				}
 				switch failure {
 				case "weak", "too_long":
 					var apiErr util.HTTPError
-					if !errors.As(err, &apiErr) || apiErr.Status != 400 || apiErr.Error() != "password.validate.invalid" || len(apiErr.Params) != 0 {
-						t.Fatalf("error=%#v; want generic policy HTTP400", err)
+					if !errors.As(err, &apiErr) || apiErr.Status != 400 || apiErr.Error() != "password.validate.invalid" || !reflect.DeepEqual(apiErr.Params, map[string]any{"rules": fixture.StrongErrors}) {
+						t.Fatalf("error=%#v; want policy HTTP400 with rules=%#v", err, fixture.StrongErrors)
 					}
 				default:
 					if !errors.Is(err, passwordSettingFailure) {

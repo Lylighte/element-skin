@@ -84,8 +84,8 @@ func (s Service) Register(ctx context.Context, email, password, username, invite
 	if err != nil {
 		return "", err
 	}
-	if len(util.ValidatePassword(password, strong == "true")) > 0 {
-		return "", util.HTTPError{Status: 400, Object: "password", Operation: "validate", Reason: "invalid"}
+	if rules := util.ValidatePassword(password, strong == "true"); len(rules) > 0 {
+		return "", util.HTTPError{Status: 400, Object: "password", Operation: "validate", Reason: "invalid", Params: map[string]any{"rules": rules}}
 	}
 	allow, err := settings.Get(ctx, "allow_register", "true")
 	if err != nil {

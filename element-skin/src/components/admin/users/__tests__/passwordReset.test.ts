@@ -40,6 +40,20 @@ interface ResetSetup {
 
 describe('administrator password reset', () => {
   it.each(fixtures.filter((fixture) => fixture.entrypoint_test))('$name', async (fixture) => {
+    if (fixture.password !== '' && fixture.basic_errors.length > 0) {
+      mocks.resetUserPassword.mockRejectedValue({
+        response: {
+          data: {
+            error: {
+              object: 'password',
+              operation: 'validate',
+              reason: 'invalid',
+              params: { rules: fixture.basic_errors },
+            },
+          },
+        },
+      })
+    }
     const mounted = await mountPage()
     try {
       mounted.setup.resetPasswordForm = {
@@ -48,27 +62,38 @@ describe('administrator password reset', () => {
       }
       await mounted.setup.confirmResetPassword()
       const accepted = fixture.basic_errors.length === 0
-      expect(mocks.resetUserPassword).toHaveBeenCalledTimes(accepted ? 1 : 0)
+      expect(mocks.resetUserPassword).toHaveBeenCalledTimes(fixture.password !== '' ? 1 : 0)
       expect(mounted.setup.resetPasswordDialogVisible).toBe(!accepted)
       expect(mounted.setup.resetting).toBe(false)
-      if (accepted) {
+      if (fixture.password !== '') {
         expect(mocks.resetUserPassword).toHaveBeenCalledWith({
           user_id: 'password-user',
           new_password: fixture.password,
         })
-      } else {
-        expect(document.body.textContent).toContain('密码不符合安全要求，请调整后重试')
+      }
+      if (!accepted) {
+        expect(document.body.textContent).toContain(
+          fixture.password === '' ? '请输入新密码' : '密码的UTF-8编码不能超过72字节',
+        )
+        expect(mounted.setup.resetPasswordForm.new_password).toBe(fixture.password)
       }
     } finally {
       mounted.unmount()
     }
   })
 
-  it('shows the generic backend policy rejection and preserves the dialog input', async () => {
+  it('shows the backend composition rejection and preserves the dialog input', async () => {
     const fixture = fixtures.find((fixture) => fixture.name === 'eight digits')!
     mocks.resetUserPassword.mockRejectedValue({
       response: {
-        data: { error: { object: 'password', operation: 'validate', reason: 'invalid' } },
+        data: {
+          error: {
+            object: 'password',
+            operation: 'validate',
+            reason: 'invalid',
+            params: { rules: fixture.strong_errors },
+          },
+        },
       },
     })
     const mounted = await mountPage()
@@ -79,7 +104,9 @@ describe('administrator password reset', () => {
       }
       await mounted.setup.confirmResetPassword()
       expect(mocks.resetUserPassword).toHaveBeenCalledTimes(1)
-      expect(document.body.textContent).toContain('密码不符合安全要求，请调整后重试')
+      expect(document.body.textContent).toContain(
+        '密码需包含小写字母、大写字母、数字、标点或符号中的至少两类',
+      )
       expect(mounted.setup.resetPasswordDialogVisible).toBe(true)
       expect(mounted.setup.resetPasswordForm.new_password).toBe(fixture.password)
       expect(mounted.setup.resetting).toBe(false)

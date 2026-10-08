@@ -108,7 +108,7 @@ func TestPasswordEntryPointsApplySamePolicyAndPreserveRejectedState(t *testing.T
 						t.Fatal(err)
 					}
 					if len(expectedErrors) != 0 {
-						wantBody := passwordPolicyErrorBody
+						wantBody := passwordPolicyErrorBody(t, expectedErrors)
 						if fixture.Password == "" {
 							wantBody = entry.emptyErrorBody
 						}

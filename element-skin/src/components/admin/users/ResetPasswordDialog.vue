@@ -2,12 +2,7 @@
   <UiDialog v-model="visible" title="重置用户密码" align-center>
     <el-form label-position="top">
       <el-form-item label="新密码">
-        <el-input
-          v-model="newPassword"
-          type="password"
-          placeholder="请输入符合安全要求的密码"
-          show-password
-        />
+        <el-input v-model="newPassword" type="password" placeholder="请输入新密码" show-password />
       </el-form-item>
       <el-form-item label="确认新密码">
         <el-input v-model="confirmPassword" type="password" show-password />
