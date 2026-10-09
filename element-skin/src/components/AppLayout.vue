@@ -167,7 +167,7 @@
 
 <script setup lang="ts">
 import { Bell, Menu as MenuIcon, Moon, Sunny } from '@element-plus/icons-vue'
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import AccountMenu from '@/components/layout/AccountMenu.vue'
 import { useAppLayoutState } from '@/components/layout/useAppLayoutState'
@@ -239,12 +239,19 @@ function updateDesktopNavVisibility() {
 }
 
 onMounted(() => {
-  navResizeObserver = new ResizeObserver(updateDesktopNavVisibility)
-  if (headerRef.value) navResizeObserver.observe(headerRef.value)
-  if (headerBrandRef.value) navResizeObserver.observe(headerBrandRef.value)
-  if (headerActionsRef.value) navResizeObserver.observe(headerActionsRef.value)
-  if (desktopNavRef.value) navResizeObserver.observe(desktopNavRef.value)
-  nextTick(updateDesktopNavVisibility)
+  const observer = new ResizeObserver(updateDesktopNavVisibility)
+  navResizeObserver = observer
+  watch(
+    [headerRef, headerBrandRef, headerActionsRef, desktopNavRef],
+    (elements) => {
+      observer.disconnect()
+      for (const element of elements) {
+        if (element) observer.observe(element)
+      }
+      updateDesktopNavVisibility()
+    },
+    { immediate: true, flush: 'post' },
+  )
   window.addEventListener('resize', updateDesktopNavVisibility)
 })
 
