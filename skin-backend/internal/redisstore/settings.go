@@ -9,7 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const publicSettingsCacheKey = "settings:v2"
+const publicSettingsCacheKey = "settings"
 
 func (s *RedisStore) GetSetting(ctx context.Context, key string) (string, error) {
 	value, err := s.client.Get(ctx, s.key("settings", key)).Result()

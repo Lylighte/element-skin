@@ -105,7 +105,7 @@ describe('administrator password reset', () => {
       await mounted.setup.confirmResetPassword()
       expect(mocks.resetUserPassword).toHaveBeenCalledTimes(1)
       expect(document.body.textContent).toContain(
-        '密码需包含小写字母、大写字母、数字、标点或符号中的至少两类',
+        '密码需包含小写字母、大写字母、数字、标点或符号中的至少三类',
       )
       expect(mounted.setup.resetPasswordDialogVisible).toBe(true)
       expect(mounted.setup.resetPasswordForm.new_password).toBe(fixture.password)

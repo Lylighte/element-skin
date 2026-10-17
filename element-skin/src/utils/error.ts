@@ -44,6 +44,7 @@ const exactMessages: Record<string, string> = {
   'oauth_client.resolve.not_found': '第三方应用不存在',
   'oauth_grant.resolve.not_found': '应用授权不存在',
   'webhook_event.subscribe.denied': '应用权限不允许订阅该 Webhook 事件',
+  'setting_value.validate.invalid': '设置值类型不正确',
   'server.handle.failed': '服务器处理请求失败',
 }
 
@@ -122,7 +123,7 @@ function passwordPolicyMessage(params: Record<string, unknown> | undefined) {
     required: '请输入密码',
     min_length: '密码至少需要8个字符',
     max_length: '密码的UTF-8编码不能超过72字节',
-    composition: '密码需包含小写字母、大写字母、数字、标点或符号中的至少两类',
+    composition: '密码需包含小写字母、大写字母、数字、标点或符号中的至少三类',
   }
   const reasons = rules
     .filter(

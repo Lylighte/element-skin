@@ -52,6 +52,18 @@ describe('getErrorMessage', () => {
     ).toBe('OAuth 授权无效或已过期')
   })
 
+  it('preserves structured setting type errors and localizes them', () => {
+    const descriptor = {
+      object: 'setting_value',
+      operation: 'validate',
+      reason: 'invalid',
+      params: { key: 'enable_strong_password_check', expected_type: 'boolean' },
+    }
+    const error = { response: { status: 400, data: { error: descriptor } } }
+    expect(getApiError(error)).toEqual(descriptor)
+    expect(getErrorMessage(error)).toBe('设置值类型不正确')
+  })
+
   it.each(passwordErrorFixtures)('localizes password rules $rules', ({ rules, message }) => {
     const error = {
       response: {

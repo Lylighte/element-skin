@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,18 +29,49 @@ func TestPasswordEntryPointsApplySamePolicyAndPreserveRejectedState(t *testing.T
 	if err := db.Settings.Set(ctx, "email_verify_enabled", "true"); err != nil {
 		t.Fatal(err)
 	}
+	public := doJSON(t, router, "GET", "/v2/public/settings", nil)
+	if public.Code != http.StatusOK {
+		t.Fatalf("initial public settings status=%d body=%s", public.Code, public.Body.String())
+	}
+	if _, exposed := parseJSON(t, public)["enable_strong_password_check"]; exposed {
+		t.Fatalf("public settings exposed password policy: %s", public.Body.String())
+	}
+	publicBefore, err := cache.GetPublicSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	sequence := 0
-	for _, strong := range []bool{false, true} {
-		if err := db.Settings.Set(ctx, "enable_strong_password_check", strong); err != nil {
-			t.Fatal(err)
+	previousEnabled := false
+	for _, setting := range passwordPolicySettings {
+		// Populate the cache before saving so the API must invalidate the previous policy.
+		previous := doJSON(t, router, "GET", "/v2/admin/settings/security", nil, adminCookies...)
+		if previous.Code != http.StatusOK || parseJSON(t, previous)["enable_strong_password_check"] != previousEnabled {
+			t.Fatalf("read previous security settings status=%d body=%s; want enabled=%t", previous.Code, previous.Body.String(), previousEnabled)
 		}
-		invalidateSettings(t, cache)
+		saved := doJSON(t, router, "POST", "/v2/admin/settings/security", map[string]any{"enable_strong_password_check": setting.value}, adminCookies...)
+		if saved.Code != http.StatusNoContent || saved.Body.String() != "" || len(saved.Result().Cookies()) != 0 {
+			t.Fatalf("save %s status=%d body=%q cookies=%#v; want 204 without body or cookies", setting.name, saved.Code, saved.Body.String(), saved.Result().Cookies())
+		}
+		if stored, err := db.Settings.Get(ctx, "enable_strong_password_check", ""); err != nil || stored != setting.stored {
+			t.Fatalf("persisted %s policy=%q err=%v; want %q", setting.name, stored, err, setting.stored)
+		}
+		if cached, err := cache.GetSetting(ctx, "enable_strong_password_check"); !errors.Is(err, redisstore.ErrCacheMiss) || cached != "" {
+			t.Fatalf("save %s retained policy cache=%q err=%v; want empty and ErrCacheMiss", setting.name, cached, err)
+		}
+		if publicAfter, err := cache.GetPublicSettings(ctx); err != nil || !reflect.DeepEqual(publicAfter, publicBefore) {
+			t.Fatalf("save %s changed public cache=%#v err=%v; want %#v", setting.name, publicAfter, err, publicBefore)
+		}
+		updated := doJSON(t, router, "GET", "/v2/admin/settings/security", nil, adminCookies...)
+		if updated.Code != http.StatusOK || parseJSON(t, updated)["enable_strong_password_check"] != setting.enabled {
+			t.Fatalf("read saved %s status=%d body=%s; want enabled=%t", setting.name, updated.Code, updated.Body.String(), setting.enabled)
+		}
+		previousEnabled = setting.enabled
 		for _, fixture := range testutil.PasswordPolicyCases(t) {
 			if !fixture.EntrypointTest {
 				continue
 			}
 			for _, entry := range passwordEntryPoints {
-				t.Run(fmt.Sprintf("strong=%t/%s/%s", strong, entry.name, fixture.Name), func(t *testing.T) {
+				t.Run(fmt.Sprintf("%s/%s/%s", setting.name, entry.name, fixture.Name), func(t *testing.T) {
 					sequence++
 					email := fmt.Sprintf("policy-%d@test.com", sequence)
 					username := fmt.Sprintf("PolicyUser%d", sequence)
@@ -99,7 +132,7 @@ func TestPasswordEntryPointsApplySamePolicyAndPreserveRejectedState(t *testing.T
 						}
 					}
 					expectedErrors := fixture.BasicErrors
-					if strong {
+					if setting.enabled {
 						expectedErrors = fixture.StrongErrors
 					}
 					response := doJSON(t, router, "POST", entry.path, body, cookies...)
@@ -196,5 +229,63 @@ func TestRejectedAccountDeletionPreservesSessionAndCookies(t *testing.T) {
 	me := doJSON(t, router, "GET", "/v2/users/me", nil, cookies...)
 	if me.Code != 200 || parseJSON(t, me)["id"] != user.ID {
 		t.Fatalf("session invalid after rejected deletion: status=%d body=%s", me.Code, me.Body.String())
+	}
+}
+
+func TestRejectedPasswordPolicySettingsRequestsPreserveDatabaseAndCaches(t *testing.T) {
+	db, router, cache := testutil.NewTestAppWithRedisTB(t)
+	admin := testutil.CreateUser(t, db, "policy-settings-admin@test.com", "Password123", "PolicySettingsAdmin", true)
+	user := testutil.CreateUser(t, db, "policy-settings-user@test.com", "Password123", "PolicySettingsUser", false)
+	adminLogin := doJSON(t, router, "POST", "/v2/auth/login", map[string]string{"email": admin.Email, "password": "Password123"})
+	userLogin := doJSON(t, router, "POST", "/v2/auth/login", map[string]string{"email": user.Email, "password": "Password123"})
+	if adminLogin.Code != 200 || parseJSON(t, adminLogin)["user_id"] != admin.ID || userLogin.Code != 200 || parseJSON(t, userLogin)["user_id"] != user.ID {
+		t.Fatalf("settings fixture login mismatch: admin=%d %s user=%d %s", adminLogin.Code, adminLogin.Body.String(), userLogin.Code, userLogin.Body.String())
+	}
+	adminCookies := adminLogin.Result().Cookies()
+	initial := doJSON(t, router, "GET", "/v2/admin/settings/security", nil, adminCookies...)
+	if initial.Code != 200 || parseJSON(t, initial)["enable_strong_password_check"] != false {
+		t.Fatalf("initial policy status=%d body=%s; want disabled", initial.Code, initial.Body.String())
+	}
+	public := doJSON(t, router, "GET", "/v2/public/settings", nil)
+	if public.Code != 200 {
+		t.Fatalf("public settings status=%d body=%s", public.Code, public.Body.String())
+	}
+	if _, exposed := parseJSON(t, public)["enable_strong_password_check"]; exposed {
+		t.Fatalf("public settings exposed password policy: %s", public.Body.String())
+	}
+	publicBefore, err := cache.GetPublicSettings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range rejectedPasswordSettingUpdates {
+		t.Run(fixture.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/v2/admin/settings/security", strings.NewReader(fixture.body))
+			request.Header.Set("Content-Type", "application/json")
+			cookies := userLogin.Result().Cookies()
+			if fixture.admin {
+				cookies = adminCookies
+			}
+			for _, cookie := range cookies {
+				request.AddCookie(cookie)
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != fixture.status || response.Body.String() != fixture.errorBody || len(response.Result().Cookies()) != 0 {
+				t.Fatalf("rejected settings status=%d body=%q cookies=%#v; want %d %q without cookies", response.Code, response.Body.String(), response.Result().Cookies(), fixture.status, fixture.errorBody)
+			}
+			if stored, err := db.Settings.Get(t.Context(), "enable_strong_password_check", ""); err != nil || stored != "false" {
+				t.Fatalf("rejection changed stored policy=%q err=%v; want false", stored, err)
+			}
+			if cached, err := cache.GetSetting(t.Context(), "enable_strong_password_check"); err != nil || cached != "false" {
+				t.Fatalf("rejection changed policy cache=%q err=%v; want false", cached, err)
+			}
+			if publicAfter, err := cache.GetPublicSettings(t.Context()); err != nil || !reflect.DeepEqual(publicAfter, publicBefore) {
+				t.Fatalf("rejection changed public cache=%#v err=%v; want %#v", publicAfter, err, publicBefore)
+			}
+			after := doJSON(t, router, "GET", "/v2/admin/settings/security", nil, adminCookies...)
+			if after.Code != initial.Code || after.Body.String() != initial.Body.String() {
+				t.Fatalf("rejection changed security group status=%d body=%q; want %d %q", after.Code, after.Body.String(), initial.Code, initial.Body.String())
+			}
+		})
 	}
 }

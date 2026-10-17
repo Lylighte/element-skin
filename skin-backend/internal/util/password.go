@@ -51,7 +51,7 @@ func ValidatePassword(password string, strong bool) []string {
 			categories++
 		}
 	}
-	if categories < 2 {
+	if categories < 3 {
 		errs = append(errs, "composition")
 	}
 	return errs

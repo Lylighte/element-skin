@@ -4,11 +4,11 @@ export const passwordErrorFixtures = [
   { rules: ['max_length'], message: '密码的UTF-8编码不能超过72字节' },
   {
     rules: ['composition'],
-    message: '密码需包含小写字母、大写字母、数字、标点或符号中的至少两类',
+    message: '密码需包含小写字母、大写字母、数字、标点或符号中的至少三类',
   },
   {
     rules: ['min_length', 'composition'],
-    message: '密码至少需要8个字符；密码需包含小写字母、大写字母、数字、标点或符号中的至少两类',
+    message: '密码至少需要8个字符；密码需包含小写字母、大写字母、数字、标点或符号中的至少三类',
   },
 ]
 
