@@ -14,6 +14,7 @@ type SkinModel = 'default' | 'slim'
 const currentAvatarImg = ref<string | null>(null)
 const avatarHash = ref<string | null>(null)
 let avatarGeneration = 0
+let avatarUpdateGeneration = 0
 
 // Sequential generation queue — ensures only ONE WebGL context exists at a time
 let _generationQueue: Promise<unknown> = Promise.resolve()
@@ -87,11 +88,11 @@ export async function getAvatarForHash(
 }
 
 export function useAvatar() {
-  async function initializeAvatar(
+  async function loadAvatar(
     hash: string | null | undefined,
-    model: SkinModel = 'default',
+    model: SkinModel,
+    generation: number,
   ): Promise<void> {
-    const generation = ++avatarGeneration
     if (!hash) {
       currentAvatarImg.value = null
       avatarHash.value = null
@@ -105,9 +106,22 @@ export function useAvatar() {
     if (generation === avatarGeneration) currentAvatarImg.value = image
   }
 
+  async function initializeAvatar(
+    hash: string | null | undefined,
+    model: SkinModel = 'default',
+  ): Promise<void> {
+    ++avatarUpdateGeneration
+    await loadAvatar(hash, model, ++avatarGeneration)
+  }
+
   async function setAvatar(hash: string | null, model: SkinModel = 'default'): Promise<boolean> {
+    // Session resets must invalidate updates that are still waiting for the API response.
+    const updateGeneration = ++avatarUpdateGeneration
     await patchMe({ avatar_hash: hash })
-    await initializeAvatar(hash, model)
+    if (updateGeneration !== avatarUpdateGeneration) return false
+    const generation = ++avatarGeneration
+    await loadAvatar(hash, model, generation)
+    if (generation !== avatarGeneration || updateGeneration !== avatarUpdateGeneration) return false
     window.dispatchEvent(new CustomEvent('avatar-changed', { detail: hash }))
     return true
   }
